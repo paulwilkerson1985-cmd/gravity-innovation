@@ -1,0 +1,7 @@
+a=0.30  Q_nonlinear=0.54260 (Rmax=18: 0.54260)  Q_linear=0.45854  ratio=1.183  slope phi'(a)=4.34975
+a=0.60  Q_nonlinear=1.80446 (Rmax=18: 1.80446)  Q_linear=1.40172  ratio=1.287  slope phi'(a)=2.59984
+D=1.4  F_asym(nonlinear Q)=2.5830   F_point(linear Q)=1.6956
+D=2.0  F_asym(nonlinear Q)=0.6960   F_point(linear Q)=0.4569
+D=3.0  F_asym(nonlinear Q)=0.1030   F_point(linear Q)=0.0676
+D=4.0  F_asym(nonlinear Q)=0.0179   F_point(linear Q)=0.0117
+asymptotic ratio F(1.4)/F(3.0) = 25.08 (independent of Q)
