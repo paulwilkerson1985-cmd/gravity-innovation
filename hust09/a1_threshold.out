@@ -1,0 +1,15 @@
+exact empty cylinder R=225, H=500: 1/mu_c = 80.66 mm
+--- h = 1.00 mm
+  empty chamber                                      lambda_min = 1.5371e-04 mm^-2  -> 1/mu_c = 80.66 mm   (1s)
+  pedestal only zd=200 Rped=125                      lambda_min = 2.2088e-04 mm^-2  -> 1/mu_c = 67.29 mm   (1s)
+  NOMINAL zd=200 Rped=125 +shield+torus+pend(cyl)    lambda_min = 2.8498e-04 mm^-2  -> 1/mu_c = 59.24 mm   (1s)
+  nominal, pend=disk                                 lambda_min = 2.8499e-04 mm^-2  -> 1/mu_c = 59.24 mm   (1s)
+  zd=150                                             lambda_min = 2.3202e-04 mm^-2  -> 1/mu_c = 65.65 mm   (1s)
+  zd=250                                             lambda_min = 3.8043e-04 mm^-2  -> 1/mu_c = 51.27 mm   (1s)
+  Rped=100                                           lambda_min = 2.8454e-04 mm^-2  -> 1/mu_c = 59.28 mm   (1s)
+  Rped=140                                           lambda_min = 2.8530e-04 mm^-2  -> 1/mu_c = 59.20 mm   (1s)
+  everything below disk plane pinned (Rped=225)      lambda_min = 2.8589e-04 mm^-2  -> 1/mu_c = 59.14 mm   (1s)
+  worst: zd=250, Rped=225                            lambda_min = 3.8316e-04 mm^-2  -> 1/mu_c = 51.09 mm   (0s)
+--- h = 0.50 mm
+  empty chamber                                      lambda_min = 1.5371e-04 mm^-2  -> 1/mu_c = 80.66 mm   (7s)
+  NOMINAL zd=200 Rped=125 +shield+torus+pend(cyl)    lambda_min = 2.8469e-04 mm^-2  -> 1/mu_c = 59.27 mm   (5s)

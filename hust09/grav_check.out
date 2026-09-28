@@ -1,0 +1,3 @@
+exact  Delta K = 7.5712e-11 N m/rad
+approx -4[U(0)-U(pi/2)] = 6.1286e-11 N m/rad  (ratio approx/exact = 0.809)
+HUST-09 I*Delta omega^2 = 7.5797e-11 N m/rad
