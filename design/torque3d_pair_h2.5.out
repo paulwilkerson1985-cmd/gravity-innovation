@@ -1,0 +1,6 @@
+grid 156 x 59 x 59 = 0.54M nodes (hf=2.50)
+both   E=160.5261975258 res=3e-12 phimax=0.9301 (21s)
+test   E=155.9400927498 res=3e-12 phimax=0.9390 (22s)
+src    E=158.9978342907 res=3e-12 phimax=0.9528 (21s)
+empty  E=153.6190129557 res=4e-12 phimax=0.9824 (20s)
+hf=2.50  W_pair(1.4) = -0.79272 v^2/mu   (axisymmetric U = -0.8510)  ratio 0.9315

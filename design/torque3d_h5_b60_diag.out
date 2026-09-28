@@ -1,0 +1,10 @@
+grid 116 x 46 x 41 = 0.22M nodes (hf=5.00)
+near     E=162.4509775124 res=7e-13 phimax=0.9207 (5s)
+perp     E=162.7699124020 res=7e-13 phimax=0.9240 (4s)
+nosrc_x  E=158.4618947790 res=7e-13 phimax=0.9281 (5s)
+nosrc_y  E=158.4623204215 res=8e-13 phimax=0.9283 (5s)
+grid 116 x 85 x 41 = 0.40M nodes (hf=5.00)
+diag     E=162.1991749830 res=6e-13 phimax=0.9233 (9s)
+nosrc_d  E=158.0098995045 res=8e-13 phimax=0.9285 (9s)
+E(near)-E(perp) = -3.1893e-01  (no-source orientation offset -4.3e-04)  ->  tau_2 = |dE| = 3.1851e-01 v^2/mu
+interaction energies W(0)=3.98908 W(45)=4.18928 W(90)=4.30759  -> E2=-0.15925 E4=-0.04094 (E4/E2=0.257); tau(45)=2E2 -> 3.1851e-01 v^2/mu; tau_max includes 4th: check

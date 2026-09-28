@@ -1,0 +1,58 @@
+gas switch-off density: rho_off = 0.584 rho_crit  (rho_crit = M^2 mu^2)
+
+(1) GAS SWITCH: pressure for rho_gas = rho_off = 0.584 rho_crit at 293 K (ideal gas), He (4.003) and Xe (131.3 g/mol)
+  1/mu= 4 cm M= 4 TeV: rho_crit=9.03e-02 kg/m3  rho_off=5.27e-02  P_off: He    321.0 mbar  Xe     9.79 mbar
+  1/mu= 4 cm M= 6 TeV: rho_crit=2.03e-01 kg/m3  rho_off=1.19e-01  P_off: He    722.2 mbar  Xe    22.02 mbar
+  1/mu= 4 cm M=10 TeV: rho_crit=5.65e-01 kg/m3  rho_off=3.30e-01  P_off: He   2006.2 mbar  Xe    61.16 mbar
+  1/mu= 7 cm M= 4 TeV: rho_crit=2.95e-02 kg/m3  rho_off=1.72e-02  P_off: He    104.8 mbar  Xe     3.20 mbar
+  1/mu= 7 cm M= 6 TeV: rho_crit=6.64e-02 kg/m3  rho_off=3.88e-02  P_off: He    235.8 mbar  Xe     7.19 mbar
+  1/mu= 7 cm M=10 TeV: rho_crit=1.84e-01 kg/m3  rho_off=1.08e-01  P_off: He    655.1 mbar  Xe    19.97 mbar
+  1/mu= 7 cm M=15 TeV: rho_crit=4.15e-01 kg/m3  rho_off=2.42e-01  P_off: He   1473.9 mbar  Xe    44.94 mbar
+  1/mu=10 cm M= 4 TeV: rho_crit=1.45e-02 kg/m3  rho_off=8.44e-03  P_off: He     51.4 mbar  Xe     1.57 mbar
+  1/mu=10 cm M= 6 TeV: rho_crit=3.25e-02 kg/m3  rho_off=1.90e-02  P_off: He    115.6 mbar  Xe     3.52 mbar
+  1/mu=10 cm M=10 TeV: rho_crit=9.03e-02 kg/m3  rho_off=5.27e-02  P_off: He    321.0 mbar  Xe     9.79 mbar
+  1/mu=10 cm M=15 TeV: rho_crit=2.03e-01 kg/m3  rho_off=1.19e-01  P_off: He    722.2 mbar  Xe    22.02 mbar
+  1/mu=10 cm M=36 TeV: rho_crit=1.17e+00 kg/m3  rho_off=6.84e-01  P_off: He   4160.1 mbar  Xe   126.83 mbar
+  1/mu=15 cm M= 4 TeV: rho_crit=6.42e-03 kg/m3  rho_off=3.75e-03  P_off: He     22.8 mbar  Xe     0.70 mbar
+  1/mu=15 cm M= 6 TeV: rho_crit=1.45e-02 kg/m3  rho_off=8.44e-03  P_off: He     51.4 mbar  Xe     1.57 mbar
+  1/mu=15 cm M=10 TeV: rho_crit=4.02e-02 kg/m3  rho_off=2.34e-02  P_off: He    142.7 mbar  Xe     4.35 mbar
+  1/mu=15 cm M=15 TeV: rho_crit=9.03e-02 kg/m3  rho_off=5.27e-02  P_off: He    321.0 mbar  Xe     9.79 mbar
+  1/mu=15 cm M=36 TeV: rho_crit=5.20e-01 kg/m3  rho_off=3.04e-01  P_off: He   1848.9 mbar  Xe    56.37 mbar
+  1/mu=20 cm M= 4 TeV: rho_crit=3.61e-03 kg/m3  rho_off=2.11e-03  P_off: He     12.8 mbar  Xe     0.39 mbar
+  1/mu=20 cm M= 6 TeV: rho_crit=8.13e-03 kg/m3  rho_off=4.75e-03  P_off: He     28.9 mbar  Xe     0.88 mbar
+  1/mu=20 cm M=10 TeV: rho_crit=2.26e-02 kg/m3  rho_off=1.32e-02  P_off: He     80.2 mbar  Xe     2.45 mbar
+  1/mu=20 cm M=15 TeV: rho_crit=5.08e-02 kg/m3  rho_off=2.97e-02  P_off: He    180.6 mbar  Xe     5.50 mbar
+  1/mu=20 cm M=36 TeV: rho_crit=2.93e-01 kg/m3  rho_off=1.71e-01  P_off: He   1040.0 mbar  Xe    31.71 mbar
+
+(2) GAS SYSTEMATICS (order of magnitude)
+  photophoretic force, He at rho_off(10 cm,6 TeV)=1.9e-02 kg/m3, dT=1.0 mK across the 3 cm sphere: ~4.9e-13 N
+  photophoretic force, He at rho_off(10 cm,6 TeV)=1.9e-02 kg/m3, dT=0.1 mK across the 3 cm sphere: ~4.9e-14 N
+  photophoretic force, He at rho_off(10 cm,36 TeV)=6.8e-01 kg/m3, dT=1.0 mK across the 3 cm sphere: ~1.4e-14 N
+  photophoretic force, He at rho_off(10 cm,36 TeV)=6.8e-01 kg/m3, dT=0.1 mK across the 3 cm sphere: ~1.4e-15 N
+  photophoretic force, Xe at rho_off(10 cm,6 TeV)=1.9e-02 kg/m3, dT=1.0 mK across the 3 cm sphere: ~6.7e-13 N
+  photophoretic force, Xe at rho_off(10 cm,6 TeV)=1.9e-02 kg/m3, dT=0.1 mK across the 3 cm sphere: ~6.7e-14 N
+  photophoretic force, Xe at rho_off(10 cm,36 TeV)=6.8e-01 kg/m3, dT=1.0 mK across the 3 cm sphere: ~1.9e-14 N
+  photophoretic force, Xe at rho_off(10 cm,36 TeV)=6.8e-01 kg/m3, dT=0.1 mK across the 3 cm sphere: ~1.9e-15 N
+  He: Knudsen number at rho_off(10 cm, 6 TeV): lambda/R = 5.6e-05 (continuum); Rayleigh number of the 1 m chamber at dT=10 mK: 314 (<1700: no convection)
+  Xe: Knudsen number at rho_off(10 cm, 6 TeV): lambda/R = 3.5e-04 (continuum); Rayleigh number of the 1 m chamber at dT=10 mK: 228 (<1700: no convection)
+  He: Stokes drag on two 3 cm spheres at r_arm=6 cm -> Q ~ 335 (period 1712 s); thermal torque noise 3.6e-14 N m/rtHz = 6.0e-13 N/rtHz force-equivalent
+  Xe: Stokes drag on two 3 cm spheres at r_arm=6 cm -> Q ~ 285 (period 1712 s); thermal torque noise 3.9e-14 N m/rtHz = 6.5e-13 N/rtHz force-equivalent
+  buoyancy on the 1 kg sphere at rho_off(10 cm,6 TeV): 2.1e-05 N (vertical; torque only through arm asymmetry)
+  buoyancy on the 1 kg sphere at rho_off(10 cm,15 TeV): 1.3e-04 N (vertical; torque only through arm asymmetry)
+
+(3) LINER: open Al cylinder radius R_l = 2.8/mu (28 cm at 1/mu=10 cm), height 1 m, 1 mm wall -> mass and Newtonian residual
+  liner mass 4.8 kg; radial Newtonian force on a 1 kg body at x = 0, 6, 10, 15 cm off-axis (mid-height): 1.2e-25, 5.0e-11, 8.3e-11, 1.2e-10 N
+  dumbbell torque cancels by symmetry; a 1 mm centring error at x=6 cm gives ~8.3e-13 N differential (F(x) slope x 1 mm)
+
+(4) FOIL/CAN: 25 um Cu (kappa/mu >= 10 at 10 cm, 15 TeV -> full switch) disk of radius 20 cm: mass and pull on the 1 kg body at 7 cm
+  foil mass 28 g; Newtonian force at 7 cm (disk, on-axis): ~6.3e-11 N  -> must be static (not switched) at Tier 1
+  symmetron pull of a pinned disk on the test body (solver, disk W=0.5..1.5 at D/2): static = +1.2..1.5 v^2 > signal 1.2 v^2  -> a one-sided movable foil is NOT a usable switch
+  electrostatic: unshielded two-sphere force 4.3e-12 N (dV/1 V)^2 -> a switched shield needs dV < 0.84 V for 10% of Tier 1, < 84 mV for 10% of Tier 2
+
+(5) TIER-1 PENDULUM options: (A) 2 x 1.01 kg solid Cu spheres, 150 um W fibre; (B) 2 x 0.2 kg hollow Cu shells (3 cm, 2 mm wall), 75 um W fibre; r_arm = 6 cm, fibre 1 m
+  A solid: kappa_f=7.95e-06 N m/rad, period 190 s, fibre stress 1.12 GPa (W UTS ~3 GPa), Q=3e+03: torque noise 3.6e-14 N m/rtHz -> 6.0e-13 N/rtHz, 1-h average 1.0e-14 N
+      Tier-1 torque 1.8e-12 N m -> twist 0.23 urad (autocollimator 1e-8 rad: margin 23x); Newtonian F_N=2.8e-08 N -> Tier 1 is 1.1e-03 of F_N
+  B hollow: kappa_f=4.97e-07 N m/rad, period 338 s, fibre stress 0.89 GPa (W UTS ~3 GPa), Q=3e+03: torque noise 1.2e-14 N m/rtHz -> 2.0e-13 N/rtHz, 1-h average 3.3e-15 N
+      Tier-1 torque 1.8e-12 N m -> twist 3.62 urad (autocollimator 1e-8 rad: margin 362x); Newtonian F_N=5.5e-09 N -> Tier 1 is 5.4e-03 of F_N
+  Tier-1 stability: the Newtonian torque is constant across the switch; needs 1e-3 (solid) / 5e-3 (hollow) stability per switch cycle (~1 h):
+      source position 70 um / 350 um; fibre zero drift << twist (alternating on/off cancels linear drift); tilt via tiltmeter; T stability ~10 mK (calibration), ~1 mK gradient (photophoresis).

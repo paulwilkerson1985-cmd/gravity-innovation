@@ -1,0 +1,63 @@
+h=0.05  baseline S0=1.2005 (static 3.7e-14) phi_max=0.928  [1s]
+
+(a) GAS: g = rho_gas/rho_crit ; S(g)/S0 ; depth = 1 - S/S0
+  g=0.00  S=1.2005  S/S0=1.0000  depth=0.0000  phi_max=0.928
+  g=0.05  S=1.1156  S/S0=0.9293  depth=0.0707  phi_max=0.895
+  g=0.10  S=1.0295  S/S0=0.8576  depth=0.1424  phi_max=0.860
+  g=0.15  S=0.9420  S/S0=0.7847  depth=0.2153  phi_max=0.824
+  g=0.20  S=0.8526  S/S0=0.7102  depth=0.2898  phi_max=0.784
+  g=0.25  S=0.7608  S/S0=0.6338  depth=0.3662  phi_max=0.741
+  g=0.30  S=0.6661  S/S0=0.5549  depth=0.4451  phi_max=0.694
+  g=0.35  S=0.5675  S/S0=0.4727  depth=0.5273  phi_max=0.641
+  g=0.40  S=0.4637  S/S0=0.3863  depth=0.6137  phi_max=0.580
+  g=0.45  S=0.3530  S/S0=0.2940  depth=0.7060  phi_max=0.508
+  g=0.50  S=0.2326  S/S0=0.1938  depth=0.8062  phi_max=0.414
+  g=0.55  S=0.0994  S/S0=0.0828  depth=0.9172  phi_max=0.273
+  g=0.58  S=0.0118  S/S0=0.0098  depth=0.9902  phi_max=0.095
+  g=0.60  S=-0.0000  S/S0=-0.0000  depth=1.0000  phi_max=0.000
+  g=0.65  S=-0.0000  S/S0=-0.0000  depth=1.0000  phi_max=0.000
+  linear onset with bodies: g_c = 1 - lambda_min = 0.5839
+
+(b) LINER (Dirichlet shell radius R_l, full height = open ends at chamber walls; and closed with caps at +-Z_l)
+  open liner R_l=5.00  S=1.2005  S/S0=1.0000  depth=0.0000  phi_max=0.928  static=+0.000
+  open liner R_l=4.50  S=1.1411  S/S0=0.9506  depth=0.0494  phi_max=0.906  static=+0.000
+  open liner R_l=4.00  S=1.0184  S/S0=0.8483  depth=0.1517  phi_max=0.862  static=+0.000
+  open liner R_l=3.50  S=0.7460  S/S0=0.6214  depth=0.3786  phi_max=0.758  static=+0.000
+  open liner R_l=3.20  S=0.4319  S/S0=0.3597  depth=0.6403  phi_max=0.612  static=+0.000
+  open liner R_l=3.00  S=0.1703  S/S0=0.1419  depth=0.8581  phi_max=0.416  static=+0.000
+  open liner R_l=2.80  S=-0.0000  S/S0=-0.0000  depth=1.0000  phi_max=0.000  static=+0.000
+  open liner R_l=2.60  S=0.0000  S/S0=0.0000  depth=1.0000  phi_max=0.000  static=-0.000
+  open liner R_l=2.40  S=0.0000  S/S0=0.0000  depth=1.0000  phi_max=0.000  static=-0.000
+  open liner R_l=2.20  S=0.0000  S/S0=0.0000  depth=1.0000  phi_max=0.000  static=-0.000
+  open liner R_l=2.00  S=0.0000  S/S0=0.0000  depth=1.0000  phi_max=0.000  static=-0.000
+  closed liner R_l=4.00 Z_l=4.00  S=0.9042  S/S0=0.7532  depth=0.2468  phi_max=0.767  static=+0.000
+  closed liner R_l=3.50 Z_l=3.50  S=0.3487  S/S0=0.2904  depth=0.7096  phi_max=0.462  static=+0.000
+  closed liner R_l=3.30 Z_l=3.30  S=-0.0000  S/S0=-0.0000  depth=1.0000  phi_max=0.000  static=+0.000
+  closed liner R_l=3.00 Z_l=3.00  S=-0.0000  S/S0=-0.0000  depth=1.0000  phi_max=0.000  static=+0.000
+  closed liner R_l=2.60 Z_l=2.60  S=-0.0000  S/S0=-0.0000  depth=1.0000  phi_max=0.000  static=+0.000
+  closed liner R_l=3.00 Z_l=5.00  S=0.1703  S/S0=0.1419  depth=0.8581  phi_max=0.416  static=+0.000
+
+(c) IRIS / FOIL DISK: single Dirichlet disk radius W at z=-D/2 (between source and test mass)
+  disk W=0.50  S=0.0112  S/S0=9.33e-03  depth=0.99067  phi_max=0.927  static=+1.454
+  disk W=0.75  S=-0.0272  S/S0=-2.27e-02  depth=1.02269  phi_max=0.924  static=+1.526
+  disk W=1.00  S=-0.0190  S/S0=-1.58e-02  depth=1.01584  phi_max=0.920  static=+1.445
+  disk W=1.25  S=-0.0107  S/S0=-8.93e-03  depth=1.00893  phi_max=0.916  static=+1.331
+  disk W=1.50  S=-0.0061  S/S0=-5.06e-03  depth=1.00506  phi_max=0.911  static=+1.225
+  disk W=2.00  S=-0.0025  S/S0=-2.09e-03  depth=1.00209  phi_max=0.901  static=+1.066
+  disk W=2.50  S=-0.0016  S/S0=-1.30e-03  depth=1.00130  phi_max=0.892  static=+0.963
+  disk W=3.00  S=-0.0011  S/S0=-9.15e-04  depth=1.00092  phi_max=0.884  static=+0.896
+  disk W=4.00  S=-0.0001  S/S0=-8.82e-05  depth=1.00009  phi_max=0.877  static=+0.850
+  disk W=4.95  S=0.0000  S/S0=0.00e+00  depth=1.00000  phi_max=0.877  static=+0.848
+
+(d) FULL-WIDTH ROBIN SHEET at z=-D/2 (thin foil of areal density rho t: kappa/mu = (rho/rho_crit) mu t)
+  kappa/mu=0.01  S=1.1913  S/S0=9.924e-01  loss=7.642e-03  static=+0.010
+  kappa/mu=0.03  S=1.1731  S/S0=9.772e-01  loss=2.277e-02  static=+0.030
+  kappa/mu=0.1  S=1.1115  S/S0=9.259e-01  loss=7.410e-02  static=+0.097
+  kappa/mu=0.3  S=0.9515  S/S0=7.926e-01  loss=2.074e-01  static=+0.265
+  kappa/mu=1  S=0.5521  S/S0=4.599e-01  loss=5.401e-01  static=+0.653
+  kappa/mu=3  S=0.1445  S/S0=1.204e-01  loss=8.796e-01  static=+0.949
+  kappa/mu=10  S=0.0108  S/S0=8.978e-03  loss=9.910e-01  static=+0.933
+  kappa/mu=30  S=-0.0004  S/S0=-3.478e-04  loss=1.000e+00  static=+0.882
+  kappa/mu=100  S=-0.0005  S/S0=-4.467e-04  loss=1.000e+00  static=+0.858
+
+done in 45s

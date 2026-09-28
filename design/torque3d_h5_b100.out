@@ -1,0 +1,6 @@
+grid 128 x 52 x 41 = 0.27M nodes (hf=5.00)
+near     E=162.0895471039 res=8e-13 phimax=0.9259 (7s)
+perp     E=162.6226732395 res=7e-13 phimax=0.9297 (6s)
+nosrc_x  E=158.5573794386 res=8e-13 phimax=0.9328 (6s)
+nosrc_y  E=158.5574102986 res=8e-13 phimax=0.9330 (7s)
+E(near)-E(perp) = -5.3313e-01  (no-source orientation offset -3.1e-05)  ->  tau_2 = |dE| = 5.3310e-01 v^2/mu

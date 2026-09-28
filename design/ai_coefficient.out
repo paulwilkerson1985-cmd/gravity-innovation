@@ -1,0 +1,47 @@
+K_AI = 1.798e-08 m/s^2 per eV^2 of v^2 per unit C, at 1/mu = 10 cm and M = 5 TeV  (scales as (10cm/L)(5TeV/M)^2)
+   v^2 = 37 eV^2 (Tier-1 force level 3e-11 N): a = 6.65e-07 C m/s^2 ; v^2 = 0.37 eV^2 (Tier 2): a = 6.65e-09 C m/s^2
+
+(1) isolated pinned sphere in unbounded vacuum: C(r) = 2 phi phi' at distance d = r - a from the surface
+  a=0.3: d=0.05:C=1.189 d=0.10:C=1.585 d=0.20:C=1.586 d=0.30:C=1.327 d=0.50:C=0.836 d=0.70:C=0.519 d=1.00:C=0.261 d=1.50:C=0.090 d=2.00:C=0.033 d=3.00:C=0.005
+  a=0.6: d=0.05:C=0.531 d=0.10:C=0.845 d=0.20:C=1.108 d=0.30:C=1.126 d=0.50:C=0.922 d=0.70:C=0.675 d=1.00:C=0.394 d=1.50:C=0.155 d=2.00:C=0.061 d=3.00:C=0.010
+  a=1.0: d=0.05:C=0.304 d=0.10:C=0.526 d=0.20:C=0.794 d=0.30:C=0.904 d=0.50:C=0.881 d=0.70:C=0.729 d=1.00:C=0.484 d=1.50:C=0.215 d=2.00:C=0.091 d=3.00:C=0.016
+
+(2) 1 m chamber (R = L_half = 5 at 1/mu = 10 cm): source a2 = 0.6 at z = -1.4, no test mass; C on the axis above the source
+  chamber 1m h=0.05: phi_max=0.955  d=0.05:C=0.459 d=0.10:C=0.764 d=0.20:C=1.025 d=0.30:C=1.053 d=0.50:C=0.874 d=0.70:C=0.647 d=1.00:C=0.382 d=1.50:C=0.143 d=2.00:C=0.034 d=3.00:C=0.098
+  chamber 1.5m h=0.05: phi_max=0.996  d=0.05:C=0.492 d=0.10:C=0.818 d=0.20:C=1.095 d=0.30:C=1.120 d=0.50:C=0.921 d=0.70:C=0.675 d=1.00:C=0.395 d=1.50:C=0.155 d=2.00:C=0.061 d=3.00:C=0.007
+  chamber 0.75m h=0.05: phi_max=0.766  d=0.05:C=0.266 d=0.10:C=0.446 d=0.20:C=0.611 d=0.30:C=0.646 d=0.50:C=0.576 d=0.70:C=0.458 d=1.00:C=0.292 d=1.50:C=0.086 d=2.00:C=0.062 d=3.00:C=0.296
+  chamber 1m h=0.025: phi_max=0.955  d=0.05:C=0.485 d=0.10:C=0.782 d=0.20:C=1.033 d=0.30:C=1.056 d=0.50:C=0.874 d=0.70:C=0.647 d=1.00:C=0.381 d=1.50:C=0.142 d=2.00:C=0.034 d=3.00:C=0.098
+  chamber 1.5m h=0.025: phi_max=0.996  d=0.05:C=0.520 d=0.10:C=0.837 d=0.20:C=1.103 d=0.30:C=1.123 d=0.50:C=0.921 d=0.70:C=0.674 d=1.00:C=0.394 d=1.50:C=0.154 d=2.00:C=0.061 d=3.00:C=0.007
+  chamber 0.75m h=0.025: phi_max=0.766  d=0.05:C=0.281 d=0.10:C=0.456 d=0.20:C=0.615 d=0.30:C=0.648 d=0.50:C=0.576 d=0.70:C=0.458 d=1.00:C=0.291 d=1.50:C=0.086 d=2.00:C=0.062 d=3.00:C=0.297
+
+(3) benchmark with both spheres: C on the axis in the 0.5/mu gap (z from -0.8 to -0.3)
+  z:    -0.80  -0.75  -0.70  -0.65  -0.60  -0.55  -0.50  -0.45  -0.40  -0.35
+  phi:  0.000  0.057  0.103  0.137  0.161  0.172  0.171  0.156  0.125  0.075
+  C:    0.018  0.114  0.163  0.158  0.111  0.037 -0.053 -0.140 -0.198 -0.177
+
+(4) acceleration table, 1 m chamber, source only (h=0.025 values), atoms at d = 1 cm and 3 cm above the 6 cm sphere
+  1/mu= 4 cm M= 4 TeV: v2=3e-11 N -> a(1cm)=2.03e-06, a(3cm)=2.74e-06 m/s^2 ;  v2=3e-13 N -> 2.03e-08, 2.74e-08   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 4 cm M= 6 TeV: v2=3e-11 N -> a(1cm)=9.01e-07, a(3cm)=1.22e-06 m/s^2 ;  v2=3e-13 N -> 9.01e-09, 1.22e-08   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 4 cm M=10 TeV: v2=3e-11 N -> a(1cm)=3.24e-07, a(3cm)=4.38e-07 m/s^2 ;  v2=3e-13 N -> 3.24e-09, 4.38e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 4 cm M=15 TeV: v2=3e-11 N -> a(1cm)=1.44e-07, a(3cm)=1.95e-07 m/s^2 ;  v2=3e-13 N -> 1.44e-09, 1.95e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 4 cm M=36 TeV: v2=3e-11 N -> a(1cm)=2.50e-08, a(3cm)=3.38e-08 m/s^2 ;  v2=3e-13 N -> 2.50e-10, 3.38e-10   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 7 cm M= 4 TeV: v2=3e-11 N -> a(1cm)=1.16e-06, a(3cm)=1.57e-06 m/s^2 ;  v2=3e-13 N -> 1.16e-08, 1.57e-08   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 7 cm M= 6 TeV: v2=3e-11 N -> a(1cm)=5.15e-07, a(3cm)=6.96e-07 m/s^2 ;  v2=3e-13 N -> 5.15e-09, 6.96e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 7 cm M=10 TeV: v2=3e-11 N -> a(1cm)=1.85e-07, a(3cm)=2.50e-07 m/s^2 ;  v2=3e-13 N -> 1.85e-09, 2.50e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 7 cm M=15 TeV: v2=3e-11 N -> a(1cm)=8.24e-08, a(3cm)=1.11e-07 m/s^2 ;  v2=3e-13 N -> 8.24e-10, 1.11e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu= 7 cm M=36 TeV: v2=3e-11 N -> a(1cm)=1.43e-08, a(3cm)=1.93e-08 m/s^2 ;  v2=3e-13 N -> 1.43e-10, 1.93e-10   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=10 cm M= 4 TeV: v2=3e-11 N -> a(1cm)=8.11e-07, a(3cm)=1.10e-06 m/s^2 ;  v2=3e-13 N -> 8.11e-09, 1.10e-08   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=10 cm M= 6 TeV: v2=3e-11 N -> a(1cm)=3.60e-07, a(3cm)=4.87e-07 m/s^2 ;  v2=3e-13 N -> 3.60e-09, 4.87e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=10 cm M=10 TeV: v2=3e-11 N -> a(1cm)=1.30e-07, a(3cm)=1.75e-07 m/s^2 ;  v2=3e-13 N -> 1.30e-09, 1.75e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=10 cm M=15 TeV: v2=3e-11 N -> a(1cm)=5.77e-08, a(3cm)=7.79e-08 m/s^2 ;  v2=3e-13 N -> 5.77e-10, 7.79e-10   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=10 cm M=36 TeV: v2=3e-11 N -> a(1cm)=1.00e-08, a(3cm)=1.35e-08 m/s^2 ;  v2=3e-13 N -> 1.00e-10, 1.35e-10   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=15 cm M= 4 TeV: v2=3e-11 N -> a(1cm)=5.41e-07, a(3cm)=7.30e-07 m/s^2 ;  v2=3e-13 N -> 5.41e-09, 7.30e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=15 cm M= 6 TeV: v2=3e-11 N -> a(1cm)=2.40e-07, a(3cm)=3.25e-07 m/s^2 ;  v2=3e-13 N -> 2.40e-09, 3.25e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=15 cm M=10 TeV: v2=3e-11 N -> a(1cm)=8.65e-08, a(3cm)=1.17e-07 m/s^2 ;  v2=3e-13 N -> 8.65e-10, 1.17e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=15 cm M=15 TeV: v2=3e-11 N -> a(1cm)=3.84e-08, a(3cm)=5.19e-08 m/s^2 ;  v2=3e-13 N -> 3.84e-10, 5.19e-10   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=15 cm M=36 TeV: v2=3e-11 N -> a(1cm)=6.68e-09, a(3cm)=9.02e-09 m/s^2 ;  v2=3e-13 N -> 6.68e-11, 9.02e-11   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=20 cm M= 4 TeV: v2=3e-11 N -> a(1cm)=4.06e-07, a(3cm)=5.48e-07 m/s^2 ;  v2=3e-13 N -> 4.06e-09, 5.48e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=20 cm M= 6 TeV: v2=3e-11 N -> a(1cm)=1.80e-07, a(3cm)=2.43e-07 m/s^2 ;  v2=3e-13 N -> 1.80e-09, 2.43e-09   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=20 cm M=10 TeV: v2=3e-11 N -> a(1cm)=6.49e-08, a(3cm)=8.77e-08 m/s^2 ;  v2=3e-13 N -> 6.49e-10, 8.77e-10   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=20 cm M=15 TeV: v2=3e-11 N -> a(1cm)=2.88e-08, a(3cm)=3.90e-08 m/s^2 ;  v2=3e-13 N -> 2.88e-10, 3.90e-10   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)
+  1/mu=20 cm M=36 TeV: v2=3e-11 N -> a(1cm)=5.01e-09, a(3cm)=6.76e-09 m/s^2 ;  v2=3e-13 N -> 5.01e-11, 6.76e-11   (C(1cm),C(3cm) scaled from 10 cm geometry: 0.78,1.06)

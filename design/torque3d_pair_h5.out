@@ -1,0 +1,6 @@
+grid 98 x 41 x 41 = 0.16M nodes (hf=5.00)
+both   E=160.5007662119 res=6e-13 phimax=0.9309 (4s)
+test   E=156.0000189533 res=8e-13 phimax=0.9395 (4s)
+src    E=158.9814846778 res=7e-13 phimax=0.9536 (4s)
+empty  E=153.7210176808 res=8e-13 phimax=0.9825 (3s)
+hf=5.00  W_pair(1.4) = -0.75972 v^2/mu   (axisymmetric U = -0.8510)  ratio 0.8927
