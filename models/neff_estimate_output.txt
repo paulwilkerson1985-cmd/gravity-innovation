@@ -1,0 +1,17 @@
+M [TeV]   T_dec [MeV]   g*s(T_dec)   Delta N_eff
+     2           64      14.25      0.392
+     3           99      14.25      0.392
+     4          129      17.25      0.304
+     5          195      61.75      0.056
+     6          248      61.75      0.056
+     8          358      61.75      0.056
+    10          486      61.75      0.056
+    15          831      61.75      0.056
+    20         1236      61.75      0.056
+    36         4747      75.75      0.042
+    55        10236      86.25      0.036
+   100        15949      86.25      0.036
+
+Reference: real scalar decoupling after e+e- annihilation gives 0.57; between mu and QCD 0.39;
+just after QCD crossover (g*=17.25) 0.30; above QCD (61.75) 0.055; above EW (106.75) 0.027.
+Planck18+BAO 95% : Delta N_eff <~ 0.3 ; BBN+CMB (Yeh+22) <~ 0.15-0.2 ; CMB-S4 forecast sigma~0.03.

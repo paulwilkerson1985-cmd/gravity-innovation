@@ -1,0 +1,32 @@
+V0 = rho_Lambda; 1/k = 9.50 cm x (1e27/lambda)
+
+=== benchmark bodies (3 cm / 6 cm Cu, 14 cm apart) in a 1 m chamber: signal vs lambda ===
+lambda=2e+26  1/k= 47.48 cm  (M_Pl/lambda)^2=148 eV^2  psi_max=0.147  S~=0.0284 (F_src=0.0284 F_nosrc=-0.0000)  F=3.42e-12 N  [h=0.008 res=5e-12 1s]
+lambda=5e+26  1/k= 18.99 cm  (M_Pl/lambda)^2=23.7 eV^2  psi_max=0.635  S~=0.5260 (F_src=0.5260 F_nosrc=+0.0000)  F=1.01e-11 N  [h=0.020 res=3e-12 1s]
+lambda=1e+27  1/k=  9.50 cm  (M_Pl/lambda)^2=5.93 eV^2  psi_max=1.396  S~=2.5214 (F_src=2.5214 F_nosrc=-0.0000)  F=1.21e-11 N  [h=0.040 res=2e-12 2s]
+lambda=2e+27  1/k=  4.75 cm  (M_Pl/lambda)^2=1.48 eV^2  psi_max=2.425  S~=7.4442 (F_src=7.4442 F_nosrc=-0.0000)  F=8.96e-12 N  [h=0.079 res=9e-13 2s]
+lambda=4e+27  1/k=  2.37 cm  (M_Pl/lambda)^2=0.371 eV^2  psi_max=3.612  S~=15.7215 (F_src=15.7215 F_nosrc=-0.0000)  F=4.73e-12 N  [h=0.158 res=5e-13 2s]
+lambda=8e+27  1/k=  1.19 cm  (M_Pl/lambda)^2=0.0926 eV^2  psi_max=4.887  S~=26.1956 (F_src=26.1956 F_nosrc=+0.0000)  F=1.97e-12 N  [h=0.317 res=3e-11 2s]
+
+=== chamber-size dependence at lambda = 1e27 (1/k = 9.5 cm) ===
+D_chamber=0.12 m  psi_max=0.022  S~=0.0000  F=0.00e+00 N  [0s]
+D_chamber=0.25 m  psi_max=0.156  S~=0.0472  F=2.27e-13 N  [0s]
+D_chamber=0.50 m  psi_max=0.578  S~=0.6046  F=2.91e-12 N  [0s]
+D_chamber=1.00 m  psi_max=1.396  S~=2.5214  F=1.21e-11 N  [2s]
+D_chamber=2.00 m  psi_max=2.507  S~=6.1634  F=2.97e-11 N  [12s]
+
+=== screening and air, A2 dependence (lambda-independent) ===
+A2=1e+26  M_eff=M_Pl/sqrt(A2)=2.44e+14 eV  1/m_rho(Cu)=7.73 mm  1/m_air=66.8 cm  psi_air~k^2/m_air^2=4.95e+01 (lambda=1e27)
+A2=1e+27  M_eff=M_Pl/sqrt(A2)=7.70e+13 eV  1/m_rho(Cu)=2.45 mm  1/m_air=21.1 cm  psi_air~k^2/m_air^2=4.95e+00 (lambda=1e27)
+A2=1e+28  M_eff=M_Pl/sqrt(A2)=2.44e+13 eV  1/m_rho(Cu)=0.773 mm  1/m_air=6.68 cm  psi_air~k^2/m_air^2=4.95e-01 (lambda=1e27)
+A2=1e+29  M_eff=M_Pl/sqrt(A2)=7.70e+12 eV  1/m_rho(Cu)=0.245 mm  1/m_air=2.11 cm  psi_air~k^2/m_air^2=4.95e-02 (lambda=1e27)
+A2=1e+30  M_eff=M_Pl/sqrt(A2)=2.44e+12 eV  1/m_rho(Cu)=0.0773 mm  1/m_air=0.668 cm  psi_air~k^2/m_air^2=4.95e-03 (lambda=1e27)
+A2=1e+31  M_eff=M_Pl/sqrt(A2)=7.70e+11 eV  1/m_rho(Cu)=0.0245 mm  1/m_air=0.211 cm  psi_air~k^2/m_air^2=4.95e-04 (lambda=1e27)
+
+=== Tier-2 edges in lambda (1 m chamber) ===
+lambda=3.0e+25  1/k=316.55 cm  psi_max=0.004  S~=0.0000  F=9.56e-14 N  [h=0.001 a1/h=8.0 res=5e-12]
+lambda=6.0e+25  1/k=158.28 cm  psi_max=0.015  S~=0.0003  F=3.76e-13 N  [h=0.002 a1/h=8.0 res=4e-12]
+lambda=1.0e+26  1/k= 94.97 cm  psi_max=0.040  S~=0.0021  F=1.01e-12 N  [h=0.004 a1/h=8.0 res=4e-12]
+lambda=1.6e+28  1/k=  0.59 cm  psi_max=6.209  S~=36.7034  F=6.90e-13 N  [h=0.842 a1/h=6.0 res=1e-14]
+lambda=3.2e+28  1/k=  0.30 cm  psi_max=7.559  S~=45.1769  F=2.12e-13 N  [h=1.685 a1/h=6.0 res=2e-14]
+lambda=6.4e+28  1/k=  0.15 cm  psi_max=8.924  S~=51.1371  F=6.01e-14 N  [h=3.370 a1/h=6.0 res=2e-12]

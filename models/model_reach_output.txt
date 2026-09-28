@@ -1,0 +1,63 @@
+Newtonian force between benchmark spheres: 2.76e-08 N
+Tier 1 = 3e-11 N = 1.1e-03 F_N ;  Tier 2 = 3e-13 N = 1.1e-05 F_N
+
+=== 1. Chameleon: force between screened Cu spheres in 1 m chamber ===
+ n=1 L=1.0 L_DE: phi_bg=5.541e-01 eV  range=  20.4 cm  F=2.44e-13 N (8.9e-06 F_N)  lam1(M=M_Pl)=4.5e-03
+ n=1 L=0.5 L_DE: phi_bg=1.745e-01 eV  range=  20.4 cm  F=2.42e-14 N (8.8e-07 F_N)  lam1(M=M_Pl)=1.4e-03
+ n=1 L=2.0 L_DE: phi_bg=1.759e+00 eV  range=  20.4 cm  F=2.46e-12 N (8.9e-05 F_N)  lam1(M=M_Pl)=1.4e-02
+ n=2 L=1.0 L_DE: phi_bg=1.611e-01 eV  range=  15.1 cm  F=1.86e-14 N (6.7e-07 F_N)  lam1(M=M_Pl)=1.3e-03
+ n=2 L=0.5 L_DE: phi_bg=5.696e-02 eV  range=  15.1 cm  F=2.32e-15 N (8.4e-08 F_N)  lam1(M=M_Pl)=4.7e-04
+ n=2 L=2.0 L_DE: phi_bg=4.557e-01 eV  range=  15.1 cm  F=1.48e-13 N (5.4e-06 F_N)  lam1(M=M_Pl)=3.7e-03
+ n=3 L=1.0 L_DE: phi_bg=7.080e-02 eV  range=  11.2 cm  F=3.03e-15 N (1.1e-07 F_N)  lam1(M=M_Pl)=5.8e-04
+ n=3 L=0.5 L_DE: phi_bg=2.683e-02 eV  range=  11.2 cm  F=4.35e-16 N (1.6e-08 F_N)  lam1(M=M_Pl)=2.2e-04
+ n=3 L=2.0 L_DE: phi_bg=1.868e-01 eV  range=  11.2 cm  F=2.11e-14 N (7.7e-07 F_N)  lam1(M=M_Pl)=1.5e-03
+ n=4 L=1.0 L_DE: phi_bg=3.970e-02 eV  range=   8.3 cm  F=7.36e-16 N (2.7e-08 F_N)  lam1(M=M_Pl)=3.3e-04
+ n=4 L=0.5 L_DE: phi_bg=1.575e-02 eV  range=   8.3 cm  F=1.16e-16 N (4.2e-09 F_N)  lam1(M=M_Pl)=1.3e-04
+ n=4 L=2.0 L_DE: phi_bg=1.000e-01 eV  range=   8.3 cm  F=4.67e-15 N (1.7e-07 F_N)  lam1(M=M_Pl)=8.2e-04
+ n=1: Lambda needed for Tier 2 = 2.55 meV, for Tier 1 = 10.16 meV  (point-like geometry; x1.8 finite-size gain possible)
+ Chamber scaling: F ∝ R_ch^(4/3) at n=1 -> 2 m chamber gives x2.5; 6 cm chamber gives x0.06 (that is why small chambers
+   never saw it with macroscopic bodies).  Status: n=1 at Lambda_DE excluded for ALL M (Jaffe17 + Yin22 + Eot-Wash).
+
+=== 2. Dilaton: field jump in chamber and force ===
+ lambda=1e+26: M_Pl/lambda=2.43e+01 eV  -> F ~ 3.89e-10 N x c^2
+ lambda=1e+27: M_Pl/lambda=2.44e+00 eV  -> F ~ 3.89e-12 N x c^2
+ lambda=1e+28: M_Pl/lambda=2.44e-01 eV  -> F ~ 3.89e-14 N x c^2
+ lambda=1e+29: M_Pl/lambda=2.44e-02 eV  -> F ~ 3.89e-16 N x c^2
+ lambda=1e+30: M_Pl/lambda=2.44e-03 eV  -> F ~ 3.89e-18 N x c^2
+ Tier 2 needs M_Pl/lambda >~ 0.68 eV, i.e. lambda <~ 3.6e+27
+ A2 for TeV-scale M_eff: A2 = (M_Pl/M)^2 = 2.4e+29 (M = 5 TeV);  qBounce-tested region is A2~1e40 (M~10 MeV).
+ -> A genuinely different corner (A2 ~ 1e29-1e30, lambda <~ 1e27) that FKP-2024 plots do not resolve; needs their code.
+
+=== 3. Plain Yukawa reach (unscreened bodies), alpha at Tier 1 / Tier 2 ===
+ range=  2.0 cm: alpha(Tier1)=1.5e-01  alpha(Tier2)=1.5e-03
+ range=  5.0 cm: alpha(Tier1)=4.7e-03  alpha(Tier2)=4.7e-05
+ range= 10.0 cm: alpha(Tier1)=1.8e-03  alpha(Tier2)=1.8e-05
+ range= 30.0 cm: alpha(Tier1)=1.2e-03  alpha(Tier2)=1.2e-05
+ Existing ISL bounds at 2-30 cm: |alpha| <~ 1e-4 (Hoskins 1985, 2-5 cm) to ~1e-3 (Spero/Moody-Paik, 10 cm-1 m);
+ Tier 2 would improve unscreened-Yukawa bounds at 10-30 cm by ~10-100x as a by-product (differential geometry permitting).
+
+=== 4. Naturalness ===
+ cutoff QCD 1 GeV         : delta mu^2 =  2.5e+08 eV^2  -> tuning mu^2/delta mu^2 =  3.9e-19
+ cutoff m_top/EW 200 GeV  : delta mu^2 =  4.1e+17 eV^2  -> tuning mu^2/delta mu^2 =  2.5e-28
+ cutoff 1 TeV             : delta mu^2 =  2.5e+20 eV^2  -> tuning mu^2/delta mu^2 =  3.9e-31
+ cutoff M itself          : delta mu^2 =  1.6e+23 eV^2  -> tuning mu^2/delta mu^2 =  6.3e-34
+ Higgs-portal UV completion of M = 5 TeV: lambda_portal ~ 3.1e-04; induced m_phi ~ 4.35 GeV -> tuning against mu^2: 5.3e-30
+ quartic lambda = mu^2/v^2 = 2.7e-10 for v^2 = 0.37 eV^2 (Tier 2)
+ Same tuning class as every lab symmetron/chameleon (Upadhye–Hu–Khoury 2012); BCM-2016 radiative version lives at M~1e-5 M_Pl.
+
+=== 5. Cosmological numbers ===
+ 1/mu=  2 cm, v^2=4e-01 eV^2: |V_min| = 9.7e-12 eV^4 = 2.9e-01 rho_Lambda (constant, negative: absorbed in Lambda)
+ 1/mu= 10 cm, v^2=4e-01 eV^2: |V_min| = 3.9e-13 eV^4 = 1.2e-02 rho_Lambda (constant, negative: absorbed in Lambda)
+ 1/mu= 10 cm, v^2=1e+07 eV^2: |V_min| = 9.7e-06 eV^4 = 2.9e+05 rho_Lambda (constant, negative: absorbed in Lambda)
+ rho_crit(1/mu=10 cm, M=5 TeV) = 9.7e+13 eV^4 = 2.3e-05 g/cm^3  (air = 1.2e-3 g/cm^3 -> field pinned in air iff mu M < 7.2e7 eV^2)
+ nucleon-mass shift in the broken phase v^2/(2M^2) = 8e-27 (v^2=0.4 eV^2) .. 2e-19 (v^2=1e7): no BBN effect
+ cosmic baryon density crossed rho_crit at 1+z ~ 3.8e+08 (T ~ 89 keV): after BBN, before recombination; released energy mu^2 v^2/4 ~ 1e-13 eV^4 << rho_rad ~ 1e12 eV^4 -> no H0/N_eff effect
+ Vacuum mass sqrt(2) mu ~ 1e-5 eV >> H0 ~ 1e-33 eV: field frozen at its minimum since z~1e9 -> cannot be evolving dark energy (DESI w0-wa).
+
+=== 6. phi^2-coupled ultralight DM with M = 5 TeV, m = 1e-5 eV ===
+ in Cu: m_eff = 1.2e-03 eV (skin depth 0.16 mm)  ; in air m_eff = 1.4e-05 eV vs m = 1e-05 eV
+ lowest cavity wavenumber 2.405/R_ch = 9.5e-07 eV vs DM momentum m v ~ 1e-08 eV -> DM wave cannot enter a 1 m metal cavity (needs R >~ 47 m)
+ free-space DM amplitude phi0 = 249 eV -> IF it filled the chamber, screened-body force ~ <phi^2> F~ ~ 3.0e-08 N (~F_N!); it does not, so the test adds nothing.
+
+=== 7. Cubic galileon around Earth ===
+ r_V(Earth) = 5.5e+16 m = 1.8 pc; residual fifth force at surface ~ (R_E/r_V)^(3/2) = 1.3e-15 of gravity, universal; lab sources further suppressed inside Earth's Vainshtein region.
