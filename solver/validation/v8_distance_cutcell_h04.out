@@ -1,0 +1,10 @@
+chamber 5 h=0.040 D=1.4  F=1.19809  F_asym=2.58301  F/F_asym=0.464  t=1s
+chamber 5 h=0.040 D=2.0  F=0.53973  F_asym=0.69603  F/F_asym=0.775  t=1s
+chamber 5 h=0.040 D=3.0  F=0.10996  F_asym=0.10299  F/F_asym=1.068  t=1s
+  chamber 5: F(1.4)/F(2.0)=2.22  F(1.4)/F(3.0)=10.90
+chamber 8 h=0.040 D=1.4  F=1.27563  F_asym=2.58301  F/F_asym=0.494  t=3s
+chamber 8 h=0.040 D=2.0  F=0.55105  F_asym=0.69603  F/F_asym=0.792  t=3s
+chamber 8 h=0.040 D=3.0  F=0.09991  F_asym=0.10299  F/F_asym=0.970  t=3s
+chamber 8 h=0.040 D=4.0  F=0.01794  F_asym=0.01788  F/F_asym=1.003  t=3s
+chamber 8 h=0.040 D=5.0  F=0.00345  F_asym=0.00337  F/F_asym=1.023  t=3s
+  chamber 8: F(1.4)/F(2.0)=2.31  F(1.4)/F(3.0)=12.77

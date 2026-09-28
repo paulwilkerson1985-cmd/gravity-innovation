@@ -1,7 +1,5 @@
 # Validation of `symm.py` (axisymmetric nonlinear symmetron solver)
 
-> This release includes `symm_sw.py`, `ref_sphere_ode.py` and `ref_1d_exact.py` (with `.out`). The individual validation scripts `v*.py` referenced below and their `.out` files are being added in a follow-up upload.
-
 Dimensionless units: lengths are in 1/mu, the field is in v, energy density is in mu^2 v^2 (V0 = 1/4), and force is in v^2.
 Every script here imports the unmodified `../symm.py`, except the cut-cell variant `symm_sw.py`.
 Run any script with `python3 <script>`; its output is saved next to it as `.out`.

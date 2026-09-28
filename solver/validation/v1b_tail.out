@@ -1,0 +1,10 @@
+h=0.04 empty chamber phi(centre)=0.999983
+  a=0.3 radial tail r in[2,5]: slope=-1.4109 (exact -1.4142, err -0.24%)  Q=0.5031 (ODE 0.5426, err -7.3%)  max|delta_num/delta_exact-1|=0.073
+  a=0.3 axial  tail r in[2,5]: slope=-1.4117 (exact -1.4142, err -0.18%)  Q=0.5032 (ODE 0.5426, err -7.3%)  max|delta_num/delta_exact-1|=0.072
+  a=0.6 radial tail r in[2,5]: slope=-1.4077 (exact -1.4142, err -0.46%)  Q=1.7243 (ODE 1.8045, err -4.4%)  max|delta_num/delta_exact-1|=0.044
+  a=0.6 axial  tail r in[2,5]: slope=-1.4086 (exact -1.4142, err -0.39%)  Q=1.7269 (ODE 1.8045, err -4.3%)  max|delta_num/delta_exact-1|=0.042
+h=0.02 empty chamber phi(centre)=0.999983
+  a=0.3 radial tail r in[2,5]: slope=-1.4109 (exact -1.4142, err -0.23%)  Q=0.5244 (ODE 0.5426, err -3.4%)  max|delta_num/delta_exact-1|=0.034
+  a=0.3 axial  tail r in[2,5]: slope=-1.4118 (exact -1.4142, err -0.17%)  Q=0.5244 (ODE 0.5426, err -3.4%)  max|delta_num/delta_exact-1|=0.033
+  a=0.6 radial tail r in[2,5]: slope=-1.4078 (exact -1.4142, err -0.45%)  Q=1.7572 (ODE 1.8045, err -2.6%)  max|delta_num/delta_exact-1|=0.026
+  a=0.6 axial  tail r in[2,5]: slope=-1.4087 (exact -1.4142, err -0.39%)  Q=1.7588 (ODE 1.8045, err -2.5%)  max|delta_num/delta_exact-1|=0.024

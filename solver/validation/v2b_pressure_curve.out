@@ -1,0 +1,12 @@
+Rc=20: closed-cylinder onset d_c(Rc)=3.1646 ; 1D (Brax-Pitschmann) d_c=pi=3.1416
+ d=1.00 phi0 num=0.0000 exact=0.0000 | P/V0 num=0.9997 exact=1.0000 (abs err -3.1e-04)
+ d=2.00 phi0 num=0.0000 exact=0.0000 | P/V0 num=0.9997 exact=1.0000 (abs err -3.1e-04)
+ d=3.00 phi0 num=0.0000 exact=0.0000 | P/V0 num=0.9997 exact=1.0000 (abs err -3.1e-04)
+ d=3.10 phi0 num=0.0000 exact=0.0000 | P/V0 num=0.9997 exact=1.0000 (abs err -3.1e-04)
+ d=3.20 phi0 num=0.2046 exact=0.2194 | P/V0 num=0.9186 exact=0.9060 (abs err 1.3e-02)
+ d=3.30 phi0 num=0.3520 exact=0.3527 | P/V0 num=0.7676 exact=0.7667 (abs err 9.4e-04)
+ d=3.50 phi0 num=0.5066 exact=0.5065 | P/V0 num=0.5525 exact=0.5527 (abs err -2.5e-04)
+ d=4.00 phi0 num=0.7060 exact=0.7059 | P/V0 num=0.2516 exact=0.2517 (abs err -6.7e-05)
+ d=4.50 phi0 num=0.8101 exact=0.8101 | P/V0 num=0.1182 exact=0.1182 (abs err 1.9e-05)
+ d=5.00 phi0 num=0.8730 exact=0.8730 | P/V0 num=0.0566 exact=0.0566 (abs err 4.7e-05)
+ d=6.00 phi0 num=0.9404 exact=0.9404 | P/V0 num=0.0134 exact=0.0134 (abs err 5.7e-05)

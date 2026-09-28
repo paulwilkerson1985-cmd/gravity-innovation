@@ -1,0 +1,21 @@
+--- (a) half-kink / two-wall profile, chamber Rc=20, walls at z=+-L
+ d=10.0 h=0.050  max|phi-tanh| (half domain)=1.71e-03   max|phi-exact two-wall|=7.05e-05   phi_mid=0.996595 exact=0.996597
+ d=10.0 h=0.025  max|phi-tanh| (half domain)=1.71e-03   max|phi-exact two-wall|=1.76e-05   phi_mid=0.996596 exact=0.996597
+ d=4.0 h=0.025  max|phi-tanh| (half domain)=1.82e-01   max|phi-exact two-wall|=1.93e-05   phi_mid=0.705947 exact=0.705933
+--- (b) two plates: phi0(d) and pressure (units mu^2 v^2; V0=0.25)
+ h=0.050 d=2.00  phi0 num=0.00000 exact(1D)=0.00000 | P num=0.24657 exact=0.24665  rel.err=-3.2e-04  (P/V0=0.986)  t=2.9s
+ h=0.050 d=3.00  phi0 num=0.00000 exact(1D)=0.00000 | P num=0.24657 exact=0.24665  rel.err=-3.2e-04  (P/V0=0.986)  t=3.3s
+ h=0.050 d=3.50  phi0 num=0.50663 exact(1D)=0.50650 | P num=0.13477 exact=0.13484  rel.err=-4.8e-04  (P/V0=0.539)  t=3.8s
+ h=0.050 d=4.00  phi0 num=0.70599 exact(1D)=0.70593 | P num=0.05955 exact=0.05957  rel.err=-3.0e-04  (P/V0=0.238)  t=4.0s
+ h=0.050 d=5.00  phi0 num=0.87299 exact(1D)=0.87298 | P num=0.01081 exact=0.01080  rel.err=1.0e-03  (P/V0=0.043)  t=3.6s
+/home/claude/gravity/solver/validation/v2_plates_1d.py:41: RuntimeWarning: divide by zero encountered in scalar divide
+  h, d, phi[0, j0], ex.phi0_of_d(d), Pnum, Pex, Pnum / Pex - 1, Pnum / 0.25, time.time() - t0))
+ h=0.050 d=6.00  phi0 num=0.94036 exact(1D)=0.94037 | P num=0.00001 exact=0.00000  rel.err=inf  (P/V0=0.000)  t=4.0s
+ h=0.050 d=8.00  phi0 num=0.98591 exact(1D)=0.98592 | P num=-0.00314 exact=-0.00315  rel.err=-4.1e-03  (P/V0=-0.013)  t=4.7s
+ h=0.025 d=2.00  phi0 num=0.00000 exact(1D)=0.00000 | P num=0.24663 exact=0.24665  rel.err=-8.1e-05  (P/V0=0.987)  t=18.8s
+ h=0.025 d=3.00  phi0 num=0.00000 exact(1D)=0.00000 | P num=0.24663 exact=0.24665  rel.err=-8.1e-05  (P/V0=0.987)  t=24.4s
+ h=0.025 d=3.50  phi0 num=0.50650 exact(1D)=0.50650 | P num=0.13484 exact=0.13484  rel.err=2.6e-06  (P/V0=0.539)  t=24.9s
+ h=0.025 d=4.00  phi0 num=0.70595 exact(1D)=0.70593 | P num=0.05956 exact=0.05957  rel.err=-6.9e-05  (P/V0=0.238)  t=25.3s
+ h=0.025 d=5.00  phi0 num=0.87299 exact(1D)=0.87298 | P num=0.01080 exact=0.01080  rel.err=2.5e-04  (P/V0=0.043)  t=23.8s
+ h=0.025 d=6.00  phi0 num=0.94037 exact(1D)=0.94037 | P num=0.00000 exact=0.00000  rel.err=inf  (P/V0=0.000)  t=26.4s
+ h=0.025 d=8.00  phi0 num=0.98592 exact(1D)=0.98592 | P num=-0.00315 exact=-0.00315  rel.err=-1.0e-03  (P/V0=-0.013)  t=29.7s

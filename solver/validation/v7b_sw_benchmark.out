@@ -1,0 +1,9 @@
+cut-cell h=0.0400 D=1.4 F_test=-1.19809 / -1.19780  F_source=+0.76021 res=8e-13 t=1s
+cut-cell h=0.0400 D=2.0 F_test=-0.53973 / -0.53962  F_source=-0.35947 res=1e-12 t=1s
+cut-cell h=0.0400 D=3.0 F_test=-0.10996 / -0.10994  F_source=-1.82786 res=1e-12 t=1s
+cut-cell h=0.0200 D=1.4 F_test=-1.19573 / -1.19542  F_source=+0.75997 res=4e-12 t=5s
+cut-cell h=0.0200 D=2.0 F_test=-0.53861 / -0.53849  F_source=-0.35950 res=4e-12 t=5s
+cut-cell h=0.0200 D=3.0 F_test=-0.10972 / -0.10970  F_source=-1.82701 res=5e-12 t=5s
+cut-cell h=0.0100 D=1.4 F_test=-1.19497 / -1.19489  F_source=+0.75987 res=2e-11 t=37s
+cut-cell h=0.0100 D=2.0 F_test=-0.53825 / -0.53822  F_source=-0.35955 res=2e-11 t=35s
+cut-cell h=0.0100 D=3.0 F_test=-0.10964 / -0.10964  F_source=-1.82679 res=2e-11 t=36s

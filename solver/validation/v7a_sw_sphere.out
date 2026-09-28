@@ -1,0 +1,4 @@
+h=0.04 a=0.3  cut-cell Q=0.5436 (ODE 0.5426, err +0.19%)  near-field phi(num/exact): 0.3254/0.3257 nan/0.5189 nan/0.7311  res=1e-12
+h=0.04 a=0.6  cut-cell Q=1.8051 (ODE 1.8045, err +0.03%)  near-field phi(num/exact): nan/0.2225 0.3874/0.3875 0.6099/0.6100  res=1e-12
+h=0.02 a=0.3  cut-cell Q=0.5431 (ODE 0.5426, err +0.10%)  near-field phi(num/exact): 0.3256/0.3257 0.5187/0.5189 0.7310/0.7311  res=5e-12
+h=0.02 a=0.6  cut-cell Q=1.8040 (ODE 1.8045, err -0.02%)  near-field phi(num/exact): 0.2224/0.2225 0.3875/0.3875 0.6099/0.6100  res=5e-12

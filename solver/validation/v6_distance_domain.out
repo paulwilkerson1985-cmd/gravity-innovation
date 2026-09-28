@@ -1,0 +1,15 @@
+chamber 5.0 D=1.4  F_nonlin=1.15696  F_lin=1.18749 | F_asym(nonlin Q)=2.58301  F_point(lin Q)=1.69565  t=6s
+chamber 5.0 D=2.0  F_nonlin=0.51381  F_lin=0.39199 | F_asym(nonlin Q)=0.69603  F_point(lin Q)=0.45692  t=6s
+chamber 5.0 D=3.0  F_nonlin=0.10385  F_lin=0.06018 | F_asym(nonlin Q)=0.10299  F_point(lin Q)=0.06761  t=6s
+chamber 5.0 D=4.0  F_nonlin=0.01965  F_lin=0.00907 | F_asym(nonlin Q)=0.01788  F_point(lin Q)=0.01174  t=6s
+  chamber 5.0 ratios F(1.4)/F(3.0): nonlinear 11.14, linear 19.73, point-Yukawa 25.08 ; F(1.4)/F(2.0): nonlinear 2.25
+chamber 6.5 D=1.4  F_nonlin=1.22268  F_lin=1.20453 | F_asym(nonlin Q)=2.58301  F_point(lin Q)=1.69565  t=12s
+chamber 6.5 D=2.0  F_nonlin=0.52118  F_lin=0.39816 | F_asym(nonlin Q)=0.69603  F_point(lin Q)=0.45692  t=12s
+chamber 6.5 D=3.0  F_nonlin=0.09512  F_lin=0.06299 | F_asym(nonlin Q)=0.10299  F_point(lin Q)=0.06761  t=13s
+chamber 6.5 D=4.0  F_nonlin=0.01759  F_lin=0.01088 | F_asym(nonlin Q)=0.01788  F_point(lin Q)=0.01174  t=12s
+  chamber 6.5 ratios F(1.4)/F(3.0): nonlinear 12.85, linear 19.12, point-Yukawa 25.08 ; F(1.4)/F(2.0): nonlinear 2.35
+chamber 8.0 D=1.4  F_nonlin=1.23021  F_lin=1.20688 | F_asym(nonlin Q)=2.58301  F_point(lin Q)=1.69565  t=21s
+chamber 8.0 D=2.0  F_nonlin=0.52229  F_lin=0.39918 | F_asym(nonlin Q)=0.69603  F_point(lin Q)=0.45692  t=21s
+chamber 8.0 D=3.0  F_nonlin=0.09391  F_lin=0.06317 | F_asym(nonlin Q)=0.10299  F_point(lin Q)=0.06761  t=22s
+chamber 8.0 D=4.0  F_nonlin=0.01687  F_lin=0.01109 | F_asym(nonlin Q)=0.01788  F_point(lin Q)=0.01174  t=22s
+  chamber 8.0 ratios F(1.4)/F(3.0): nonlinear 13.10, linear 19.11, point-Yukawa 25.08 ; F(1.4)/F(2.0): nonlinear 2.36

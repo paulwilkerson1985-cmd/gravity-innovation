@@ -1,0 +1,9 @@
+h=0.04 symm.energy     F_test: stress=-1.11886  -dE/dz=-1.06698 (diff -4.6%) | F_source: stress=0.69716  dE/dD=0.64828 (diff -7.0%)
+h=0.04 E_h consistent  F_test: stress=-1.11886  -dE/dz=-1.11643 (diff -0.2%) | F_source: stress=0.69716  dE/dD=0.69743 (diff 0.0%)
+       walls take 0.42170
+h=0.02 symm.energy     F_test: stress=-1.15696  -dE/dz=-1.12950 (diff -2.4%) | F_source: stress=0.73116  dE/dD=0.66546 (diff -9.0%)
+h=0.02 E_h consistent  F_test: stress=-1.15696  -dE/dz=-1.15526 (diff -0.1%) | F_source: stress=0.73116  dE/dD=0.69735 (diff -4.6%)
+       walls take 0.42581
+h=0.01 symm.energy     F_test: stress=-1.17302  -dE/dz=-1.14810 (diff -2.1%) | F_source: stress=0.74339  dE/dD=0.71002 (diff -4.5%)
+h=0.01 E_h consistent  F_test: stress=-1.17302  -dE/dz=-1.16126 (diff -1.0%) | F_source: stress=0.74339  dE/dD=0.72589 (diff -2.4%)
+       walls take 0.42963

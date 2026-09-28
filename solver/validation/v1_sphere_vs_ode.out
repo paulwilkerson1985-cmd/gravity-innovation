@@ -1,0 +1,44 @@
+=== a=0.3  exact ODE: Q=0.54260
+ h=0.040 res=1e-12 t=1.9s  tail slope=1.2756 (exact -sqrt2=-1.4142)  Q_num=11.8344 (exact 0.5426, rel err 2081.0%)
+    r-a=0.1 exact=0.32571  num(radial)=0.37043  num(axial)=0.36775  err=4.5e-02/4.2e-02
+    r-a=0.3 exact=0.64455  num(radial)=0.66765  num(axial)=0.66700  err=2.3e-02/2.2e-02
+    r-a=0.6 exact=0.83866  num(radial)=0.84819  num(axial)=0.84819  err=9.5e-03/9.5e-03
+    r-a=1.0 exact=0.93497  num(radial)=0.93737  num(axial)=0.93777  err=2.4e-03/2.8e-03
+    r-a=2.0 exact=0.99091  num(radial)=0.98591  num(axial)=0.98779  err=-5.0e-03/-3.1e-03
+    r-a=3.0 exact=0.99846  num(radial)=0.98061  num(axial)=0.98649  err=-1.8e-02/-1.2e-02
+ h=0.020 res=6e-12 t=11.9s  tail slope=1.2698 (exact -sqrt2=-1.4142)  Q_num=11.8368 (exact 0.5426, rel err 2081.5%)
+    r-a=0.1 exact=0.32571  num(radial)=0.34845  num(axial)=0.34909  err=2.3e-02/2.3e-02
+    r-a=0.3 exact=0.64455  num(radial)=0.65506  num(axial)=0.65466  err=1.1e-02/1.0e-02
+    r-a=0.6 exact=0.83866  num(radial)=0.84235  num(axial)=0.84236  err=3.7e-03/3.7e-03
+    r-a=1.0 exact=0.93497  num(radial)=0.93492  num(axial)=0.93532  err=-5.1e-05/3.5e-04
+    r-a=2.0 exact=0.99091  num(radial)=0.98556  num(axial)=0.98743  err=-5.3e-03/-3.5e-03
+    r-a=3.0 exact=0.99846  num(radial)=0.98055  num(axial)=0.98644  err=-1.8e-02/-1.2e-02
+ h=0.010 res=2e-11 t=84.5s  tail slope=1.2657 (exact -sqrt2=-1.4142)  Q_num=11.8448 (exact 0.5426, rel err 2083.0%)
+    r-a=0.1 exact=0.32571  num(radial)=0.33870  num(axial)=0.33790  err=1.3e-02/1.2e-02
+    r-a=0.3 exact=0.64455  num(radial)=0.65014  num(axial)=0.64975  err=5.6e-03/5.2e-03
+    r-a=0.6 exact=0.83866  num(radial)=0.84010  num(axial)=0.84016  err=1.4e-03/1.5e-03
+    r-a=1.0 exact=0.93497  num(radial)=0.93400  num(axial)=0.93442  err=-9.7e-04/-5.5e-04
+    r-a=2.0 exact=0.99091  num(radial)=0.98543  num(axial)=0.98730  err=-5.5e-03/-3.6e-03
+    r-a=3.0 exact=0.99846  num(radial)=0.98053  num(axial)=0.98642  err=-1.8e-02/-1.2e-02
+=== a=0.6  exact ODE: Q=1.80446
+ h=0.040 res=1e-12 t=2.0s  tail slope=0.9316 (exact -sqrt2=-1.4142)  Q_num=13.1349 (exact 1.8045, rel err 627.9%)
+    r-a=0.1 exact=0.22248  num(radial)=0.25340  num(axial)=0.26535  err=3.1e-02/4.3e-02
+    r-a=0.3 exact=0.51300  num(radial)=0.53248  num(axial)=0.53399  err=1.9e-02/2.1e-02
+    r-a=0.6 exact=0.74585  num(radial)=0.75488  num(axial)=0.75575  err=9.0e-03/9.9e-03
+    r-a=1.0 exact=0.88708  num(radial)=0.88901  num(axial)=0.89004  err=1.9e-03/3.0e-03
+    r-a=2.0 exact=0.98256  num(radial)=0.97523  num(axial)=0.97803  err=-7.3e-03/-4.5e-03
+    r-a=3.0 exact=0.99692  num(radial)=0.97101  num(axial)=0.97918  err=-2.6e-02/-1.8e-02
+ h=0.020 res=5e-12 t=12.8s  tail slope=0.9271 (exact -sqrt2=-1.4142)  Q_num=13.1516 (exact 1.8045, rel err 628.8%)
+    r-a=0.1 exact=0.22248  num(radial)=0.24210  num(axial)=0.24342  err=2.0e-02/2.1e-02
+    r-a=0.3 exact=0.51300  num(radial)=0.52380  num(axial)=0.52339  err=1.1e-02/1.0e-02
+    r-a=0.6 exact=0.74585  num(radial)=0.75003  num(axial)=0.75019  err=4.2e-03/4.3e-03
+    r-a=1.0 exact=0.88708  num(radial)=0.88682  num(axial)=0.88755  err=-2.6e-04/4.7e-04
+    r-a=2.0 exact=0.98256  num(radial)=0.97489  num(axial)=0.97764  err=-7.7e-03/-4.9e-03
+    r-a=3.0 exact=0.99692  num(radial)=0.97095  num(axial)=0.97911  err=-2.6e-02/-1.8e-02
+ h=0.010 res=2e-11 t=86.0s  tail slope=0.9208 (exact -sqrt2=-1.4142)  Q_num=13.1750 (exact 1.8045, rel err 630.1%)
+    r-a=0.1 exact=0.22248  num(radial)=0.23261  num(axial)=0.23201  err=1.0e-02/9.5e-03
+    r-a=0.3 exact=0.51300  num(radial)=0.51786  num(axial)=0.51753  err=4.9e-03/4.5e-03
+    r-a=0.6 exact=0.74585  num(radial)=0.74693  num(axial)=0.74717  err=1.1e-03/1.3e-03
+    r-a=1.0 exact=0.88708  num(radial)=0.88543  num(axial)=0.88618  err=-1.7e-03/-9.0e-04
+    r-a=2.0 exact=0.98256  num(radial)=0.97467  num(axial)=0.97742  err=-7.9e-03/-5.1e-03
+    r-a=3.0 exact=0.99692  num(radial)=0.97091  num(axial)=0.97907  err=-2.6e-02/-1.8e-02

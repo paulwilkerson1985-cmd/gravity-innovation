@@ -1,0 +1,12 @@
+h=0.04 bodies=False lambda_min=0.33001  => gas onset g_c = rho_gas/rho_crit = 0.6700
+h=0.04 bodies=True lambda_min=0.41373  => gas onset g_c = rho_gas/rho_crit = 0.5863
+h=0.02 bodies=False lambda_min=0.33002  => gas onset g_c = rho_gas/rho_crit = 0.6700
+h=0.02 bodies=True lambda_min=0.41488  => gas onset g_c = rho_gas/rho_crit = 0.5851
+h=0.01 bodies=False lambda_min=0.33002  => gas onset g_c = rho_gas/rho_crit = 0.6700
+h=0.01 bodies=True lambda_min=0.41543  => gas onset g_c = rho_gas/rho_crit = 0.5846
+  gas=0.00 F=1.1570 phi_max=0.929
+  gas=0.20 F=0.8189 phi_max=0.785
+  gas=0.40 F=0.4452 phi_max=0.582
+  gas=0.50 F=0.2248 phi_max=0.417
+  gas=0.60 F=0.0000 phi_max=0.000
+  gas=0.65 F=0.0000 phi_max=0.000

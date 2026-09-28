@@ -1,11 +1,18 @@
+import os as _gi_os
+def _gi_root():
+    d = _gi_os.path.dirname(_gi_os.path.abspath(__file__))
+    while not _gi_os.path.exists(_gi_os.path.join(d, 'GI_REPO_ROOT')) and _gi_os.path.dirname(d) != d:
+        d = _gi_os.path.dirname(d)
+    return d
+_GI = _gi_root()  # repository root (portable replacement for original absolute paths)
 """Validation-only variant of symm.solve with a Shortley-Weller (cut-cell) treatment of spherical Dirichlet bodies:
 free nodes next to a sphere use the exact distance to the sphere surface in their 3-point stencils, so the sphere
 radius is represented exactly (2nd-order) instead of by the staircase of symm.py (1st-order, radius effectively
 ~a - O(h)).  Away from spheres the stencil is identical to symm.Grid.laplacian().  Chamber walls are grid-aligned.
 Only spheres centred on the axis are supported.  Force evaluation reuses symm.force_z."""
-import os, sys
+import sys
 import numpy as np, scipy.sparse as sp, scipy.sparse.linalg as spla
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+sys.path.insert(0, (_GI + '/solver'))
 from symm import Grid, force_z
 
 class GridSW(Grid):

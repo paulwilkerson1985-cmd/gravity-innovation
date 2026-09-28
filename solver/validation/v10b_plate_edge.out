@@ -1,0 +1,3 @@
+plate R=2 gap=0.16: F=9.888   V0*A=3.142   V0*A+sigma*P=9.065  (ratio 1.091)
+plate R=3 gap=0.16: F=16.647   V0*A=7.069   V0*A+sigma*P=15.954  (ratio 1.043)
+plate R=4 gap=0.16: F=24.965   V0*A=12.566   V0*A+sigma*P=24.414  (ratio 1.023)
