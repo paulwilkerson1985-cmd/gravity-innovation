@@ -1,3 +1,10 @@
+import os as _gi_os
+def _gi_root():
+    d = _gi_os.path.dirname(_gi_os.path.abspath(__file__))
+    while not _gi_os.path.exists(_gi_os.path.join(d, 'GI_REPO_ROOT')) and _gi_os.path.dirname(d) != d:
+        d = _gi_os.path.dirname(d)
+    return d
+_GI = _gi_root()  # repository root (portable replacement for original absolute paths)
 """symm_robin.py -- upgraded axisymmetric symmetron solver (new module; symm.py and validation/symm_sw.py untouched).
 
 Dimensionless units as before: lengths 1/mu, field v, force v^2.  PDE: lap(phi) = -(1-g) phi + phi^3 in vacuum.
@@ -22,10 +29,9 @@ Builds on validation/symm_sw.GridSW (second-order cut-cell spheres, Dirichlet ch
 Solver: Newton (optionally pseudo-transient continuation for metastable-state searches), with convergence warning.
 Force: symm.force_z (stress tensor on a pillbox that must not cut sheets).
 """
-import os, sys, warnings
+import sys, warnings
 import numpy as np, scipy.sparse as sp, scipy.sparse.linalg as spla
-_here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(_here, '..')); sys.path.insert(0, os.path.join(_here, '..', 'validation'))
+sys.path.insert(0, (_GI + '/solver')); sys.path.insert(0, (_GI + '/solver/validation'))
 from symm import force_z
 from symm_sw import GridSW
 

@@ -1,0 +1,5 @@
+1/mu= 4 cm: R_c=3.647/mu  -> minimum chamber diameter (=height) 29 cm  (empty-chamber value 2.872/mu -> 23 cm)
+1/mu= 7 cm: R_c=3.428/mu  -> minimum chamber diameter (=height) 48 cm  (empty-chamber value 2.872/mu -> 40 cm)
+1/mu=10 cm: R_c=3.335/mu  -> minimum chamber diameter (=height) 67 cm  (empty-chamber value 2.872/mu -> 57 cm)
+1/mu=15 cm: R_c=3.234/mu  -> minimum chamber diameter (=height) 97 cm  (empty-chamber value 2.872/mu -> 86 cm)
+1/mu=20 cm: R_c=3.163/mu  -> minimum chamber diameter (=height) 127 cm  (empty-chamber value 2.872/mu -> 115 cm)

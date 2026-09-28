@@ -1,0 +1,5 @@
+h=0.050 baseline S~=F~=1.2005 phi_max=0.928 static=3.7e-14  (q_fibre(W,20um,M=15TeV,1/mu=10cm)=0.0119)
+  baseline                                     S~=1.2005 S/S0=1.0000 (static +0.000) R_c=3.335 (=chamber diameter 67 cm at 1/mu=10 cm)  (3s)
+  turntable Rt=2 gap=0.3                       S~=0.7211 S/S0=0.6007 (static +0.496) R_c=3.374 (=chamber diameter 67 cm at 1/mu=10 cm)  (3s)
+  proxy A: fibre+housing(0.5,1.5)+tt(2,0.3)    S~=0.6848 S/S0=0.5704 (static -0.022) R_c=3.717 (=chamber diameter 74 cm at 1/mu=10 cm)  (3s)
+  proxy B: fibre+housing(0.3,1.0)+tt(2,0.0)    S~=0.5221 S/S0=0.4349 (static -0.112) R_c=3.737 (=chamber diameter 75 cm at 1/mu=10 cm)  (3s)

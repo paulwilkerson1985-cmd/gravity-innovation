@@ -1,0 +1,23 @@
+--- (a) no shield: two-sphere electrostatic force (test r=3 cm grounded, source r=6 cm at V, centres 14 cm)
+ F = 4.296e-12 N x (V/1 V)^2   (attractive)
+   V for F = 2.4e-13 N (Tier-2 threshold v^2=2.4e-13 N): 236.3 mV
+   V for F = 2.4e-14 N (10% of threshold): 74.7 mV
+   V for F = 2.4e-15 N (1% of threshold): 23.6 mV
+ dF/dc = 1.442e-10 N/m x V^2 ;  F falls as c^-4.7 near 14 cm
+ check vs point-charge estimate 4 pi eps0 a^2 b V^2/c^3 ~ 2.19e-12 N
+--- (b) shield options: symmetron kappa/mu (areal mass) vs electrostatic screening
+ areal density Sigma [g/cm^2] and kappa/mu = Sigma / (rho_crit * 1/mu) at (1/mu cm, M TeV):
+ film                                       Sigma     (4,5) (4,14.6) (10,15) (10,36) (15,15) (15,55)
+ 100 nm SiN + 20 nm Au (small windows)      6.96e-05  0.123    0.0145   0.0342   0.00594  0.0514   0.00382 
+ 0.9 um Mylar + 30 nm Au                    1.83e-04  0.324    0.038    0.09     0.0156   0.135    0.01    
+ 2 um Mylar + 50 nm Al (solar-sail film)    2.91e-04  0.516    0.0605   0.143    0.0249   0.215    0.016   
+ 6 um aluminised Mylar                      8.47e-04  1.5      0.176    0.417    0.0724   0.625    0.0465  
+ 12.7 um Kapton + 100 nm Al                 1.83e-03  3.24     0.38     0.9      0.156    1.35     0.1     
+ W mesh 10 um wire, 1 mm pitch (2 axes)     3.03e-04  0.537    0.063    0.149    0.0259   0.224    0.0166  
+ 10 um BeCu (Eot-Wash-type shield)          8.30e-03  14.7     1.72     4.08     0.709    6.12     0.456   
+ 25 um Cu foil                              2.24e-02  39.7     4.65     11       1.91     16.5     1.23    
+ electrostatic: continuous metal film -> kappa_es = inf (complete DC screening, independent of thickness);
+   wire grid s=1.00 mm a=5 um: kappa_es=1816 /m ; field transmission of modes k=1/(2,5,10 cm): 0.052, 0.022, 0.011
+   wire grid s=0.25 mm a=5 um: kappa_es=12117 /m ; field transmission of modes k=1/(2,5,10 cm): 0.008, 0.003, 0.002
+   wire grid s=5.00 mm a=25 um: kappa_es=363 /m ; field transmission of modes k=1/(2,5,10 cm): 0.216, 0.099, 0.052
+   wire grid s=20.00 mm a=50 um: kappa_es=76 /m ; field transmission of modes k=1/(2,5,10 cm): 0.569, 0.346, 0.209

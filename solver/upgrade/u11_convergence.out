@@ -1,0 +1,2 @@
+h=0.050: S0=1.2005 | tt(2,0.3) S/S0=0.6007 static=+0.496 | tt(2,2.0) S/S0=0.9065 static=+0.116 | fibre-dir S/S0=1.0097 static=-0.312 | housing(0.5,1.5) S/S0=0.9756 static=-0.530 | membrane k=0.1 S/F0=0.9224 | membrane k=1 S/F0=0.4428
+h=0.025: S0=1.1963 | tt(2,0.3) S/S0=0.6004 static=+0.495 | tt(2,2.0) S/S0=0.9046 static=+0.118 | fibre-dir S/S0=1.0095 static=-0.309 | housing(0.5,1.5) S/S0=0.9758 static=-0.521 | membrane k=0.1 S/F0=0.9224 | membrane k=1 S/F0=0.4427

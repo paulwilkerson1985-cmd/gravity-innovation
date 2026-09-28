@@ -1,7 +1,5 @@
 # Solver upgrade: Robin and thick foils, shields, torsion proxy, signal table, domain walls
 
-> This release includes the module `symm_robin.py`. The scripts `u1`–`u11`, `units.py` and `configs.py` referenced below, with their `.out`/`.json` files, are being added in a follow-up upload.
-
 Units are dimensionless. Lengths are in 1/μ, the field is in v, and force is in v² (1 eV² = 8.12e-13 N).
 The benchmark geometry is: 1 m × 1 m chamber (R = L_half = 5), test sphere a1 = 0.3 at z = 0, source a2 = 0.6 at z = −1.4.
 `../symm.py` and `../validation/symm_sw.py` are untouched. Every script writes a `.out` or `.json` file next to itself.

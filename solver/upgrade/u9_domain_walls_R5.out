@@ -1,0 +1,10 @@
+h=0.050 R=5.0 reference (+1 IC): F_test=1.2005 F_source=-0.7606 E=162.1061  lowest Hessian eig=0.9088
+wall z_w=-1.40 (source equator)    -> ground state +  E-E0=-0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=+0.000/+0.928  Hess_min=+0.9088  res=5e-12 (6s)
+wall z_w=-0.70 (gap)               -> ground state -  E-E0=+0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=-0.928/+0.000  Hess_min=+0.9088  res=7e-13 (7s)
+wall z_w= 0.00 (test equator)      -> ground state +  E-E0=+0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=+0.000/+0.928  Hess_min=+0.9088  res=6e-13 (6s)
+wall z_w=+2.50 (empty, upper)      -> ground state -  E-E0=-0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=-0.928/+0.000  Hess_min=+0.9088  res=2e-11 (3s)
+wall z_w=-3.00 (empty, lower)      -> ground state +  E-E0=+0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=+0.000/+0.928  Hess_min=+0.9088  res=4e-11 (3s)
+cylindrical wall r_w=2.5           -> ground state -  E-E0=-0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=-0.928/+0.000  Hess_min=+0.9088  res=5e-11 (3s)
+phi=-1 bubble r<0.8 around test    -> ground state +  E-E0=-0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=+0.000/+0.928  Hess_min=+0.9088  res=7e-11 (2s)
+random noise +-0.01 [1 saddle kicks] -> ground state -  E-E0=-0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=-0.928/+0.000  Hess_min=+0.9088  res=7e-13 (9s)
+uniform small +0.001               -> ground state +  E-E0=+0.0000  F_test=+1.2005  F_source=-0.7606  min/max phi=+0.000/+0.928  Hess_min=+0.9088  res=5e-11 (4s)

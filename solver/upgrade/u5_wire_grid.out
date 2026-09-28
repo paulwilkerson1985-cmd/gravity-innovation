@@ -1,0 +1,39 @@
+--- electrostatic kappa of a grid of grounded wires (scale-free; units 1/s x s): numeric vs 2pi/(s ln(s/2pi a))
+ s=1 a=0.001  kappa_hom=1.2393  numeric: h=s/40: 1.2393, h=s/80: 1.2393, h=s/160: 1.2393
+ s=1 a=0.01  kappa_hom=2.2705  numeric: 
+ s=1 a=0.03  kappa_hom=3.7654  numeric: 
+--- symmetron: equivalent Robin kappa of a Dirichlet (screened) wire grid, units mu; a = wire radius x mu
+ a=0.0001 s=0.03  kappa_hom=54.1761 | h=0.0015 kappa=55.6753 phibar(0)=0.0261 phi_midway=0.0308 | h=0.0008 kappa=54.5425 phibar(0)=0.0261 phi_midway=0.0308
+ a=0.0001 s=0.1   kappa_hom=12.3932 | h=0.0050 kappa=12.3912 phibar(0)=0.1127 phi_midway=0.1280 | h=0.0025 kappa=12.3924 phibar(0)=0.1127 phi_midway=0.1281
+ a=0.0001 s=0.3   kappa_hom=3.3953 | h=0.0150 kappa=3.4713 phibar(0)=0.3620 phi_midway=0.4026 | h=0.0075 kappa=3.4139 phibar(0)=0.3620 phi_midway=0.4026
+ a=0.0001 s=1     kappa_hom=0.8523 | h=0.0500 kappa=0.8567 phibar(0)=0.7422 phi_midway=0.8110 | h=0.0250 kappa=0.8564 phibar(0)=0.7422 phi_midway=0.8112
+ a=0.0001 s=3     kappa_hom=0.2472 | h=0.0500 kappa=0.2598 phibar(0)=0.9131 phi_midway=0.9756 | h=0.0250 kappa=0.2597 phibar(0)=0.9130 phi_midway=0.9756
+ a=0.0001 s=10    kappa_hom=0.0649 | h=0.0500 kappa=0.0769 phibar(0)=0.9740 phi_midway=0.9999 | h=0.0250 kappa=0.0769 phibar(0)=0.9740 phi_midway=0.9999
+ a=0.001 s=0.03  kappa_hom=133.9710 | 
+ a=0.001 s=0.1   kappa_hom=22.7052 | 
+ a=0.001 s=0.3   kappa_hom=5.4176 | h=0.0150 kappa=5.5858 phibar(0)=0.2454 phi_midway=0.2893 | h=0.0075 kappa=5.4578 phibar(0)=0.2454 phi_midway=0.2894
+ a=0.001 s=1     kappa_hom=1.2393 | h=0.0500 kappa=1.2457 phibar(0)=0.6526 phi_midway=0.7410 | h=0.0250 kappa=1.2453 phibar(0)=0.6525 phi_midway=0.7412
+ a=0.001 s=3     kappa_hom=0.3395 | h=0.0500 kappa=0.3617 phibar(0)=0.8815 phi_midway=0.9661 | h=0.0250 kappa=0.3615 phibar(0)=0.8815 phi_midway=0.9662
+ a=0.001 s=10    kappa_hom=0.0852 | h=0.0500 kappa=0.1065 phibar(0)=0.9645 phi_midway=0.9999 | h=0.0250 kappa=0.1064 phibar(0)=0.9645 phi_midway=0.9999
+--- symmetron: unscreened thin wires (q = pi a^2 m_in^2), a=1e-4 (10 um at 1/mu=10 cm)
+Traceback (most recent call last):
+  File "/home/claude/gravity/solver/upgrade/u5_wire_grid.py", line 112, in <module>
+    k, pbar0, pmid, pw = symmetron(s, 1e-4, h, q=q)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/gravity/solver/upgrade/u5_wire_grid.py", line 37, in symmetron
+    L[w, w] = L[w, w] - qeff(q, a, h) / h**2
+                        ^^^^^^^^^^^^^
+  File "/home/claude/gravity/solver/upgrade/u5_wire_grid.py", line 15, in qeff
+    ell = np.log(REFF_2D * h / a); assert ell > 0
+                                          ^^^^^^^
+AssertionError
+--- symmetron: unscreened thin wires (q = pi a^2 m_in^2), a=1e-4 (10 um at 1/mu=10 cm)
+ q=0.001 s=0.03  kappa=0.03336  kappa_hom=0.03331  q/s=0.03333
+ q=0.001 s=0.1  kappa=0.00999  kappa_hom=0.00999  q/s=0.01000
+ q=0.001 s=1  kappa=0.00100  kappa_hom=0.00100  q/s=0.00100
+ q=0.01 s=0.03  kappa=0.33177  kappa_hom=0.33129  q/s=0.33333
+ q=0.01 s=0.1  kappa=0.09920  kappa_hom=0.09920  q/s=0.10000
+ q=0.01 s=1  kappa=0.00989  kappa_hom=0.00988  q/s=0.01000
+ q=0.1 s=0.03  kappa=3.14674  kappa_hom=3.14013  q/s=3.33333
+ q=0.1 s=0.1  kappa=0.92533  kappa_hom=0.92534  q/s=1.00000
+ q=0.1 s=1  kappa=0.08961  kappa_hom=0.08950  q/s=0.10000

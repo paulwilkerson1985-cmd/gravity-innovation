@@ -1,0 +1,66 @@
+=== residual vs kappa/mu (Robin foils, h=0.05; h=0.025 agrees to 1-2% for the through-foil part) ===
+kappa/mu pairW1     pairW2     can0       can1(1cm)  can2(2cm) 
+10       +8.48e-02  +1.99e-02  +7.92e-02  +7.89e-02  +7.77e-02 
+100      +6.37e-03  +5.54e-04  +1.20e-03  +1.19e-03  +1.08e-03 
+1000     +1.69e-03  +4.13e-05  +1.21e-05  +1.09e-05  +2.38e-05 
+10000    +1.27e-03  +4.55e-06  +1.21e-07  +3.99e-07  +2.86e-05 
+
+=== kappa/mu -> physical thickness (thin-sheet t = kappa t*, valid while kappa << 2 m_in/mu; symmetric-pinning thickness t = (2/m) artanh(kappa/2m) else "unreachable") ===
+-- Cu (rho=8.96 g/cc)
+   (1/mu,M)    wedge  t*        kmax/mu   k=10         k=100        k=1000       k=10000     
+   ( 4, 5 TeV) SN-cons 0.63 um   504       6.3 um       64 um        unreach.     unreach.    
+   ( 4,15 TeV) edge   5.7 um    168       57 um        6.5e+02 um   unreach.     unreach.    
+   ( 4,36 TeV) no     33 um     70        3.3e+02 um   unreach.     unreach.     unreach.    
+   ( 4,55 TeV) no     76 um     46        7.8e+02 um   unreach.     unreach.     unreach.    
+   (10, 5 TeV) SN-cons 0.25 um   1260      2.5 um       25 um        3.4e+02 um   unreach.    
+   (10,15 TeV) yes    2.3 um    420       23 um        2.3e+02 um   unreach.     unreach.    
+   (10,36 TeV) yes    13 um     175       1.3e+02 um   1.5 mm       unreach.     unreach.    
+   (10,55 TeV) no     31 um     115       3.1e+02 um   4.7 mm       unreach.     unreach.    
+   (15, 5 TeV) SN-cons 0.17 um   1890      1.7 um       17 um        1.9e+02 um   unreach.    
+   (15,15 TeV) yes    1.5 um    630       15 um        1.5e+02 um   unreach.     unreach.    
+   (15,36 TeV) yes    8.7 um    262       87 um        9.2e+02 um   unreach.     unreach.    
+   (15,55 TeV) edge   20 um     172       2e+02 um     2.3 mm       unreach.     unreach.    
+-- Al (rho=2.70 g/cc)
+   (1/mu,M)    wedge  t*        kmax/mu   k=10         k=100        k=1000       k=10000     
+   ( 4, 5 TeV) SN-cons 2.1 um    277       21 um        2.2e+02 um   unreach.     unreach.    
+   ( 4,15 TeV) edge   19 um     92        1.9e+02 um   unreach.     unreach.     unreach.    
+   ( 4,36 TeV) no     1.1e+02 um 38        1.1 mm       unreach.     unreach.     unreach.    
+   ( 4,55 TeV) no     2.5e+02 um 25        2.7 mm       unreach.     unreach.     unreach.    
+   (10, 5 TeV) SN-cons 0.84 um   692       8.4 um       84 um        unreach.     unreach.    
+   (10,15 TeV) yes    7.5 um    230       75 um        8.1e+02 um   unreach.     unreach.    
+   (10,36 TeV) yes    43 um     96        4.4e+02 um   unreach.     unreach.     unreach.    
+   (10,55 TeV) no     1e+02 um  63        1 mm         unreach.     unreach.     unreach.    
+   (15, 5 TeV) SN-cons 0.56 um   1037      5.6 um       56 um        1.2 mm       unreach.    
+   (15,15 TeV) yes    5 um      346       50 um        5.2e+02 um   unreach.     unreach.    
+   (15,36 TeV) yes    29 um     144       2.9e+02 um   3.6 mm       unreach.     unreach.    
+   (15,55 TeV) edge   67 um     94        6.8e+02 um   unreach.     unreach.     unreach.    
+
+=== minimum foil thickness for >=99%% / >=99.99%% suppression (full thick-slab model) ===
+-- Cu
+   (1/mu,M)     wedge    closed can             can, 1 cm hole         can, 2 cm hole         foil pair W=20 cm      foil pair W=10 cm     
+   ( 4 cm, 5)  SN-cons  21 um / 1.8e+02 um     21 um / 1.8e+02 um     21 um / 1.6e+02 um     9.5 um / 2.2e+02 um    41 um / never            [m_in/mu=252]
+   ( 4 cm,15)  edge     2e+02 um / 1 mm        2e+02 um / 1 mm        2e+02 um / 9.2e+02 um  86 um / 1.2 mm         3.8e+02 um / never       [m_in/mu=84]
+   ( 4 cm,36)  no       9.8e+02 um / 3.3 mm    9.8e+02 um / 3.3 mm    9.8e+02 um / 3 mm      5.6e+02 um / 3.9 mm    1.7 mm / never           [m_in/mu=35]
+   ( 4 cm,55)  no       2 mm / 5.8 mm          2 mm / 5.8 mm          2 mm / 5.3 mm          1.2 mm / 6.9 mm        3.3 mm / never           [m_in/mu=23, extrap.]
+   (10 cm, 5)  SN-cons  8.5 um / 97 um         8.5 um / 97 um         8.5 um / 87 um         3.8 um / 1.2e+02 um    16 um / never            [m_in/mu=630]
+   (10 cm,15)  yes      76 um / 6.3e+02 um     76 um / 6.2e+02 um     76 um / 5.6e+02 um     34 um / 7.3e+02 um     1.4e+02 um / never       [m_in/mu=210]
+   (10 cm,36)  yes      4.7e+02 um / 2.4 mm    4.7e+02 um / 2.4 mm    4.6e+02 um / 2.2 mm    2e+02 um / 2.7 mm      9e+02 um / never         [m_in/mu=87]
+   (10 cm,55)  no       1.1 mm / 4.3 mm        1.1 mm / 4.3 mm        1.1 mm / 4 mm          4.6e+02 um / 5 mm      1.7 mm / never           [m_in/mu=57]
+   (15 cm, 5)  SN-cons  5.6 um / 64 um         5.6 um / 64 um         5.6 um / 53 um         2.5 um / 83 um         11 um / never            [m_in/mu=945]
+   (15 cm,15)  yes      51 um / 4.6e+02 um     51 um / 4.6e+02 um     51 um / 4.3e+02 um     23 um / 5.5e+02 um     99 um / never            [m_in/mu=315]
+   (15 cm,36)  yes      2.9e+02 um / 2 mm      2.9e+02 um / 2 mm      2.9e+02 um / 1.8 mm    1.3e+02 um / 2.2 mm    6.6e+02 um / never       [m_in/mu=131]
+   (15 cm,55)  edge     7.3e+02 um / 3.7 mm    7.3e+02 um / 3.6 mm    7.3e+02 um / 3.4 mm    3.1e+02 um / 4.2 mm    1.4 mm / never           [m_in/mu=86]
+-- Al
+   (1/mu,M)     wedge    closed can             can, 1 cm hole         can, 2 cm hole         foil pair W=20 cm      foil pair W=10 cm     
+   ( 4 cm, 5)  SN-cons  71 um / 4.8e+02 um     71 um / 4.8e+02 um     71 um / 4.4e+02 um     32 um / 5.5e+02 um     1.6e+02 um / never       [m_in/mu=138]
+   ( 4 cm,15)  edge     6.3e+02 um / 2.3 mm    6.3e+02 um / 2.3 mm    6.3e+02 um / 2.1 mm    2.9e+02 um / 2.7 mm    1 mm / never             [m_in/mu=46]
+   ( 4 cm,36)  no       2.6 mm / 7.2 mm        2.6 mm / 7.2 mm        2.6 mm / 6.6 mm        1.7 mm / 8.7 mm        4.3 mm / never           [m_in/mu=19, extrap.]
+   ( 4 cm,55)  no       5.1 mm / 12 mm         5.1 mm / 12 mm         5.1 mm / 11 mm         3.2 mm / 15 mm         8.2 mm / never           [m_in/mu=13, extrap.]
+   (10 cm, 5)  SN-cons  28 um / 2.7e+02 um     28 um / 2.7e+02 um     28 um / 2.5e+02 um     13 um / 3.1e+02 um     55 um / never            [m_in/mu=346]
+   (10 cm,15)  yes      2.5e+02 um / 1.6 mm    2.5e+02 um / 1.6 mm    2.5e+02 um / 1.5 mm    1.1e+02 um / 1.8 mm    5.6e+02 um / never       [m_in/mu=115]
+   (10 cm,36)  yes      1.5 mm / 5.5 mm        1.5 mm / 5.5 mm        1.5 mm / 5 mm          6.4e+02 um / 6.3 mm    2.4 mm / never           [m_in/mu=48]
+   (10 cm,55)  no       2.9 mm / 9.6 mm        2.9 mm / 9.6 mm        2.9 mm / 8.7 mm        1.7 mm / 11 mm         5.1 mm / never           [m_in/mu=31]
+   (15 cm, 5)  SN-cons  19 um / 2.1e+02 um     19 um / 2.1e+02 um     19 um / 1.9e+02 um     8.4 um / 2.4e+02 um    36 um / never            [m_in/mu=519]
+   (15 cm,15)  yes      1.7e+02 um / 1.3 mm    1.7e+02 um / 1.3 mm    1.7e+02 um / 1.2 mm    76 um / 1.5 mm         3.6e+02 um / never       [m_in/mu=173]
+   (15 cm,36)  yes      1 mm / 4.7 mm          1 mm / 4.7 mm          1 mm / 4.3 mm          4.4e+02 um / 5.4 mm    1.8 mm / never           [m_in/mu=72]
+   (15 cm,55)  edge     2.3 mm / 8.4 mm        2.3 mm / 8.4 mm        2.3 mm / 7.8 mm        1 mm / 9.8 mm          3.7 mm / never           [m_in/mu=47]

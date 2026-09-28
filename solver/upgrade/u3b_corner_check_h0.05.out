@@ -1,0 +1,9 @@
+h=0.050 kappa=1      closed can: Robin corners 6.543e-01 | pinned corners 2.266e-01 | C=2.888
+h=0.050 kappa=3      closed can: Robin corners 3.342e-01 | pinned corners 1.418e-01 | C=2.357
+h=0.050 kappa=10     closed can: Robin corners 7.915e-02 | pinned corners 4.685e-02 | C=1.689
+h=0.050 kappa=30     closed can: Robin corners 1.223e-02 | pinned corners 9.410e-03 | C=1.299
+h=0.050 kappa=100    closed can: Robin corners 1.198e-03 | pinned corners 1.082e-03 | C=1.107
+h=0.050 kappa=300    closed can: Robin corners 1.343e-04 | pinned corners 1.292e-04 | C=1.039
+h=0.050 kappa=1000   closed can: Robin corners 1.207e-05 | pinned corners 1.193e-05 | C=1.012
+h=0.050 kappa=3000   closed can: Robin corners 1.340e-06 | pinned corners 1.335e-06 | C=1.004
+h=0.050 kappa=10000  closed can: Robin corners 1.206e-07 | pinned corners 1.204e-07 | C=1.001

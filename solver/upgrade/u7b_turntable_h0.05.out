@@ -1,0 +1,8 @@
+Rt=1 gap=1.5/mu: S/S0=0.9107 static=+0.1107
+Rt=1 gap=2.0/mu: S/S0=0.9241 static=+0.0936
+Rt=1 gap=2.5/mu: S/S0=0.9307 static=+0.0851
+Rt=2 gap=1.5/mu: S/S0=0.8714 static=+0.1604
+Rt=2 gap=2.0/mu: S/S0=0.9065 static=+0.1159
+Rt=2 gap=2.5/mu: S/S0=0.9247 static=+0.0927
+pedestal+shaft only (no plate), source bottom at -2.0, shaft below -2.3: S/S0=0.9262
+pedestal+shaft only (no plate), source bottom at -2.0, shaft below -3.0: S/S0=0.9314

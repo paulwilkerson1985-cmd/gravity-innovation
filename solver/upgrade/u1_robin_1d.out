@@ -1,0 +1,46 @@
+--- (a) symmetric Robin sheet, walls at +-8
+kappa=0.1    exact(L=8)=9.652189e-01  T_inf=9.652695e-01 sqrt2/k=1.414e+01
+     h=0.04 phi_f=9.652313e-01 (rel.err +1.3e-05) prof.err 1.2e-05 tanh.err 6.6e-03
+     h=0.02 phi_f=9.652220e-01 (rel.err +3.2e-06) prof.err 3.1e-06 tanh.err 6.8e-03
+     h=0.01 phi_f=9.652197e-01 (rel.err +8.0e-07) prof.err 7.7e-07 tanh.err 6.9e-03
+kappa=1      exact(L=8)=7.070436e-01  T_inf=7.071068e-01 sqrt2/k=1.414e+00
+     h=0.04 phi_f=7.070750e-01 (rel.err +4.4e-05) prof.err 3.1e-05 tanh.err 6.6e-03
+     h=0.02 phi_f=7.070514e-01 (rel.err +1.1e-05) prof.err 7.8e-06 tanh.err 6.8e-03
+     h=0.01 phi_f=7.070455e-01 (rel.err +2.8e-06) prof.err 2.0e-06 tanh.err 6.9e-03
+kappa=10     exact(L=8)=1.386597e-01  T_inf=1.387007e-01 sqrt2/k=1.414e-01
+     h=0.04 phi_f=1.386432e-01 (rel.err -1.2e-04) prof.err 2.1e-05 tanh.err 6.7e-03
+     h=0.02 phi_f=1.386556e-01 (rel.err -3.0e-05) prof.err 5.2e-06 tanh.err 6.9e-03
+     h=0.01 phi_f=1.386586e-01 (rel.err -7.4e-06) prof.err 1.3e-06 tanh.err 7.0e-03
+kappa=100    exact(L=8)=1.413393e-02  T_inf=1.413931e-02 sqrt2/k=1.414e-02
+     h=0.04 phi_f=1.413205e-02 (rel.err -1.3e-04) prof.err 4.2e-05 tanh.err 6.7e-03
+     h=0.02 phi_f=1.413346e-02 (rel.err -3.3e-05) prof.err 1.1e-05 tanh.err 6.9e-03
+     h=0.01 phi_f=1.413382e-02 (rel.err -8.3e-06) prof.err 2.6e-06 tanh.err 7.0e-03
+kappa=1000   exact(L=8)=1.413659e-03  T_inf=1.414211e-03 sqrt2/k=1.414e-03
+     h=0.04 phi_f=1.413470e-03 (rel.err -1.3e-04) prof.err 4.5e-05 tanh.err 6.7e-03
+     h=0.02 phi_f=1.413612e-03 (rel.err -3.3e-05) prof.err 1.1e-05 tanh.err 6.9e-03
+     h=0.01 phi_f=1.413647e-03 (rel.err -8.4e-06) prof.err 2.8e-06 tanh.err 7.0e-03
+kappa=10000  exact(L=8)=1.413661e-04  T_inf=1.414214e-04 sqrt2/k=1.414e-04
+     h=0.04 phi_f=1.413472e-04 (rel.err -1.3e-04) prof.err 4.5e-05 tanh.err 6.7e-03
+     h=0.02 phi_f=1.413613e-04 (rel.err -3.3e-05) prof.err 1.1e-05 tanh.err 6.9e-03
+     h=0.01 phi_f=1.413649e-04 (rel.err -8.4e-06) prof.err 2.8e-06 tanh.err 7.0e-03
+--- (b) transmission into a subcritical gap: sheet at z=7, gap width 1 to wall at z=8; phi at z=7.5
+Robin kappa=1      phi(7.5) exact=2.06727e-01 | h=0.04 z=7.48 2.14286e-01 (+5.8e-05) | h=0.02 z=7.50 2.06730e-01 (+1.5e-05) | h=0.01 z=7.50 2.06728e-01 (+3.6e-06)
+Robin kappa=10     phi(7.5) exact=3.76771e-02 | h=0.04 z=7.48 3.90453e-02 (-9.1e-05) | h=0.02 z=7.50 3.76762e-02 (-2.3e-05) | h=0.01 z=7.50 3.76768e-02 (-5.7e-06)
+Robin kappa=100    phi(7.5) exact=4.00281e-03 | h=0.04 z=7.48 4.14807e-03 (-1.1e-04) | h=0.02 z=7.50 4.00269e-03 (-2.8e-05) | h=0.01 z=7.50 4.00278e-03 (-7.1e-06)
+Robin kappa=1000   phi(7.5) exact=4.02613e-04 | h=0.04 z=7.48 4.17223e-04 (-1.2e-04) | h=0.02 z=7.50 4.02602e-04 (-2.9e-05) | h=0.01 z=7.50 4.02610e-04 (-7.2e-06)
+Robin kappa=10000  phi(7.5) exact=4.02846e-05 | h=0.04 z=7.48 4.17464e-05 (-1.2e-04) | h=0.02 z=7.50 4.02834e-05 (-2.9e-05) | h=0.01 z=7.50 4.02843e-05 (-7.2e-06)
+--- (c) slab: two-port vs resolved nonlinear slab vs Robin(kappa_eff=2m tanh(mt/2))
+m=30 t=0.001 (mt=0.03, kappa_eff=0.9, m^2t=0.9): SYM phi_surf resolved=7.31029e-01 port-BVP=7.31161e-01 grid h=.02 7.31169e-01 h=.01 7.31163e-01 | Robin T_inf(keff)=7.31223e-01
+      TRANS phi(7.5): resolved=2.1597e-01 port-BVP=2.1598e-01 grid h=.02 2.1598e-01 h=.01 2.1598e-01 | Robin(keff)=2.1609e-01 (ratio Robin/resolved=1.00)
+m=30 t=0.01 (mt=0.30, kappa_eff=8.9, m^2t=9.0): SYM phi_surf resolved=1.54483e-01 port-BVP=1.54487e-01 grid h=.02 1.54482e-01 h=.01 1.54486e-01 | Robin T_inf(keff)=1.54531e-01
+      TRANS phi(7.5): resolved=4.0829e-02 port-BVP=4.0829e-02 grid h=.02 4.0828e-02 h=.01 4.0829e-02 | Robin(keff)=4.1828e-02 (ratio Robin/resolved=1.02)
+m=30 t=0.1 (mt=3.00, kappa_eff=54.3, m^2t=90.0): SYM phi_surf resolved=2.60129e-02 port-BVP=2.60129e-02 grid h=.02 2.60120e-02 h=.01 2.60127e-02 | Robin T_inf(keff)=2.60225e-02
+      TRANS phi(7.5): resolved=1.3115e-03 port-BVP=1.3115e-03 grid h=.02 1.3115e-03 h=.01 1.3115e-03 | Robin(keff)=7.3302e-03 (ratio Robin/resolved=5.59)
+m=100 t=0.01 (mt=1.00, kappa_eff=92.4, m^2t=100.0): SYM phi_surf resolved=1.52921e-02 port-BVP=1.52921e-02 grid h=.02 1.52916e-02 h=.01 1.52920e-02 | Robin T_inf(keff)=1.52979e-02
+      TRANS phi(7.5): resolved=3.3992e-03 port-BVP=3.3992e-03 grid h=.02 3.3991e-03 h=.01 3.3991e-03 | Robin(keff)=4.3286e-03 (ratio Robin/resolved=1.27)
+m=100 t=0.03 (mt=3.00, kappa_eff=181.0, m^2t=300.0): SYM phi_surf resolved=7.80857e-03 port-BVP=7.80857e-03 grid h=.02 7.80831e-03 h=.01 7.80851e-03 | Robin T_inf(keff)=7.81158e-03
+      TRANS phi(7.5): resolved=3.9955e-04 port-BVP=3.9955e-04 grid h=.02 3.9954e-04 h=.01 3.9955e-04 | Robin(keff)=2.2175e-03 (ratio Robin/resolved=5.55)
+m=100 t=0.1 (mt=10.00, kappa_eff=200.0, m^2t=1000.0): SYM phi_surf resolved=7.06863e-03 port-BVP=7.06863e-03 grid h=.02 7.06839e-03 h=.01 7.06857e-03 | Robin T_inf(keff)=7.07136e-03
+      TRANS phi(7.5): resolved=3.6346e-07 port-BVP=3.6346e-07 grid h=.02 3.6344e-07 h=.01 3.6345e-07 | Robin(keff)=2.0081e-03 (ratio Robin/resolved=5524.94)
+m=300 t=0.01 (mt=3.00, kappa_eff=543.1, m^2t=900.0): SYM phi_surf resolved=2.60299e-03 port-BVP=2.60299e-03 grid h=.02 2.60290e-03 h=.01 2.60297e-03 | Robin T_inf(keff)=2.60400e-03
+      TRANS phi(7.5): resolved=1.3376e-04 port-BVP=1.3376e-04 grid h=.02 1.3376e-04 h=.01 1.3376e-04 | Robin(keff)=7.4094e-04 (ratio Robin/resolved=5.54)

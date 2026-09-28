@@ -1,0 +1,10 @@
+h=0.050 R=8.0 reference (+1 IC): F_test=1.2779 F_source=-1.2674 E=464.0779  lowest Hessian eig=1.1357
+wall z_w=-1.40 (source equator)    -> WALL (metastable)  E-E0=+109.1705  F_test=+1.2397  F_source=-0.8644  min/max phi=-0.960/+0.993  Hess_min=+0.0139  res=1e-11 (11s)
+wall z_w=-0.70 (gap)               -> WALL (metastable)  E-E0=+109.1705  F_test=+1.2397  F_source=-0.8644  min/max phi=-0.960/+0.993  Hess_min=+0.0139  res=6e-11 (11s)
+wall z_w= 0.00 (test equator)      -> WALL (metastable)  E-E0=+109.1705  F_test=+1.2397  F_source=-0.8644  min/max phi=-0.960/+0.993  Hess_min=+0.0139  res=1e-12 (16s)
+wall z_w=+2.50 (empty, upper)      -> ground state -  E-E0=+0.0000  F_test=+1.2779  F_source=-1.2674  min/max phi=-0.996/+0.000  Hess_min=+1.1357  res=2e-12 (19s)
+wall z_w=-3.00 (empty, lower)      -> WALL (metastable)  E-E0=+109.1705  F_test=+1.2397  F_source=-0.8644  min/max phi=-0.960/+0.993  Hess_min=+0.0139  res=2e-11 (18s)
+cylindrical wall r_w=2.5           -> ground state -  E-E0=-0.0000  F_test=+1.2779  F_source=-1.2674  min/max phi=-0.996/+0.000  Hess_min=+1.1357  res=5e-11 (12s)
+phi=-1 bubble r<0.8 around test    -> ground state +  E-E0=-0.0000  F_test=+1.2779  F_source=-1.2674  min/max phi=+0.000/+0.996  Hess_min=+1.1357  res=2e-11 (10s)
+random noise +-0.01                -> ground state -  E-E0=+0.0000  F_test=+1.2779  F_source=-1.2674  min/max phi=-0.996/+0.000  Hess_min=+1.1357  res=7e-13 (18s)
+uniform small +0.001               -> ground state +  E-E0=+0.0000  F_test=+1.2779  F_source=-1.2674  min/max phi=+0.000/+0.996  Hess_min=+1.1357  res=2e-11 (14s)
