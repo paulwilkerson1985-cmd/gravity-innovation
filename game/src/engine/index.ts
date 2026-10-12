@@ -11,3 +11,4 @@ export * from './encounter';
 export * from './items';
 export * from './progression';
 export * from './trainer';
+export * from './arena';

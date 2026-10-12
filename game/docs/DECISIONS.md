@@ -52,3 +52,13 @@ The host repo (`gravity-innovation`) is an unrelated physics project, so the gam
 - **Starting bag**: 10 Orb, 3 Bright Orb, 1 Star Orb. Catch menu shows the live catch % per orb ("readable odds").
 - **Blackout**: party is healed and you return to the route (no money loss in v1).
 - **Saves deferred to M3**: the slice keeps state in memory only.
+
+## Engine (M3–M5)
+- **XP**: yield = ⌊xpYield·L/7·(1.5 if trainer)⌋, split evenly (floor, min 1) among side-0 participants still conscious at battle end. PvP gives none. Level cap 30; XP stops at 30³.
+- **Level-up**: current HP rises by the max-HP gain (fainted stays at 0). Learnset moves at exactly the new level auto-learn if < 4 known, otherwise a `moveOffer` event; the game calls `learnMove(c, id, slot | null)`.
+- **Evolution** is opt-in: `gainXp` emits `canEvolve`; the game calls `evolve(c)` (keeps moves/XP/nickname, HP + max-HP gain).
+- **Items**: Tonic 20 HP (200), Mega Tonic 60 HP (600), Full Tonic full HP (1500), Remedy Leaf cures status (250), Rekindle Seed revives at ½ HP (1500). In battle an item takes the turn and acts before switches (priority 30 vs 20). Only legal when it would do something. Engine never counts the bag.
+- **Battle rules** live in `BattleState.rules`: wild = items/catch/run, trainer = items, pvp = none (overridable per battle).
+- **Ace AI**: 1-ply search — each move (plus one switch out of a clearly bad matchup) vs the foe's two likeliest replies × 2 derived seeds via `resolveTurn` on clones; positions scored on HP, KOs, status, stages and the active 1-v-1 outlook; score = ½ mean + ½ worst reply. Won't voluntarily switch within 2 turns of its last switch (`Side.lastSwitchTurn`). ~66% vs Skilled in mirror matches, < 1 ms/decision.
+- **Trainers**: meadow Pim (rookie), ridge Brann + Sola (skilled), coast Merrow (skilled) + Tavi (ace), Crown Plateau Champion Vale (ace, 6 kin L26–30, all six elements). Routes unlock after all trainers of the previous route.
+- **Arena**: L30, exactly 3 kin, no duplicate species, 1–4 moves learnable by L30; 12 rentals.
