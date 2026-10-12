@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  awardXp, calcStats, createBattle, getDex, makeCreature, resolveTurn, toBattle, xpForLevel, chooseAction,
+  LEVEL_CAP, species, awardXp, calcStats, createBattle, getDex, makeCreature, resolveTurn, toBattle, xpForLevel, chooseAction,
   type BattleState, type OwnedCreature,
 } from '../src/engine';
 import { newPlayer, type PlayerState } from '../src/game/state';
 import {
-  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionQueue, evolvePartyMember, formatClock, isTrainerDefeated,
+  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionQueue, evolutionsAfterWin, evolvePartyMember, formatClock, isTrainerDefeated,
   routeBlockers, startTrainerBattle, teachMove, trainerVictory, withDebugParty, withDefeated, withSeen, xpProgress,
 } from '../src/game/progress';
 
@@ -117,6 +117,18 @@ describe('evolution queue', () => {
     const r = applyBattleXp(p, wonBattle(p, [['breezel', 3]]));
     expect(r.player.party[0]!.level).toBe(15);
     expect(r.evolutions).toEqual(['a']);
+  });
+
+  it('a stopped evolution comes back after the next win even without a level-up (level cap)', () => {
+    const c = makeCreature('cindertail', LEVEL_CAP, 'c'); // at the cap: it can never level up again
+    const benchy = makeCreature('ashkit', species('ashkit').evolvesTo!.level, 'b'); // stopped earlier, sat out the battle
+    const p = playerWith([c, benchy]);
+    const r = applyBattleXp(p, wonBattle(p, [['breezel', 3]]));
+    expect(r.player.party[0]!.level).toBe(LEVEL_CAP);
+    expect(r.evolutions).toEqual([]); // no canEvolve event from the engine…
+    expect(evolutionsAfterWin(r.player)).toEqual(['c', 'b']); // …but both are offered again
+    const e = evolvePartyMember(r.player, 'c');
+    expect(evolutionsAfterWin(e.player)).toEqual(['b']);
   });
 });
 

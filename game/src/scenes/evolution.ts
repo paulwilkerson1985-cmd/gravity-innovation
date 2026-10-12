@@ -1,7 +1,8 @@
 // Evolution: a skippable transformation sequence. The creature glows into a silhouette,
 // flickers between its old and new forms with an accelerating rhythm under light rays and
 // sparkles, then bursts into the new form. "Skip" finishes instantly; "Stop" cancels (the
-// creature asks again at its next level-up). Handles a queue of evolutions from one battle.
+// creature asks again after the next won battle, or via Evolve on the Party screen).
+// Handles a queue of evolutions from one battle.
 import * as THREE from 'three';
 import { BaseScene } from './base';
 import './adventure.css';
@@ -31,7 +32,9 @@ export class EvolutionScene extends BaseScene {
   private spin = 0.3;
   private intensity = 0;
   private routeId = 'meadow';
-  private next: 'route' | 'victory' = 'route';
+  private next: 'route' | 'victory' | 'party' = 'route';
+  /** For next = 'party': where the party screen goes back to. */
+  private partyParams: Record<string, unknown> = {};
   private advance: (() => void) | null = null;
   /** The form left standing on the pedestal after the last sequence. */
   private keep: CreatureView | null = null;
@@ -43,7 +46,8 @@ export class EvolutionScene extends BaseScene {
   enter(params: Record<string, unknown>) {
     const g = this.game;
     this.routeId = String(params.route ?? g.player.lastRoute ?? 'meadow');
-    this.next = params.next === 'victory' ? 'victory' : 'route';
+    this.next = params.next === 'victory' || params.next === 'party' ? params.next : 'route';
+    if (this.next === 'party') this.partyParams = { route: this.routeId, index: Number(params.index ?? 0) || 0, ...(typeof params.from === 'string' ? { from: params.from } : {}) };
     const raw = params.queue;
     let uids = Array.isArray(raw) ? raw.map(String) : typeof raw === 'string' && raw ? raw.split(',') : [];
     if (uids.length === 0) uids = g.player.party.filter(canEvolveNow).map((c) => c.uid); // ?scene=evolution
@@ -149,7 +153,9 @@ export class EvolutionScene extends BaseScene {
   private async run(queue: string[]) {
     for (const uid of queue) await this.evolveOne(uid);
     if (!queue.length) this.text.textContent = 'Nothing is ready to evolve right now.';
-    const go = () => void this.game.goto(this.next === 'victory' ? 'victory' : 'route', { route: this.routeId });
+    const go = () => void (this.next === 'party'
+      ? this.game.goto('party', this.partyParams)
+      : this.game.goto(this.next === 'victory' ? 'victory' : 'route', { route: this.routeId }));
     this.setButtons([h('button', { class: 'btn btn-fight', 'data-testid': 'btn-evo-continue', onclick: go }, 'Continue')]);
     this.game.idle = true;
   }

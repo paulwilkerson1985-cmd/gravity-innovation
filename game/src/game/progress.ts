@@ -69,6 +69,16 @@ export function evolutionQueue(p: PlayerState, uids: readonly string[]): string[
   return out;
 }
 
+/**
+ * After a won battle: every party member that can evolve right now, party order — the ones
+ * that just levelled into it and any that were stopped before (they may never level again,
+ * e.g. at the level cap). Stopping only postpones the evolution to the next win (or the
+ * Party screen's Evolve button).
+ */
+export function evolutionsAfterWin(p: PlayerState): string[] {
+  return evolutionQueue(p, p.party.map((c) => c.uid));
+}
+
 export interface EvolutionResult { player: PlayerState; from: string; into: string; name: string }
 
 /** Evolve a party member and register the new form in the bestiary. */

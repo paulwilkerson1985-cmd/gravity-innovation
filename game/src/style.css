@@ -284,6 +284,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 .kin-actions:empty { display: none; }
 .btn-act { min-height: 54px; padding: 6px 4px; font-size: 12px; gap: 3px; }
 .btn-act .ico { width: 20px; height: 20px; }
+.kin-actions .btn-evolve { grid-column: 1 / -1; min-height: 46px; background: linear-gradient(180deg, #ffe07a, #f2b13a); color: #4a2a00; }
 .btn-item { background: #f29a2e; } .btn-tobox { background: #3d7fd8; }
 .act-why { grid-column: span 4; align-self: center; opacity: .85; font-weight: 700; }
 .kin-summary h3, .ks-title h3 { margin: 0; font: 900 22px/1.1 var(--font); }

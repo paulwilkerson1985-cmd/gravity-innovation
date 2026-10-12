@@ -1,7 +1,7 @@
 // Party screen: reorder, full summary, use bag items, send to the storage box.
 import { MetaScene } from './meta';
 import { audio } from '../audio/audio';
-import { calcStats, getItem, itemHasEffect, type ItemId } from '../engine';
+import { calcStats, canEvolveNow, getItem, itemHasEffect, species, type ItemId } from '../engine';
 import { bagCount, depositBlocker, depositToBox, isOrb, moveInParty, setLead, useBagItem, type BagId } from '../game/state';
 import { arrowNav, confirmDialog, focusFirst, h, openModal, toast } from '../ui/dom';
 import { icon } from '../ui/icons';
@@ -64,13 +64,29 @@ export class PartyScene extends MetaScene {
     const n = p.party.length;
     const why = depositBlocker(p, i);
     const usable = (Object.keys(p.bag) as BagId[]).filter((id) => !isOrb(id) && bagCount(p, id) > 0);
+    const c = p.party[i];
     this.actions.replaceChildren(
       h('button', { class: 'btn btn-act', 'data-testid': 'btn-set-lead', disabled: i === 0, onclick: () => this.reorder(i, 0, 'is now leading!') }, icon('crown'), 'Lead'),
       h('button', { class: 'btn btn-act', 'data-testid': 'btn-move-up', disabled: i === 0, 'aria-label': 'Move up', onclick: () => this.reorder(i, i - 1) }, icon('up'), 'Up'),
       h('button', { class: 'btn btn-act', 'data-testid': 'btn-move-down', disabled: i >= n - 1, 'aria-label': 'Move down', onclick: () => this.reorder(i, i + 1) }, icon('down'), 'Down'),
       h('button', { class: 'btn btn-act btn-item', 'data-testid': 'btn-use-item', disabled: usable.length === 0, title: usable.length ? 'Use an item' : 'No usable items in your bag', onclick: () => this.pickItem() }, icon('bag'), 'Item'),
       h('button', { class: 'btn btn-act btn-tobox', 'data-testid': 'btn-deposit', disabled: !!why, title: why ?? 'Send to the storage box', onclick: () => void this.deposit() }, icon('box'), 'To box'),
+      // An evolution that was stopped can be started again here at any time.
+      ...(c && canEvolveNow(c)
+        ? [h('button', { class: 'btn btn-act btn-evolve', 'data-testid': 'btn-evolve', title: `Evolve into ${species(species(c.species).evolvesTo!.species).name}`, onclick: () => this.evolve() }, icon('up'), 'Evolve')]
+        : []),
     );
+  }
+
+  private evolve() {
+    const c = this.game.player.party[this.sel];
+    if (!c || !canEvolveNow(c)) return;
+    audio.sfx('select');
+    void this.game.goto('evolution', {
+      queue: c.uid, next: 'party', index: this.sel,
+      route: typeof this.params.route === 'string' ? this.params.route : this.game.player.lastRoute,
+      ...(typeof this.params.from === 'string' ? { from: this.params.from } : {}),
+    });
   }
 
   private reorder(from: number, to: number, msg?: string) {

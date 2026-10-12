@@ -22,7 +22,8 @@ import {
 import { ITEM_IDS } from '../data/items';
 import { applyBattleResult, startWildBattle, useOrb } from '../game/state';
 import {
-  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionQueue, startTrainerBattle, teachMove, trainerVictory, withSeen,
+  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionsAfterWin, startTrainerBattle, teachMove, trainerVictory, withSeen,
+  type BattleXp, type TrainerVictory,
   xpProgress, type CreatureGain,
 } from '../game/progress';
 import type { Theme } from '../render/diorama';
@@ -67,6 +68,7 @@ export class BattleScene extends BaseScene {
   enter(params: Record<string, unknown>) {
     this.routeId = String(params.route ?? 'meadow');
     const g = this.game;
+    g.pauseSaves(); // a battle is saved as a whole when it ends (finish)
     if (g.player.party.length === 0) g.debugParty();
     if (!g.player.party.some((c) => c.hp > 0)) g.player = blackout(g.player);
     const route = g.dex().routes.get(this.routeId);
@@ -180,6 +182,9 @@ export class BattleScene extends BaseScene {
   }
 
   private globalKeys = (e: KeyboardEvent) => {
+    // A held key (auto-repeat) must never click through prompts: swallow repeats of every
+    // activation key, including the browser's own Enter/Space-on-focused-button default.
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ' || e.key === 'z' || /^[1-9]$/.test(e.key))) { e.preventDefault(); return; }
     if (this.advance && (e.key === 'Enter' || e.key === ' ' || e.key === 'z')) { e.preventDefault(); this.advance(); return; }
     if (e.key === 'Escape' || e.key === 'x' || e.key === 'Backspace') {
       const back = this.menu.querySelector<HTMLButtonElement>('[data-back]');
@@ -195,6 +200,7 @@ export class BattleScene extends BaseScene {
 
   override exit() {
     window.removeEventListener('keydown', this.globalKeys);
+    this.game.resumeSaves();
     super.exit();
   }
 
@@ -740,36 +746,45 @@ export class BattleScene extends BaseScene {
   private async finish() {
     const g = this.game;
     this.game.idle = false;
+    // Apply every result to the player up front and save it at once (see DECISIONS: "Battles
+    // and saves"); the messages below only play it back, so an autosave can never land halfway.
     const res = applyBattleResult(g.player, this.state);
-    g.player = res.player;
     const o = this.state.outcome!;
     const won = o.reason === 'ko' && o.winner === 0;
-    let unlocked: string[] = [];
-    let crowned = false;
-    let evolutions: string[] = [];
+    let p = res.player;
+    let xp: BattleXp | null = null;
+    let victory: TrainerVictory | null = null;
+    if (won) {
+      xp = applyBattleXp(p, this.state);
+      p = xp.player;
+      if (this.trainer) {
+        victory = trainerVictory(p, this.trainer.id);
+        p = victory.player;
+      }
+    } else if (o.reason === 'ko') {
+      p = blackout(p);
+    }
+    g.player = p;
+    g.resumeSaves();
+    void g.save({ now: true });
+    const unlocked = victory?.unlocked ?? [];
+    const crowned = victory?.crowned ?? false;
 
     if (o.reason === 'caught') {
       const c = active(this.state, 1);
       await this.say(res.caughtInto === 'box' ? `${c.name} was sent to your storage box.` : `${c.name} joined your party!`, 700);
     }
-    if (won) {
+    if (won && xp) {
       audio.music('victory');
-      const xp = applyBattleXp(g.player, this.state);
-      g.player = xp.player;
       await this.playGains(xp.gains);
-      evolutions = xp.evolutions;
-      if (this.trainer) {
+      if (this.trainer && victory) {
         const t = this.trainer;
         await this.trainerWalk(true);
         await this.say(`You defeated ${this.trainerName()}!`, 500);
         await this.say(`${t.name}: “${t.defeat}”`, 1000);
-        const v = trainerVictory(g.player, t.id);
-        g.player = v.player;
-        unlocked = v.unlocked;
-        crowned = v.crowned;
-        if (v.reward > 0) {
+        if (victory.reward > 0) {
           audio.sfx('item');
-          await this.say(`You received ${v.reward} coins for winning!`, 600);
+          await this.say(`You received ${victory.reward} coins for winning!`, 600);
         }
         for (const id of unlocked) {
           audio.sfx('levelUp');
@@ -782,12 +797,13 @@ export class BattleScene extends BaseScene {
         await this.say(`${this.trainer.name}: “Not bad, but not enough! Come back when your kin are stronger.”`, 800);
       }
       this.panels[0].root.style.visibility = 'hidden';
-      g.player = blackout(g.player);
       await this.say('You hurried back to the spring to rest. Your kin are healed.', 900);
     }
-    this.save();
+    this.save(); // move choices made during playback
 
-    const queue = evolutionQueue(g.player, evolutions);
+    // After a win, every kin that can evolve gets the chance — also one that was stopped
+    // earlier and is already at its evolution level (it may not level up again).
+    const queue = won ? evolutionsAfterWin(g.player) : [];
     if (crowned || queue.length) {
       await wait(250);
       if (queue.length) return void g.goto('evolution', { queue: queue.join(','), route: this.routeId, next: crowned ? 'victory' : 'route' });
@@ -870,27 +886,47 @@ export class BattleScene extends BaseScene {
     });
   }
 
-  /** Forget-a-move prompt. Resolves once the player picked a move to forget or skipped. */
+  /**
+   * Forget-a-move prompt. Resolves once the player picked a move to forget or skipped.
+   * "Don't learn" gets the focus and forgetting needs a Yes/No confirmation, so mashing
+   * Enter (or a digit) through a level-up can never silently drop a move.
+   */
   private offerMove(uid: string, name: string, ev: Extract<ProgressEvent, { t: 'moveOffer' }>): Promise<void> {
     const m = getMove(ev.move);
+    const meta = (d: ReturnType<typeof getMove>) => `${d.type} · ${d.category === 'attack' ? `Pow ${d.power}` : 'Status'}`;
     return new Promise((resolve) => {
-      const ask = async () => {
-        await this.say(`${name} wants to learn ${m.name}! But ${name} already knows four moves.`, 500);
+      const list = () => {
         const c = this.game.player.party.find((x) => x.uid === uid);
         if (!c) return resolve();
-        this.flash(`Forget a move for ${m.name} (${m.type} · ${m.category === 'attack' ? `Pow ${m.power}` : 'Status'})?`);
+        this.flash(`Forget a move for ${m.name} (${meta(m)})?`);
         this.setMenu('moves menu-forget', [
           ...c.moves.map((mv, i) => {
             const d = getMove(mv.id);
             return h('button', {
               class: 'btn btn-move', style: `--c:${TYPE_COLORS[d.type]}`, 'data-testid': `forget-${i}`, 'data-pick': i + 1, title: d.blurb,
-              onclick: () => void pick(i, d.name),
-            }, h('span', { class: 'mname' }, `Forget ${d.name}`), h('span', { class: 'mmeta' }, `${d.type} · ${d.category === 'attack' ? `Pow ${d.power}` : 'Status'}`));
+              onclick: () => confirm(i, d.name),
+            }, h('span', { class: 'mname' }, `Forget ${d.name}`), h('span', { class: 'mmeta' }, meta(d)));
           }),
           h('button', { class: 'btn btn-back btn-skip', 'data-testid': 'btn-skip-move', 'data-back': true, onclick: () => void pick(null, '') }, `Don't learn ${m.name}`),
+        ], null, false);
+        this.menu.querySelector<HTMLButtonElement>('[data-testid="btn-skip-move"]')?.focus({ preventScroll: true });
+      };
+      const confirm = (slot: number, old: string) => {
+        this.flash(`Forget ${old} to learn ${m.name}?`);
+        this.setMenu('confirm', [
+          h('button', { class: 'btn btn-back', 'data-testid': 'btn-forget-no', 'data-back': true, onclick: () => list() }, 'No'),
+          h('button', { class: 'btn btn-fight', 'data-testid': 'btn-forget-yes', onclick: () => void pick(slot, old) }, `Yes, forget ${old}`),
         ]);
       };
+      const ask = async () => {
+        await this.say(`${name} wants to learn ${m.name}! But ${name} already knows four moves.`, 500);
+        list();
+      };
+      let done = false;
       const pick = async (slot: number | null, old: string) => {
+        if (done) return;
+        done = true;
+        this.menu.replaceChildren();
         this.game.player = teachMove(this.game.player, uid, ev.move, slot);
         if (slot === null) await this.say(`${name} did not learn ${m.name}.`, 500);
         else {

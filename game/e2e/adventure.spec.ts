@@ -7,6 +7,8 @@ interface Player { party: Kin[]; bag: Record<string, number>; money: number; def
 interface Battle { phase: string; outcome: { winner: number | null; reason: string } | null; sides: { party: { hp: number }[]; active: number }[] }
 type Hooks = {
   scene(): string | null;
+  save(): Promise<boolean>;
+  load(): Promise<boolean>;
   player(): Player;
   battle(): Battle | null;
   goto(name: string, params?: Record<string, unknown>): Promise<void>;
@@ -143,6 +145,7 @@ test('trainer battle: beat Pim, learn a move, level up, unlock Ember Ridge', asy
   await hooks(page, (g) => g.setFast(false));
   await shot(page, '04-forget-move', project);
   await page.getByTestId('forget-1').click();
+  await page.getByTestId('btn-forget-yes').click();
   await hooks(page, (g) => g.setFast(true));
   await expect(page.getByTestId('btn-continue')).toBeVisible({ timeout: 20000 });
   await expect(page.getByTestId('btn-go-ridge')).toBeVisible();
@@ -167,6 +170,70 @@ test('trainer battle: beat Pim, learn a move, level up, unlock Ember Ridge', asy
   await page.waitForTimeout(400);
   await expectRendered(page);
   await shot(page, '07-route-ridge', project);
+  expect(errors, 'console errors').toEqual([]);
+});
+
+test('battle results are saved before playback; forgetting a move needs a confirm', async ({ page }, info) => {
+  test.skip(info.project.name === 'phone', 'flow covered on desktop');
+  const errors = watchConsole(page);
+  await page.goto('/?seed=21&scene=route&route=meadow');
+  await waitScene(page, 'route');
+  await hooks(page, (g) => { g.debugSetParty([{ species: 'cindertail', level: 20, xpToNext: 10 }, { species: 'breezel', level: 8 }]); return g.goto('route', { route: 'meadow' }); });
+  await waitScene(page, 'route');
+  expect(await hooks(page, (g) => g.save())).toBe(true); // enables autosave like a real adventure
+  const money0 = (await hooks(page, (g) => g.player())).money;
+  await page.getByTestId('spot-scout-pim').click();
+  await waitScene(page, 'battle');
+  await hooks(page, (g) => g.setFast(true));
+  await waitIdle(page);
+  await fightToEnd(page);
+  await expect(page.getByTestId('btn-skip-move')).toBeVisible({ timeout: 20000 });
+  // Mashing keys can't forget a move: the safe choice has focus, a digit only asks first.
+  await expect(page.getByTestId('btn-skip-move')).toBeFocused();
+  await page.keyboard.press('2');
+  await expect(page.getByTestId('btn-forget-yes')).toBeVisible();
+  await expect(page.getByTestId('btn-forget-no')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('btn-skip-move')).toBeVisible();
+  const moves = (await hooks(page, (g) => g.player())).party[0]!.moves.map((m) => m.id);
+  expect(moves).not.toContain('quick-jab');
+  // The tab is hidden mid-playback: the save already has the whole result (XP, win, money).
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  await page.waitForTimeout(400);
+  await page.goto('/?seed=21');
+  await waitScene(page, 'title');
+  expect(await hooks(page, (g) => g.load())).toBe(true);
+  const p = await hooks(page, (g) => g.player());
+  expect(p.defeatedTrainers).toContain('scout-pim');
+  expect(p.money).toBe(money0 + 250);
+  expect(p.party[0]!.level).toBe(21);
+  expect(errors, 'console errors').toEqual([]);
+});
+
+test('a stopped evolution can be restarted from the Party screen', async ({ page }, info) => {
+  test.skip(info.project.name === 'phone', 'flow covered on desktop');
+  const errors = watchConsole(page);
+  await page.goto('/?seed=5&scene=route&route=meadow');
+  await waitScene(page, 'route');
+  await hooks(page, (g) => { g.debugSetParty([{ species: 'breezel', level: 3 }, { species: 'ashkit', level: 30 }]); return g.goto('party', { from: 'route', route: 'meadow' }); });
+  await waitScene(page, 'party');
+  await expect(page.getByTestId('btn-evolve')).toHaveCount(0); // breezel L3 can't
+  await page.getByTestId('party-1').click();
+  await page.getByTestId('btn-evolve').click();
+  await waitScene(page, 'evolution');
+  await page.getByTestId('btn-evo-stop').click();
+  await expect(page.getByTestId('btn-evo-continue')).toBeVisible({ timeout: 20000 });
+  await page.getByTestId('btn-evo-continue').click();
+  await waitScene(page, 'party');
+  expect((await hooks(page, (g) => g.player())).party[1]!.species).toBe('ashkit');
+  // Still offered after stopping; this time let it happen.
+  await page.getByTestId('btn-evolve').click();
+  await waitScene(page, 'evolution');
+  await page.getByTestId('btn-evo-skip').click();
+  await expect(page.getByTestId('btn-evo-continue')).toBeVisible({ timeout: 20000 });
+  await page.getByTestId('btn-evo-continue').click();
+  await waitScene(page, 'party');
+  expect((await hooks(page, (g) => g.player())).party[1]!.species).toBe('cindertail');
   expect(errors, 'console errors').toEqual([]);
 });
 

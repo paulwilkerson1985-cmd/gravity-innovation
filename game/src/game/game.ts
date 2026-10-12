@@ -37,6 +37,8 @@ export class Game {
   private pendingSave: { promise: Promise<boolean>; resolve: (ok: boolean) => void } | null = null;
   private writing: Promise<unknown> = Promise.resolve();
   private playAcc = 0;
+  /** True while a battle runs: its effects are saved together when it ends (docs/DECISIONS.md). */
+  private savesPaused = false;
 
   constructor(root: HTMLElement, readonly opts: GameOptions) {
     getDex(); // validate content at load
@@ -87,7 +89,7 @@ export class Game {
    * Resolves true when written; never throws/rejects. No-op (false) before an adventure starts.
    */
   save(opts: { now?: boolean } = {}): Promise<boolean> {
-    if (!this.saveEnabled || this.player.party.length === 0) return Promise.resolve(false);
+    if (!this.saveEnabled || this.savesPaused || this.player.party.length === 0) return Promise.resolve(false);
     if (!this.pendingSave) {
       let resolve!: (ok: boolean) => void;
       const promise = new Promise<boolean>((r) => { resolve = r; });
@@ -99,12 +101,27 @@ export class Game {
     const run = () => {
       this.saveTimer = null;
       this.pendingSave = null;
+      if (this.savesPaused || !this.saveEnabled) { pending.resolve(false); return; }
       const snapshot = structuredClone(this.player);
       this.writing = this.writing.then(() => this.saves.write(snapshot)).then(() => pending.resolve(true), () => pending.resolve(false));
     };
     if (opts.now) run();
     else this.saveTimer = setTimeout(run, AUTOSAVE_DEBOUNCE_MS);
     return pending.promise;
+  }
+
+  /**
+   * A battle is starting: write any pending autosave now, then hold autosaves (pagehide,
+   * debounced) until `resumeSaves`. Spent orbs/items and battle HP are saved together with the
+   * outcome, never half-way; closing the tab mid-battle resumes from just before it.
+   */
+  pauseSaves() {
+    if (this.saveTimer) void this.save({ now: true });
+    this.savesPaused = true;
+  }
+
+  resumeSaves() {
+    this.savesPaused = false;
   }
 
   /** Is there anything in the save slot (even a damaged one)? */
