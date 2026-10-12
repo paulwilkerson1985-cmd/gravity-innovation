@@ -18,8 +18,8 @@ const nameOf = (c: OwnedCreature) => c.nickname ?? species(c.species).name;
  * The (L + offset) term makes yield grow a little faster than linearly, so late levels on the
  * level³ curve don't need several times more battles than early ones. Tuned in docs/BALANCE.md.
  */
-export const XP_DIVISOR = 270;
-export const XP_LEVEL_OFFSET = 25;
+export const XP_DIVISOR = 430;
+export const XP_LEVEL_OFFSET = 45;
 export const TRAINER_XP_BONUS = 1.5;
 /** Fraction of a foe's yield given to each conscious party member that did not face it. */
 export const BENCH_XP_SHARE = 0.5;

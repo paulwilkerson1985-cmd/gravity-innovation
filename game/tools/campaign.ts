@@ -7,10 +7,13 @@
 //   npx tsx tools/campaign.ts --policy smart        (Ace-advised play for the whole campaign)
 //   npx tsx tools/campaign.ts --champ-trials 20     (Champion first-try trials per run)
 //   npx tsx tools/campaign.ts --champ-delta -2      (analysis: shift Vale's levels in the trials)
+//   npx tsx tools/campaign.ts --solo                (starter-solo variant, see below)
+//   npx tsx tools/campaign.ts --pim-check 200       (lone starter at L6–9 vs Pim, first try)
 //
 // Casual player model ("casual" policy)
-// - Battles: Skilled-AI move choice (best expected damage); switches only when a kin faints
-//   (best-matchup replacement). In trainer battles drinks a Tonic / Mega Tonic when the active
+// - Battles: type-aware like a player reading the SUPER/WEAK tags: Skilled-AI move choice (best
+//   expected damage incl. type), switches out of a clearly losing 1-v-1 into a bench kin that
+//   clearly wins it, best-matchup replacement after a faint. In trainer battles drinks a Tonic / Mega Tonic when the active
 //   kin drops below 30% HP (at most twice per kin). Never runs.
 // - Catching: wants a few new species per route (1 meadow, 2 ridge, 3 coast) plus any rare
 //   dual-type it meets; weakens the foe with a move that won't KO, then throws the cheapest orb
@@ -27,8 +30,11 @@
 //   signpost (cap 25 battles).
 // - Shop: after each trainer win keeps 5 orbs and buys Tonics (meadow/ridge) or Mega Tonics
 //   (coast: up to 4; before the Champion: up to 8), keeping a small reserve.
-// Other policies: "greedy" = casual + switches out of a clearly losing 1-v-1 into a bench kin
-// that clearly wins it; "smart" = battle choices from the Ace AI (the in-game advice hook).
+// Other policies: "basic" = casual without voluntary switches (switch only on faint);
+// "smart" = battle choices from the Ace AI (the in-game advice hook).
+// --solo: "starter carries" variant — no catches on the meadow and the starter always leads,
+// whatever its level (the rest of the party only gets bench XP).
+// Economy: wild KOs pay 6 × foe level coins (the game's wild coin reward), trainers their reward.
 // Champion first-try odds are estimated with --champ-trials battle seeds per policy from the
 // same pre-Champion save.
 import {
@@ -41,7 +47,7 @@ import {
 } from '../src/game/state';
 import {
   CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionQueue, evolvePartyMember, startTrainerBattle,
-  teachMove, trainerVictory,
+  teachMove, trainerVictory, withDebugParty,
 } from '../src/game/progress';
 
 // ------------------------------------------------------------------ cli
@@ -60,14 +66,17 @@ const CHAMP_TRIALS = Number(args.get('champ-trials') ?? 10);
 const VERBOSE = args.has('verbose');
 const CHAMP_DELTA = Number(args.get('champ-delta') ?? 0);
 const JSON_OUT = args.has('json');
+const SOLO = args.has('solo');
+/** Coins per wild KO, per foe level (mirrors the game's wild reward). */
+const WILD_COINS_PER_LEVEL = 6;
 
-type Policy = 'casual' | 'greedy' | 'smart';
+type Policy = 'basic' | 'casual' | 'smart';
 
 // ------------------------------------------------------------------ tunables of the player model
 const CATCH_GOAL: Record<string, number> = { meadow: 1, ridge: 2, coast: 3 };
 const RARES = new Set(['petalwisp', 'vulcrag', 'surgeray']);
 /** Wild battles allowed on a route before the first trainer challenge, however under-levelled. */
-const ROUTE_CAP: Record<string, number> = { meadow: 15, ridge: 30, coast: 35, plateau: 25 };
+const ROUTE_CAP: Record<string, number> = { meadow: 18, ridge: 30, coast: 35, plateau: 25 };
 const RETRY_GRIND = 5;
 const MAX_ATTEMPTS = 8;
 const TRAINER_ORDER = ['scout-pim', 'hiker-brann', 'adept-sola', 'angler-merrow', 'rider-tavi', CHAMPION_ID];
@@ -123,8 +132,9 @@ function playerAction(state: BattleState, p: PlayerState, policy: Policy, wantCa
       return { type: 'catch', orb: cheapOk ?? best };
     }
   }
-  if (policy === 'greedy') {
-    // Greedy switching: leave a clearly losing 1-v-1 for a bench kin that clearly wins it.
+  if (policy === 'casual') {
+    // Type-aware switching (the player reads the SUPER/WEAK tags): leave a clearly losing 1-v-1
+    // for a bench kin that clearly wins it.
     const last = state.sides[0].lastSwitchTurn ?? -99;
     if (state.turn - last > 2 && matchup(me, foe) < -0.3) {
       let best = -1;
@@ -188,6 +198,11 @@ function leadStrongest(p: PlayerState, uid: string): PlayerState {
   return i ? setLead(p, i) : p;
 }
 
+function leadUid(p: PlayerState, uid: string): PlayerState {
+  const i = p.party.findIndex((c) => c.uid === uid);
+  return i > 0 ? setLead(p, i) : p;
+}
+
 function shop(p0: PlayerState, routeId: string): PlayerState {
   let p = p0;
   const orbs = bagCount(p, 'orb') + bagCount(p, 'bright') + bagCount(p, 'star');
@@ -228,6 +243,10 @@ interface RunLog {
   champParty: string[];
   completed: boolean;
   wildByRoute: Record<string, number>;
+  /** XP the lead earned per won wild battle, by route. */
+  leadXp: Record<string, number[]>;
+  /** Starter level when it first reached each trainer. */
+  starterAt: Record<string, number>;
 }
 
 function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
@@ -235,7 +254,7 @@ function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
   const starterUid = p.party[0]!.uid;
   const log: RunLog = {
     starter, seed, trainers: [], wild: 0, trainerBattles: 0, caught: [], coins: 0, coinsEarned: 0, finalLevels: [], finalParty: [],
-    champ: {}, champLevels: [], champParty: [], completed: false, wildByRoute: {},
+    champ: {}, champLevels: [], champParty: [], completed: false, wildByRoute: {}, leadXp: {}, starterAt: {},
   };
   const routes = [...getDex().routes.values()];
   const caughtOnRoute: Record<string, number> = {};
@@ -246,12 +265,12 @@ function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
     const route = getDex().routes.get(routeId)!;
     const spots = route.hotspots.filter((h) => h.kind !== 'trainer');
     const spot = spots[spotCursor++ % spots.length]!;
-    p = leadStrongest(healParty(p), starterUid);
+    p = SOLO ? leadUid(healParty(p), starterUid) : leadStrongest(healParty(p), starterUid);
     const setup = startWildBattle(p, routeId, spot.id);
     p = setup.player;
     const foe = active(setup.battle, 1);
     const already = p.caught.includes(foe.species);
-    const goal = CATCH_GOAL[routeId] ?? 0;
+    const goal = SOLO && routeId === 'meadow' ? 0 : CATCH_GOAL[routeId] ?? 0;
     let want = !already && ((caughtOnRoute[routeId] ?? 0) < goal || RARES.has(foe.species));
     // A full party only catches clear upgrades.
     if (want && p.party.length >= 6) {
@@ -278,7 +297,13 @@ function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
         p = { ...p, party, box: [...p.box.slice(0, -1), out] };
       }
     } else if (r.state.outcome?.winner === 0) {
+      const leadUidNow = r.state.sides[0].party[0]!.uid;
+      const before = p.party.find((c) => c.uid === leadUidNow)?.xp ?? 0;
       p = afterWin(p, r.state);
+      const gained = (p.party.find((c) => c.uid === leadUidNow)?.xp ?? before) - before;
+      (log.leadXp[routeId] ??= []).push(gained);
+      p = { ...p, money: p.money + WILD_COINS_PER_LEVEL * foe.level };
+      log.coinsEarned += WILD_COINS_PER_LEVEL * foe.level;
     }
     p = healParty(p);
     log.wild++;
@@ -286,7 +311,7 @@ function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
   };
 
   const trainerBattle = (id: string, pol: Policy, commit: boolean): boolean => {
-    p = leadStrongest(healParty(p), starterUid);
+    p = SOLO ? leadUid(healParty(p), starterUid) : leadStrongest(healParty(p), starterUid);
     const setup = startTrainerBattle(p, id);
     const r = playBattle(setup.player, setup.battle, pol, false, getTrainer(id).ai);
     if (!commit) return r.state.outcome?.winner === 0;
@@ -321,6 +346,7 @@ function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
     const ready = () => (hasWild ? top3(p) : avgLevel(p)) >= target;
     while (!ready() && (log.wildByRoute[grindRoute] ?? 0) - routeStart < cap) wildBattle(grindRoute);
     p = shop(p, route.id);
+    log.starterAt[tid] = p.party.find((c) => c.uid === starterUid)?.level ?? 0;
     const entry: TrainerLog = { id: tid, attempts: 0, firstWin: false, won: false, levelsAtFirst: p.party.map((c) => c.level), wildBefore: log.wild };
     if (tid === CHAMPION_ID) {
       log.champLevels = p.party.map((c) => c.level);
@@ -331,7 +357,7 @@ function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
       const vale = getTrainer(tid);
       const orig = vale.party.map((x) => x.level);
       vale.party.forEach((x, k) => { x.level = orig[k]! + CHAMP_DELTA; });
-      for (const pol of ['casual', 'greedy', 'smart'] as Policy[]) {
+      for (const pol of ['basic', 'casual', 'smart'] as Policy[]) {
         let w = 0;
         for (let k = 0; k < CHAMP_TRIALS; k++) {
           p = { ...save, rng: hashSeed(seed, 0xc4a, k) };
@@ -363,6 +389,28 @@ function runCampaign(starter: string, seed: number, policy: Policy): RunLog {
 
 // ------------------------------------------------------------------ report
 const starters = STARTER_ARG ? [STARTER_ARG] : ['ashkit', 'dropple', 'mossling'];
+
+// --pim-check: a lone starter (moves of its level, fresh bag) vs Scout Pim, first try.
+if (args.has('pim-check')) {
+  const n = Number(args.get('pim-check') === 'true' ? 200 : args.get('pim-check'));
+  console.log(`Starter alone vs ${getTrainer('scout-pim').name}, ${n} tries per cell (policy ${POLICY}):`);
+  console.log('| Starter | L6 | L7 | L8 | L9 |\n|---|---|---|---|---|');
+  for (const st of starters) {
+    const cells: string[] = [];
+    for (const lv of [6, 7, 8, 9]) {
+      let w = 0;
+      for (let k = 0; k < n; k++) {
+        let p = withDebugParty(newPlayer(hashSeed(77, k, lv)), [{ species: st, level: lv }]);
+        p = healParty(p);
+        const setup = startTrainerBattle(p, 'scout-pim');
+        if (playBattle(setup.player, setup.battle, POLICY, false, 'rookie').state.outcome?.winner === 0) w++;
+      }
+      cells.push(`${Math.round((100 * w) / n)}%`);
+    }
+    console.log(`| ${st} | ${cells.join(' | ')} |`);
+  }
+  process.exit(0);
+}
 const all: RunLog[] = [];
 const t0 = performance.now();
 for (const st of starters) {
@@ -371,7 +419,7 @@ for (const st of starters) {
     const r = runCampaign(st, seed, POLICY);
     all.push(r);
     if (VERBOSE) {
-      console.log(`  pre-Champion: ${r.champParty.join(' ')}  casual ${r.champ.casual} greedy ${r.champ.greedy} smart ${r.champ.smart}`);
+      console.log(`  pre-Champion: ${r.champParty.join(' ')}  basic ${r.champ.basic} casual ${r.champ.casual} smart ${r.champ.smart}`);
       console.log(`${st} seed ${i}: wild ${r.wild}, trainer battles ${r.trainerBattles}, ${r.completed ? 'CHAMPION' : 'stuck'}; party ${r.finalParty.join(' ')}; caught ${r.caught.join(',')}`);
       for (const t of r.trainers) console.log(`   ${t.id.padEnd(14)} lv[${t.levelsAtFirst.join(',')}] wild≤${t.wildBefore} attempts ${t.attempts}${t.won ? '' : ' LOST'}`);
     }
@@ -385,21 +433,27 @@ const f1 = (x: number) => (Number.isFinite(x) ? x.toFixed(1) : '–');
 
 function table(runs: RunLog[], label: string) {
   console.log(`\n### ${label} (${runs.length} runs, policy ${POLICY})`);
-  console.log('| Trainer | top lvl | top-3 avg | party size | wild before | 1st-try win | avg attempts | beaten |');
-  console.log('|---|---|---|---|---|---|---|---|');
+  console.log('| Trainer | starter lvl | top lvl | top-3 avg | party size | wild before | 1st-try win | avg attempts | beaten |');
+  console.log('|---|---|---|---|---|---|---|---|---|');
   for (const tid of TRAINER_ORDER) {
     const ts = runs.map((r) => r.trainers.find((t) => t.id === tid)).filter((t): t is TrainerLog => !!t);
     if (!ts.length) continue;
     const tops = ts.map((t) => Math.max(...t.levelsAtFirst));
     const t3 = ts.map((t) => { const l = [...t.levelsAtFirst].sort((a, b) => b - a).slice(0, 3); return mean(l); });
     const foeMax = Math.max(...getTrainer(tid).party.map((x) => x.level));
-    console.log(`| ${tid} (≤L${foeMax}) | ${f1(mean(tops))} | ${f1(mean(t3))} | ${f1(mean(ts.map((t) => t.levelsAtFirst.length)))} | ${f1(mean(ts.map((t) => t.wildBefore)))} | ${pct(mean(ts.map((t) => (t.firstWin ? 1 : 0))))} | ${f1(mean(ts.map((t) => t.attempts)))} | ${pct(ts.filter((t) => t.won).length / runs.length)} |`);
+    console.log(`| ${tid} (≤L${foeMax}) | ${f1(mean(runs.filter((r) => r.starterAt[tid]).map((r) => r.starterAt[tid]!)))} | ${f1(mean(tops))} | ${f1(mean(t3))} | ${f1(mean(ts.map((t) => t.levelsAtFirst.length)))} | ${f1(mean(ts.map((t) => t.wildBefore)))} | ${pct(mean(ts.map((t) => (t.firstWin ? 1 : 0))))} | ${f1(mean(ts.map((t) => t.attempts)))} | ${pct(ts.filter((t) => t.won).length / runs.length)} |`);
   }
   const done = runs.filter((r) => r.completed);
   const champ = (pol: Policy) => pct(mean(runs.filter((r) => r.champ[pol] !== undefined).map((r) => r.champ[pol]!)));
-  console.log(`\nChampion first-try (${CHAMP_TRIALS} trials each from the pre-Champion save): casual ${champ('casual')}, greedy-switch ${champ('greedy')}, smart ${champ('smart')}`);
+  console.log(`\nChampion first-try (${CHAMP_TRIALS} trials each from the pre-Champion save): basic ${champ('basic')}, casual ${champ('casual')}, smart ${champ('smart')}`);
   console.log(`Completed ${done.length}/${runs.length}; total battles ${f1(mean(runs.map((r) => r.wild + r.trainerBattles)))} (wild ${f1(mean(runs.map((r) => r.wild)))}: ${Object.keys(ROUTE_CAP).map((k) => `${k} ${f1(mean(runs.map((r) => r.wildByRoute[k] ?? 0)))}`).join(', ')}); coins earned ${f1(mean(runs.map((r) => r.coinsEarned)))}, left ${f1(mean(runs.map((r) => r.coins)))}`);
   console.log(`Final levels: top ${f1(mean(runs.map((r) => Math.max(...r.finalLevels))))}, avg ${f1(mean(runs.map((r) => mean(r.finalLevels))))}; reached L30: ${pct(runs.filter((r) => r.finalLevels.includes(30)).length / runs.length)}; caught/run ${f1(mean(runs.map((r) => r.caught.length)))}`);
+  const xpLine = Object.keys(ROUTE_CAP).filter((k) => runs.some((r) => r.leadXp[k]?.length)).map((k) => {
+    const xs = runs.flatMap((r) => r.leadXp[k] ?? []).sort((a, b) => a - b);
+    const q = (f: number) => xs[Math.floor(f * (xs.length - 1))]!;
+    return `${k} mean ${Math.round(mean(xs))} (p10 ${q(0.1)}, p90 ${q(0.9)})`;
+  });
+  console.log(`Lead XP per won wild battle: ${xpLine.join('; ')}`);
   const species: Record<string, number> = {};
   for (const r of runs) for (const s of new Set(r.caught)) species[s] = (species[s] ?? 0) + 1;
   console.log(`Catches (runs): ${Object.entries(species).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ')}`);

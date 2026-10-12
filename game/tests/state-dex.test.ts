@@ -9,7 +9,7 @@ describe('bestiary derivations', () => {
   it('habitats come from route encounter tables', () => {
     const h = habitatsOf('breezel');
     expect(h.length).toBeGreaterThan(2);
-    expect(h[0]).toMatchObject({ route: 'Mossy Meadow', spot: 'Tall grass', min: 2, max: 5, rarity: 'Common' });
+    expect(h[0]).toMatchObject({ route: 'Mossy Meadow', spot: 'Tall grass', min: 2, max: 4, rarity: 'Common' });
     expect(habitatsOf('ashkit')).toEqual([]);
     expect(habitatsOf('petalwisp').some((x) => x.rarity === 'Rare')).toBe(true);
   });

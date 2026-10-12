@@ -5,8 +5,9 @@ export const TRAINERS: TrainerData[] = [
   {
     id: 'scout-pim', name: 'Pim', title: 'Sprout Scout', routeId: 'meadow', ai: 'rookie',
     party: [
-      { species: 'flickwing', level: 5 },
-      { species: 'breezel', level: 7 },
+      { species: 'pebblet', level: 3 },
+      { species: 'flickwing', level: 4 },
+      { species: 'breezel', level: 5 },
     ],
     reward: 250,
     intro: 'I\'ve been training all morning! Let\'s see if your kin can keep up!',
@@ -39,9 +40,9 @@ export const TRAINERS: TrainerData[] = [
   {
     id: 'angler-merrow', name: 'Merrow', title: 'Storm Angler', routeId: 'coast', ai: 'skilled',
     party: [
-      { species: 'rillback', level: 22, moves: ['riptide-slam', 'second-wind', 'brine-mist', 'droplet-shot'] },
+      { species: 'rillback', level: 21, moves: ['riptide-slam', 'second-wind', 'brine-mist', 'droplet-shot'] },
       { species: 'surgeray', level: 22, moves: ['volt-lunge', 'riptide-slam', 'jolt-wave', 'static-nip'] },
-      { species: 'stormoth', level: 23, moves: ['volt-lunge', 'breeze-cut', 'battle-cry', 'jolt-wave'] },
+      { species: 'stormoth', level: 22, moves: ['volt-lunge', 'breeze-cut', 'static-nip', 'jolt-wave'] },
     ],
     reward: 1300,
     intro: 'Nothing bites in a squall like this... except my team!',

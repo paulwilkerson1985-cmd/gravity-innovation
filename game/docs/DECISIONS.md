@@ -105,7 +105,7 @@ The host repo (`gravity-innovation`) is an unrelated physics project, so the gam
 
 ## Balance
 Full method and numbers are in `docs/BALANCE.md`. The tools are `tools/campaign.ts` (headless campaign with a casual, greedy or smart player) and `tools/arena-balance.ts` (Ace vs Ace survey).
-- **XP formula**: yield = ⌊xpYield·L·(L+25)/270·(1.5 if trainer)⌋. Yield grows a little faster than linearly, so late levels don't take several times more battles than early ones.
+- **XP formula**: yield = ⌊xpYield·L·(L+45)/430·(1.5 if trainer)⌋ (pass 2; pass 1 was (L+25)/270). Yield grows a little faster than linearly, so late levels don't take several times more battles than early ones.
 - **Bench share**: every conscious party kin that didn't face a fainted foe gets ⌊yield·0.5⌋. Before this, casual teams snowballed one carry: the original data gave 3/90 Champions in simulation, now 90/90. Participants split the full yield as before; PvP gives no XP.
 - **Final starter evolutions at 26** (was 28) so starters reach their last form before Vale. Late big moves come a little earlier (2-stage lines at 24; Vulcrag's Pyre Crash at 23).
 - **Curve**:
@@ -131,3 +131,9 @@ Full method and numbers are in `docs/BALANCE.md`. The tools are `tools/campaign.
 - **Orbs are lantern-buds** (original design, replaces a ball silhouette that read too close to an existing franchise): a faceted pointed pod in a collar, glowing tip, no hemispheres/band/button. Tiers by colour *and* shape — **Orb** coral pod + 4 green sepals; **Bright Orb** sky-blue pod, 5 sepals, tilted gold halo ring; **Star Orb** gold pod with a flat cream/pink 8-point star collar. Bag/shop/catch-menu icons are matching inline SVGs (`ui/icons.ts`, injected as a CSS skin over the existing `.ico-*` / `.orb-ico` hooks). The orb reacts on its own: each shake wobble puffs sparkles from the tip, the success "click" (emissive pulse) fires a 4-point glint.
 - **Move FX**: projectile/trail from user to foe where it fits, then a flash + element particle burst + ground ring for every element, plus a signature at the target scaled to its measured height (≥ ~0.8×): Flame pillar of tongues + rising embers; Tide bubble volley → splash crown, droplets, ripples; Flora leaf volley → thorn vines with blossoms; Spark sky bolt + crackle cage; Terra boulder → rock spikes, shards, dust; Gale wind blades → tornado; Neutral star flash + impact lines. Optional `power` arg: ≤ 45 weak (0.8×), ≤ 70 normal, > 70 strong (1.3× + more pieces). Main FX bodies use normal blending with dark backing colours (additive washes out on bright meadows); additive is kept for glows.
 - **No shader links mid-battle**: `flatMaterial()` is one shared persistent material; FX use pooled persistent materials; every common material shape is compiled against each scene's lights/fog on its first frame (`render/materials.ts`). Persistent materials ignore `dispose()` and `disposeTree` skips them. `MeshBuilder` geometry has no normals (all consumers are flat-shaded or unlit).
+- **Pass 2 (real-UI playtest)**:
+  - Pim is Pebblet 3, Flickwing 4, Breezel 5. One kin per starter weakness, so a lone Mossling at L8 wins about 95% (was about 65%). The meadow signpost is Lv 2–8.
+  - Meadow wilds are one level lower; stage-1 starters get +8–10 base HP against early crit swings.
+  - Wild XP yields are smoothed: stage-1 kin 54/56 → 70/72, evolved kin about 160 → 136, rare duals 185 → 160. The ridge pays more and the coast spikes less (p90 612 → 466).
+  - Merrow is 21/22/22 and his Stormoth has no Battle Cry.
+  - The simulator's casual player is now type-aware. `--solo` and `--pim-check` cover starter-carry play. Wild KOs pay 6 coins per foe level.

@@ -87,7 +87,7 @@ Every starter has one or two hard type matchups: Flame against Brann's Terra, Fl
 ## The changes
 
 ### XP (`src/engine/progression.ts`)
-- **Yield:** `⌊xpYield · L · (L + 25) / 270 · (1.5 if trainer)⌋` (was `⌊xpYield · L / 7 · 1.5⌋`). Yield now grows a little faster than linearly with level, so a level takes about 1 battle at L5 and 3–4 at L25. Before, it took 0.6 and ~5. Covered by the "XP pacing" test.
+- **Yield:** `⌊xpYield · L · (L + 45) / 430 · (1.5 if trainer)⌋` (pass 1 used `(L + 25) / 270`; see the follow-up below; originally `⌊xpYield · L / 7 · 1.5⌋`). Yield now grows a little faster than linearly with level, so a level takes about 1 battle at L5 and 3–4 at L25. Before, it took 0.6 and ~5. Covered by the "XP pacing" test.
 - **Bench share:** every conscious party member that did not face a fainted foe gets `⌊yield × BENCH_XP_SHARE⌋` (0.5). Without it, a casual team snowballs one carry while new catches stay behind. With it, catches keep pace and the starter stays the lead. Participants still split the full yield as before. PvP still gives no XP.
 
 ### Species (`src/data/species.ts`)
@@ -136,6 +136,62 @@ Every starter has one or two hard type matchups: Flame against Brann's Terra, Fl
 Vale's movesets keep one status or setup tool per kin (Updraft, Jolt Wave, Spore Puff + Second Wind, Bedrock Brace, Brine Mist). Trials showed that an all-attack Vale is *harder* for casual players. Status turns are where a non-switching player catches up. Maelstrode lost Second Wind: Breaker Crush plus a 50% heal every other turn was the main source of unwinnable stalls.
 
 Item prices and rentals are unchanged; all rental movesets remain legal.
+
+## Follow-up: real-UI playtest (pass 2)
+
+A playtest through the real UI (115+ battles, with a type-aware bot) found four problems:
+- **Ember Ridge was a slog:** about 50 wild battles for the lead to go from L9 to L14.
+- **The coast XP spiked:** 500–800 XP per fight.
+- **Mossling was the hard starter:** a lone Mossling at L8 lost to Pim, while Ashkit crushed him.
+- **Merrow was a wall** at party L14–20, while Tavi fell first try. Early meadow fights were also swingy.
+
+**Simulator changes:**
+- The default `casual` policy is now type-aware. It reads the SUPER/WEAK tags: best expected damage including type, and a switch out of a clearly losing 1-v-1. The old switch-only-on-faint player is `basic`.
+- `--solo` runs a starter-carries variant: no meadow catches, and the starter leads every fight.
+- `--pim-check N` puts a lone starter at L6–9 against Pim.
+- Wild KOs pay 6 × foe level coins, mirroring the game's new wild coin reward.
+- Per route, the tool reports the lead's XP per won wild battle (mean, p10, p90).
+
+**Data changes:**
+- **Pim** is now Pebblet 3, Flickwing 4, Breezel 5 (was Flickwing 5, Breezel 7). Each starter has exactly one bad matchup and nobody gets a free pass. The meadow signpost is Lv 2–8, so players arrive at about L8. L7→8 is a big damage step: the level factor ⌊2L/5⌋+2 goes from 4 to 5.
+- **Meadow wilds are one level lower** (L2–4 in the tall grass, L3–5 elsewhere). Stage-1 starters get more HP: Ashkit 44 → 52, Dropple 52 → 60, Mossling 48 → 58. This takes the edge off early crits on ~20-HP pools.
+- **XP yields are smoothed:**
+  - Wild stage-1 kin: Flickwing and Breezel 54 → 70, Pebblet 56 → 72.
+  - Wild evolved kin: Stormoth and Cyclonyx 160 → 136, Cragmaul 162 → 138.
+  - Rare duals: 185 → 160.
+  - Formula: offset 25 → 45, divisor 270 → 430, which lifts low-level XP by about 15–20%.
+- **Merrow** is now Rillback 21, Surgeray 22, Stormoth 22 (was 22 / 22 / 23). Stormoth swapped Battle Cry for Static Nip, so it no longer sets up and sweeps.
+
+**Results** (30 seeds × 3 starters each; type-aware casual policy; "before" is pass 1 data under the new policy and coin economy):
+
+| | Before (normal) | After (normal) | Before (solo) | After (solo) |
+|---|---|---|---|---|
+| Pim 1st try | 97% (Ashkit 100, Dropple 92, Mossling 83) | 99% (100 / 100 / 97) | 50% (100 / **25** / **25**) | **96%** (100 / 97 / 90) |
+| Brann / Sola | 78 / 94% | 74 / 98% | 51 / 86% | 66 / 81% |
+| Merrow / Tavi | 86 / 72% | 86 / 76% | 71 / 79% | 78 / 82% |
+| Vale trials: basic / casual / smart | 42 / 71 / 74% | 40 / 68 / 71% | 49 / 76 / 78% | 39 / 64 / 70% |
+| Ridge wild battles | 23 | 23 | 37 | 30 (Ashkit 36, Dropple 21, Mossling 32) |
+| Lead XP per wild win, ridge (mean) | 72–81 | 82 | 56 | 74 |
+| Lead XP per wild win, coast (mean / p90) | 254 / 612 | 235 / **466** | 211 / 533 | 201 / **417** |
+| Total battles | 104 | 106 | 114 | 114 |
+
+The pass-1 "before" numbers come from 12-seed runs. The other columns are 30-seed runs.
+
+**Lone starter vs Pim** (`--pim-check 300`, first try):
+
+| | L6 | L7 | L8 | L9 |
+|---|---|---|---|---|
+| Before: Ashkit | 96% | 100% | 100% | 100% |
+| Before: Dropple | 29% | 52% | 87% | 95% |
+| Before: Mossling | 14% | 18% | 65% | 76% |
+| After: Ashkit | 70% | 96% | 100% | 100% |
+| After: Dropple | 83% | 89% | 100% | 100% |
+| After: Mossling | 44% | 69% | **95%** | **97%** |
+
+**Still open:**
+- Against a *type-aware* player the skilled-AI trainers sit above the original targets: Sola about 98%, Merrow about 86%. Those targets were set for the non-switching player; the `basic` policy still finds them harder.
+- The meadow often hits its 18-battle cap. In normal play this happens because a fresh L3 catch drags down the "top-3" average of a two-kin party.
+- Smart play against Vale stays at about 70%, for the mirror-match reason above.
 
 ## Arena (PvP)
 

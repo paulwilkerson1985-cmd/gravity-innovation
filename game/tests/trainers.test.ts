@@ -23,8 +23,8 @@ describe('trainers', () => {
     expect(onRoute('plateau')).toHaveLength(1);
     const pim = onRoute('meadow')[0]!;
     expect(pim.ai).toBe('rookie');
-    expect(pim.party).toHaveLength(2);
-    for (const p of pim.party) expect(p.level >= 5 && p.level <= 7).toBe(true);
+    expect(pim.party).toHaveLength(3); // one Terra, Spark and Gale kin: every starter has one bad matchup
+    for (const p of pim.party) expect(p.level >= 3 && p.level <= 5).toBe(true);
     for (const t of onRoute('ridge')) {
       expect(t.ai).toBe('skilled');
       for (const p of t.party) expect(p.level >= 11 && p.level <= 15).toBe(true);

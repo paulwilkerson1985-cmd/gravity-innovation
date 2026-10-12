@@ -2,22 +2,22 @@ import type { RouteData } from '../engine/types';
 
 export const ROUTES: RouteData[] = [
   {
-    id: 'meadow', name: 'Mossy Meadow', levelRange: [2, 6], theme: 'meadow',
+    id: 'meadow', name: 'Mossy Meadow', levelRange: [2, 8], theme: 'meadow',
     hotspots: [
       { id: 'tall-grass', kind: 'grass', label: 'Tall grass', table: [
-        { species: 'breezel', weight: 45, min: 2, max: 5 },
-        { species: 'flickwing', weight: 40, min: 2, max: 5 },
-        { species: 'pebblet', weight: 12, min: 3, max: 5 },
+        { species: 'breezel', weight: 40, min: 2, max: 4 },
+        { species: 'flickwing', weight: 40, min: 2, max: 4 },
+        { species: 'pebblet', weight: 17, min: 3, max: 5 },
         { species: 'petalwisp', weight: 3, min: 6, max: 7 },
       ] },
       { id: 'flower-patch', kind: 'grass', label: 'Flower patch', table: [
-        { species: 'flickwing', weight: 55, min: 3, max: 6 },
-        { species: 'breezel', weight: 40, min: 3, max: 6 },
+        { species: 'flickwing', weight: 50, min: 3, max: 5 },
+        { species: 'breezel', weight: 45, min: 3, max: 5 },
         { species: 'petalwisp', weight: 5, min: 6, max: 7 },
       ] },
       { id: 'hollow', kind: 'cave', label: 'Rocky hollow', table: [
-        { species: 'pebblet', weight: 85, min: 3, max: 6 },
-        { species: 'flickwing', weight: 15, min: 3, max: 5 },
+        { species: 'pebblet', weight: 80, min: 3, max: 5 },
+        { species: 'flickwing', weight: 20, min: 3, max: 5 },
       ] },
       { id: 'scout-pim', kind: 'trainer', label: 'Sprout Scout Pim', trainer: 'scout-pim', table: [] },
     ],
