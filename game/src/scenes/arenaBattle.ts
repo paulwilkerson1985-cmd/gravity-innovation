@@ -203,6 +203,8 @@ export class ArenaBattleScene extends BaseScene {
 
   private globalKeys = (e: KeyboardEvent) => {
     if (this.curtainUp) return;
+    // Held keys (auto-repeat) never click through prompts.
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ' || e.key === 'z')) { e.preventDefault(); return; }
     if (e.target instanceof HTMLInputElement) return;
     if (this.advance && (e.key === 'Enter' || e.key === ' ' || e.key === 'z')) { e.preventDefault(); this.advance(); }
     if (e.key === 'Escape' || e.key === 'x') this.menu.querySelector<HTMLButtonElement>('[data-back]')?.click();
@@ -425,6 +427,8 @@ export class ArenaBattleScene extends BaseScene {
       abtn('Yes, forfeit', { class: 'btn-fight', 'data-testid': 'btn-forfeit-yes', sfx: 'back', onclick: () => this.choose(seat, { type: 'forfeit' }) }),
       abtn('Keep fighting', { class: 'btn-kin', 'data-back': true, 'data-testid': 'btn-forfeit-no', onclick: () => this.showMain(seat) }),
     ]);
+    // The safe choice gets the focus: a stray Enter must not forfeit.
+    this.menu.querySelector<HTMLButtonElement>('[data-testid="btn-forfeit-no"]')?.focus({ preventScroll: true });
   }
 
   // ------------------------------------------------------------------ online flow

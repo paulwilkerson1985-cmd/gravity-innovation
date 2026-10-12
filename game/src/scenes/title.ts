@@ -19,7 +19,7 @@ export class TitleScene extends BaseScene {
   private peeking: Promise<SavePeek> | null = null;
   private busy = false;
   private keyHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && document.activeElement === document.body && !document.querySelector('.modal-root')) {
+    if (e.key === 'Enter' && !e.repeat && document.activeElement === document.body && !document.querySelector('.modal-root')) {
       if (this.peek && 'summary' in this.peek) void this.continue(); else void this.start();
     }
   };

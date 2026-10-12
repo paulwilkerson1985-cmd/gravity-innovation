@@ -153,6 +153,8 @@ export function openModal(opts: ModalOptions): ModalHandle {
   const root = h('div', { class: 'modal-root' }, h('div', { class: 'modal-backdrop', onclick: () => { if (dismissable) close(); } }), panel);
   const onKey = (e: KeyboardEvent) => {
     if (topModal() !== handle) return;
+    // A key held down from the previous screen (auto-repeat) must not confirm a dialog.
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();
