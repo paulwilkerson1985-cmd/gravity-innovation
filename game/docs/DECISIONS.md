@@ -41,6 +41,7 @@ The host repo (`gravity-innovation`) is an unrelated physics project, so the gam
 
 ## Rendering
 - Creature models are procedural: body + parts from primitives, flat-shaded with vertex colours and **merged into one mesh per creature** (1 draw call). Evolution = bigger scale + extra parts + richer palette.
+- Creature designs (concept, silhouette, signature part, palette and stage escalation for all 18 species) live in `docs/CREATURES.md`; bespoke builders in `src/render/creatures/`.
 - Pixel-crisp look: internal render scale 0.5 of the (DPR-capped-at-2) canvas, upscaled with `image-rendering: pixelated`.
 
 ## Number / taste changes vs. the brief

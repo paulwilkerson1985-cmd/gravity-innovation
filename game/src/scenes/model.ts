@@ -132,9 +132,19 @@ export class ModelScene extends BaseScene {
       bb.max.y += v.hover;
       bb.min.multiplyScalar(v.baseScale);
       bb.max.multiplyScalar(v.baseScale);
-      // Rotation-agnostic: use the horizontal radius.
-      const r = Math.max(Math.abs(bb.min.x), Math.abs(bb.max.x), Math.abs(bb.min.z), Math.abs(bb.max.z));
-      if (this.mode === 'single') { bb.min.x = bb.min.z = -r; bb.max.x = bb.max.z = r; }
+      if (this.mode === 'single') {
+        if (this.yaw === null) {
+          // Turntable: rotation-agnostic horizontal radius.
+          const r = Math.max(Math.abs(bb.min.x), Math.abs(bb.max.x), Math.abs(bb.min.z), Math.abs(bb.max.z));
+          bb.min.x = bb.min.z = -r; bb.max.x = bb.max.z = r;
+        } else {
+          // Fixed view: frame the model as actually rotated.
+          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -this.yaw);
+          const rb = new THREE.Box3();
+          for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.min.y, bb.max.y]) for (const z of [bb.min.z, bb.max.z]) rb.expandByPoint(new THREE.Vector3(x, y, z).applyQuaternion(q));
+          bb.copy(rb);
+        }
+      }
       bb.translate(v.root.position);
       this.box.union(bb);
     }
@@ -169,9 +179,9 @@ export class ModelScene extends BaseScene {
     const size = this.box.getSize(new THREE.Vector3());
     const center = this.box.getCenter(new THREE.Vector3());
     const tanV = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    const fitH = (size.y * 0.5 + 0.15) / tanV;
-    const fitW = (Math.max(size.x, this.mode === 'single' ? size.z : 0) * 0.5 + 0.2) / (tanV * aspect);
-    const d = Math.max(fitH, fitW) * 1.06 + (this.mode === 'single' ? size.x * 0.25 : size.z * 0.5);
+    const fitH = (size.y * 0.5 + 0.1) / tanV;
+    const fitW = (size.x * 0.5 + 0.12) / (tanV * aspect);
+    const d = Math.max(fitH, fitW) * 1.04 + size.z * 0.5;
     const dir = new THREE.Vector3(0, Math.sin(this.elev), Math.cos(this.elev));
     cam.position.copy(center).addScaledVector(dir, d);
     cam.lookAt(center);

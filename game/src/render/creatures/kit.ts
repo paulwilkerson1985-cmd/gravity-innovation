@@ -8,7 +8,8 @@ import * as THREE from 'three';
 export type V3 = THREE.Vector3 | [number, number, number];
 export type Col = THREE.ColorRepresentation;
 /** A flat colour, or a painter choosing a colour from the face's world normal / centroid. */
-export type Paint = Col | ((n: THREE.Vector3, c: THREE.Vector3) => Col);
+/** Painters get the face normal, centroid and the face's index within the primitive. */
+export type Paint = Col | ((n: THREE.Vector3, c: THREE.Vector3, i: number) => Col);
 
 export const RIG = { none: 0, flap: 1, wag: 2, nod: 3, flicker: 4, blink: 5, twitch: 6, roll: 7 } as const;
 export type RigKind = keyof typeof RIG;
@@ -143,7 +144,7 @@ export class Kit {
       const len = tmpN.length();
       if (!(len > 1e-12)) continue; // degenerate (e.g. sphere poles)
       tmpN.multiplyScalar(1 / len);
-      const base = flat ?? resolve((paint as (n: THREE.Vector3, c: THREE.Vector3) => Col)(tmpN, tmpM.copy(tmpA).add(tmpB).add(tmpC).multiplyScalar(1 / 3)));
+      const base = flat ?? resolve((paint as (n: THREE.Vector3, c: THREE.Vector3, i: number) => Col)(tmpN, tmpM.copy(tmpA).add(tmpB).add(tmpC).multiplyScalar(1 / 3), i / 3));
       this.faceSeed = (this.faceSeed * 1103515245 + 12345) >>> 0;
       let k = 1 + ((this.faceSeed >>> 8) % 1000 / 1000 - 0.5) * jit;
       if (bake) k *= 1 + 0.07 * tmpN.y;
@@ -239,10 +240,13 @@ export class Kit {
     for (let i = 0; i < n; i++) {
       const p = centers[i]!;
       const tan = centers[Math.min(n - 1, i + 1)]!.clone().sub(centers[Math.max(0, i - 1)]!).normalize();
-      let side = new THREE.Vector3().crossVectors(tan, V(0, 1, 0));
-      if (side.lengthSq() < 1e-4) side = prevSide ? prevSide.clone() : V(1, 0, 0);
+      // Parallel transport: carry the previous ring's side vector onto this ring's plane, so the
+      // tube never twists (twisted quads shade as zig-zags at low resolution).
+      let side: THREE.Vector3;
+      if (prevSide) side = prevSide.clone().addScaledVector(tan, -prevSide.dot(tan));
+      else side = new THREE.Vector3().crossVectors(tan, V(0, 1, 0));
+      if (side.lengthSq() < 1e-6) side = new THREE.Vector3().crossVectors(tan, V(1, 0, 0));
       side.normalize();
-      if (prevSide && side.dot(prevSide) < 0) side.negate();
       prevSide = side;
       const up = new THREE.Vector3().crossVectors(side, tan).normalize();
       const r = radii[i]!;
@@ -254,14 +258,24 @@ export class Kit {
       rings.push(ring);
     }
     const posArr: number[] = [];
+    // Each quad is painted as a whole from its smooth radial direction, so colour bands
+    // (bellies, stripes) follow ring edges instead of zig-zagging across triangle pairs.
+    const quadN: THREE.Vector3[] = [];
+    const quadC: THREE.Vector3[] = [];
     const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => posArr.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     for (let i = 0; i < n - 1; i++) {
+      const axis = centers[i]!.clone().add(centers[i + 1]!).multiplyScalar(0.5);
       for (let j = 0; j < sides; j++) {
         const a = rings[i]![j]!, b = rings[i]![(j + 1) % sides]!, c = rings[i + 1]![j]!, d = rings[i + 1]![(j + 1) % sides]!;
         tri(a, c, b);
         tri(b, c, d);
+        const qc = a.clone().add(b).add(c).add(d).multiplyScalar(0.25);
+        const qn = qc.clone().sub(axis).normalize();
+        quadN.push(qn, qn);
+        quadC.push(qc, qc);
       }
     }
+    const nQuadTris = quadN.length;
     const cap = (ring: THREE.Vector3[], rev: boolean) => {
       const cen = ring.reduce((s, v) => s.add(v), V(0, 0, 0)).multiplyScalar(1 / ring.length);
       for (let j = 0; j < sides; j++) {
@@ -273,7 +287,10 @@ export class Kit {
     if (o.capEnd ?? true) cap(rings[n - 1]!, true);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
-    this.geo(g, new THREE.Matrix4(), paint);
+    const smooth: Paint = typeof paint === 'function'
+      ? (fn, fc, i) => (i < nQuadTris ? paint(quadN[i]!, quadC[i]!, i) : paint(fn, fc, i))
+      : paint;
+    this.geo(g, new THREE.Matrix4(), smooth);
     g.dispose();
   }
 

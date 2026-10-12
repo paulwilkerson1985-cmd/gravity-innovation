@@ -41,13 +41,13 @@ for `species=`, `view=`, `lineup=`, `battle=1&mine=&foe=`, `anim=`, `theme=`, `l
 | | Concept & silhouette | Signature | Palette |
 |---|---|---|---|
 | **Mossling** | Round mossy puffball with lumpy moss clumps, tiny feet, pink cheeks. | A swaying two-leaf sprout; a tiny pink blossom in the moss. | grass green, pale green face, pink |
-| **Thistlehorn** | Stocky goat/deer grazer with hooves and leaf ears. | One forward horn crowned by a **purple thistle bloom**; shingled leaf saddle on its back. | green, pale lime belly, purple bloom, bone horn |
+| **Thistlehorn** | Stocky goat/deer grazer with hooves and leaf ears. | One forward horn crowned by a **purple thistle bloom**; a mossy mantle on its back fringed with rounded leaves lying flat down the flanks. | green, pale lime belly, purple bloom, bone horn |
 | **Verdantusk** | Massive, low, pillar-legged thicket beast with a heavy brow. | Big curved **ivory tusks**; a grove (two little trees, bushes, ferns, pink blossoms) growing on its back; thistle crown; leaf ears. | deep green, lime belly, bark brown legs, ivory, pink |
 
 ## Spark line — static bug → storm moth
 | | Concept & silhouette | Signature | Palette |
 |---|---|---|---|
-| **Flickwing** | Round fuzzy firefly-beetle with big eyes, fast-buzzing rounded wings. | Zig-zag **lightning-bolt antennae**, glowing tail bulb, pale wing panes in dark frames. | yellow `#ffd83a`, charcoal stripes, pale yellow |
+| **Flickwing** | A static-charged firefly: one round fuzzy body whose fur stands on end, lifted orange wing cases, fast-buzzing pale-cyan wings. | **Glowing lantern tail**, zig-zag lightning-bolt antennae with cyan spark tips, static-fluffed crest. | yellow `#ffd83a`, lantern pale yellow, orange cases, cyan sparks |
 | **Stormoth** | Big moth with wide storm wings held in a V, slower wingbeats, hovers higher. | Indigo wings with a **yellow lightning bolt** and cloud spots, white storm-cloud ruff, feathery antennae. | gold, indigo `#3d2fa0`, violet, cloud white |
 
 ## Terra line — pebble → crystal-fisted boulder

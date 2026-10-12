@@ -280,7 +280,7 @@ const maelstrode: Design = {
 const mossling: Design = {
   scale: 0.9, idle: 'bounce',
   build(k) {
-    const main = '#5cc94a', light = '#e9ffc0', dark = '#3a9a3a', pink = '#ff8fb0';
+    const main = '#5cc94a', light = '#e9ffc0', dark = '#43a641', pink = '#ff8fb0';
     const body = k.orb((n, c) => (n.z > 0.5 && c.y < 0.48 ? light : main), [0, 0.42, 0], [0.42, 0.38, 0.4], { w: 10, h: 7, jitter: 0.12 });
     const clumps: [number, number, number, Col][] = [[Math.PI, 0.45, 0.15, dark], [2.3, 0.25, 0.13, dark], [-2.3, 0.25, 0.13, dark], [1.7, 0.6, 0.12, '#7ad85a'], [-1.7, 0.6, 0.12, '#7ad85a'], [Math.PI, 1.0, 0.13, '#7ad85a'], [1.0, 1.05, 0.11, dark], [-1.0, 1.05, 0.11, dark], [2.6, 0.85, 0.12, main]];
     for (const [yaw, pitch, r, c] of clumps) k.ball(c, surface(body, yaw, pitch, 0.92).p, r, { detail: 0, jitter: 0.15 });
@@ -307,13 +307,12 @@ const thistlehorn: Design = {
     k.orb(under(main, belly), [0, 0.63, -0.36], [0.22, 0.22, 0.23]);
     k.tube(under(main, belly, -0.4), [[0, 0.62, -0.42], [0, 0.63, -0.18], [0, 0.66, 0.06], [0, 0.7, 0.2]], (t) => 0.21 + 0.03 * Math.sin(Math.PI * t), { segs: 6, sides: 8 });
     k.orb((n) => (n.z > 0.4 ? belly : main), [0, 0.69, 0.2], [0.22, 0.23, 0.21]);
-    // Leafy saddle shingled along the back.
-    for (let i = 0; i < 3; i++) {
-      const z = 0.06 - i * 0.18;
-      const y = 0.9 - i * 0.012;
-      sym(k, (sx) => leaf(k, i % 2 ? dark : '#2f9a40', V(S(sx, 0.03), y, z), V(S(sx, 0.85), -0.05, -0.55), V(S(sx, 0.1), 1, 0), 0.27, 0.18, 0.04));
+    // Mossy mantle on the back, fringed with rounded leaves that lie flat down the flanks.
+    k.ball('#2f9a40', [0, 0.86, -0.1], [0.2, 0.09, 0.33], { detail: 1, jitter: 0.16 });
+    for (const [z, len] of [[0.12, 0.2], [-0.1, 0.22], [-0.32, 0.2]] as const) {
+      sym(k, (sx) => slabAt(k, dark, petalShape(len, 0.15), 0.04, V(S(sx, 0.12), 0.86, z), V(S(sx, 1), -0.75, -0.15), V(S(sx, 0.75), 1, 0)));
     }
-    leaf(k, dark, V(0, 0.9, 0.14), V(0, 0.35, -1), V(0, 1, 0.3), 0.3, 0.17, 0.04);
+    slabAt(k, dark, petalShape(0.2, 0.15), 0.04, V(0, 0.86, -0.4), V(0, -0.5, -1), V(0, 1, -0.5));
     k.limb((n) => (n.z > 0.45 ? belly : main), V(0, 0.74, 0.22), V(0, 0.87, 0.4), 0.12, 0.1, 7);
     const head = k.orb(main, [0, 0.92, 0.48], [0.19, 0.17, 0.21], { w: 9, h: 6 });
     k.orb(belly, [0, 0.83, 0.65], [0.125, 0.095, 0.11]);
@@ -397,32 +396,41 @@ const verdantusk: Design = {
 const flickwing: Design = {
   scale: 0.9, hover: 0.14, idle: 'float',
   build(k) {
-    const main = '#ffd83a', pale = '#fff6c2', dark = '#2b2b3a', glow = '#fffbe0';
-    const stripes: Paint = (_n, c) => (Math.floor((c.z + 2) * 11) % 2 ? dark : main);
-    k.orb(main, [0, 0.5, 0], [0.24, 0.23, 0.23], { jitter: 0.1 });
-    k.orb(stripes, [0, 0.45, -0.3], [0.19, 0.18, 0.25], { w: 8, h: 6 });
-    k.withRig({ kind: 'flicker', pivot: V(0, 0.42, -0.5), amp: 0.25, speed: 5 }, () => k.orb(glow, [0, 0.42, -0.54], [0.1, 0.1, 0.08], { w: 7, h: 5 }));
-    const head = k.orb(main, [0, 0.58, 0.27], [0.2, 0.19, 0.18], { w: 9, h: 6 });
-    eyes(k, head, { yaw: 0.48, pitch: 0.15, size: 0.075, aspect: 1.22 });
-    mouth(k, head, -0.25, 0.04, '#6a4a10', 0.5);
+    // A static-charged firefly: one round fuzzy body with its fur standing on end, orange wing
+    // cases, pale-cyan buzzing wings, bolt antennae with spark tips and a glowing lantern tail.
+    const main = '#ffd83a', shell = '#ff9f1c', spark = '#7fe8ff', wing = '#dcf6ff', frameC = '#4aa8d8', dark = '#2b2b3a', lamp = '#f6ffb8';
+    const body = k.orb(main, [0, 0.52, 0.05], [0.27, 0.26, 0.26], { w: 10, h: 7, jitter: 0.1 });
+    // Static fur: tufts standing straight up.
+    for (const [yaw, pitch, len] of [[0, 1.25, 0.18], [0.35, 1.05, 0.15], [-0.35, 1.05, 0.15], [0.8, 0.85, 0.12], [-0.8, 0.85, 0.12], [Math.PI, 0.95, 0.12], [2.2, 0.8, 0.1], [-2.2, 0.8, 0.1]] as const) {
+      const s = surface(body, yaw, pitch, 0.9);
+      k.cone(Math.abs(yaw) < 0.5 ? '#fff3a8' : main, s.p, s.p.clone().addScaledVector(s.n.clone().add(V(0, 1.2, 0)).normalize(), len), 0.055, 4);
+    }
+    eyes(k, body, { yaw: 0.42, pitch: 0.05, size: 0.08, aspect: 1.25 });
+    sym(k, (sx) => decal(k, body, S(sx, 0.78), -0.18, 0.045, 0.03, '#ff9a6a'));
+    mouth(k, body, -0.25, 0.045, '#8a5a10', 0.5);
+    // Lantern tail.
+    k.orb(main, [0, 0.47, -0.2], 0.12, { w: 7, h: 5 });
+    k.withRig({ kind: 'flicker', pivot: V(0, 0.44, -0.36), amp: 0.07, speed: 4 }, () => {
+      k.orb((_n, c) => (Math.abs(c.z + 0.36) < 0.035 ? shell : lamp), [0, 0.44, -0.36], [0.19, 0.18, 0.2], { w: 9, h: 6 });
+    });
     sym(k, (sx) => {
-      // Zig-zag lightning antennae.
-      k.withRig({ kind: 'nod', pivot: V(S(sx, 0.08), 0.72, 0.3), amp: 0.12, phase: sx, speed: 3 }, () => {
-        const f = frame(V(S(sx, 0.08), 0.72, 0.3), V(S(sx, 0.35), 1, 0.25), V(0, 0, 1));
+      k.withRig({ kind: 'nod', pivot: V(S(sx, 0.09), 0.74, 0.12), amp: 0.12, phase: sx, speed: 3 }, () => {
+        const f = frame(V(S(sx, 0.09), 0.74, 0.12), V(S(sx, 0.4), 1, 0.15), V(0, 0, 1));
         f.slab(k, dark, sx > 0 ? boltShape(0.3, 0.11) : boltShape(0.3, 0.11).map(([x, y]) => [-x, y] as [number, number]), 0.045);
-        k.orb(main, f.at(0, 0.31), 0.05, { w: 6, h: 4 });
+        k.orb(spark, f.at(0, 0.31), 0.055, { w: 6, h: 4 });
       });
-      // Two pairs of rounded wings: pale panes in a dark frame.
-      k.withRig({ kind: 'flap', pivot: V(S(sx, 0.14), 0.62, -0.02), amp: 0.5, speed: 22 }, () => {
-        const up = frame(V(S(sx, 0.14), 0.62, -0.02), V(S(sx, 1), 0.75, -0.3), V(0, 0.3, 1));
-        const wing: [number, number][] = [[0, 0], [0.13, 0.08], [0.19, 0.3], [0.13, 0.47], [0, 0.52], [-0.1, 0.44], [-0.13, 0.22], [-0.07, 0.05]];
-        up.slab(k, dark, wing.map(([x, y]) => [x * 1.12, y * 1.08] as [number, number]), 0.035);
-        up.slab(k, pale, wing, 0.055);
-        const lo = frame(V(S(sx, 0.13), 0.52, -0.06), V(S(sx, 1), -0.2, -0.3), V(0, 0.3, 1));
-        lo.slab(k, dark, wing.map(([x, y]) => [x * 0.8, y * 0.7] as [number, number]), 0.035);
-        lo.slab(k, pale, wing.map(([x, y]) => [x * 0.68, y * 0.6] as [number, number]), 0.055);
+      // Wing cases, lifted.
+      k.withRig({ kind: 'flap', pivot: V(S(sx, 0.08), 0.7, -0.02), amp: 0.12, speed: 7 }, () => {
+        k.orb((n) => (n.y > 0 ? shell : '#d97a0a'), [S(sx, 0.13), 0.74, -0.14], [0.14, 0.055, 0.24], { rot: [0.3, 0, S(sx, 0.55)], w: 8, h: 4 });
       });
-      for (const z of [0.12, -0.04, -0.2]) k.limb(dark, V(S(sx, 0.12), 0.38, z), V(S(sx, 0.2), 0.2, z + 0.04), 0.03, 0.022, 4);
+      // Buzzing wings: pale cyan panes in a blue frame.
+      k.withRig({ kind: 'flap', pivot: V(S(sx, 0.12), 0.66, -0.06), amp: 0.5, speed: 22 }, () => {
+        const up = frame(V(S(sx, 0.12), 0.66, -0.06), V(S(sx, 1), 0.65, -0.35), V(0, 0.3, 1));
+        const wingS: [number, number][] = [[0, 0], [0.12, 0.08], [0.17, 0.28], [0.12, 0.44], [0, 0.48], [-0.1, 0.4], [-0.12, 0.2], [-0.06, 0.05]];
+        up.slab(k, frameC, wingS.map(([x, y]) => [x * 1.14, y * 1.08] as [number, number]), 0.035);
+        up.slab(k, wing, wingS, 0.055);
+      });
+      for (const z of [0.12, -0.04]) k.limb(dark, V(S(sx, 0.12), 0.34, z), V(S(sx, 0.17), 0.24, z + 0.04), 0.032, 0.026, 4);
     });
   },
 };
@@ -473,7 +481,7 @@ const pebblet: Design = {
   build(k) {
     const main = '#a3825c', light = '#dcc6a2', dark = '#7a6044', crystal = '#6fd0e0';
     const body = k.ball((n, c) => (n.z > 0.45 && c.y < 0.42 ? light : main), [0, 0.34, 0], [0.4, 0.33, 0.37], { jitter: 0.14 });
-    for (const [yaw, pitch, r] of [[1.9, 0.2, 0.1], [-2.1, 0.35, 0.11], [2.8, -0.1, 0.09]] as const) k.ball(dark, surface(body, yaw, pitch, 0.95).p, r, { detail: 0, jitter: 0.1 });
+    for (const [yaw, pitch, r] of [[2.0, -0.35, 0.08], [-2.3, -0.25, 0.085], [2.9, -0.45, 0.07]] as const) k.ball(dark, surface(body, yaw, pitch, 0.95).p, r, { detail: 0, jitter: 0.1 });
     // Crystal sprouts on its back.
     for (const [yaw, pitch, h] of [[Math.PI, 0.8, 0.17], [2.6, 0.55, 0.12], [-2.6, 0.6, 0.13], [Math.PI, 0.35, 0.1]] as const) {
       const s = surface(body, yaw, pitch, 0.9);
@@ -607,7 +615,7 @@ const vulcrag: Design = {
         k.orb(magma, pts[i + 1]!, 0.032, { w: 4, h: 3 });
       }
     };
-    for (const [a, y0, y1, w] of [[0.95, 0.12, 0.62, 0.2], [-0.95, 0.15, 0.7, 0.24], [2.2, 0.1, 0.95, 0.22], [-2.3, 0.12, 0.9, 0.2], [Math.PI, 0.2, 1.1, 0.18], [0.3, 0.12, 0.3, 0.2]] as const) vein(a, y0, y1, w);
+    for (const [a, y0, y1, w] of [[0.95, 0.12, 0.62, 0.2], [-0.95, 0.15, 0.7, 0.24], [2.2, 0.1, 0.95, 0.22], [-2.3, 0.12, 0.9, 0.2], [Math.PI, 0.2, 1.1, 0.18]] as const) vein(a, y0, y1, w);
     // Rocky shoulder plates.
     sym(k, (sx) => k.ball(basalt2, [S(sx, 0.48), 0.86, 0.0], [0.22, 0.2, 0.22], { detail: 0, jitter: 0.12 }));
     for (const [x, y, z, r] of [[0.25, 0.95, -0.3, 0.13], [-0.3, 0.5, -0.45, 0.14], [0.4, 0.35, -0.35, 0.12]] as const) k.ball(basalt2, [x, y, z], r, { detail: 0, jitter: 0.12 });
