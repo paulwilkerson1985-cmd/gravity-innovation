@@ -589,7 +589,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 .arena-vkin .hpbar { min-width: 0; height: 8px; }
 .arena-vkin.out { opacity: .55; }
 .arena-vactions .btn { min-height: 52px; }
-.arena-pulse { animation: arena-throb .5s ease-in-out infinite alternate; }
+.arena-pulse { animation: arena-glow .6s ease-in-out infinite alternate; }
+@keyframes arena-glow { from { box-shadow: 0 4px 0 var(--shadow), 0 0 0 0 #ffcf3f; } to { box-shadow: 0 4px 0 var(--shadow), 0 0 0 6px #ffcf3f; filter: brightness(1.15); } }
 @media (max-aspect-ratio: 1/1) {
   .arena-vstat-v { font-size: 18px; }
 }

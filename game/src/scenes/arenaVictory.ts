@@ -62,6 +62,8 @@ export class ArenaVictoryScene extends BaseScene {
       v.root.rotation.y = (at.x === 0 ? 0 : at.x < 0 ? 0.3 : -0.3);
       // The lead (centre, top step) stands a little taller; fainted kin a little smaller.
       v.baseScale *= (at.x === 0 ? 1.18 : 1) * (fainted ? 0.9 : 1);
+      // Fliers/swimmers float: settle them closer to their step so they read as "on" the podium.
+      if (v.hovering) v.root.position.y -= 0.35 * v.baseScale;
       this.scene.add(v.root);
       this.views.push(v);
       void v.appear();
