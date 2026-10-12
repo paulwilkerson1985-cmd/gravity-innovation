@@ -1,5 +1,5 @@
 // Headless battle simulator.
-//   npm run sim -- --battles 200 --seed 7 --level 25 --size 3 --a skilled --b rookie
+//   npm run sim -- --battles 200 --seed 7 --level 25 --size 3 --a ace --b skilled   (tiers: rookie | skilled | ace)
 //   npm run sim -- --verbose --battles 1   (prints a full play-by-play)
 import {
   Rng, chooseAction, createBattle, getDex, makeCreature, resolveTurn, toBattle,
@@ -19,8 +19,14 @@ const battles = num('battles', 100);
 const seed = num('seed', 1);
 const level = num('level', 25);
 const size = num('size', 3);
-const tierA = (args.get('a') ?? 'skilled') as AiTier;
-const tierB = (args.get('b') ?? 'rookie') as AiTier;
+const TIERS: AiTier[] = ['rookie', 'skilled', 'ace'];
+function tier(k: string, d: AiTier): AiTier {
+  const v = args.get(k) ?? d;
+  if (!TIERS.includes(v as AiTier)) throw new Error(`--${k} must be one of ${TIERS.join(', ')}`);
+  return v as AiTier;
+}
+const tierA = tier('a', 'skilled');
+const tierB = tier('b', 'rookie');
 const verbose = args.has('verbose');
 
 const dex = getDex();
@@ -35,6 +41,9 @@ function describe(e: BattleEvent, s: BattleState): string | null {
     case 'miss': return '  …it missed';
     case 'damage': return `  ${e.name} took ${e.amount}${e.crit ? ' (crit)' : ''}${e.mult > 1 ? ' (super)' : e.mult < 1 ? ' (resisted)' : ''} [${e.source}] → ${e.hp}/${e.maxHp}`;
     case 'heal': return `  ${e.name} healed ${e.amount} → ${e.hp}/${e.maxHp}`;
+    case 'item': return `${who(e.side)} trainer used ${e.itemName} on ${e.name}`;
+    case 'cure': return `  ${e.name} was cured of ${e.status}`;
+    case 'revive': return `  ${e.name} was revived → ${e.hp}/${e.maxHp}`;
     case 'status': return `  ${e.name} is now ${e.status}`;
     case 'statusFail': return '  …but it failed';
     case 'stage': return `  ${e.name} ${e.stat} ${e.delta >= 0 ? '+' : ''}${e.delta} (now ${e.value})`;
