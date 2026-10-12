@@ -131,7 +131,13 @@ export function backdrop(theme: Theme, seed: number): THREE.Mesh {
       b.add(GEO.cone5, '#6b7394', { p: [x, hgt / 2 - 1, z], r: [0, rng.next(), 0], s: [6, hgt, 6] }, 0.2);
       b.add(GEO.cone5, '#ffffff', { p: [x, hgt - 1 - hgt * 0.17, z], r: [0, rng.next(), 0], s: [2.1, hgt * 0.34, 2.1] }, 0.1);
     }
-    for (let i = 0; i < 4; i++) b.add(GEO.box, '#d8c27a', { p: [-6 + i * 4, 1.2, -9], s: [0.5, 2.4, 0.5] }, 0.1);
+    for (let i = 0; i < 4; i++) {
+      const x = -7.5 + i * 5;
+      b.add(GEO.box, '#b4c0d4', { p: [x, 0.1, -11], s: [0.9, 0.2, 0.9] });
+      b.add(GEO.cyl, '#e9e2f6', { p: [x, 1.4, -11], s: [0.3, 2.6, 0.3] }, 0.05);
+      b.add(GEO.box, '#b4c0d4', { p: [x, 2.75, -11], s: [0.8, 0.2, 0.8] });
+      b.add(GEO.oct, '#ffd23f', { p: [x, 3.15, -11], s: [0.22, 0.32, 0.22] });
+    }
   }
   if (theme === 'ridge') for (let i = 0; i < 4; i++) b.add(GEO.cone5, '#a0563a', { p: [-20 + i * 13, 4, -26 - rng.next() * 6], s: [6 + rng.next() * 3, 9 + rng.next() * 5, 6] }, 0.2);
   return staticMesh(b);
