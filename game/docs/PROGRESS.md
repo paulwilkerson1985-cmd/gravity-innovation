@@ -1,5 +1,15 @@
 # Progress
 
+## 2026-10-12 — Adventure layer (M3 XP/evolution, M4 trainers/items/Champion)
+
+**Evidence:** typecheck ✓, lint ✓, 183/183 unit tests ✓ (incl. 13 in `tests/progress.test.ts`), build ✓, Playwright `smoke` + `adventure` 10/10 ✓ on desktop 1280×720 and Pixel 7 portrait, zero console errors, < 100 draw calls asserted.
+
+- **Battle**: Fight / Bag (Orbs with live catch odds, Items with party targets) / Kin / Run; keyboard arrows, Enter, Esc/x back, 1–9 picks; typewriter text honouring text speed; HP ghost drain, XP bar, party pips, status badges, camera shake on big hits; full audio wiring (music per context, menu/hit/catch/status/XP sfx, cries).
+- **Trainers**: distinct low-poly figures on the route map (✓ badge + greyed when beaten), intro/defeat lines, coins, route unlock announcements + "Travel to"; blackout heals with no penalty.
+- **Progression**: animated XP, level-up cards with stat deltas, auto-learn, forget-a-move prompt; evolution scene (Skip / Stop, queued); Champion → Hall of Fame (podiums, confetti, credits). Screenshots: `screenshots/*-adv-*.png`.
+- **Routes**: all four themed (meadow fence + pond, ridge vents + lava, coast palms + sea, plateau dais + crown arch); locked tabs say who to beat.
+- Known: Champion Vale is hard for greedy play (see DECISIONS); full-suite runs of other agents' specs can time out under heavy parallel load (pass in isolation).
+
 ## 2026-10-12 — M0, M1, M2 complete (stopped for review)
 
 **Evidence (`npm run verify`):** typecheck ✓, lint ✓, 36/36 unit tests ✓ (8 files), production build ✓ (≈149 KB gzip JS), Playwright smoke 4/4 ✓ on desktop 1280×720 and Pixel 7 portrait, zero console errors, canvas non-blank, < 100 draw calls asserted.

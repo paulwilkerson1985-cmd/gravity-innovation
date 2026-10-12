@@ -25,12 +25,12 @@ Boxes are ticked only with evidence (test output or screenshot) recorded in `PRO
 - [x] **Report & stop for review** (awaiting feedback)
 
 ## M3 Progression
-- [ ] Full roster (18) and moves (30) in data, XP + leveling, move learning
-- [ ] Evolution + skippable transformation sequence
+- [x] Full roster (18) and moves (30) in data, XP + leveling, move learning
+- [x] Evolution + skippable transformation sequence
 - [x] Bestiary, storage box, save/load (IndexedDB, versioned, migrations, export/import) — tests/save.test.ts, e2e/meta.spec.ts
 
 ## M4 Depth
-- [ ] Switching UI, items, status UI, trainers, Skilled + Ace AI, Champion
+- [x] Switching UI, items, status UI, trainers, Skilled + Ace AI, Champion
 
 ## M5 PvP hotseat
 - [x] Team builder (collection/rentals), level-30 arena rules, pass-the-device curtain, victory screen (e2e/arena.spec.ts hotseat + CPU)
