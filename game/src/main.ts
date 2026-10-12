@@ -1,0 +1,32 @@
+import './style.css';
+import { Game } from './game/game';
+import { installHooks } from './debug/hooks';
+import { seedFrom } from './engine/rng';
+import { TitleScene } from './scenes/title';
+import { StarterScene } from './scenes/starter';
+import { RouteScene } from './scenes/route';
+import { BattleScene } from './scenes/battle';
+import { PartyScene } from './scenes/party';
+import { ModelScene } from './scenes/model';
+import type { SceneName } from './scenes/base';
+
+const params = new URLSearchParams(location.search);
+const seedParam = params.get('seed');
+// The only non-deterministic input in the whole game: the default seed when none is given.
+const seed = seedParam !== null ? seedFrom(seedParam) : (Math.random() * 2 ** 32) >>> 0;
+const debug = params.get('debug') === '1';
+
+const root = document.getElementById('app')!;
+const game = new Game(root, { seed, debug });
+game.register('title', (g) => new TitleScene(g));
+game.register('starter', (g) => new StarterScene(g));
+game.register('route', (g) => new RouteScene(g));
+game.register('battle', (g) => new BattleScene(g));
+game.register('party', (g) => new PartyScene(g));
+game.register('model', (g) => new ModelScene(g));
+installHooks(game);
+
+const sceneParam = (params.get('scene') ?? 'title') as SceneName;
+const sceneArgs: Record<string, unknown> = {};
+for (const [k, v] of params) if (!['scene', 'seed', 'debug'].includes(k)) sceneArgs[k] = v;
+void game.goto(sceneParam, sceneArgs);

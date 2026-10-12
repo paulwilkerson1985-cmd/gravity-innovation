@@ -52,7 +52,7 @@ const other = (side: 0 | 1): 0 | 1 => (side === 0 ? 1 : 0);
 
 function sendEvent(state: BattleState, side: 0 | 1): BattleEvent {
   const c = active(state, side);
-  return { t: 'send', side, slot: state.sides[side].active, name: c.name, species: c.species, hp: c.hp, maxHp: c.stats.hp, level: c.level };
+  return { t: 'send', side, slot: state.sides[side].active, name: c.name, species: c.species, hp: c.hp, maxHp: c.stats.hp, level: c.level, status: c.status };
 }
 
 function noteParticipation(state: BattleState) {

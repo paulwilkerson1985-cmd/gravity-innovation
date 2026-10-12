@@ -147,7 +147,7 @@ export type CantMoveReason = 'asleep' | 'shocked';
 
 export type BattleEvent =
   | { t: 'turn'; turn: number }
-  | { t: 'send'; side: 0 | 1; slot: number; name: string; species: string; hp: number; maxHp: number; level: number }
+  | { t: 'send'; side: 0 | 1; slot: number; name: string; species: string; hp: number; maxHp: number; level: number; status: StatusId | null }
   | { t: 'move'; side: 0 | 1; name: string; move: string; moveName: string; moveType: MoveElement }
   | { t: 'miss'; side: 0 | 1; name: string }
   | { t: 'damage'; side: 0 | 1; name: string; amount: number; hp: number; maxHp: number; mult: number; crit: boolean; source: 'move' | 'burn' | 'recoil' }
