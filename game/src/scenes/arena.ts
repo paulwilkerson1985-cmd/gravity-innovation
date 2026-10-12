@@ -7,7 +7,7 @@ import { CreatureView } from '../render/creature';
 import { audio } from '../audio/audio';
 import { arrowNav, focusFirst, h, typeChip, TYPE_COLORS } from '../ui/dom';
 import {
-  ARENA_LEVEL, ARENA_TEAM_SIZE, hashSeed, learnableMoves, move as getMove, species, type ArenaEntry,
+  ARENA_LEVEL, ARENA_TEAM_SIZE, hashSeed, learnableMoves, move as getMove, species, type ArenaEntry, type OwnedCreature,
 } from '../engine';
 import { RENTALS } from '../data/rentals';
 import { SEAT_COLORS, SEAT_DARK, buildArena, arenaPlatform, type ArenaSet } from './arenaStage';
@@ -70,11 +70,15 @@ export class ArenaScene extends BaseScene {
   private connecting = false;
   private curtainUp = false;
   private camT = 0;
+  /** The kin available in "My kin": the live adventure, or the saved one if none is loaded. */
+  private collection: { party: OwnedCreature[]; box: OwnedCreature[] } = { party: [], box: [] };
 
   enter(params: Record<string, unknown>) {
     const p = params as ArenaSceneParams;
     const g = this.game;
     this.seed = hashSeed(g.opts.seed, 0xa7e4a);
+    this.collection = { party: g.player.party, box: g.player.box };
+    void this.loadSavedCollection();
     audio.music('arena');
     this.set = buildArena(this.scene, { nearColor: SEAT_COLORS[0], farColor: SEAT_COLORS[1], nearDark: SEAT_DARK[0], farDark: SEAT_DARK[1], spots: this.spots });
     // Showcase pair on the platforms for the lobby.
@@ -110,6 +114,17 @@ export class ArenaScene extends BaseScene {
     } else {
       this.show('menu');
     }
+  }
+
+  /** Arena straight from the title: borrow the saved adventure's kin (read-only). */
+  private async loadSavedCollection() {
+    if (this.collection.party.length + this.collection.box.length > 0) return;
+    try {
+      const saved = await this.game.saves?.read();
+      if (!saved || this.view === undefined) return;
+      this.collection = { party: saved.player.party ?? [], box: saved.player.box ?? [] };
+      if (this.view === 'builder' && !this.curtainUp) this.render();
+    } catch { /* no save, or unreadable: rentals only */ }
   }
 
   override exit() {
@@ -410,7 +425,7 @@ export class ArenaScene extends BaseScene {
   }
 
   private picks(): Pick[] {
-    return this.b!.tab === 'rental' ? rentalPicks() : ownedPicks(this.game.player.party, this.game.player.box);
+    return this.b!.tab === 'rental' ? rentalPicks() : ownedPicks(this.collection.party, this.collection.box);
   }
 
   private update_(fn: (b: Builder) => void) {
@@ -511,7 +526,7 @@ export class ArenaScene extends BaseScene {
     }
 
     // Picks
-    const owned = ownedPicks(this.game.player.party, this.game.player.box);
+    const owned = ownedPicks(this.collection.party, this.collection.box);
     const tabs = h('div', { class: 'arena-tabs', role: 'tablist' },
       abtn(`Rentals (${RENTALS.length})`, { class: `tab${b.tab === 'rental' ? ' on' : ''}`, role: 'tab', 'aria-selected': b.tab === 'rental' ? 'true' : 'false', 'data-testid': 'tab-rental', onclick: () => this.update_((x) => { x.tab = 'rental'; }) }),
       abtn(`My kin (${owned.length})`, { class: `tab${b.tab === 'owned' ? ' on' : ''}`, role: 'tab', 'aria-selected': b.tab === 'owned' ? 'true' : 'false', 'data-testid': 'tab-owned', onclick: () => this.update_((x) => { x.tab = 'owned'; }) }),

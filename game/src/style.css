@@ -529,6 +529,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 .arena-top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; pointer-events: none; }
 .arena-panel { --seat: #fff; border-color: var(--seat); }
 .arena-panel-far { width: min(330px, 62%); min-width: 0; }
+.arena-panel .ptypes { display: inline-flex; gap: 3px; flex-wrap: nowrap; }
 .arena-owner { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -2px 0 6px; }
 .arena-pips { display: inline-flex; gap: 4px; flex: none; }
 .arena-pip { width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff 0 25%, #ff5d73 26% 52%, #fff6e0 53%); border: 2px solid var(--ink); }

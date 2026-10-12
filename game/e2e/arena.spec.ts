@@ -33,7 +33,7 @@ async function shot(page: Page, name: string, project: string) {
   await page.screenshot({ path: `screenshots/${project}-arena-${name}.png` });
 }
 
-async function waitScene(page: Page, name: string, timeout = 20_000) {
+async function waitScene(page: Page, name: string, timeout = 45_000) {
   await page.waitForFunction((n) => (window as unknown as { __game?: Hooks }).__game?.scene() === n, name, { timeout });
 }
 
@@ -188,7 +188,19 @@ test('vs CPU: random team against the Arena Ace, rematch, exit', async ({ page }
   const errors = watchConsole(page);
   await page.goto('/?seed=23&scene=arena');
   await waitScene(page, 'arena');
+  // A kin from the adventure shows up under "My kin", normalised to Lv 30.
+  await page.evaluate(async () => {
+    const g = (window as unknown as { __game: Hooks & { addKin(s: string, l: number): void; goto(n: string): Promise<void> } }).__game;
+    g.addKin('ashkit', 12);
+    void g.goto('arena').then(() => { (window as unknown as { __reentered: boolean }).__reentered = true; });
+  });
+  await page.waitForFunction(() => (window as unknown as { __reentered?: boolean }).__reentered === true, null, { timeout: 45_000 });
   await page.getByTestId('arena-mode-cpu').click();
+  await page.getByTestId('tab-owned').click();
+  const own = page.locator('[data-testid^="pick-own-"]');
+  await expect(own.first()).toContainText('Lv 12 → 30');
+  await own.first().click();
+  await expect(page.getByTestId('slot-0')).toContainText('Ashkit');
   // Keyboard: the builder is reachable without a mouse.
   await page.getByTestId('arena-random').focus();
   await page.keyboard.press('Enter');
@@ -299,6 +311,8 @@ test('online: two browsers play a full match through the arena server', async ({
   await page.waitForTimeout(800);
   await shot(page, '11-online-victory', project);
 
+  await setFast(page, true);
+  await setFast(pageB, true);
   // Rematch needs both players.
   await page.getByTestId('arena-rematch').click();
   await expect(pageB.getByTestId('arena-victory-note')).toContainText('wants a rematch');

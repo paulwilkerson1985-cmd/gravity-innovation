@@ -33,8 +33,8 @@ Boxes are ticked only with evidence (test output or screenshot) recorded in `PRO
 - [ ] Switching UI, items, status UI, trainers, Skilled + Ace AI, Champion
 
 ## M5 PvP hotseat
-- [ ] Team builder (collection/rentals), level-30 arena rules, pass-the-device curtain, victory screen
+- [x] Team builder (collection/rentals), level-30 arena rules, pass-the-device curtain, victory screen (e2e/arena.spec.ts hotseat + CPU)
 
 ## M6 Online PvP & polish
-- [ ] `ws` server running `src/engine`, room codes, hidden commits, timer, reconnect
+- [x] `ws` server running `src/engine`, room codes, hidden commits, timer, reconnect (tests/server.test.ts, e2e/arena.spec.ts online)
 - [ ] Audio, mobile pass, performance pass, production deploy

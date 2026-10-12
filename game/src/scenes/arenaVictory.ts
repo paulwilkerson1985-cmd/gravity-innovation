@@ -58,9 +58,10 @@ export class ArenaVictoryScene extends BaseScene {
     this.scene.add(pod.mesh);
     const stand = (speciesId: string, at: THREE.Vector3, i: number, fainted: boolean) => {
       const v = new CreatureView(species(speciesId).look, i);
-      v.root.position.copy(at).add(pod.mesh.position);
+      v.root.position.copy(at).add(pod.mesh.position).add(new THREE.Vector3(0, 0, at.x === 0 ? 0.2 : 0.1));
       v.root.rotation.y = (at.x === 0 ? 0 : at.x < 0 ? 0.3 : -0.3);
-      if (fainted) v.inner.scale.setScalar(v.baseScale * 0.9);
+      // The lead (centre, top step) stands a little taller; fainted kin a little smaller.
+      v.baseScale *= (at.x === 0 ? 1.18 : 1) * (fainted ? 0.9 : 1);
       this.scene.add(v.root);
       this.views.push(v);
       void v.appear();
