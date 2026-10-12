@@ -29,6 +29,8 @@ export interface ArenaServerOptions {
   sweepMs?: number;
   ttl?: { empty: number; idle: number };
   log?: (msg: string) => void;
+  /** Honour X-Forwarded-For for the per-IP cap (only behind a trusted proxy). Defaults to env TRUST_PROXY=1. */
+  trustProxy?: boolean;
   /** Source of battle seeds (defaults to crypto randomness; tests pass a fixed one). */
   makeSeed?: () => number;
 }
@@ -76,16 +78,32 @@ export function createArenaServer(options: ArenaServerOptions = {}): Promise<Are
   const ttl = options.ttl ?? { empty: 2 * 60_000, idle: 30 * 60_000 };
   const log = options.log ?? (() => {});
   const makeSeed = options.makeSeed ?? (() => randomInt(0, 2 ** 32));
+  const trustProxy = options.trustProxy ?? process.env.TRUST_PROXY === '1';
   const staticDir = options.staticDir ? resolve(options.staticDir) : null;
   const rooms = new Map<string, Room>();
   const perIp = new Map<string, number>();
   const clients = new Set<Client>();
   const started = clock.now();
 
-  const http = createServer((req, res) => handleHttp(req, res));
+  const http = createServer((req, res) => {
+    // One bad request must never take the process down: answer 400/500 and carry on.
+    try {
+      handleHttp(req, res);
+    } catch (err) {
+      log(`http error for ${String(req.url).slice(0, 200)}: ${(err as Error).stack ?? String(err)}`);
+      try {
+        if (!res.headersSent) res.writeHead(err instanceof URIError ? 400 : 500, { 'Content-Type': 'text/plain' });
+        res.end();
+      } catch { /* socket already gone */ }
+    }
+  });
+  http.on('clientError', (_err, socket) => {
+    try { if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); else socket.destroy(); } catch { /* ignore */ }
+  });
 
   function handleHttp(req: IncomingMessage, res: ServerResponse) {
-    const url = new URL(req.url ?? '/', 'http://x');
+    let url: URL;
+    try { url = new URL(req.url ?? '/', 'http://x'); } catch { res.writeHead(400).end(); return; }
     res.setHeader('Access-Control-Allow-Origin', '*');
     if (url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -93,7 +111,10 @@ export function createArenaServer(options: ArenaServerOptions = {}): Promise<Are
       return;
     }
     if (staticDir && (req.method === 'GET' || req.method === 'HEAD')) {
-      const rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
+      let decoded: string;
+      try { decoded = decodeURIComponent(url.pathname); } catch { res.writeHead(400, { 'Content-Type': 'text/plain' }).end('Bad request'); return; }
+      if (decoded.includes('\0')) { res.writeHead(400).end(); return; }
+      const rel = normalize(decoded).replace(/^([/\\])+/, '');
       let file = join(staticDir, rel);
       if (file !== staticDir && !file.startsWith(staticDir + sep)) { res.writeHead(403).end(); return; }
       if (!existsSync(file) || statSync(file).isDirectory()) file = join(staticDir, 'index.html');
@@ -109,13 +130,21 @@ export function createArenaServer(options: ArenaServerOptions = {}): Promise<Are
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
   http.on('upgrade', (req, socket, head) => {
-    const ip = (req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim()) || req.socket.remoteAddress || '?';
+    socket.on('error', () => { /* client vanished mid-handshake */ });
+    // X-Forwarded-For is client-controlled: only trust it behind a proxy we run (TRUST_PROXY=1).
+    const forwarded = trustProxy ? req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() : undefined;
+    const ip = forwarded || req.socket.remoteAddress || '?';
     if ((perIp.get(ip) ?? 0) >= maxPerIp) {
       socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
       socket.destroy();
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, ip));
+    try {
+      wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, ip));
+    } catch (err) {
+      log(`upgrade error: ${(err as Error).stack ?? String(err)}`);
+      socket.destroy();
+    }
   });
 
   function onConnection(ws: WebSocket, ip: string) {
@@ -127,6 +156,14 @@ export function createArenaServer(options: ArenaServerOptions = {}): Promise<Are
     clients.add(client);
     ws.on('pong', () => { client.alive = true; });
     ws.on('message', (data, isBinary) => {
+      try {
+        onMessage(data.toString(), isBinary);
+      } catch (err) {
+        log(`error on message: ${(err as Error).stack ?? String(err)}`);
+        try { reject(client, 'bad-message', 'server error'); } catch { /* socket gone */ }
+      }
+    });
+    const onMessage = (raw: string, isBinary: boolean) => {
       client.alive = true;
       if (isBinary) return reject(client, 'bad-message', 'text frames only');
       if (!takeToken(client)) {
@@ -135,21 +172,19 @@ export function createArenaServer(options: ArenaServerOptions = {}): Promise<Are
         else reject(client, 'rate-limited', 'too many messages');
         return;
       }
-      const raw = data.toString();
       const msg = parseClientMessage(raw);
       if ('error' in msg) return reject(client, 'bad-message', msg.error);
-      try {
-        handle(client, msg);
-      } catch (err) {
-        log(`error handling ${msg.t}: ${(err as Error).stack ?? String(err)}`);
-        reject(client, 'bad-message', 'server error');
-      }
-    });
+      handle(client, msg);
+    };
     ws.on('close', () => {
       clients.delete(client);
       const n = (perIp.get(ip) ?? 1) - 1;
       if (n <= 0) perIp.delete(ip); else perIp.set(ip, n);
-      if (client.room && client.seat !== null) client.room.disconnect(client.seat, client.conn);
+      try {
+        if (client.room && client.seat !== null) client.room.disconnect(client.seat, client.conn);
+      } catch (err) {
+        log(`error on disconnect: ${(err as Error).stack ?? String(err)}`);
+      }
     });
     ws.on('error', () => { /* close follows */ });
   }
@@ -246,7 +281,7 @@ export function createArenaServer(options: ArenaServerOptions = {}): Promise<Are
     }
   }
 
-  const sweepTimer = (options.sweepMs ?? 30_000) > 0 ? setInterval(sweep, options.sweepMs ?? 30_000) : null;
+  const sweepTimer = (options.sweepMs ?? 30_000) > 0 ? setInterval(() => { try { sweep(); } catch (err) { log(`sweep error: ${String(err)}`); } }, options.sweepMs ?? 30_000) : null;
   sweepTimer?.unref();
   const heartbeat = (options.heartbeatMs ?? 25_000) > 0 ? setInterval(() => {
     for (const c of clients) {

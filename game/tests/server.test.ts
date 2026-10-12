@@ -304,4 +304,45 @@ describe('arena server', () => {
     s.sweep();
     expect(s.rooms.size).toBe(0);
   });
+  it('answers malformed URLs with 400 and keeps serving', async () => {
+    const s = await start({ staticDir: 'src' });
+    const bad = await fetch(`http://127.0.0.1:${s.port}/%E0%A4%A`);
+    expect(bad.status).toBe(400);
+    const nul = await fetch(`http://127.0.0.1:${s.port}/a%00b`);
+    expect(nul.status).toBe(400);
+    const ok = await fetch(`http://127.0.0.1:${s.port}/health`);
+    expect(ok.status).toBe(200);
+  });
+
+  it('never sends the battle rng to clients', async () => {
+    const s = await start();
+    const { a, b, code } = await pair(s.port);
+    expect(s.rooms.get(code)!.battle!.rng).not.toBe(0);
+    expect(a.room!.battle!.rng).toBe(0);
+    expect(b.room!.battle!.rng).toBe(0);
+    for (const c of [a, b]) if (c.room!.mustAct) c.send({ t: 'action', step: c.room!.step, action: pick(c.room!) });
+    const t = await a.next(isT('turn'));
+    expect(t.room.battle!.rng).toBe(0);
+  });
+
+  it('ignores X-Forwarded-For unless trustProxy is set', async () => {
+    const tryConnect = (port: number, xff: string) => new Promise<boolean>((done) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { 'X-Forwarded-For': xff } });
+      ws.once('open', () => { open.push(ws); done(true); });
+      ws.once('error', () => done(false));
+    });
+    const open: WebSocket[] = [];
+    try {
+      const s = await start({ maxConnectionsPerIp: 1, trustProxy: false });
+      expect(await tryConnect(s.port, '1.1.1.1')).toBe(true);
+      expect(await tryConnect(s.port, '2.2.2.2')).toBe(false); // same real socket address
+      for (const ws of open.splice(0)) ws.close();
+      await server!.close();
+      const t = await start({ maxConnectionsPerIp: 1, trustProxy: true });
+      expect(await tryConnect(t.port, '1.1.1.1')).toBe(true);
+      expect(await tryConnect(t.port, '2.2.2.2')).toBe(true);
+    } finally {
+      for (const ws of open) ws.close();
+    }
+  });
 });

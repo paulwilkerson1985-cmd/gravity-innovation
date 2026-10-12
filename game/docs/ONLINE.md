@@ -30,6 +30,7 @@ so `http://localhost:8787` is the whole game and online play connects back to th
 | `HOST` | all interfaces | bind address |
 | `STATIC_DIR` | `../dist` if built | serve the built game from this folder (set to empty to disable) |
 | `TURN_SECONDS` | `45` | decision time per turn |
+| `TRUST_PROXY` | unset | set to `1` **only** behind a reverse proxy you control: the per-IP connection cap then uses the first `X-Forwarded-For` address. Otherwise the header is ignored (clients could spoof it) and the socket address is used |
 
 ## Pointing the client at a server
 
@@ -55,6 +56,13 @@ PORT=8080 npm run server     # or: npx tsx server/index.ts
   WebSocket upgrades; the server sends pings every 25 s, so idle timeouts ≥ 60 s are fine.
 - Static game elsewhere (e.g. GitHub Pages / Netlify)? Build it with
   `VITE_ARENA_SERVER=wss://your-arena-host npm run build`.
+- Behind a reverse proxy, set `TRUST_PROXY=1` so the per-IP cap (24 sockets) counts real
+  players instead of the proxy's address. Never set it when the server is directly exposed.
+- Robustness: malformed requests get `400`; errors while handling one request or socket
+  message are logged and the process keeps running (`server/index.ts` also logs uncaught
+  exceptions instead of exiting).
+- Room snapshots never include the battle's rng state (`battle.rng` is sent as `0`), so a
+  modified client cannot predict crits, misses or catches.
 - Health check: `GET /health` → `{ ok, protocol, rooms, players, uptimeSec }`.
 - Rooms live in memory: a restart ends running matches (clients show "Disconnected").
   One process comfortably handles hundreds of rooms; for more, shard by room code.

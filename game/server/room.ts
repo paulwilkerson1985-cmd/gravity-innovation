@@ -315,7 +315,8 @@ export class Room {
       phase: this.phase,
       players: [pv(this.players[0], 0), pv(this.players[1], 1)],
       step: this.step,
-      battle: this.battle,
+      // Never leak the rng state: a modded client could predict crits, misses and catches.
+      battle: this.battle && { ...this.battle, rng: 0 },
       mustAct: acting && !this.pending[seat],
       yourAction: acting ? this.pending[seat] : null,
       deadlineIn: this.deadline === null ? null : Math.max(0, this.deadline - this.clock.now()),

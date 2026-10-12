@@ -10,6 +10,10 @@ const defaultStatic = join(here, '..', 'dist');
 const staticDir = process.env.STATIC_DIR ?? (existsSync(join(defaultStatic, 'index.html')) ? defaultStatic : null);
 const turnSeconds = Number(process.env.TURN_SECONDS ?? 45);
 
+// Last line of defence: a bug triggered by one request/socket message is logged, never fatal.
+process.on('uncaughtException', (err) => console.error('[arena] uncaught exception (continuing):', err));
+process.on('unhandledRejection', (err) => console.error('[arena] unhandled rejection (continuing):', err));
+
 const server = await createArenaServer({
   port,
   host: process.env.HOST,
