@@ -23,6 +23,8 @@ export interface GameHooks {
   waitIdle(timeoutMs?: number): Promise<boolean>;
   canvasStats(): { distinct: number; nonBlack: number; samples: number } | null;
   renderInfo(): { calls: number; triangles: number };
+  /** HD-2D pipeline stats of the current scene (`?gfx=hd2d`), else null. */
+  perf(): unknown;
   seed: number;
   // ---- meta (saves & menus)
   save(): Promise<boolean>;
@@ -73,6 +75,7 @@ export function installHooks(game: Game) {
     }),
     canvasStats: () => (game.current ? game.renderer.sample(game.current.scene, game.current.camera) : null),
     renderInfo: () => ({ calls: game.renderer.gl.info.render.calls, triangles: game.renderer.gl.info.render.triangles }),
+    perf: () => (game.current as unknown as { perf?: () => unknown } | null)?.perf?.() ?? null,
     save: () => { game.saveEnabled = true; return game.save({ now: true }); },
     load: () => game.load(),
     hasSave: () => game.hasSave(),

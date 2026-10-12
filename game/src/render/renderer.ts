@@ -24,12 +24,24 @@ export class Renderer {
   /** Scenes whose programs were warmed, with the number of frames rendered so far. */
   private warmed = new WeakMap<THREE.Scene, number>();
 
+  /** Internal resolution policy override (HD-2D pipeline); null = the default ~420 px height. */
+  private internal: { height: number; minShort: number } | null = null;
+
+  /** Change the internal-resolution policy (HD-2D tiers) and resize the drawing buffer. */
+  setInternal(p: { height: number; minShort: number } | null) {
+    this.internal = p;
+    this.resize();
+  }
+
   /** Returns true if the size changed. */
   resize(): boolean {
     const w = Math.max(1, window.innerWidth);
     const h = Math.max(1, window.innerHeight);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const ratio = Math.min(dpr, Math.max(0.35, TARGET_INTERNAL_HEIGHT / h));
+    const p = this.internal;
+    const ratio = p
+      ? Math.min(dpr, Math.max(0.25, p.height / h, p.minShort / Math.min(w, h)))
+      : Math.min(dpr, Math.max(0.35, TARGET_INTERNAL_HEIGHT / h));
     const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== ratio;
     this.width = w;
     this.height = h;
@@ -44,12 +56,16 @@ export class Renderer {
     const n = this.warmed.get(scene) ?? 0;
     if (n === 0 || n === 30) warmPrograms(this.gl, scene, camera);
     if (n <= 30) this.warmed.set(scene, n + 1);
-    this.gl.render(scene, camera);
+    const custom = scene.userData.render as ((camera: THREE.Camera) => void) | undefined;
+    if (custom) custom(camera);
+    else this.gl.render(scene, camera);
   }
 
   /** Render and sample pixels — used by tests to detect a blank canvas. */
   sample(scene: THREE.Scene, camera: THREE.Camera): { distinct: number; nonBlack: number; samples: number } {
-    this.gl.render(scene, camera);
+    const custom = scene.userData.render as ((camera: THREE.Camera) => void) | undefined;
+    if (custom) custom(camera);
+    else this.gl.render(scene, camera);
     const ctx = this.gl.getContext();
     const w = ctx.drawingBufferWidth;
     const h = ctx.drawingBufferHeight;
