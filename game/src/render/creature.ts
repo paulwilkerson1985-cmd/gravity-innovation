@@ -1,9 +1,15 @@
-// Procedural, part-based low-poly creature generator driven by SpeciesData.look.
-// Every creature is built facing +Z, feet on y = 0, merged into one mesh.
+// Creature models and their animated view.
+// Every known species has a bespoke builder in ./creatures/designs.ts (see docs/CREATURES.md);
+// unknown species fall back to the generic part-based generator below, driven by `look`.
+// Every creature is built facing +Z, feet on y = 0, merged into ONE mesh (1 draw call + shadow).
 import * as THREE from 'three';
 import { GEO, MeshBuilder } from './builder';
 import { ease, tween } from './anim';
 import type { LookData, PartKind } from '../engine/types';
+import { getDex } from '../engine/dex';
+import { Kit } from './creatures/kit';
+import { DESIGNS, type Design, type IdleStyle } from './creatures/designs';
+import { creatureMaterial, type CreatureUniforms } from './creatures/material';
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const LEAF = '#6fdc4c';
@@ -208,7 +214,7 @@ function addPart(b: MeshBuilder, kind: PartKind, a: Anchors, look: LookData) {
   }
 }
 
-export function buildCreatureGeometry(look: LookData): THREE.BufferGeometry {
+function buildGenericGeometry(look: LookData): THREE.BufferGeometry {
   const b = new MeshBuilder();
   const anchors = buildBody(b, look);
   for (const p of look.parts) addPart(b, p, anchors, look);
@@ -216,34 +222,96 @@ export function buildCreatureGeometry(look: LookData): THREE.BufferGeometry {
   return b.build();
 }
 
-/** A creature in the scene with idle/attack/hit/faint animations. */
+/** The species whose `look` is this exact object (scenes construct views from `species(id).look`). */
+export function speciesIdForLook(look: LookData): string | undefined {
+  for (const s of getDex().species.values()) if (s.look === look) return s.id;
+  return undefined;
+}
+
+let legacy = false;
+/** Debug (model gallery `&legacy=1`): render the old generic models for before/after comparisons. */
+export function setLegacyModels(on: boolean) { legacy = on; }
+
+export function designFor(id: string | undefined): Design | undefined {
+  return id && !legacy ? DESIGNS[id] : undefined;
+}
+
+/** Build the merged creature geometry: bespoke design when known, generic fallback otherwise. */
+export function buildCreatureGeometry(look: LookData, speciesId?: string): THREE.BufferGeometry {
+  const d = designFor(speciesId ?? speciesIdForLook(look));
+  if (!d) return buildGenericGeometry(look);
+  const k = new Kit();
+  d.build(k);
+  return k.build();
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
+/** Damped spring 1 → 0 with a couple of overshoots. */
+const spring = (k: number, freq = 3, decay = 4) => Math.exp(-decay * k) * Math.cos(k * Math.PI * 2 * freq * 0.5);
+
+/**
+ * A creature in the scene with idle/attack/hit/faint animations.
+ * Hierarchy: root (placement, facing) → inner (scene-owned scale/offset) → body (squash, tilt) → mesh (idle bob).
+ */
 export class CreatureView {
   readonly root = new THREE.Group();
   readonly inner = new THREE.Group();
+  /** Squash/stretch and tilt pivot (at the feet). */
+  readonly body = new THREE.Group();
   readonly mesh: THREE.Mesh;
   readonly material: THREE.MeshLambertMaterial;
   readonly shadow: THREE.Mesh;
+  readonly speciesId: string | undefined;
+  /** Idle hover height (model units). */
+  readonly hover: number;
+  readonly idle: IdleStyle;
+  private readonly u: CreatureUniforms;
   private phase: number;
   private busy = false;
+  private acting = 0;
+  private eyesShut = false;
+  private blinkEvery: number;
+  private shadowOpacity = 0.22;
+  private shadowBase = new THREE.Vector2(1, 1);
   baseScale: number;
   hovering: boolean;
 
-  constructor(look: LookData, seed = 0) {
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    this.mesh = new THREE.Mesh(buildCreatureGeometry(look), this.material);
-    this.baseScale = look.scale;
-    this.hovering = look.body === 'fish' || look.body === 'bird' || look.body === 'bug';
-    this.inner.add(this.mesh);
+  constructor(look: LookData, seed = 0, speciesId?: string) {
+    this.speciesId = speciesId ?? speciesIdForLook(look);
+    const design = designFor(this.speciesId);
+    const { material, uniforms } = creatureMaterial();
+    this.material = material;
+    this.u = uniforms;
+    if (legacy) uniforms.uAmb.value = 0;
+    this.mesh = new THREE.Mesh(buildCreatureGeometry(look, this.speciesId), this.material);
+    this.baseScale = design?.scale ?? look.scale;
+    const flyer = look.body === 'fish' || look.body === 'bird' || look.body === 'bug';
+    this.hover = design ? design.hover ?? 0 : flyer ? 0.12 : 0;
+    this.idle = design?.idle ?? (flyer ? 'float' : 'trot');
+    // "hovering" = visibly airborne; some scenes settle such kin lower on podiums.
+    this.hovering = design ? this.hover >= 0.25 : flyer;
+    this.inner.add(this.body);
+    this.body.add(this.mesh);
     this.root.add(this.inner);
     this.inner.scale.setScalar(this.baseScale);
+    // Elliptical blob shadow matched to the model's footprint.
+    const bb = this.mesh.geometry.boundingBox ?? new THREE.Box3(new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 1, 0.5));
+    const hx = Math.max(0.2, (bb.max.x - bb.min.x) * 0.42);
+    const hz = Math.max(0.2, (bb.max.z - bb.min.z) * 0.42);
+    this.shadowBase.set(hx * this.baseScale, hz * this.baseScale);
     this.shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.55 * look.scale, 12),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false }),
+      new THREE.CircleGeometry(1, 16),
+      new THREE.MeshBasicMaterial({ color: 0x1a1030, transparent: true, opacity: this.shadowOpacity, depthWrite: false }),
     );
     this.shadow.rotation.x = -Math.PI / 2;
-    this.shadow.position.y = 0.01;
+    this.shadow.position.set(((bb.max.x + bb.min.x) / 2) * this.baseScale, 0.012, ((bb.max.z + bb.min.z) / 2) * this.baseScale);
+    this.shadow.scale.set(this.shadowBase.x, this.shadowBase.y, 1);
+    this.shadow.renderOrder = -0.5;
     this.root.add(this.shadow);
     this.phase = seed * 1.7;
+    this.blinkEvery = 3.1 + ((seed * 0.73 + (this.speciesId?.length ?? 3) * 0.37) % 1.6);
+    this.mesh.position.y = this.hover;
+    this.u.uTime.value = this.phase;
   }
 
   faceTowards(target: THREE.Vector3) {
@@ -251,40 +319,140 @@ export class CreatureView {
     this.root.rotation.y = Math.atan2(d.x, d.z);
   }
 
+  private get idleAllowed() { return !this.busy && this.acting === 0; }
+
+  private setShadow(lift: number, fade = 1) {
+    const k = Math.max(0.55, 1 - lift * 0.9);
+    this.shadow.scale.set(this.shadowBase.x * k, this.shadowBase.y * k, 1);
+    (this.shadow.material as THREE.MeshBasicMaterial).opacity = this.shadowOpacity * fade * (0.6 + 0.4 * k);
+  }
+
   update(t: number) {
-    if (this.busy) return;
-    const k = t * 3.2 + this.phase;
-    const bob = Math.abs(Math.sin(k));
-    const lift = this.hovering ? 0.12 + Math.sin(k * 0.5) * 0.06 : 0;
-    this.mesh.position.y = bob * 0.06 + lift;
-    const squash = 1 + (bob - 0.5) * 0.06;
-    this.mesh.scale.set(2 - squash, squash, 2 - squash);
+    const tt = t + this.phase;
+    this.u.uTime.value = tt;
+    // Blink: a quick squint every few seconds, sometimes a double blink.
+    const bt = tt % this.blinkEvery;
+    const blink = (x: number) => (x >= 0 && x < 0.13 ? Math.sin((x / 0.13) * Math.PI) : 0);
+    const dbl = Math.floor(tt / this.blinkEvery) % 3 === 1;
+    this.u.uBlink.value = this.eyesShut ? 1 : Math.max(blink(bt), dbl ? blink(bt - 0.2) : 0);
+    if (!this.idleAllowed) return;
+    const b = this.body;
+    let y = this.hover, sy = 1, sxz = 1, pitch = 0, roll = 0;
+    const breathe = Math.sin(tt * 2.1);
+    switch (this.idle) {
+      case 'trot': {
+        const k = Math.abs(Math.sin(tt * 3.0));
+        y += k * 0.035;
+        sy = 1 + breathe * 0.018 + (k - 0.5) * 0.03;
+        pitch = Math.sin(tt * 3.0) * 0.015;
+        break;
+      }
+      case 'bounce': {
+        const k = Math.abs(Math.sin(tt * 2.8));
+        y += k * 0.075;
+        const land = Math.pow(1 - k, 6);
+        sy = 1 + (k - 0.35) * 0.06 - land * 0.1;
+        roll = Math.sin(tt * 1.4) * 0.03;
+        break;
+      }
+      case 'float': {
+        y += Math.sin(tt * 2.4) * 0.05;
+        sy = 1 + breathe * 0.02;
+        roll = Math.sin(tt * 1.3) * 0.05;
+        pitch = Math.sin(tt * 2.4 + 0.8) * 0.03;
+        break;
+      }
+      case 'glide': {
+        y += Math.sin(tt * 1.7) * 0.035;
+        sy = 1 + breathe * 0.015;
+        roll = Math.sin(tt * 0.9) * 0.035;
+        pitch = Math.sin(tt * 1.7 + 0.5) * 0.025;
+        break;
+      }
+      case 'sway': {
+        sy = 1 + breathe * 0.025;
+        roll = Math.sin(tt * 1.2) * 0.04;
+        pitch = Math.sin(tt * 0.8) * 0.03;
+        break;
+      }
+      case 'heavy': {
+        sy = 1 + breathe * 0.022;
+        y += Math.max(0, Math.sin(tt * 1.6)) * 0.012;
+        break;
+      }
+    }
+    sxz = 1 / Math.sqrt(sy);
+    this.mesh.position.y = y;
+    b.position.set(0, 0, 0);
+    b.scale.set(sxz, sy, sxz);
+    b.rotation.set(pitch, 0, roll);
+    this.setShadow(y);
+  }
+
+  private squash(sy: number) {
+    const sxz = 1 / Math.sqrt(Math.max(0.05, sy));
+    this.body.scale.set(sxz, sy, sxz);
+  }
+
+  private settleBody() {
+    this.body.position.set(0, 0, 0);
+    this.body.scale.set(1, 1, 1);
+    this.body.quaternion.identity();
+    this.mesh.position.y = this.hover;
   }
 
   async appear() {
-    this.busy = true;
+    this.acting++;
     this.inner.scale.setScalar(0.001);
-    await tween(320, (k) => this.inner.scale.setScalar(this.baseScale * Math.max(0.001, ease.outBack(k))));
-    this.busy = false;
+    await tween(300, (k) => {
+      this.inner.scale.setScalar(this.baseScale * Math.max(0.001, ease.outBack(k)));
+      this.squash(0.75 + 0.5 * ease.outCubic(k));
+    });
+    await tween(220, (k) => this.squash(1 + 0.25 * spring(k, 2, 4) * (1 - k)));
+    this.settleBody();
+    this.acting--;
   }
 
+  /** Anticipation crouch → stretched lunge → impact squash → hop back → landing squash. */
   async lunge(towards: THREE.Vector3) {
-    this.busy = true;
+    this.acting++;
     const start = this.inner.position.clone();
-    const dir = towards.clone().sub(this.root.position).setY(0).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), -this.root.rotation.y);
-    const s = this.baseScale;
-    await tween(110, (k) => this.inner.scale.set(s * (1 + 0.22 * k), s * (1 - 0.25 * k), s * (1 + 0.22 * k)));
-    await tween(120, (k) => {
-      this.inner.scale.set(s * (1.22 - 0.35 * k), s * (0.75 + 0.5 * k), s * (1.22 - 0.35 * k));
-      this.inner.position.copy(start).addScaledVector(dir, 0.9 * ease.outCubic(k));
+    const dir = towards.clone().sub(this.root.position).setY(0).normalize().applyAxisAngle(UP, -this.root.rotation.y);
+    const axis = new THREE.Vector3(dir.z, 0, -dir.x).normalize();
+    const lean = (a: number) => this.body.quaternion.setFromAxisAngle(axis, a);
+    const reach = 0.95;
+    const lift = this.hover;
+    await tween(150, (k) => {
+      const e = ease.outCubic(k);
+      this.squash(1 - 0.22 * e);
+      lean(-0.2 * e);
+      this.inner.position.copy(start).addScaledVector(dir, -0.12 * e);
     });
-    await tween(200, (k) => {
-      this.inner.scale.set(s * (0.87 + 0.13 * k), s * (1.25 - 0.25 * k), s * (0.87 + 0.13 * k));
-      this.inner.position.copy(start).addScaledVector(dir, 0.9 * (1 - ease.inOut(k)));
+    await tween(110, (k) => {
+      const e = ease.outCubic(k);
+      this.squash(0.78 + 0.5 * e);
+      lean(-0.2 + 0.5 * e);
+      this.inner.position.copy(start).addScaledVector(dir, -0.12 + (reach + 0.12) * e);
+      this.inner.position.y = start.y + Math.sin(k * Math.PI) * 0.12;
+    });
+    await tween(70, (k) => {
+      this.squash(1.28 - 0.5 * ease.outCubic(k));
+      lean(0.3 - 0.15 * k);
+    });
+    await tween(230, (k) => {
+      const e = ease.inOut(k);
+      this.inner.position.copy(start).addScaledVector(dir, reach * (1 - e));
+      this.inner.position.y = start.y + Math.sin(k * Math.PI) * (0.22 + lift * 0.3);
+      this.squash(0.78 + 0.34 * Math.sin(Math.min(1, k * 1.4) * Math.PI) + 0.22 * k);
+      lean(0.15 * (1 - k) - 0.12 * Math.sin(k * Math.PI));
     });
     this.inner.position.copy(start);
-    this.inner.scale.setScalar(s);
-    this.busy = false;
+    await tween(170, (k) => {
+      this.squash(1 - 0.2 * spring(k, 2.2, 3.5) * (1 - k));
+      lean(0);
+    });
+    this.settleBody();
+    this.acting--;
   }
 
   async pulse(color: THREE.ColorRepresentation) {
@@ -293,36 +461,90 @@ export class CreatureView {
     this.material.emissive.setRGB(0, 0, 0);
   }
 
-  async hit(strong: boolean) {
+  /** White flash + recoil tilt; strong hits (super-effective / crits) get a 2-frame hit-stop first. */
+  async hit(strong: boolean, crit = strong) {
+    this.acting++;
     const x0 = this.inner.position.x;
-    await tween(strong ? 420 : 300, (k) => {
-      const blink = Math.floor(k * 8) % 2 === 0;
-      this.material.emissive.setRGB(blink ? 0.9 : 0, blink ? 0.9 : 0, blink ? 0.9 : 0);
-      this.inner.position.x = x0 + Math.sin(k * Math.PI * 6) * 0.12 * (1 - k);
+    const z0 = this.inner.position.z;
+    const back = new THREE.Vector3(1, 0, 0);
+    const amp = strong ? 0.42 : 0.28;
+    this.material.emissive.setRGB(1, 1, 1);
+    if (crit) {
+      // Hit-stop: freeze squashed in the flash for ~2 frames.
+      this.squash(0.8);
+      this.body.quaternion.setFromAxisAngle(back, -0.12);
+      await tween(70, () => {});
+    }
+    await tween(strong ? 420 : 320, (k) => {
+      const sp = spring(k, strong ? 2.5 : 2, 4.5);
+      this.body.quaternion.setFromAxisAngle(back, -amp * sp);
+      this.squash(1 - 0.18 * Math.max(0, sp));
+      this.inner.position.z = z0 - Math.sin(Math.min(1, k * 1.6) * Math.PI) * (strong ? 0.22 : 0.14) * (1 - k * 0.5);
+      this.inner.position.x = x0 + Math.sin(k * Math.PI * 7) * 0.05 * (1 - k);
+      const on = k < 0.08 || (Math.floor(k * 9) % 2 === 0 && k < 0.7);
+      const f = on ? (strong ? 1 : 0.85) * (1 - k * 0.6) : 0;
+      this.material.emissive.setRGB(f, f, f);
     });
     this.material.emissive.setRGB(0, 0, 0);
     this.inner.position.x = x0;
+    this.inner.position.z = z0;
+    this.settleBody();
+    this.acting--;
   }
 
+  /** Hurt hop with eyes shut → topple sideways → flatten and sink. */
   async faint() {
     this.busy = true;
-    const s = this.baseScale;
-    await tween(520, (k) => {
-      this.inner.position.y = -k * 0.6;
-      this.inner.scale.set(s * (1 + k * 0.3), s * (1 - k * 0.95), s * (1 + k * 0.3));
-      (this.shadow.material as THREE.MeshBasicMaterial).opacity = 0.22 * (1 - k);
+    this.acting++;
+    this.eyesShut = true;
+    this.u.uBlink.value = 1;
+    const y0 = this.inner.position.y;
+    const side = new THREE.Vector3(0, 0, 1);
+    await tween(170, (k) => {
+      this.squash(1 - 0.25 * Math.sin(k * Math.PI));
+      this.inner.position.y = y0 + Math.sin(k * Math.PI) * 0.08;
+    });
+    await tween(200, (k) => {
+      this.squash(1 + 0.12 * Math.sin(k * Math.PI));
+      this.inner.position.y = y0 + Math.sin(k * Math.PI) * 0.16;
+      this.body.quaternion.setFromAxisAngle(side, 0.25 * k);
+    });
+    await tween(360, (k) => {
+      const e = ease.inCubic(k);
+      this.body.quaternion.setFromAxisAngle(side, 0.25 + 1.2 * e);
+      this.mesh.position.y = this.hover * (1 - e);
+      this.u.uAct.value = 1 - k;
+      this.inner.position.y = y0 - e * 0.05;
+    });
+    await tween(260, (k) => {
+      this.squash(1 - 0.92 * ease.inCubic(k));
+      this.inner.position.y = y0 - 0.05 - k * 0.4;
+      (this.shadow.material as THREE.MeshBasicMaterial).opacity = this.shadowOpacity * (1 - k);
     });
     this.root.visible = false;
+    this.acting--;
   }
 
   reset() {
     this.root.visible = true;
     this.inner.position.set(0, 0, 0);
     this.inner.scale.setScalar(this.baseScale);
-    (this.shadow.material as THREE.MeshBasicMaterial).opacity = 0.22;
+    this.settleBody();
+    this.eyesShut = false;
+    this.u.uAct.value = 1;
+    this.acting = 0;
+    this.setShadow(this.hover);
     this.material.emissive.setRGB(0, 0, 0);
     this.busy = false;
   }
 
   setBusy(b: boolean) { this.busy = b; }
+
+  /** Free GPU resources (geometry, material, shadow). */
+  dispose() {
+    this.mesh.geometry.dispose();
+    this.material.dispose();
+    this.shadow.geometry.dispose();
+    (this.shadow.material as THREE.Material).dispose();
+  }
 }
