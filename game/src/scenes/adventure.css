@@ -76,6 +76,7 @@
 @media (max-height: 500px) and (orientation: landscape), (max-width: 360px) {
   .kin-row .st-top { display: none; }
   .kin-row .st-low { display: inline-block; }
+  .kin-row:has(.knote) .st-low { display: none; } /* "In battle": the panel already shows its status */
 }
 .menu-forget .btn-skip { background: #5a5480; }
 .menu-end .btn-travel { grid-column: 1 / -1; }

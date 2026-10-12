@@ -1,5 +1,9 @@
 # Progress
 
+## 2026-10-12 — Final polish before the owner playtest
+- Art-direction re-audit (24 items) and human-style playtest (A–J) fixed: missed attacks whiff, champion speech fits (growing/paged text box), phone panels/menus/hotspots never clip, pinned party bar, starter/evolution/HoF/meta framing, hotseat per-player perspective + hand-over curtain, distinct online names, title rejoin, anti-mash, wild coin rewards, lava channel. Decisions in `docs/DECISIONS.md` ("Final polish").
+- Evidence: `e2e/layout.spec.ts` "text & labels never clip" (4 viewports) and "every species as foe stays on screen" (phone/small/landscape); unit tests for `wildVictory`, hotseat curtains, server name de-dupe; before/after sheets in `docs/screenshots/final/`.
+
 ## 2026-10-12 — Adventure layer (M3 XP/evolution, M4 trainers/items/Champion)
 
 **Evidence:** typecheck ✓, lint ✓, 183/183 unit tests ✓ (incl. 13 in `tests/progress.test.ts`), build ✓, Playwright `smoke` + `adventure` 10/10 ✓ on desktop 1280×720 and Pixel 7 portrait, zero console errors, < 100 draw calls asserted.
