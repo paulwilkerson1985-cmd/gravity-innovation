@@ -30,6 +30,7 @@ import {
   xpProgress, type CreatureGain,
 } from '../game/progress';
 import type { Theme } from '../render/diorama';
+import { Hd2dBattleStage, hd2dTerrainFor } from './hd2dBattle';
 
 const STAT_NAMES: Record<StageKey, string> = { atk: 'Attack', def: 'Defense', spe: 'Speed' };
 const STATUS_TEXT: Record<StatusId, [string, string, string, string]> = {
@@ -95,6 +96,8 @@ export class BattleScene extends BaseScene {
   private advance: (() => void) | null = null;
   private introDone = false;
   private bagTab: BagTab = 'orbs';
+  /** HD-2D staging (`?gfx=hd2d` on supported terrains), else null for the default diorama. */
+  private hd2d: Hd2dBattleStage | null = null;
 
   enter(params: Record<string, unknown>) {
     this.routeId = String(params.route ?? 'meadow');
@@ -127,6 +130,15 @@ export class BattleScene extends BaseScene {
     audio.music(track);
 
     const theme = (g.dex().routes.get(this.routeId)?.theme ?? 'meadow') as Theme;
+    const terrain = hd2dTerrainFor(this.routeId, this.trainer ? undefined : spot?.kind);
+    if (terrain) {
+      this.hd2d = new Hd2dBattleStage(g, this.scene, this.camera, terrain);
+      this.spots = this.hd2d.spots;
+      this.resize(g.renderer.width, g.renderer.height);
+      this.buildUi();
+      void this.intro(events);
+      return;
+    }
     this.scene.add(makeSky(theme));
     addLights(this.scene, theme);
     this.scene.fog = new THREE.Fog(new THREE.Color(theme === 'ridge' ? '#ffd2a8' : theme === 'summit' ? '#c7d4ff' : '#d9f2ff'), 18, 45);
@@ -148,6 +160,7 @@ export class BattleScene extends BaseScene {
   }
 
   override resize(w: number, hgt: number) {
+    if (this.hd2d) { this.hd2d.frame(w, hgt); return; }
     if (placeSpots(this.spots, w, hgt)) {
       // Rotated into another layout: move the pads, kin and trainer to the new spots.
       this.pads.forEach((p, i) => p.position.copy(this.spots[i]!));
@@ -158,11 +171,15 @@ export class BattleScene extends BaseScene {
     frameBattle(this.camera, this.scene, w, hgt, this.spots, this.views, panel && panel.width > 0 ? { x: panel.left, y: panel.top } : null);
   }
 
+  /** HD-2D pipeline stats (debug hook), or null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
+
   /** Layout checks (debug hook): the kin on the field and the trainer. */
   subjects() {
     const out: { name: string; obj: THREE.Object3D }[] = [];
     this.views.forEach((v, i) => { if (v?.root.visible) out.push({ name: i === 0 ? 'mine' : 'foe', obj: v.inner }); });
     if (this.trainerFig?.visible) out.push({ name: 'trainer', obj: this.trainerFig });
+    if (this.hd2d) out.push({ name: 'player', obj: this.hd2d.heroMesh });
     return out;
   }
 
@@ -171,6 +188,7 @@ export class BattleScene extends BaseScene {
   override update(_dt: number, t: number) {
     this.ambientUpdate?.(t);
     this.views.forEach((v) => v?.update(t));
+    if (this.hd2d) { this.hd2d.update(t); return; }
     if (this.trainerFig?.visible) this.trainerFig.position.y = Math.abs(Math.sin(t * 2.4)) * 0.03;
   }
 
@@ -236,6 +254,7 @@ export class BattleScene extends BaseScene {
   override exit() {
     window.removeEventListener('keydown', this.globalKeys);
     this.game.resumeSaves();
+    this.hd2d?.dispose();
     super.exit();
   }
 
@@ -382,11 +401,15 @@ export class BattleScene extends BaseScene {
 
   private async intro(events: BattleEvent[]) {
     if (this.trainer) {
-      const fig = personMesh(trainerLook(this.trainer.id));
-      fig.scale.setScalar(1.55);
-      fig.position.copy(this.spots[1]);
-      fig.lookAt(this.spots[0].x, 0, this.spots[0].z + 2);
-      this.scene.add(fig);
+      let fig: THREE.Mesh;
+      if (this.hd2d) fig = this.hd2d.trainer(this.trainer.id);
+      else {
+        fig = personMesh(trainerLook(this.trainer.id));
+        fig.scale.setScalar(1.55);
+        fig.position.copy(this.spots[1]);
+        fig.lookAt(this.spots[0].x, 0, this.spots[0].z + 2);
+        this.scene.add(fig);
+      }
       this.trainerFig = fig;
       audio.sfx('encounter');
       await this.say(`${this.trainerName()} wants to battle!`, 500);
@@ -404,6 +427,12 @@ export class BattleScene extends BaseScene {
   private async trainerWalk(entering: boolean) {
     const fig = this.trainerFig;
     if (!fig) return;
+    if (this.hd2d) {
+      // HD-2D: the trainer never leaves — they step back to their post behind the foe kin.
+      const [from, to] = this.hd2d.trainerPath(entering);
+      await tween(entering ? 520 : 480, (k) => fig.position.lerpVectors(from, to, ease.inOut(k)));
+      return;
+    }
     const on = this.spots[1].clone();
     const off = this.spots[1].clone().add(new THREE.Vector3(4.2, 0, -1.2));
     fig.visible = true;
@@ -605,6 +634,7 @@ export class BattleScene extends BaseScene {
   private disposeView(side: 0 | 1) {
     const old = this.views[side];
     if (!old) return;
+    this.hd2d?.detachKin(side);
     this.scene.remove(old.root);
     old.mesh.geometry.dispose();
     old.material.dispose();
@@ -644,7 +674,7 @@ export class BattleScene extends BaseScene {
         this.scene.add(view.root);
         view.inner.scale.setScalar(0.001);
         this.views[e.side] = view;
-        fitKinScale(view, e.side);
+        if (this.hd2d) { this.hd2d.fitKin(view, e.side); this.hd2d.attachKin(view, e.side); } else fitKinScale(view, e.side);
         this.setPanel(e.side, e); // filled first: the framing measures the panel at its final size
         this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
         if (e.side === 1) this.game.player = withSeen(this.game.player, e.species);
@@ -776,7 +806,7 @@ export class BattleScene extends BaseScene {
     const sc = mine ? THREE.MathUtils.clamp(kinHeight(mine) / 1.5, 0.5, 1) : 1;
     orb.scale.setScalar(sc);
     const land = this.spots[0].clone().add(new THREE.Vector3(0, ORB_REST_Y * sc + 0.1, 0));
-    const from = this.spots[0].clone().add(new THREE.Vector3(-1.4, 1.2, 2.2));
+    const from = this.hd2d?.throwOrigin() ?? this.spots[0].clone().add(new THREE.Vector3(-1.4, 1.2, 2.2));
     orb.position.copy(from);
     this.scene.add(orb);
     audio.sfx('throw');
