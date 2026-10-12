@@ -81,12 +81,15 @@ export class TurnCollector {
 
 /**
  * Hotseat privacy rule: a curtain is needed before a human seat chooses whenever another
- * human seat has chosen (or will choose) on this device in the same step, and before the
- * shared playback once more than one human chose.
+ * human seat has chosen (or will choose) on this device in the same step, before the first
+ * private prompt after a turn was watched together, and before the shared playback once
+ * more than one human chose.
  */
-export function curtainBefore(mode: ArenaMode, collector: TurnCollector, seat: Seat): boolean {
+export function curtainBefore(mode: ArenaMode, collector: TurnCollector, seat: Seat, afterPlayback = false): boolean {
   if (mode !== 'hotseat') return false;
   const humans = collector.humans;
+  // After a turn was watched together, the device is handed to the first chooser too.
+  if (afterPlayback && humans.indexOf(seat) === 0) return true;
   return humans.length > 1 && humans.indexOf(seat) > 0;
 }
 

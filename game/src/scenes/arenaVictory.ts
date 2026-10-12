@@ -113,8 +113,9 @@ export class ArenaVictoryScene extends BaseScene {
     // card on a landscape phone).
     const q = (sel: string) => this.ui.querySelector(sel);
     const land = layoutMode(w, hgt) === 'land';
-    const area = freeArea(w, hgt, land ? { top: [q('.arena-win-top')], right: [q('.arena-vcard')] } : { top: [q('.arena-win-top')], bottom: [q('.arena-vcard')] }, 6);
-    const pts = corners(new THREE.Vector3(-2.65, 0, -1.5), new THREE.Vector3(2.65, 2.9, 0.4));
+    const area = freeArea(w, hgt, land ? { top: [q('.arena-win-top')], right: [q('.arena-vcard')] } : { top: [q('.arena-win-top')], bottom: [q('.arena-vcard')] }, 12);
+    // Top at 3.5: a tall winner (Pyrelord's crown) on the top step stays clear of the title.
+    const pts = corners(new THREE.Vector3(-2.65, 0, -1.5), new THREE.Vector3(2.65, 3.5, 0.4));
     fitPoints(cam, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.3, 1), target: new THREE.Vector3(0, 1.2, -0.6), fill: 0.92 });
   }
 

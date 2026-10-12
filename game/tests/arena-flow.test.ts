@@ -24,6 +24,13 @@ describe('hotseat turn flow', () => {
     expect(c.result()).toEqual([{ type: 'move', index: 0 }, { type: 'move', index: 1 }]);
   });
 
+  it('hands the device over (curtain) before the first prompt after a watched turn', () => {
+    const c = new TurnCollector(battle(), [0, 1]);
+    expect(curtainBefore('hotseat', c, 0, true)).toBe(true);
+    expect(curtainBefore('hotseat', c, 0, false)).toBe(false);
+    expect(curtainBefore('cpu', new TurnCollector(battle(), [0]), 0, true)).toBe(false);
+  });
+
   it('lets the CPU decide up front and never curtains', () => {
     const st = battle();
     let seen: BattleState | null = null;

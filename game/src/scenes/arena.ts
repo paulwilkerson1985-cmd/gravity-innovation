@@ -2,6 +2,7 @@
 // vs CPU (Arena Ace) and Online (room codes). The builder normalises every kin to the
 // arena level and validates the team with the engine before it can be locked in.
 import * as THREE from 'three';
+import { uiZoom } from './framing';
 import { BaseScene } from './base';
 import { CreatureView } from '../render/creature';
 import { audio } from '../audio/audio';
@@ -39,6 +40,8 @@ export interface ArenaSceneParams {
   builder?: { mode: 'hotseat' | 'cpu'; names: [string, string]; teams: [ArenaEntry[], ArenaEntry[]] };
   /** Continue an online session (the client lives in src/net/session.ts). */
   online?: boolean;
+  /** From the title after a reload: resume the seat saved in sessionStorage. */
+  rejoin?: boolean;
 }
 
 const STAT_LABELS: [keyof ReturnType<typeof arenaStats>, string][] = [['hp', 'HP'], ['atk', 'ATK'], ['def', 'DEF'], ['spe', 'SPE']];
@@ -111,6 +114,10 @@ export class ArenaScene extends BaseScene {
       const room = this.client!.room;
       if (room) this.onRoom(room);
       else this.show('online');
+    } else if (p.rejoin && loadSavedSeat(savedSeatStorage())) {
+      this.mode = 'online';
+      this.show('online');
+      void this.connectAnd(null, loadSavedSeat(savedSeatStorage())!);
     } else {
       this.show('menu');
     }
@@ -175,12 +182,21 @@ export class ArenaScene extends BaseScene {
       const cy = fy + fh / 2 + (portrait ? fh * 0.04 : 0);
       cam.setViewOffset(w, hgt, w / 2 - cx, hgt / 2 - cy, w, hgt);
       cam.updateProjectionMatrix();
-      // Caption sits under the kin, inside the free area.
-      this.caption.style.left = `${cx}px`;
-      this.caption.style.top = `${fy + fh * (portrait ? 0.76 : 0.8)}px`;
-      this.caption.style.maxWidth = `${Math.max(160, fw - 24)}px`;
+      // Caption sits just under the pedestal's front rim (never on the kin), inside the free area.
+      cam.updateMatrixWorld();
+      const rim = CENTER.clone().add(new THREE.Vector3(0, -0.3, 1.3)).project(cam);
+      const below = (-rim.y * 0.5 + 0.5) * hgt + 16;
+      const z = uiZoom(w, hgt); // the HTML UI is zoomed on big screens
+      this.caption.style.left = `${cx / z}px`;
+      this.caption.style.top = `${Math.min(below, fy + fh - (portrait ? 58 : 90)) / z}px`;
+      this.caption.style.maxWidth = `${Math.max(160, fw - 24) / z}px`;
       return;
     }
+    // Lobby / names / online cards sit at the bottom: lift the showcase kin into the space above.
+    const card = this.root?.querySelector<HTMLElement>('.arena-lobby, .arena-names, .arena-online');
+    const top = card && card.offsetParent !== null ? card.getBoundingClientRect().top : hgt;
+    const lift = Math.min(hgt * 0.3, Math.max(0, hgt / 2 - top / 2 - 10));
+    if (lift > 0) cam.setViewOffset(w, hgt, 0, lift, w, hgt);
     cam.updateProjectionMatrix();
     this.orbit(this.camT);
   }
@@ -313,11 +329,19 @@ export class ArenaScene extends BaseScene {
       autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', inputmode: 'text',
     });
     codeIn.addEventListener('input', () => { codeIn.value = normalizeCode(codeIn.value); });
-    const myName = () => { const n = cleanName(nameIn.value, 'Player'); this.names = [n, this.names[1]]; saveNames(this.names); return n; };
+    // Host defaults to "Player 1", a guest who kept a default name to "Player 2" (the server
+    // also de-dupes), so the two status pills never read the same.
+    const myName = (guest = false) => {
+      let n = cleanName(nameIn.value, guest ? 'Player 2' : 'Player 1');
+      if (guest && /^player( 1)?$/i.test(n)) n = 'Player 2';
+      this.names = [n, this.names[1]];
+      saveNames(this.names);
+      return n;
+    };
     const join = () => {
       const code = normalizeCode(codeIn.value);
       if (!isRoomCode(code)) { this.onlineNote = { text: `Room codes are ${ROOM_CODE_LENGTH} letters (no vowels), like BXKT.`, kind: 'error' }; this.render(); return; }
-      void this.connectAnd({ t: 'join', v: PROTOCOL_VERSION, code, name: myName() });
+      void this.connectAnd({ t: 'join', v: PROTOCOL_VERSION, code, name: myName(true) });
     };
     codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); join(); } });
     const saved = loadSavedSeat(savedSeatStorage());

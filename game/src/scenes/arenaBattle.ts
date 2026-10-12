@@ -53,6 +53,8 @@ export class ArenaBattleScene extends BaseScene {
   private names: [string, string] = ['Player 1', 'Player 2'];
   /** The seat drawn on the near platform (the local player online). */
   private near: Seat = 0;
+  /** platforms[0] was built for the seat that was near at the start (seat = index ^ flip). */
+  private platformFlip: 0 | 1 = 0;
   private spots = battleSpots(innerWidth, innerHeight);
   private views: [CreatureView | null, CreatureView | null] = [null, null];
   private panels!: [Panel, Panel];
@@ -66,6 +68,8 @@ export class ArenaBattleScene extends BaseScene {
   private collector: TurnCollector | null = null;
   private asking: Seat | null = null;
   private curtainUp = false;
+  /** Hotseat: a turn was just played out in front of both players. */
+  private watchedTurn = false;
   private playing = false;
   private kos: [number, number] = [0, 0];
   private localStep = 0;
@@ -103,6 +107,7 @@ export class ArenaBattleScene extends BaseScene {
       this.state = createArenaBattle(hashSeed(setup.seed, setup.round) >>> 0, setup.names[0], setup.teams[0], setup.names[1], setup.teams[1]).state;
     }
 
+    this.platformFlip = this.near;
     this.set = buildArena(this.scene, {
       nearColor: SEAT_COLORS[this.near], farColor: SEAT_COLORS[other(this.near)],
       nearDark: SEAT_DARK[this.near], farDark: SEAT_DARK[other(this.near)], spots: this.spots,
@@ -138,7 +143,7 @@ export class ArenaBattleScene extends BaseScene {
 
   override resize(w: number, hgt: number) {
     if (placeSpots(this.spots, w, hgt) && this.set) {
-      this.set.platforms.forEach((p, i) => p.position.copy(this.spots[i]!));
+      this.set.platforms.forEach((p, i) => p.position.copy(this.spot((i ^ this.platformFlip) as Seat)));
       this.views.forEach((v, seat) => v?.root.position.copy(this.spot(seat as Seat)));
     }
     const panel = this.panels?.[this.near].root.getBoundingClientRect();
@@ -323,9 +328,11 @@ export class ArenaBattleScene extends BaseScene {
       void this.run(() => this.resolveLocal());
       return;
     }
-    if (curtainBefore(this.mode, c, seat)) {
+    if (curtainBefore(this.mode, c, seat, this.watchedTurn)) {
       await this.showCurtain({ title: `Pass to ${this.names[seat]}`, subtitle: `${this.names[other(seat)]}, no peeking!`, seat, button: `I'm ${this.names[seat]} — choose` });
     }
+    this.watchedTurn = false;
+    if (this.mode === 'hotseat') this.setPerspective(seat);
     this.showPrompt(seat);
   }
 
@@ -346,6 +353,8 @@ export class ArenaBattleScene extends BaseScene {
     this.game.idle = false;
     const r = resolveTurn(this.state, actions);
     this.state = r.state;
+    // Shared playback is watched together from seat 0's side; the next private prompt gets a curtain.
+    if (this.mode === 'hotseat') { this.setPerspective(0); this.watchedTurn = true; }
     await this.play(r.events);
     this.promptLocal();
   }
@@ -621,6 +630,15 @@ export class ArenaBattleScene extends BaseScene {
 
   private makeView(seat: Seat, speciesId: string) {
     const view = new CreatureView(species(speciesId).look, seat);
+    this.scene.add(view.root);
+    this.views[seat] = view;
+    this.placeView(seat, view);
+    this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
+    return view;
+  }
+
+  /** Stand a kin on its seat's platform, facing per near/far (near: the 3/4 back view). */
+  private placeView(seat: Seat, view: CreatureView) {
     view.root.position.copy(this.spot(seat));
     view.faceTowards(seat === this.near ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
     if (seat === this.near) {
@@ -628,13 +646,32 @@ export class ArenaBattleScene extends BaseScene {
       view.root.rotation.y -= 0.55;
       const bb = view.mesh.geometry.boundingBox;
       if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
-      view.setAmbientLift(0.3);
     }
-    this.scene.add(view.root);
-    this.views[seat] = view;
+    view.setAmbientLift(seat === this.near ? 0.3 : 0.16);
     fitKinScale(view, seat === this.near ? 0 : 1);
-    this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
-    return view;
+  }
+
+  /**
+   * Hotseat: show the battle from `seat`'s side — its kin, platform and panel come to the
+   * front (next to the buttons) while it chooses. Called behind the pass-the-device curtain.
+   */
+  private setPerspective(seat: Seat) {
+    if (seat === this.near) return;
+    this.near = seat;
+    // Each platform keeps its seat colour: platforms[i] belongs to seat i ^ platformFlip.
+    this.set.platforms.forEach((p, i) => p.position.copy(this.spot((i ^ this.platformFlip) as Seat)));
+    for (const s of [0, 1] as const) {
+      const v = this.views[s];
+      if (v) this.placeView(s, v);
+      const p = this.panels[s];
+      const near = s === this.near;
+      p.root.classList.toggle('bt-mine', near);
+      p.root.classList.toggle('arena-panel-near', near);
+      p.root.classList.toggle('bt-foe', !near);
+      p.root.classList.toggle('arena-panel-far', !near);
+      p.root.dataset.testid = `arena-panel-${near ? 'near' : 'far'}`;
+    }
+    this.resize(this.game.renderer.width, this.game.renderer.height);
   }
 
   private removeView(v: CreatureView) {
@@ -669,6 +706,7 @@ export class ArenaBattleScene extends BaseScene {
         const view = this.makeView(e.side, e.species);
         this.cur[e.side] = { name: e.name, species: e.species };
         this.setPanel(e.side, e);
+        this.resize(this.game.renderer.width, this.game.renderer.height); // panel filled: frame against its final size
         audio.sfx('switch');
         const appear = view.appear();
         audio.cry(e.species);

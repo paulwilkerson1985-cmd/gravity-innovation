@@ -6,7 +6,7 @@ import {
   type Action, type ArenaEntry, type BattleEvent, type BattleState,
 } from '../src/engine';
 import {
-  DEFAULT_TURN_SECONDS, MAX_TIMEOUTS,
+  DEFAULT_TURN_SECONDS, MAX_TIMEOUTS, NAME_MAX,
   type ErrorCode, type MatchStats, type PlayerView, type RoomPhase, type RoomView, type Seat, type ServerMessage,
 } from '../src/net/protocol';
 
@@ -106,6 +106,11 @@ export class Room {
   add(name: string, token: string, conn: Conn): RoomResult<Seat> {
     const seat = this.players.findIndex((p) => p === null);
     if (seat < 0 || this.phase !== 'lobby') return fail('room-full', 'room is full');
+    // Two players with the same name (both kept the default) would make every status pill
+    // ambiguous: the newcomer gets a seat number.
+    if (this.players.some((p) => p && p.name.toLowerCase() === name.toLowerCase())) {
+      name = /^player( \d+)?$/i.test(name) ? `Player ${seat + 1}` : `${name.slice(0, NAME_MAX - 2)} ${seat + 1}`;
+    }
     this.players[seat] = { name, token, conn, team: null, lastTeam: null, timeouts: 0, wantsRematch: false, left: false, readyStep: -1 };
     this.touch();
     this.broadcast();
