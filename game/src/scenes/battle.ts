@@ -5,6 +5,7 @@ import { BaseScene } from './base';
 import { CreatureView } from '../render/creature';
 import { addLights, backdrop, makeSky, platform } from '../render/diorama';
 import { ORB_COLORS, burst, makeOrb } from '../render/fx';
+import { ambient, moveFx } from '../render/movefx';
 import { animClock, ease, tween, wait } from '../render/anim';
 import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import {
@@ -48,13 +49,17 @@ export class BattleScene extends BaseScene {
     const theme = (g.dex().routes.get(this.routeId)?.theme ?? 'meadow') as Theme;
     this.scene.add(makeSky(theme));
     addLights(this.scene, theme);
-    this.scene.fog = new THREE.Fog(new THREE.Color(theme === 'ridge' ? '#ffd2a8' : '#d9f2ff'), 18, 45);
+    this.scene.fog = new THREE.Fog(new THREE.Color(theme === 'ridge' ? '#ffd2a8' : theme === 'summit' ? '#c7d4ff' : '#d9f2ff'), 18, 45);
     this.scene.add(backdrop(theme, 11));
-    const p0 = platform(theme === 'coast' ? '#e9cf86' : theme === 'ridge' ? '#c79560' : '#8fdc6a', 1.25);
+    const padColor = theme === 'coast' ? '#e9cf86' : theme === 'ridge' ? '#c79560' : theme === 'summit' ? '#e6ecf7' : '#8fdc6a';
+    const p0 = platform(padColor, 1.25);
     p0.position.copy(this.spots[0]);
-    const p1 = platform(theme === 'coast' ? '#e9cf86' : theme === 'ridge' ? '#c79560' : '#8fdc6a', 1.15);
+    const p1 = platform(padColor, 1.15);
     p1.position.copy(this.spots[1]);
     this.scene.add(p0, p1);
+    const amb = ambient(theme);
+    this.scene.add(amb.points);
+    this.ambientUpdate = amb.update;
 
     this.resize(g.renderer.width, g.renderer.height);
     this.buildUi();
@@ -80,7 +85,10 @@ export class BattleScene extends BaseScene {
     cam.updateProjectionMatrix();
   }
 
+  private ambientUpdate: ((t: number) => void) | null = null;
+
   override update(_dt: number, t: number) {
+    this.ambientUpdate?.(t);
     this.views.forEach((v) => v?.update(t));
   }
 
@@ -295,7 +303,13 @@ export class BattleScene extends BaseScene {
         await this.say(`${this.label(e.side, e.name)} used ${e.moveName}!`, 250);
         const data = getMove(e.move);
         const me = v(e.side);
-        if (data.category === 'attack') await me?.lunge(this.spots[e.side === 0 ? 1 : 0]);
+        if (data.category === 'attack') {
+          const from = this.spots[e.side].clone().lerp(this.spots[e.side === 0 ? 1 : 0], 0.28).add(new THREE.Vector3(0, 0.8, 0));
+          const to = this.spots[e.side === 0 ? 1 : 0].clone().add(new THREE.Vector3(0, 0.6, 0));
+          const lunge = me?.lunge(this.spots[e.side === 0 ? 1 : 0]);
+          await wait(140);
+          await Promise.all([lunge, moveFx(this.scene, data.type, from, to)]);
+        }
         else await me?.pulse(TYPE_COLORS[data.type]!);
         return;
       }
@@ -304,7 +318,7 @@ export class BattleScene extends BaseScene {
         const target = v(e.side);
         const from = e.hp + e.amount;
         if (e.source === 'move') {
-          void burst(this.scene, this.spots[e.side].clone().add(new THREE.Vector3(0, 0.6, 0)), e.mult > 1 ? '#fff27a' : '#ffffff', e.mult > 1 ? 1.4 : 1);
+          if (e.mult > 1 || e.crit) void burst(this.scene, this.spots[e.side].clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4);
           await Promise.all([target?.hit(e.mult > 1 || e.crit), this.tweenHp(e.side, from, e.hp, e.maxHp)]);
           if (e.crit) await this.say('A critical hit!', 400);
           if (e.mult > 1) await this.say("It's super effective!", 450);

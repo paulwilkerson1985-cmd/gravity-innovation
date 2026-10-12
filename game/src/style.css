@@ -133,3 +133,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
   .party-ui { top: auto; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); max-height: 62%; }
 }
 .model-ui { position: absolute; top: 10px; left: 10px; background: var(--panel); padding: 6px 10px; border-radius: 8px; border: 2px solid var(--edge); }
+
+/* ---------- scene transitions */
+#curtain { position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: 0; background: #1d1838; }
+#curtain.cover.plain { animation: cover .22s ease-in forwards; }
+#curtain.cover.battle { animation: battle-in .52s steps(6) forwards; background: repeating-linear-gradient(135deg, #1d1838 0 22px, #fff6e0 22px 30px); }
+#curtain.reveal { animation: reveal .3s ease-out forwards; }
+@keyframes cover { from { opacity: 0; } to { opacity: 1; } }
+@keyframes reveal { from { opacity: 1; } to { opacity: 0; } }
+@keyframes battle-in { 0% { opacity: 0; clip-path: circle(0% at 50% 50%); } 30% { opacity: 1; } 100% { opacity: 1; clip-path: circle(80% at 50% 50%); } }
+@media (prefers-reduced-motion: reduce) { #curtain { animation-duration: .01s !important; } }

@@ -4,6 +4,7 @@ import { GEO, MeshBuilder, flatMaterial } from '../render/builder';
 import { PALETTES, addLights, cloud, flowers, grassTuft, island, makeSky, rock, roundTree, staticMesh, tree } from '../render/diorama';
 import { arrowNav, focusFirst, h } from '../ui/dom';
 import { tween } from '../render/anim';
+import { ambient } from '../render/movefx';
 import { Rng } from '../engine/rng';
 import { healParty } from '../game/state';
 import type { HotspotData, RouteData } from '../engine/types';
@@ -94,6 +95,9 @@ export class RouteScene extends BaseScene {
       this.scene.add(grp);
       this.hotspots.set(spot.id, grp);
     });
+    const amb = ambient(theme);
+    this.scene.add(amb.points);
+    this.ambientUpdate = amb.update;
     const you = trainerFigure();
     you.position.set(0, 0, 0.9);
     this.scene.add(you);
@@ -161,7 +165,10 @@ export class RouteScene extends BaseScene {
     this.camera.updateProjectionMatrix();
   }
 
+  private ambientUpdate: ((t: number) => void) | null = null;
+
   override update(_dt: number, t: number) {
+    this.ambientUpdate?.(t);
     this.markers.forEach((m, i) => {
       m.position.y = 1.6 + Math.sin(t * 3 + i) * 0.12;
       m.rotation.y = t * 1.5;

@@ -46,12 +46,30 @@ export class Game {
     if (!f) throw new Error(`unknown scene ${name}`);
     this.idle = false;
     flushTweens();
+    await this.fade(true, name === 'battle' ? 'battle' : 'plain');
     this.current?.exit();
     const s = f(this);
     this.current = s;
     s.resize(this.renderer.width, this.renderer.height);
     document.body.dataset.scene = name;
-    await s.enter(params);
+    const entering = s.enter(params);
+    void this.fade(false, 'plain');
+    await entering;
+  }
+
+  private curtain: HTMLElement | null = null;
+
+  /** Scene transition: a quick wipe (battles get a striped flash). Skipped in instant mode. */
+  private fade(cover: boolean, style: 'plain' | 'battle'): Promise<void> {
+    if (!this.curtain) {
+      this.curtain = document.createElement('div');
+      this.curtain.id = 'curtain';
+      document.getElementById('app')!.appendChild(this.curtain);
+    }
+    const c = this.curtain;
+    if (animClock.instant || !this.current) { c.className = ''; return Promise.resolve(); }
+    c.className = `${style} ${cover ? 'cover' : 'reveal'}`;
+    return new Promise((r) => setTimeout(r, cover ? (style === 'battle' ? 520 : 220) : 0));
   }
 
   private onResize() {

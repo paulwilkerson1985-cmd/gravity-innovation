@@ -4,12 +4,13 @@ import { GEO, MeshBuilder, flatMaterial } from './builder';
 import { Rng } from '../engine/rng';
 import type { RouteData } from '../engine/types';
 
-export type Theme = RouteData['theme'] | 'title';
+export type Theme = RouteData['theme'] | 'title' | 'summit';
 
 export const PALETTES: Record<Theme, { skyTop: string; skyBottom: string; ground: string; ground2: string; dirt: string; leaf: string[]; rock: string; flower: string[] }> = {
   meadow: { skyTop: '#3fb4ff', skyBottom: '#d9f6ff', ground: '#78d05a', ground2: '#5fbf48', dirt: '#a8754a', leaf: ['#2f9e44', '#46c35a', '#7fdc5a'], rock: '#9aa3ad', flower: ['#ff6f9e', '#ffd84a', '#ffffff', '#b98cff'] },
   ridge: { skyTop: '#ff8a5c', skyBottom: '#ffe3b3', ground: '#d4a064', ground2: '#c18a50', dirt: '#8a5638', leaf: ['#9a8a3a', '#c2a64a', '#6f8f3a'], rock: '#8a6150', flower: ['#ff4f2e', '#ffb02e'] },
   coast: { skyTop: '#4aa8ff', skyBottom: '#eafcff', ground: '#f0d890', ground2: '#e2c676', dirt: '#b8915a', leaf: ['#3fae6a', '#58c97a', '#2f8f58'], rock: '#a6b4bf', flower: ['#ffffff', '#ff9ad0'] },
+  summit: { skyTop: '#2f3f9f', skyBottom: '#c7d4ff', ground: '#cfd8e6', ground2: '#b4c0d4', dirt: '#6b6f86', leaf: ['#2f7a5a', '#3f8f6a', '#5aa880'], rock: '#8e95ab', flower: ['#ffffff', '#ffe14d', '#9ad0ff'] },
   title: { skyTop: '#5b6cff', skyBottom: '#ffb3d9', ground: '#7ad05a', ground2: '#5fbf48', dirt: '#a8754a', leaf: ['#2f9e44', '#46c35a', '#7fdc5a'], rock: '#9aa3ad', flower: ['#ff6f9e', '#ffd84a', '#ffffff'] },
 };
 
@@ -34,6 +35,13 @@ export function makeSky(theme: Theme): THREE.Mesh {
 
 export function addLights(scene: THREE.Scene, theme: Theme) {
   const warm = theme === 'ridge';
+  if (theme === 'summit') {
+    scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3f6a, 1.5));
+    const moon = new THREE.DirectionalLight(0xfff2d8, 2.0);
+    moon.position.set(-4, 8, 5);
+    scene.add(moon);
+    return;
+  }
   scene.add(new THREE.HemisphereLight(warm ? 0xfff0dd : 0xeaf6ff, warm ? 0x6a4a3a : 0x4a6a3a, 1.6));
   const sun = new THREE.DirectionalLight(warm ? 0xffd2a0 : 0xffffff, 1.9);
   sun.position.set(4, 8, 5);
@@ -115,6 +123,16 @@ export function backdrop(theme: Theme, seed: number): THREE.Mesh {
   for (let i = 0; i < 6; i++) flowers(b, (rng.next() - 0.5) * 14, -rng.next() * 6 + 1, 4, pal.flower, rng);
   for (let i = 0; i < 5; i++) cloud(b, (rng.next() - 0.5) * 50, 12 + rng.next() * 6, -30 - rng.next() * 10, 1.5 + rng.next() * 1.5);
   if (theme === 'coast') b.add(GEO.disc, '#3d9bff', { p: [0, -0.05, -24], s: [40, 0.1, 12] });
+  if (theme === 'summit') {
+    for (let i = 0; i < 6; i++) {
+      const x = -28 + i * 11 + rng.next() * 4;
+      const z = -24 - rng.next() * 8;
+      const hgt = 10 + rng.next() * 8;
+      b.add(GEO.cone5, '#6b7394', { p: [x, hgt / 2 - 1, z], r: [0, rng.next(), 0], s: [6, hgt, 6] }, 0.2);
+      b.add(GEO.cone5, '#ffffff', { p: [x, hgt - 1 - hgt * 0.17, z], r: [0, rng.next(), 0], s: [2.1, hgt * 0.34, 2.1] }, 0.1);
+    }
+    for (let i = 0; i < 4; i++) b.add(GEO.box, '#d8c27a', { p: [-6 + i * 4, 1.2, -9], s: [0.5, 2.4, 0.5] }, 0.1);
+  }
   if (theme === 'ridge') for (let i = 0; i < 4; i++) b.add(GEO.cone5, '#a0563a', { p: [-20 + i * 13, 4, -26 - rng.next() * 6], s: [6 + rng.next() * 3, 9 + rng.next() * 5, 6] }, 0.2);
   return staticMesh(b);
 }

@@ -10,6 +10,7 @@ export interface GameHooks {
   battle(): unknown;
   goto(name: SceneName, params?: Record<string, unknown>): Promise<void>;
   setFast(on: boolean): void;
+  setSpeed(k: number): void;
   skip(): void;
   idle(): boolean;
   waitIdle(timeoutMs?: number): Promise<boolean>;
@@ -26,6 +27,7 @@ export function installHooks(game: Game) {
     battle: () => (game.current?.name === 'battle' ? structuredClone((game.current as BattleScene).snapshot()) : null),
     goto: (name, params) => game.goto(name, params),
     setFast: (on) => { animClock.instant = on; if (on) flushTweens(); },
+    setSpeed: (k) => { animClock.speed = k; },
     skip: () => flushTweens(),
     idle: () => game.idle && pendingTweens() === 0,
     waitIdle: (timeoutMs = 10000) => new Promise((resolve) => {
