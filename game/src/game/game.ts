@@ -1,10 +1,17 @@
 import { Renderer } from '../render/renderer';
 import { animClock, flushTweens, pendingTweens, stepTweens } from '../render/anim';
 import { chooseStarter, newPlayer, type PlayerState } from './state';
+import { SaveError, SaveManager, downloadSave, parseSave, summarize, type SaveSummary } from './save';
 import { getDex, type Dex } from '../engine';
+import { loadPrefs } from '../ui/prefs';
+import { closeAllModals } from '../ui/dom';
 import type { BaseScene, SceneName } from '../scenes/base';
 
-export interface GameOptions { seed: number; debug: boolean }
+export interface GameOptions { seed: number; debug: boolean; saves?: SaveManager }
+
+export type SavePeek = { summary: SaveSummary } | { error: string } | null;
+
+const AUTOSAVE_DEBOUNCE_MS = 300;
 
 type Factory = (g: Game) => BaseScene;
 
@@ -20,6 +27,16 @@ export class Game {
   private fpsT = 0;
   /** Resolvers waiting for the UI to become idle (awaiting player input). */
   idle = false;
+  readonly saves: SaveManager;
+  /**
+   * Autosave and play-time tracking only run once the player has started or continued an
+   * adventure from the title screen — `?scene=` debug/test entry points never touch the save.
+   */
+  saveEnabled = false;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingSave: { promise: Promise<boolean>; resolve: (ok: boolean) => void } | null = null;
+  private writing: Promise<unknown> = Promise.resolve();
+  private playAcc = 0;
 
   constructor(root: HTMLElement, readonly opts: GameOptions) {
     getDex(); // validate content at load
@@ -28,6 +45,10 @@ export class Game {
     this.overlay.id = 'overlay';
     root.appendChild(this.overlay);
     this.player = newPlayer(opts.seed);
+    this.saves = opts.saves ?? new SaveManager();
+    const flush = () => { if (document.visibilityState === 'hidden') void this.save({ now: true }); };
+    document.addEventListener('visibilitychange', flush);
+    window.addEventListener('pagehide', () => void this.save({ now: true }));
     if (opts.debug) {
       this.fpsEl = document.createElement('div');
       this.fpsEl.id = 'fps';
@@ -41,9 +62,101 @@ export class Game {
     this.factories.set(name, f);
   }
 
+  hasScene(name: string): boolean {
+    return this.factories.has(name as SceneName);
+  }
+
+  // ---------------------------------------------------------------- saves
+
+  /** Start a fresh adventure (the old save is only overwritten on the next save). */
+  newGame() {
+    this.player = newPlayer(this.opts.seed);
+    this.saveEnabled = true;
+    this.playAcc = 0;
+    this.applyDevicePrefs();
+  }
+
+  /** The text speed last chosen on this device wins over the one stored in a save. */
+  private applyDevicePrefs() {
+    const ts = loadPrefs().textSpeed;
+    if (ts) this.player.settings = { ...this.player.settings, textSpeed: ts };
+  }
+
+  /**
+   * Save the current player. Debounced (calls within ~300 ms coalesce) unless `now` is set.
+   * Resolves true when written; never throws/rejects. No-op (false) before an adventure starts.
+   */
+  save(opts: { now?: boolean } = {}): Promise<boolean> {
+    if (!this.saveEnabled || this.player.party.length === 0) return Promise.resolve(false);
+    if (!this.pendingSave) {
+      let resolve!: (ok: boolean) => void;
+      const promise = new Promise<boolean>((r) => { resolve = r; });
+      this.pendingSave = { promise, resolve };
+    }
+    const pending = this.pendingSave;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const run = () => {
+      this.saveTimer = null;
+      this.pendingSave = null;
+      const snapshot = structuredClone(this.player);
+      this.writing = this.writing.then(() => this.saves.write(snapshot)).then(() => pending.resolve(true), () => pending.resolve(false));
+    };
+    if (opts.now) run();
+    else this.saveTimer = setTimeout(run, AUTOSAVE_DEBOUNCE_MS);
+    return pending.promise;
+  }
+
+  /** Is there anything in the save slot (even a damaged one)? */
+  async hasSave(): Promise<boolean> {
+    try { return await this.saves.exists(); } catch { return false; }
+  }
+
+  /** Summary of the stored save for the title screen, an error message if it is damaged, or null. */
+  async peekSave(): Promise<SavePeek> {
+    try {
+      const s = await this.saves.read();
+      return s ? { summary: summarize(s.player, s.savedAt) } : null;
+    } catch (e) {
+      return { error: e instanceof SaveError ? e.message : 'Your save could not be read.' };
+    }
+  }
+
+  /** Load the stored save into `player`. Resolves false (never throws) if there is none or it is damaged. */
+  async load(): Promise<boolean> {
+    try {
+      const s = await this.saves.read();
+      if (!s) return false;
+      this.player = s.player;
+      this.saveEnabled = true;
+      this.playAcc = 0;
+      this.applyDevicePrefs();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Validate + migrate save text and store it in the slot. Throws SaveError with a friendly message. */
+  async importSave(text: string): Promise<SaveSummary> {
+    const parsed = parseSave(text);
+    await this.saves.write(parsed.player);
+    return summarize(parsed.player, parsed.savedAt);
+  }
+
+  /** Download the current adventure as a JSON file. Returns the file name, or null on failure. */
+  exportSave(): string | null {
+    try { return downloadSave(this.player); } catch { return null; }
+  }
+
   async goto(name: SceneName, params: Record<string, unknown> = {}) {
     const f = this.factories.get(name);
     if (!f) throw new Error(`unknown scene ${name}`);
+    closeAllModals();
+    if (name === 'route') {
+      const r = String(params.route ?? 'meadow');
+      if (getDex().routes.has(r)) this.player.lastRoute = r;
+    }
     this.idle = false;
     flushTweens();
     await this.fade(true, name === 'battle' ? 'battle' : 'plain');
@@ -55,6 +168,7 @@ export class Game {
     const entering = s.enter(params);
     void this.fade(false, 'plain');
     await entering;
+    if (name === 'route') void this.save();
   }
 
   private curtain: HTMLElement | null = null;
@@ -81,6 +195,7 @@ export class Game {
     const dt = Math.min(0.1, (now - this.last) / 1000 || 0);
     this.last = now;
     stepTweens(dt);
+    this.tickPlayTime(dt);
     const s = this.current;
     if (s) {
       s.update(dt, animClock.time);
@@ -97,6 +212,17 @@ export class Game {
       }
     }
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /** Count play time while an adventure is running and the tab is visible. */
+  private tickPlayTime(dt: number) {
+    if (!this.saveEnabled || document.hidden || this.player.party.length === 0 || this.current?.name === 'title') return;
+    this.playAcc += dt;
+    if (this.playAcc >= 1) {
+      const whole = Math.floor(this.playAcc);
+      this.player.playTime = (this.player.playTime || 0) + whole;
+      this.playAcc -= whole;
+    }
   }
 
   dex(): Dex {

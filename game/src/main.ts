@@ -8,6 +8,13 @@ import { RouteScene } from './scenes/route';
 import { BattleScene } from './scenes/battle';
 import { PartyScene } from './scenes/party';
 import { ModelScene } from './scenes/model';
+import { BestiaryScene } from './scenes/bestiary';
+import { BoxScene } from './scenes/box';
+import { BagScene } from './scenes/bag';
+import { ShopScene } from './scenes/shop';
+import { installMenuHotkey } from './ui/menu';
+import { applyPrefs } from './ui/prefs';
+import { audio } from './audio/audio';
 import type { SceneName } from './scenes/base';
 
 const params = new URLSearchParams(location.search);
@@ -24,6 +31,13 @@ game.register('route', (g) => new RouteScene(g));
 game.register('battle', (g) => new BattleScene(g));
 game.register('party', (g) => new PartyScene(g));
 game.register('model', (g) => new ModelScene(g));
+game.register('bestiary', (g) => new BestiaryScene(g));
+game.register('box', (g) => new BoxScene(g));
+game.register('bag', (g) => new BagScene(g));
+game.register('shop', (g) => new ShopScene(g));
+applyPrefs();
+audio.installUnlock();
+installMenuHotkey(game);
 installHooks(game);
 
 const sceneParam = (params.get('scene') ?? 'title') as SceneName;

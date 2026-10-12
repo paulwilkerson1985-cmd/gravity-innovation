@@ -3,6 +3,9 @@ import { animClock, flushTweens, pendingTweens } from '../render/anim';
 import type { Game } from '../game/game';
 import type { SceneName } from '../scenes/base';
 import type { BattleScene } from '../scenes/battle';
+import { openGameMenu } from '../ui/menu';
+import { makeCreature } from '../engine';
+import { PARTY_MAX } from '../game/state';
 
 export interface GameHooks {
   scene(): string | null;
@@ -17,6 +20,16 @@ export interface GameHooks {
   canvasStats(): { distinct: number; nonBlack: number; samples: number } | null;
   renderInfo(): { calls: number; triangles: number };
   seed: number;
+  // ---- meta (saves & menus)
+  save(): Promise<boolean>;
+  load(): Promise<boolean>;
+  hasSave(): Promise<boolean>;
+  saveBackend(): string;
+  openMenu(): void;
+  /** Debug: give the player a kin (party if room, else box). */
+  addKin(species: string, level?: number): void;
+  /** Debug: shallow-patch the player state (e.g. { money: 5000 }). */
+  patchPlayer(patch: Record<string, unknown>): void;
 }
 
 export function installHooks(game: Game) {
@@ -41,6 +54,20 @@ export function installHooks(game: Game) {
     }),
     canvasStats: () => (game.current ? game.renderer.sample(game.current.scene, game.current.camera) : null),
     renderInfo: () => ({ calls: game.renderer.gl.info.render.calls, triangles: game.renderer.gl.info.render.triangles }),
+    save: () => { game.saveEnabled = true; return game.save({ now: true }); },
+    load: () => game.load(),
+    hasSave: () => game.hasSave(),
+    saveBackend: () => game.saves.backendKind,
+    openMenu: () => { openGameMenu(game); },
+    addKin: (speciesId, level = 5) => {
+      const p = structuredClone(game.player);
+      const c = makeCreature(speciesId, level, `c${p.nextUid++}`);
+      if (p.party.length < PARTY_MAX) p.party.push(c); else p.box.push(c);
+      if (!p.seen.includes(speciesId)) p.seen.push(speciesId);
+      if (!p.caught.includes(speciesId)) p.caught.push(speciesId);
+      game.player = p;
+    },
+    patchPlayer: (patch) => { game.player = { ...game.player, ...structuredClone(patch) } as typeof game.player; },
   };
   (window as unknown as { __game: GameHooks }).__game = hooks;
 }

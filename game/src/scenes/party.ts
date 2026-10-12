@@ -1,80 +1,150 @@
-import * as THREE from 'three';
-import { BaseScene } from './base';
-import { CreatureView } from '../render/creature';
-import { addLights, makeSky, platform } from '../render/diorama';
-import { arrowNav, focusFirst, h, hpBar, typeChip, TYPE_COLORS } from '../ui/dom';
-import { calcStats, move, species, xpForLevel } from '../engine';
+// Party screen: reorder, full summary, use bag items, send to the storage box.
+import { MetaScene } from './meta';
+import { audio } from '../audio/audio';
+import { calcStats, getItem, itemHasEffect, type ItemId } from '../engine';
+import { bagCount, depositBlocker, depositToBox, isOrb, moveInParty, setLead, useBagItem, type BagId } from '../game/state';
+import { arrowNav, confirmDialog, focusFirst, h, openModal, toast } from '../ui/dom';
+import { icon } from '../ui/icons';
+import { kinCard, kinName, kinSummary } from '../ui/kin';
 
-export class PartyScene extends BaseScene {
+export class PartyScene extends MetaScene {
   readonly name = 'party' as const;
-  private view: CreatureView | null = null;
+  private list!: HTMLElement;
   private detail!: HTMLElement;
-  private stand!: THREE.Mesh;
-  private back: { scene: 'route'; route: string } = { scene: 'route', route: 'meadow' };
+  private actions!: HTMLElement;
+  private head!: HTMLElement;
+  private sel = 0;
 
   enter(params: Record<string, unknown>) {
-    const g = this.game;
-    if (g.player.party.length === 0) g.debugParty();
-    this.back = { scene: 'route', route: String(params.route ?? 'meadow') };
-    this.scene.add(makeSky('title'));
-    addLights(this.scene, 'meadow');
-    this.stand = platform('#ffffff', 1.1);
-    this.scene.add(this.stand);
-
+    this.setupStage(params);
+    this.motion = 'sway';
+    this.sel = Math.max(0, Math.min(this.game.player.party.length - 1, Number(params.index ?? 0) || 0));
+    this.head = h('h2', {});
+    this.list = h('div', { class: 'party-list', 'data-testid': 'party-list' });
+    arrowNav(this.list);
     this.detail = h('div', { class: 'party-detail', 'data-testid': 'party-detail' });
-    const list = h('div', { class: 'party-list', 'data-testid': 'party-list' }, ...g.player.party.map((c, i) => {
-      const s = species(c.species);
-      const max = calcStats(c.species, c.level).hp;
-      return h('button', { class: 'btn party-card', 'data-testid': `party-${i}`, onclick: () => this.show(i) },
-        h('span', { class: 'prow' }, h('span', { class: 'mname' }, c.nickname ?? s.name), h('span', { class: 'plevel' }, `Lv${c.level}`)),
-        h('span', { class: 'prow' }, h('span', { class: 'chips' }, ...s.types.map(typeChip)), hpBar(c.hp, max), h('span', { class: 'hpnums small' }, `${c.hp}/${max}`)));
-    }));
-    arrowNav(list);
-    this.ui.append(h('div', { class: 'sheet party-ui' },
-      h('div', { class: 'party-head' }, h('h2', {}, `Your party (${g.player.party.length}/6)`),
-        h('button', { class: 'btn btn-back', 'data-testid': 'btn-party-back', onclick: () => void g.goto(this.back.scene, { route: this.back.route }) }, 'Back')),
-      list, this.detail));
-    this.show(0);
-    focusFirst(list);
+    this.actions = h('div', { class: 'kin-actions' });
+    this.layout(
+      h('section', { class: 'meta-panel party-panel' },
+        h('div', { class: 'meta-head' }, this.head, this.backButton('btn-party-back')),
+        this.list,
+        h('p', { class: 'meta-hint small' }, 'Your lead kin is sent out first in battle.')),
+      h('section', { class: 'meta-panel detail-panel' }, this.actions, this.detail),
+      'meta-party');
+    this.renderList();
+    this.show(this.sel, false);
+    focusFirst(this.list);
   }
 
-  private show(i: number) {
+  private renderList() {
+    const p = this.game.player;
+    this.head.textContent = `Your party (${p.party.length}/6)`;
+    this.list.replaceChildren(...p.party.map((c, i) => kinCard(c, {
+      'data-testid': `party-${i}`,
+      class: `party-card ${i === this.sel ? 'selected' : ''}`,
+      onclick: () => { audio.sfx('cursor'); this.show(i); },
+    }, i === 0 ? h('span', { class: 'lead-tag' }, 'LEAD') : undefined)));
+  }
+
+  private show(i: number, animate = true) {
     const c = this.game.player.party[i];
     if (!c) return;
-    const s = species(c.species);
-    const st = calcStats(c.species, c.level);
-    if (this.view) { this.scene.remove(this.view.root); this.view.mesh.geometry.dispose(); this.view.material.dispose(); }
-    this.view = new CreatureView(s.look, i);
-    this.scene.add(this.view.root);
-    void this.view.appear();
-    this.ui.querySelectorAll('.party-card').forEach((el, j) => el.classList.toggle('selected', i === j));
-    const next = c.level < 30 ? xpForLevel(c.level + 1) - c.xp : 0;
-    this.detail.replaceChildren(
-      h('p', { class: 'blurb' }, s.blurb),
-      h('p', { class: 'stats' }, `HP ${c.hp}/${st.hp} · Atk ${st.atk} · Def ${st.def} · Spe ${st.spe}${c.status ? ` · ${c.status.toUpperCase()}` : ''}`),
-      h('p', { class: 'stats small' }, c.level < 30 ? `${next} XP to next level` : 'Max level'),
-      h('div', { class: 'move-list' }, ...c.moves.map((m) => {
-        const d = move(m.id);
-        return h('div', { class: 'move-pill', style: `--c:${TYPE_COLORS[d.type]}` }, h('strong', {}, d.name), h('span', {}, ` ${m.pp}/${d.pp} PP`));
-      })),
+    const changedKin = this.view === null || this.sel !== i || animate;
+    this.sel = i;
+    this.list.querySelectorAll('.party-card').forEach((el, j) => el.classList.toggle('selected', i === j));
+    if (changedKin) this.showKin(c.species, 'color', animate);
+    this.setCaption(kinName(c), `Lv${c.level}`);
+    this.detail.replaceChildren(kinSummary(c));
+    this.renderActions();
+  }
+
+  private renderActions() {
+    const p = this.game.player;
+    const i = this.sel;
+    const n = p.party.length;
+    const why = depositBlocker(p, i);
+    const usable = (Object.keys(p.bag) as BagId[]).filter((id) => !isOrb(id) && bagCount(p, id) > 0);
+    this.actions.replaceChildren(
+      h('button', { class: 'btn btn-act', 'data-testid': 'btn-set-lead', disabled: i === 0, onclick: () => this.reorder(i, 0, 'is now leading!') }, icon('crown'), 'Lead'),
+      h('button', { class: 'btn btn-act', 'data-testid': 'btn-move-up', disabled: i === 0, 'aria-label': 'Move up', onclick: () => this.reorder(i, i - 1) }, icon('up'), 'Up'),
+      h('button', { class: 'btn btn-act', 'data-testid': 'btn-move-down', disabled: i >= n - 1, 'aria-label': 'Move down', onclick: () => this.reorder(i, i + 1) }, icon('down'), 'Down'),
+      h('button', { class: 'btn btn-act btn-item', 'data-testid': 'btn-use-item', disabled: usable.length === 0, title: usable.length ? 'Use an item' : 'No usable items in your bag', onclick: () => this.pickItem() }, icon('bag'), 'Item'),
+      h('button', { class: 'btn btn-act btn-tobox', 'data-testid': 'btn-deposit', disabled: !!why, title: why ?? 'Send to the storage box', onclick: () => void this.deposit() }, icon('box'), 'To box'),
     );
   }
 
-  override resize(w: number, hgt: number) {
-    super.resize(w, hgt);
-    const portrait = w < hgt;
-    this.camera.position.set(0, 1.6, portrait ? 6.5 : 5.2);
-    this.camera.lookAt(0, 0.7, 0);
-    // Landscape: creature on the right of the list. Portrait: creature at the top.
-    if (portrait) this.camera.setViewOffset(w, hgt, 0, hgt * 0.28, w, hgt);
-    else this.camera.setViewOffset(w, hgt, -w * 0.22, 0, w, hgt);
-    this.camera.updateProjectionMatrix();
+  private reorder(from: number, to: number, msg?: string) {
+    const p = this.game.player;
+    this.game.player = to === 0 && msg ? setLead(p, from) : moveInParty(p, from, to);
+    audio.sfx('switch');
+    this.sel = to;
+    this.renderList();
+    this.show(to, false);
+    if (msg) toast(`${kinName(this.game.player.party[0]!)} ${msg}`, 'good');
+    this.list.querySelector<HTMLButtonElement>(`[data-testid="party-${to}"]`)?.focus({ preventScroll: true });
+    void this.game.save();
   }
 
-  override update(_dt: number, t: number) {
-    if (this.view) {
-      this.view.update(t);
-      this.view.root.rotation.y = Math.sin(t * 0.6) * 0.7;
+  private async deposit() {
+    const p = this.game.player;
+    const c = p.party[this.sel]!;
+    const ok = await confirmDialog({ title: 'Send to box?', message: `${kinName(c)} will wait in your storage box. You can withdraw it any time from the Box.`, confirmLabel: 'Send', cancelLabel: 'Keep' });
+    if (!ok) return;
+    try {
+      this.game.player = depositToBox(this.game.player, this.sel);
+    } catch (e) {
+      audio.sfx('denied');
+      toast((e as Error).message, 'bad');
+      return;
     }
+    audio.sfx('select');
+    toast(`${kinName(c)} was sent to the box.`, 'good');
+    this.sel = Math.min(this.sel, this.game.player.party.length - 1);
+    this.renderList();
+    this.show(this.sel);
+    void this.game.save();
+  }
+
+  private pickItem() {
+    const p = this.game.player;
+    const c = p.party[this.sel]!;
+    audio.sfx('select');
+    const ids = (Object.keys(p.bag) as BagId[]).filter((id): id is ItemId => !isOrb(id) && bagCount(p, id) > 0);
+    const m = openModal({ title: `Use an item on ${kinName(c)}`, className: 'modal-items', testid: 'item-picker' });
+    const list = h('div', { class: 'item-pick' }, ...ids.map((id) => {
+      const it = getItem(id);
+      const works = itemHasEffect(c, id);
+      return h('button', {
+        class: 'btn item-row', 'data-testid': `use-${id}`, disabled: !works,
+        onclick: () => { m.close(); this.useItem(id); },
+      },
+      h('span', { class: `item-ico ico-${id}`, 'aria-hidden': 'true' }),
+      h('span', { class: 'ir-main' }, h('span', { class: 'mname' }, it.name), h('span', { class: 'small' }, works ? it.blurb : 'It won\'t have any effect.')),
+      h('span', { class: 'ir-count' }, `×${bagCount(p, id)}`));
+    }));
+    arrowNav(list);
+    m.body.append(list);
+    focusFirst(list);
+  }
+
+  private useItem(id: ItemId) {
+    const before = this.game.player.party[this.sel]!;
+    try {
+      this.game.player = useBagItem(this.game.player, id, this.sel);
+    } catch (e) {
+      audio.sfx('denied');
+      toast((e as Error).message, 'bad');
+      return;
+    }
+    const after = this.game.player.party[this.sel]!;
+    const max = calcStats(after.species, after.level).hp;
+    const name = kinName(after);
+    const msg = before.hp <= 0 ? `${name} was revived!` : before.status && !after.status ? `${name} feels better!` : `${name} recovered ${after.hp - before.hp} HP (${after.hp}/${max}).`;
+    audio.sfx('heal');
+    toast(msg, 'good');
+    this.renderList();
+    this.show(this.sel, false);
+    void this.view?.pulse('#7dffb0');
+    void this.game.save();
   }
 }
