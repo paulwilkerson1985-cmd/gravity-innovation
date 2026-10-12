@@ -27,6 +27,8 @@ export class ModelScene extends BaseScene {
   private freeze: number | null = null;
   private anim: string | null = null;
   private lastAnim = -10;
+  private playing = false;
+  private time = 0;
   /** Framing box (world units) for single/lineup modes. */
   private box = new THREE.Box3();
 
@@ -189,16 +191,19 @@ export class ModelScene extends BaseScene {
       else if (this.yaw !== null) v.root.rotation.y = -this.yaw;
       else v.root.rotation.y = this.mode === 'single' ? t * 0.6 : 0.45;
     });
-    if (this.anim && t - this.lastAnim > 2.2) {
-      this.lastAnim = t;
+    if (this.anim && !this.playing && t - this.lastAnim > 1.2) {
       const v = this.views[this.mode === 'battle' ? 1 : 0];
       if (!v) return;
       const target = v.root.position.clone().add(new THREE.Vector3(Math.sin(v.root.rotation.y), 0, Math.cos(v.root.rotation.y)).multiplyScalar(3));
-      if (this.anim === 'lunge') void v.lunge(target);
-      else if (this.anim === 'hit') void v.hit(false);
-      else if (this.anim === 'crit') void v.hit(true);
-      else if (this.anim === 'appear') void v.appear();
-      else if (this.anim === 'faint') void v.faint().then(() => setTimeout(() => v.reset(), 500));
+      const run = this.anim === 'lunge' ? v.lunge(target)
+        : this.anim === 'hit' ? v.hit(false)
+          : this.anim === 'crit' ? v.hit(true)
+            : this.anim === 'appear' ? v.appear()
+              : this.anim === 'faint' ? v.faint().then(() => v.reset())
+                : Promise.resolve();
+      this.playing = true;
+      void run.then(() => { this.playing = false; this.lastAnim = this.time; });
     }
+    this.time = t;
   }
 }

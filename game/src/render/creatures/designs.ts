@@ -97,7 +97,7 @@ const cindertail: Design = {
 };
 
 const pyrelord: Design = {
-  scale: 0.98, idle: 'heavy',
+  scale: 0.86, idle: 'heavy',
   build(k) {
     const main = '#d8321e', gold = '#ffcf7a', soot = '#2c2230', yel = '#ffe14d';
     k.orb(under(main, gold), [0, 0.8, -0.52], [0.3, 0.3, 0.3]);
@@ -311,7 +311,7 @@ const thistlehorn: Design = {
     for (let i = 0; i < 3; i++) {
       const z = 0.06 - i * 0.18;
       const y = 0.9 - i * 0.012;
-      sym(k, (sx) => leaf(k, i % 2 ? dark : '#2f9a40', V(S(sx, 0.03), y, z), V(S(sx, 0.85), 0.25, -0.5), V(S(sx, 0.35), 1, 0), 0.27, 0.17, 0.04));
+      sym(k, (sx) => leaf(k, i % 2 ? dark : '#2f9a40', V(S(sx, 0.03), y, z), V(S(sx, 0.85), -0.05, -0.55), V(S(sx, 0.1), 1, 0), 0.27, 0.18, 0.04));
     }
     leaf(k, dark, V(0, 0.9, 0.14), V(0, 0.35, -1), V(0, 1, 0.3), 0.3, 0.17, 0.04);
     k.limb((n) => (n.z > 0.45 ? belly : main), V(0, 0.74, 0.22), V(0, 0.87, 0.4), 0.12, 0.1, 7);
@@ -351,7 +351,7 @@ function tree(k: Kit, base: THREE.Vector3, h: number, r: number, bark: Col, leav
 }
 
 const verdantusk: Design = {
-  scale: 0.92, idle: 'heavy',
+  scale: 0.82, idle: 'heavy',
   build(k) {
     const main = '#2c8c3a', belly = '#c9ef8a', bark = '#6b4a2e', ivory = '#fff1d0', blossom = '#e05ab8', leafL = '#5fcf4a', leafD = '#1f6e2c';
     k.orb(under(main, belly), [0, 0.95, -0.66], [0.38, 0.38, 0.34], { w: 10, h: 7 });
@@ -631,7 +631,7 @@ const vulcrag: Design = {
 };
 
 const surgeray: Design = {
-  scale: 1.25, idle: 'glide',
+  scale: 1.12, idle: 'glide',
   build(k) {
     const main = '#2b6cd8', belly = '#e0f5ff', yel = '#ffe23a', deep = '#1a4aa0', dark = '#16224a';
     const body = k.orb(under(main, belly, -0.2), [0, 0.22, 0.02], [0.32, 0.19, 0.46], { w: 10, h: 6, rot: [-0.12, 0, 0] });
