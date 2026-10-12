@@ -146,6 +146,7 @@ test('shop purchase, bag use and party actions', async ({ page }, info) => {
   await expect(page.getByTestId('game-menu')).toBeVisible();
 
   // Hurt the lead and heal it from the bag.
+  const fullHp = (await G(page, (g) => g.player())).party[0]!.hp; // a fresh starter is at max HP
   await G(page, (g) => { const pl = g.player(); pl.party[0]!.hp = 2; g.patchPlayer({ party: pl.party }); });
   await page.getByTestId('menu-bag').click();
   await waitScene(page, 'bag');
@@ -153,7 +154,8 @@ test('shop purchase, bag use and party actions', async ({ page }, info) => {
   await page.getByTestId('btn-use-item').click();
   await page.getByTestId('use-target-0').click();
   p = await G(page, (g) => g.player());
-  expect(p.party[0]!.hp).toBe(20);
+  // Tonic heals 20 from 2 HP, capped at max HP (the starter's max HP follows the balance data).
+  expect(p.party[0]!.hp).toBe(Math.min(22, fullHp));
   expect(p.bag.tonic).toBe(2);
   await shot(page, '04-bag', info.project.name);
   await page.keyboard.press('Escape');

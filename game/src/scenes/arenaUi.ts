@@ -74,6 +74,12 @@ export function curtain(host: HTMLElement, o: CurtainOptions): { el: HTMLElement
     closed = true;
     window.removeEventListener('keydown', onKey, true);
     el.classList.add('arena-curtain-out');
+    // While it fades out, the next curtain (hotseat hand-over right after a fast playback)
+    // may already be up: the leaving one is inert and no longer answers to its test ids.
+    go.disabled = true;
+    go.removeAttribute('data-testid');
+    el.removeAttribute('data-testid');
+    el.style.pointerEvents = 'none';
     setTimeout(() => el.remove(), 180);
     resolve();
   }
