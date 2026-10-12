@@ -92,6 +92,7 @@ export abstract class MetaScene extends BaseScene {
       (v.shadow.material as THREE.MeshBasicMaterial).opacity = 0.12;
     }
     this.view = v;
+    v.root.position.y = 0.1; // on the stand's top surface
     this.scene.add(v.root);
     this.spinBase = 0;
     this.spinT0 = null;

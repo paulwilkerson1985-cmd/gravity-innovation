@@ -296,7 +296,7 @@ export class RouteScene extends BaseScene {
       cls = beaten ? 'beaten' : 'challenge';
       // Short name on the button, the trainer's title in the subtitle.
       label = t.name;
-      meta = beaten ? (t.id === CHAMPION_ID ? 'Hall of Fame' : `Defeated ✓ · ${t.title}`) : `${t.title} · ${t.party.length} kin`;
+      meta = beaten ? (t.id === CHAMPION_ID ? 'Hall of Fame' : 'Defeated ✓') : `${t.title} · ${t.party.length} kin`;
     } else {
       const lo = Math.min(...s.table.map((e) => e.min));
       const hi = Math.max(...s.table.map((e) => e.max));

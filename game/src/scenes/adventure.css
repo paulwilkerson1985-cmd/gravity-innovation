@@ -184,7 +184,7 @@
 .hof-buttons .btn { flex: 1; }
 /* wide & landscape: the sheet is a right-hand column; title and line-up share the left */
 @media (min-aspect-ratio: 1001/1000) and (min-width: 641px), (max-height: 500px) and (orientation: landscape) {
-  .hof-sheet { left: auto; right: max(12px, env(safe-area-inset-right)); transform: none; top: max(12px, env(safe-area-inset-top)); bottom: max(12px, env(safe-area-inset-bottom)); width: min(400px, 36vw); overflow: auto; align-content: center; }
+  .hof-sheet { left: auto; right: max(12px, env(safe-area-inset-right)); top: 50%; bottom: auto; transform: translateY(-50%); max-height: calc(100% - 24px); width: min(400px, 36vw); overflow: auto; }
   .hof-top { right: calc(min(400px, 36vw) + 24px); }
   .hof-team { grid-template-columns: 1fr; gap: 5px; }
 }
@@ -231,4 +231,9 @@
 @media (max-width: 360px) {
   .card .mname { font-size: 14px; }
   .bt-menu .btn-move .mname .eff { font-size: 8px; padding: 1px 3px; }
+}
+@media (max-width: 360px) {
+  .pdots { gap: 1px; }
+  .pdot { width: 6px; height: 6px; border-width: 1px; }
+  .arena-panel-far .hpnums { display: none; }
 }

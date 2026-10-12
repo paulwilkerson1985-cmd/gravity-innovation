@@ -146,6 +146,7 @@ export class EvolutionScene extends BaseScene {
   private view(speciesId: string): CreatureView {
     const v = new CreatureView(species(speciesId).look, 0);
     v.faceTowards(new THREE.Vector3(0, 0, 5));
+    v.root.position.y = 0.1; // stand on the pedestal top, not inside it
     this.scene.add(v.root);
     this.views.push(v);
     return v;

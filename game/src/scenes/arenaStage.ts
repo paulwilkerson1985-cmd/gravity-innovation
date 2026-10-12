@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { GEO, MeshBuilder, flatMaterial } from '../render/builder';
 import { Rng } from '../engine/rng';
 import { ambient } from '../render/movefx';
-import { battlePad, frameBattle } from './battleStage';
+import { battlePad, frameBattle, type Framed } from './battleStage';
 
 /** Player colours, by seat (engine side). */
 export const SEAT_COLORS = ['#ff5d73', '#3d9bff'] as const;
@@ -202,8 +202,8 @@ export function buildArena(scene: THREE.Scene, opts: { nearColor: string; farCol
 }
 
 /** Frame the battle camera on the two spots (shared with the adventure battle). */
-export function frameBattleCamera(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3]) {
-  frameBattle(cam, scene, w, h, spots);
+export function frameBattleCamera(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3], kin: readonly (Framed | null)[] = []) {
+  frameBattle(cam, scene, w, h, spots, kin);
   if (scene.fog instanceof THREE.Fog) { scene.fog.near += 6; scene.fog.far += 12; }
 }
 

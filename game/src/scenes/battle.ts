@@ -7,7 +7,7 @@ import { BaseScene } from './base';
 import './adventure.css';
 import { CreatureView } from '../render/creature';
 import { addLights, backdrop, makeSky } from '../render/diorama';
-import { PAD_COLORS, battlePad, battleSpots, frameBattle, nearScale, placeSpots } from './battleStage';
+import { PAD_COLORS, battlePad, battleSpots, frameBattle, fitKinScale, placeSpots } from './battleStage';
 import { ORB_COLORS, burst, makeOrb } from '../render/fx';
 import { ambient, moveFx } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
@@ -132,7 +132,7 @@ export class BattleScene extends BaseScene {
       this.views.forEach((v, i) => v?.root.position.copy(this.spots[i]!));
       if (this.trainerFig?.visible) this.trainerFig.position.copy(this.spots[1]);
     }
-    frameBattle(this.camera, this.scene, w, hgt, this.spots);
+    frameBattle(this.camera, this.scene, w, hgt, this.spots, this.views);
   }
 
   /** Layout checks (debug hook): the kin on the field and the trainer. */
@@ -563,7 +563,6 @@ export class BattleScene extends BaseScene {
         this.disposeView(e.side);
         this.activeSlot[e.side] = e.slot;
         const view = new CreatureView(species(e.species).look, e.side);
-        if (e.side === 0) view.baseScale = nearScale(view.baseScale);
         view.root.position.copy(this.spots[e.side]);
         view.faceTowards(e.side === 0 ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
         // Turn your own kin a little toward the camera: a readable 3/4 back view, not a rear end.
@@ -571,6 +570,8 @@ export class BattleScene extends BaseScene {
         this.scene.add(view.root);
         view.inner.scale.setScalar(0.001);
         this.views[e.side] = view;
+        fitKinScale(view, e.side);
+        this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
         this.setPanel(e.side, e);
         if (e.side === 1) this.game.player = withSeen(this.game.player, e.species);
         // Your own kin arrives in an orb: a short arc in from the lower left and a pop.
@@ -608,7 +609,7 @@ export class BattleScene extends BaseScene {
             void burst(this.scene, this.spots[e.side].clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4);
             this.shake(e.crit && e.mult > 1 ? 0.16 : 0.1);
           }
-          await Promise.all([target?.hit(e.mult > 1 || e.crit), this.tweenHp(e.side, from, e.hp, e.maxHp)]);
+          await Promise.all([target?.hit(e.mult > 1 || e.crit, e.crit), this.tweenHp(e.side, from, e.hp, e.maxHp)]);
           if (e.crit) await this.say('A critical hit!', 400);
           if (e.mult > 1) await this.say("It's super effective!", 450);
           else if (e.mult < 1) await this.say("It's not very effective…", 450);

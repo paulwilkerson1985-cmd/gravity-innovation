@@ -3,7 +3,7 @@
 // free for every viewport (desktop, portrait phone, landscape phone).
 import * as THREE from 'three';
 import { GEO, MeshBuilder, flatMaterial } from '../render/builder';
-import { frameTwo, layoutMode, uiZoom } from './framing';
+import { corners, frameTwo, layoutMode, uiZoom } from './framing';
 
 /** Your kin (near, left) and the foe (far, right). Close enough that both read big. */
 export const BATTLE_SPOTS = [new THREE.Vector3(-1.7, 0.2, 1.3), new THREE.Vector3(1.6, 0.2, -1.6)] as const;
@@ -81,26 +81,90 @@ function targetsAt(w: number, h: number, mode: ReturnType<typeof layoutMode>): {
   if (mode === 'portrait') {
     const small = h < 700;
     const textTop = h - 12 - (small ? 144 : 172) - (small ? 6 : 8) - (small ? 64 : 78);
-    return { mine: [w * (small ? 0.22 : 0.3), textTop - 16], foe: [w * 0.72, textTop * 0.47] };
+    return { mine: [w * (small ? 0.22 : 0.26), textTop - 16], foe: [w * (small ? 0.76 : 0.72), textTop * 0.47] };
   }
   const textTop = h - 12 - 96;
   return { mine: [w * 0.27, textTop - 26], foe: [w * 0.66, Math.min(h * 0.55, h - 320)] };
 }
 
-/** Frame the battle camera on BATTLE_SPOTS for the current viewport. */
-export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3]) {
+/** Anything with a mesh and a rest scale (CreatureView), measured at rest for framing. */
+export interface Framed { root: THREE.Object3D; mesh: THREE.Mesh; baseScale: number }
+
+/** Screen extent (px) of a kin at its rest scale, ignoring idle/appear animation: [x0, x1, height, bottom]. */
+function kinSpan(cam: THREE.PerspectiveCamera, w: number, h: number, k: Framed): [number, number, number, number] {
+  const g = k.mesh.geometry;
+  g.computeBoundingBox();
+  const bb = g.boundingBox!;
+  k.root.updateWorldMatrix(true, false);
+  const m = new THREE.Matrix4().compose(k.root.position, k.root.quaternion, new THREE.Vector3().setScalar(k.baseScale * k.root.scale.x));
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const p of corners(bb.min, bb.max)) {
+    const v = p.applyMatrix4(m).project(cam);
+    const x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  return [x0, x1, y1 - y0, y1];
+}
+
+/**
+ * Frame the battle camera on the spots for the current viewport. With the kin on the field
+ * given, a second pass slides a target sideways so a long tail or wide wings never leave the
+ * screen (big final forms on a narrow phone).
+ */
+export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3], kin: readonly (Framed | null | undefined)[] = []) {
   cam.aspect = w / h;
   cam.fov = layoutMode(w, h) === 'portrait' ? 20 : 26;
   const t = battleTargets(w, h);
-  frameTwo(cam, w, h, spots[0], spots[1], t.mine, t.foe, { dir: new THREE.Vector3(-0.3, 0.42, 1), yawRange: 0.45 });
+  const dir = new THREE.Vector3(-0.3, 0.42, 1);
+  frameTwo(cam, w, h, spots[0], spots[1], t.mine, t.foe, { dir, yawRange: 0.45 });
+  // Your kin may not take more than its share of the screen (wide rays, tall final forms).
+  const portrait = layoutMode(w, h) === 'portrait';
+  if (kin[0]) {
+    const [x0, x1, kh] = kinSpan(cam, w, h, kin[0]);
+    const k = Math.min(1, (w * (portrait ? 0.5 : 0.36)) / (x1 - x0), (h * (portrait ? 0.3 : 0.5)) / kh);
+    if (k < 1) kin[0].root.scale.multiplyScalar(k);
+  }
+  if (kin[1]) {
+    const [x0, x1] = kinSpan(cam, w, h, kin[1]);
+    const k = (w * (portrait ? 0.5 : 0.3)) / (x1 - x0);
+    if (k < 1) kin[1].root.scale.multiplyScalar(k);
+  }
+  const margin = 12;
+  const fix = (k: Framed | null | undefined, max: number): number => {
+    if (!k) return 0;
+    const [x0, x1] = kinSpan(cam, w, h, k);
+    if (x0 < margin) return Math.min(margin - x0, max);
+    if (x1 > w - margin) return -Math.min(x1 - (w - margin), max);
+    return 0;
+  };
+  const dm = fix(kin[0], w * 0.2), df = fix(kin[1], w * 0.2);
+  // A long or low kin (rays, serpents) must not sink behind the text box.
+  let dy = 0;
+  if (kin[0]) {
+    const bottom = kinSpan(cam, w, h, kin[0])[3];
+    const limit = t.mine[1] + 22;
+    if (bottom > limit) dy = -Math.min(bottom - limit, h * 0.12);
+  }
+  if (dm || df || dy) frameTwo(cam, w, h, spots[0], spots[1], [t.mine[0] + dm, t.mine[1] + dy], [t.foe[0] + df, t.foe[1]], { dir, yawRange: 0.45 });
   const dist = cam.position.distanceTo(spots[0].clone().add(spots[1]).multiplyScalar(0.5));
   if (scene.fog instanceof THREE.Fog) { scene.fog.near = dist + 8; scene.fog.far = dist + 36; }
 }
 
 /**
- * Your kin stands much closer to the camera than the foe, so a big final form would fill
- * half a phone screen: damp the near side's scale (1.35 → 1.14, 1.0 stays 1.0).
+ * Even out on-screen sizes across species: your kin stands much closer to the camera, so a
+ * big final form is damped toward a cap; a tiny first-stage foe far away is boosted a little.
+ * Uses the root scale, so the blob shadow follows. Returns the factor applied.
  */
-export function nearScale(scale: number): number {
-  return scale <= 1 ? scale : 1 + (scale - 1) * 0.4;
+export function fitKinScale(v: Framed, side: 0 | 1): number {
+  const g = v.mesh.geometry;
+  g.computeBoundingBox();
+  const bb = g.boundingBox!;
+  const size = Math.max(bb.max.y - bb.min.y, 0.8 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) * v.baseScale;
+  let k = 1;
+  if (side === 0 && size > NEAR_CAP) k = Math.pow(NEAR_CAP / size, 0.65);
+  if (side === 1 && size < FAR_MIN) k = Math.pow(FAR_MIN / size, 0.6);
+  v.root.scale.setScalar(k);
+  return k;
 }
+const NEAR_CAP = 1.5;
+const FAR_MIN = 1.05;

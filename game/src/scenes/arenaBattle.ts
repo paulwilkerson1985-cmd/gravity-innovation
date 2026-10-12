@@ -14,7 +14,7 @@ import {
   type Action, type BattleEvent, type BattleState, type StageKey, type StatusId,
 } from '../engine';
 import { SEAT_COLORS, SEAT_DARK, buildArena, frameBattleCamera, type ArenaSet } from './arenaStage';
-import { battleSpots, nearScale, placeSpots } from './battleStage';
+import { battleSpots, fitKinScale, placeSpots } from './battleStage';
 import { TurnCollector, curtainBefore, curtainBeforePlayback, type ArenaMode, type LocalMatchSetup, type MatchSummary, type Seat } from './arenaFlow';
 import { abtn, curtain, pips, seatTag } from './arenaUi';
 import { ERROR_TEXT, MAX_TIMEOUTS, type RoomView, type ServerMessage } from '../net/protocol';
@@ -137,7 +137,7 @@ export class ArenaBattleScene extends BaseScene {
       this.set.platforms.forEach((p, i) => p.position.copy(this.spots[i]!));
       this.views.forEach((v, seat) => v?.root.position.copy(this.spot(seat as Seat)));
     }
-    frameBattleCamera(this.camera, this.scene, w, hgt, this.spots);
+    frameBattleCamera(this.camera, this.scene, w, hgt, this.spots, [this.views[this.near], this.views[other(this.near)]]);
   }
 
   /** Layout checks (debug hook). */
@@ -603,11 +603,12 @@ export class ArenaBattleScene extends BaseScene {
 
   private makeView(seat: Seat, speciesId: string) {
     const view = new CreatureView(species(speciesId).look, seat);
-    if (seat === this.near) { view.baseScale = nearScale(view.baseScale); view.inner.scale.setScalar(view.baseScale); }
     view.root.position.copy(this.spot(seat));
     view.faceTowards(seat === this.near ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
     this.scene.add(view.root);
     this.views[seat] = view;
+    fitKinScale(view, seat === this.near ? 0 : 1);
+    this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
     return view;
   }
 
@@ -675,7 +676,7 @@ export class ArenaBattleScene extends BaseScene {
         if (e.source === 'move') {
           audio.sfx(e.crit ? 'crit' : e.mult > 1 ? 'superHit' : e.mult < 1 ? 'weakHit' : 'hit');
           if (e.mult > 1 || e.crit) { void burst(this.scene, this.spot(e.side).clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4); this.set.cheer(1.2); }
-          await Promise.all([target?.hit(e.mult > 1 || e.crit), this.tweenHp(e.side, from, e.hp, e.maxHp)]);
+          await Promise.all([target?.hit(e.mult > 1 || e.crit, e.crit), this.tweenHp(e.side, from, e.hp, e.maxHp)]);
           if (e.crit) await this.say('A critical hit!', 400);
           if (e.mult > 1) await this.say("It's super effective!", 450);
           else if (e.mult < 1) await this.say("It's not very effective…", 450);

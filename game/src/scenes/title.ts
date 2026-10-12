@@ -193,7 +193,7 @@ export class TitleScene extends BaseScene {
     this.views.forEach((v, i) => {
       const x = (i - 1) * (narrow ? 1.35 : 2.4);
       const z = i === 1 ? (narrow ? -1.5 : -0.6) : (narrow ? 0.3 : 0);
-      v.root.position.set(x, 0, z);
+      v.root.position.set(x, 0.1, z);
       v.root.rotation.y = (1 - i) * (narrow ? 0.3 : 0.45);
       this.stands[i]!.position.set(x, 0, z);
     });
