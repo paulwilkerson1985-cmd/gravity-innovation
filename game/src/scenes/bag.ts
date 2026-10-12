@@ -4,7 +4,7 @@ import { audio } from '../audio/audio';
 import { ORBS, calcStats, getItem, itemHasEffect, type ItemId } from '../engine';
 import { allBagIds, bagCount, bagName, isOrb, useBagItem, type BagId } from '../game/state';
 import { arrowNav, focusFirst, h, hpBar, openModal, toast } from '../ui/dom';
-import { coin } from '../ui/icons';
+import { coin, orbIcon } from '../ui/icons';
 import { kinName, statusBadge } from '../ui/kin';
 
 export function bagBlurb(id: BagId): string {
@@ -15,6 +15,7 @@ export function bagBlurb(id: BagId): string {
 }
 
 export function itemIcon(id: BagId): HTMLElement {
+  if (isOrb(id)) return orbIcon(id, 'item-ico orb-svg');
   return h('span', { class: `item-ico ico-${id}`, 'aria-hidden': 'true' });
 }
 

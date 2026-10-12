@@ -173,3 +173,11 @@ export function fitKinScale(v: Framed, side: 0 | 1): number {
 }
 const NEAR_CAP = 1.5;
 const FAR_MIN = 1.05;
+
+/** World height of a kin at rest (for sizing effects around it). */
+export function kinHeight(v: Framed): number {
+  const g = v.mesh.geometry;
+  g.computeBoundingBox();
+  const bb = g.boundingBox!;
+  return (bb.max.y - Math.min(0, bb.min.y)) * v.baseScale * v.root.scale.x;
+}

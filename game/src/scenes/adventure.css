@@ -49,7 +49,7 @@
 .menu-bag .btn-orb, .menu-bag .btn-item { padding: 4px 6px; }
 .menu-bag-items .btn-item { background: #2f7d6a; }
 .mcount { color: var(--accent); font-weight: 900; }
-.orb-ico { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; background: linear-gradient(180deg, var(--c) 0 46%, #26263a 46% 56%, #f6f6f6 56%); flex: none; }
+.orb-ico { display: inline-block; width: 18px; height: 18px; flex: none; vertical-align: -4px; }
 .btn-kinpick { align-items: stretch; justify-content: center; text-align: left; gap: 4px; background: #2f7d4f; padding: 4px 8px !important; }
 .btn-kinpick.fainted { background: #6a3346; }
 .btn-kinpick.current { background: #3a6d5a; border-style: dashed; }
@@ -218,7 +218,7 @@
 .bt-menu .btn-move .mname .eff { flex: none; font-size: 9px; padding: 2px 4px; }
 .bt-menu .mmeta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 1.1; }
 .menu-bag .mname, .menu-party .mname { font-size: 14px; }
-.menu-bag .orb-ico { vertical-align: -2px; margin-right: 4px; }
+.menu-bag .orb-ico { margin-right: 4px; }
 .panel .badge { flex: none; font-size: 10px; padding: 2px 5px; }
 .menu-confirm .btn-back { grid-column: auto; }
 /* tight kin tiles (landscape phone, small phone): the bar shows HP, numbers live in the tooltip */

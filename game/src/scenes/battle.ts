@@ -7,9 +7,10 @@ import { BaseScene } from './base';
 import './adventure.css';
 import { CreatureView } from '../render/creature';
 import { addLights, backdrop, makeSky } from '../render/diorama';
-import { PAD_COLORS, battlePad, battleSpots, frameBattle, fitKinScale, placeSpots } from './battleStage';
-import { ORB_COLORS, burst, makeOrb } from '../render/fx';
-import { ambient, moveFx } from '../render/movefx';
+import { PAD_COLORS, battlePad, battleSpots, frameBattle, fitKinScale, kinHeight, placeSpots } from './battleStage';
+import { ORB_COLORS, burst, makeOrb, orbCelebrate, orbLockFx, orbShakeFx } from '../render/fx';
+import { orbIcon } from '../ui/icons';
+import { ambient, moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
 import { animClock, ease, tween, wait } from '../render/anim';
 import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
@@ -452,7 +453,7 @@ export class BattleScene extends BaseScene {
       return h('button', {
         class: 'btn btn-orb', style: `--c:${ORB_COLORS[id]}`, 'data-testid': `orb-${id}`, 'data-pick': i + 1, disabled: have <= 0 || !canCatch,
         onclick: () => this.submit({ type: 'catch', orb: id }),
-      }, h('span', { class: 'mname' }, h('i', { class: 'orb-ico', style: `--c:${ORB_COLORS[id]}` }), ORBS[id].name),
+      }, h('span', { class: 'mname' }, orbIcon(id, 'orb-ico'), ORBS[id].name),
       h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${have}`), canCatch ? ` · ≈${Math.round(p * 100)}%` : ' · Can’t catch'));
     });
   }
@@ -594,7 +595,7 @@ export class BattleScene extends BaseScene {
           const to = this.spots[e.side === 0 ? 1 : 0].clone().add(new THREE.Vector3(0, 0.6, 0));
           const lunge = me?.lunge(this.spots[e.side === 0 ? 1 : 0]);
           await wait(140);
-          await Promise.all([lunge, moveFx(this.scene, data.type, from, to)]);
+          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, data.power)]);
         } else await me?.pulse(TYPE_COLORS[data.type]!);
         return;
       }
@@ -628,8 +629,7 @@ export class BattleScene extends BaseScene {
         audio.sfx('heal');
         const onField = e.slot === undefined || e.slot === this.activeSlot[e.side];
         if (onField) {
-          await Promise.all([v(e.side)?.pulse('#7dff8a'), this.tweenHp(e.side, e.hp - e.amount, e.hp, e.maxHp)]);
-          void this.sparkleAt(e.side, '#7dff8a');
+          await Promise.all([v(e.side)?.pulse('#7dff8a'), this.tweenHp(e.side, e.hp - e.amount, e.hp, e.maxHp), this.cue(e.side, 'heal')]);
         }
         this.renderDots();
         return this.say(e.slot !== undefined ? `${e.name} recovered ${e.amount} HP!` : `${this.label(e.side, e.name)} recovered some HP!`, 400);
@@ -638,7 +638,7 @@ export class BattleScene extends BaseScene {
         audio.sfx('heal');
         if (e.slot === this.activeSlot[e.side]) {
           this.setStatus(e.side, null);
-          await v(e.side)?.pulse('#bfffe0');
+          await Promise.all([v(e.side)?.pulse('#bfffe0'), this.cue(e.side, 'cure')]);
         }
         return this.say(`${e.name} was cured of its ${STATUS_TEXT[e.status][3]}!`, 400);
       }
@@ -649,7 +649,7 @@ export class BattleScene extends BaseScene {
       case 'status': {
         audio.sfx('status');
         this.setStatus(e.side, e.status);
-        await v(e.side)?.pulse(STATUS_TEXT[e.status][2]);
+        await Promise.all([v(e.side)?.pulse(STATUS_TEXT[e.status][2]), this.cue(e.side, e.status)]);
         return this.say(`${this.label(e.side, e.name)} ${STATUS_TEXT[e.status][1]}`);
       }
       case 'statusFail':
@@ -659,7 +659,7 @@ export class BattleScene extends BaseScene {
         const n = STAT_NAMES[e.stat];
         if (e.capped) return this.say(`${this.label(e.side, e.name)}'s ${n} won't go any ${e.value > 0 ? 'higher' : 'lower'}!`);
         audio.sfx(e.delta > 0 ? 'statUp' : 'statDown');
-        await v(e.side)?.pulse(e.delta > 0 ? '#7ad0ff' : '#ff7a9a');
+        await Promise.all([v(e.side)?.pulse(e.delta > 0 ? '#7ad0ff' : '#ff7a9a'), this.cue(e.side, e.delta > 0 ? 'buff' : 'debuff')]);
         const amt = Math.abs(e.delta) >= 2 ? (e.delta > 0 ? 'sharply rose' : 'harshly fell') : e.delta > 0 ? 'rose' : 'fell';
         return this.say(`${this.label(e.side, e.name)}'s ${n} ${amt}!`, 450);
       }
@@ -685,6 +685,13 @@ export class BattleScene extends BaseScene {
         return;
       }
     }
+  }
+
+  /** Status/heal/stat cue (render/movefx statusFx) around the kin on `side`, sized to it. */
+  private cue(side: 0 | 1, type: StatusCue): Promise<void> {
+    const v = this.views[side];
+    if (!v?.root.visible) return Promise.resolve();
+    return statusFx(this.scene, type, this.spots[side].clone(), kinHeight(v));
   }
 
   /** Send-out flourish for your side: an orb arcs onto the pad and bursts open. */
@@ -727,7 +734,7 @@ export class BattleScene extends BaseScene {
   private async playCatch(e: Extract<BattleEvent, { t: 'catch' }>) {
     await this.say(`You threw a ${ORBS[e.orb].name}!`, 200);
     audio.sfx('throw');
-    const orb = makeOrb(ORB_COLORS[e.orb]);
+    const orb = makeOrb(ORB_COLORS[e.orb], e.orb);
     const from = this.spots[0].clone().add(new THREE.Vector3(0.3, 1.0, 0.2));
     const target = this.spots[1].clone().add(new THREE.Vector3(0, 0.75, 0.35));
     const ground = this.spots[1].clone().add(new THREE.Vector3(0, 0.22, 0.35));
@@ -758,6 +765,7 @@ export class BattleScene extends BaseScene {
     for (let i = 0; i < e.shakes; i++) {
       await wait(260);
       audio.sfx('shake');
+      orbShakeFx(orb);
       await tween(380, (k) => { orb.rotation.z = Math.sin(k * Math.PI * 2) * 0.45; });
       this.text.textContent = `${'• '.repeat(i + 1).trim()}`;
     }
@@ -765,6 +773,8 @@ export class BattleScene extends BaseScene {
     const mat = orb.material as THREE.MeshLambertMaterial;
     if (e.caught) {
       audio.sfx('click');
+      orbLockFx(orb);
+      void orbCelebrate(this.scene, ground.clone().add(new THREE.Vector3(0, 0.3, 0)), e.orb);
       await tween(200, (k) => mat.emissive.setScalar(0.6 * (1 - k)));
       void burst(this.scene, ground.clone().add(new THREE.Vector3(0, 0.2, 0)), '#ffe14d', 1.2, 10);
       this.panels[1].root.style.visibility = 'hidden';

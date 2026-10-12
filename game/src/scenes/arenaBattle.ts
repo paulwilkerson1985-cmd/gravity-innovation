@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { BaseScene } from './base';
 import { CreatureView } from '../render/creature';
 import { burst } from '../render/fx';
-import { moveFx } from '../render/movefx';
+import { moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { animClock, ease, tween, wait } from '../render/anim';
 import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import { audio } from '../audio/audio';
@@ -14,7 +14,7 @@ import {
   type Action, type BattleEvent, type BattleState, type StageKey, type StatusId,
 } from '../engine';
 import { SEAT_COLORS, SEAT_DARK, buildArena, frameBattleCamera, type ArenaSet } from './arenaStage';
-import { battleSpots, fitKinScale, placeSpots } from './battleStage';
+import { battleSpots, fitKinScale, kinHeight, placeSpots } from './battleStage';
 import { TurnCollector, curtainBefore, curtainBeforePlayback, type ArenaMode, type LocalMatchSetup, type MatchSummary, type Seat } from './arenaFlow';
 import { abtn, curtain, pips, seatTag } from './arenaUi';
 import { ERROR_TEXT, MAX_TIMEOUTS, type RoomView, type ServerMessage } from '../net/protocol';
@@ -602,6 +602,13 @@ export class ArenaBattleScene extends BaseScene {
 
   // ------------------------------------------------------------------ playback
 
+  /** Status/heal/stat cue around the kin of `seat`, sized to it. */
+  private cue(seat: Seat, type: StatusCue): Promise<void> {
+    const v = this.views[seat];
+    if (!v?.root.visible) return Promise.resolve();
+    return statusFx(this.scene, type, this.spot(seat).clone(), kinHeight(v));
+  }
+
   private makeView(seat: Seat, speciesId: string) {
     const view = new CreatureView(species(speciesId).look, seat);
     view.root.position.copy(this.spot(seat));
@@ -662,7 +669,7 @@ export class ArenaBattleScene extends BaseScene {
           const to = this.spot(foe).clone().add(new THREE.Vector3(0, 0.6, 0));
           const lunge = me?.lunge(this.spot(foe));
           await wait(140);
-          await Promise.all([lunge, moveFx(this.scene, data.type, from, to)]);
+          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, data.power)]);
         } else {
           await me?.pulse(TYPE_COLORS[data.type]!);
         }
@@ -690,13 +697,13 @@ export class ArenaBattleScene extends BaseScene {
       }
       case 'heal': {
         audio.sfx('heal');
-        await Promise.all([v(e.side)?.pulse('#7dff8a'), this.tweenHp(e.side, e.hp - e.amount, e.hp, e.maxHp)]);
+        await Promise.all([v(e.side)?.pulse('#7dff8a'), this.tweenHp(e.side, e.hp - e.amount, e.hp, e.maxHp), this.cue(e.side, 'heal')]);
         return this.say(`${this.label(e.side, e.name)} recovered some HP!`, 400);
       }
       case 'status': {
         audio.sfx('status');
         this.setStatus(e.side, e.status);
-        await v(e.side)?.pulse(STATUS_TEXT[e.status][2]);
+        await Promise.all([v(e.side)?.pulse(STATUS_TEXT[e.status][2]), this.cue(e.side, e.status)]);
         return this.say(`${this.label(e.side, e.name)} ${STATUS_TEXT[e.status][1]}`);
       }
       case 'statusFail':
@@ -706,7 +713,7 @@ export class ArenaBattleScene extends BaseScene {
         const n = STAT_NAMES[e.stat];
         if (e.capped) return this.say(`${this.label(e.side, e.name)}'s ${n} won't go any ${e.value > 0 ? 'higher' : 'lower'}!`);
         audio.sfx(e.delta > 0 ? 'statUp' : 'statDown');
-        await v(e.side)?.pulse(e.delta > 0 ? '#7ad0ff' : '#ff7a9a');
+        await Promise.all([v(e.side)?.pulse(e.delta > 0 ? '#7ad0ff' : '#ff7a9a'), this.cue(e.side, e.delta > 0 ? 'buff' : 'debuff')]);
         const amt = Math.abs(e.delta) >= 2 ? (e.delta > 0 ? 'sharply rose' : 'harshly fell') : e.delta > 0 ? 'rose' : 'fell';
         return this.say(`${this.label(e.side, e.name)}'s ${n} ${amt}!`, 450);
       }
