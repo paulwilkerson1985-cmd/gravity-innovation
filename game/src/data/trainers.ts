@@ -29,7 +29,8 @@ export const TRAINERS: TrainerData[] = [
     id: 'adept-sola', name: 'Sola', title: 'Cinder Adept', routeId: 'ridge', ai: 'skilled',
     party: [
       { species: 'flickwing', level: 11 },
-      { species: 'breezel', level: 12 },
+      { species: 'breezel', level: 13 },
+      { species: 'vulcrag', level: 11, moves: ['searing-fang', 'cinder-spit'] },
       { species: 'cindertail', level: 14, moves: ['searing-fang', 'battle-cry', 'cinder-spit', 'bump'] },
     ],
     reward: 700,
@@ -38,11 +39,11 @@ export const TRAINERS: TrainerData[] = [
   },
   // ---- Squall Coast
   {
-    id: 'angler-merrow', name: 'Merrow', title: 'Storm Angler', routeId: 'coast', ai: 'skilled',
+    id: 'angler-merrow', name: 'Merrow', title: 'Storm Angler', routeId: 'coast', ai: 'ace',
     party: [
-      { species: 'rillback', level: 21, moves: ['riptide-slam', 'second-wind', 'brine-mist', 'droplet-shot'] },
+      { species: 'rillback', level: 22, moves: ['riptide-slam', 'second-wind', 'brine-mist', 'droplet-shot'] },
       { species: 'surgeray', level: 22, moves: ['volt-lunge', 'riptide-slam', 'jolt-wave', 'static-nip'] },
-      { species: 'stormoth', level: 22, moves: ['volt-lunge', 'breeze-cut', 'static-nip', 'jolt-wave'] },
+      { species: 'stormoth', level: 23, moves: ['volt-lunge', 'breeze-cut', 'static-nip', 'jolt-wave'] },
     ],
     reward: 1300,
     intro: 'Nothing bites in a squall like this... except my team!',

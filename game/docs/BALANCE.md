@@ -193,6 +193,29 @@ The pass-1 "before" numbers come from 12-seed runs. The other columns are 30-see
 - The meadow often hits its 18-battle cap. In normal play this happens because a fresh L3 catch drags down the "top-3" average of a two-kin party.
 - Smart play against Vale stays at about 70%, for the mirror-match reason above.
 
+## Pass 3: Sola and Merrow against the type-aware player
+
+After pass 2, the type-aware casual player beat Sola about 98% of the time and Merrow about 86%.
+
+**Changes:**
+- **Sola** now has four kin: Flickwing 11, Breezel 13, Vulcrag 11, Cindertail 14. Vulcrag knows only Searing Fang and Cinder Spit, so it brings bulk and a Flame/Terra typing but no Terra attack. A Pebble Toss version walled Flora solos (30%, with stuck runs).
+- **Merrow** is now **ace** AI (was skilled), with Rillback 22, Surgeray 22, Stormoth 23. Stormoth keeps its moveset without Battle Cry.
+
+**Results, first-try win** (30 seeds × 3 starters per mode; per-starter values are Ashkit / Dropple / Mossling):
+
+| Trainer | casual (type-aware) | basic (switch on faint) | solo (starter carries) |
+|---|---|---|---|
+| Pim | 99% | 99% | 96% |
+| Brann | 81% | 81% | 72% |
+| Sola | **83%** (73 / 97 / 80) | **64%** (47 / 97 / 50) | 56% (50 / 90 / 27) |
+| Merrow | **69%** (60 / 53 / 93) | **76%** (62 / 73 / 93) | 66% (59 / 53 / 89) |
+| Tavi | 76% | 70% | 88% |
+| Vale trials: basic / casual / smart | 37 / 67 / 79% | 39 / 65 / 77% | 46 / 70 / 78% |
+| Campaigns completed | 90 / 90 | 87 / 90 | 86 / 90 |
+| Total battles | 109 | 120 | 116 |
+
+The runs that don't finish use up all 8 attempts against Sola or Brann. They are mostly Flora or Flame starters, without a catch that covers their weakness, in the basic and solo modes. A real player would grind further or catch a counter, while the simulator retries after only 5 more wild battles.
+
 ## Arena (PvP)
 
 The survey is Ace vs Ace over random teams of 3 fully evolved kin (2000 battles).

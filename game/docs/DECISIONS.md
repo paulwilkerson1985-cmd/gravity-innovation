@@ -137,3 +137,4 @@ Full method and numbers are in `docs/BALANCE.md`. The tools are `tools/campaign.
   - Wild XP yields are smoothed: stage-1 kin 54/56 → 70/72, evolved kin about 160 → 136, rare duals 185 → 160. The ridge pays more and the coast spikes less (p90 612 → 466).
   - Merrow is 21/22/22 and his Stormoth has no Battle Cry.
   - The simulator's casual player is now type-aware. `--solo` and `--pim-check` cover starter-carry play. Wild KOs pay 6 coins per foe level.
+- **Pass 3**: Sola has four kin (Flickwing 11, Breezel 13, Vulcrag 11 with Flame moves only, Cindertail 14). Merrow is an ace AI at 22/22/23. Type-aware casual first-try: Sola 83%, Merrow 69%. Switch-only-on-faint player: 64% and 76%.
