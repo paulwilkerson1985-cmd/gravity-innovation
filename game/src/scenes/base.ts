@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { disposeTree } from '../render/builder';
 import type { Game } from '../game/game';
 
-export type SceneName = 'title' | 'starter' | 'route' | 'battle' | 'party' | 'model' | 'bestiary' | 'box' | 'bag' | 'shop' | 'arena';
+export type SceneName = 'title' | 'starter' | 'route' | 'battle' | 'party' | 'model' | 'bestiary' | 'box' | 'bag' | 'shop' | 'arena' | 'arenaBattle' | 'arenaVictory';
 
 export abstract class BaseScene {
   abstract readonly name: SceneName;

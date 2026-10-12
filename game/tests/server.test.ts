@@ -254,7 +254,7 @@ describe('arena server', () => {
     const s = await start();
     const { a, b } = await pair(s.port);
     a.send({ t: 'action', step: 0, action: { type: 'forfeit' } });
-    b.send({ t: 'action', step: 0, action: pick(b.room!) });
+    // A forfeit resolves at once, without waiting for the opponent.
     const t = await b.next(isT('turn'));
     expect(t.room.phase).toBe('over');
     expect(t.room.battle!.outcome?.winner).toBe(1);
@@ -277,7 +277,6 @@ describe('arena server', () => {
     const s = await start();
     const { a, b } = await pair(s.port);
     a.send({ t: 'action', step: 0, action: { type: 'forfeit' } });
-    b.send({ t: 'action', step: 0, action: pick(b.room!) });
     await a.next(isT('turn'));
     b.send({ t: 'newTeams' });
     const r = await a.next((m) => m.t === 'room' && m.room.phase === 'lobby');

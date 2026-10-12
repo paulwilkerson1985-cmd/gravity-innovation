@@ -217,6 +217,10 @@ export class Room {
     this.pending[seat] = action;
     this.players[seat]!.timeouts = 0;
     this.touch();
+    // A forfeit ends the match at once: the opponent's slot is filled with a placeholder
+    // move (the forfeit always resolves first, so it never runs).
+    const opp = other(seat);
+    if (action.type === 'forfeit' && !this.pending[opp]) this.pending[opp] = autoAction(this.battle, opp, this.step);
     if (this.pending.every(Boolean)) this.resolve([false, false]);
     else this.broadcast();
     return { ok: true, value: undefined };

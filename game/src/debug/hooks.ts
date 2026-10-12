@@ -30,6 +30,9 @@ export interface GameHooks {
   addKin(species: string, level?: number): void;
   /** Debug: shallow-patch the player state (e.g. { money: 5000 }). */
   patchPlayer(patch: Record<string, unknown>): void;
+  // ---- arena (PvP)
+  /** Snapshot of the current arena scene (lobby/builder, battle or victory), else null. */
+  arena(): Record<string, unknown> | null;
 }
 
 export function installHooks(game: Game) {
@@ -68,6 +71,10 @@ export function installHooks(game: Game) {
       game.player = p;
     },
     patchPlayer: (patch) => { game.player = { ...game.player, ...structuredClone(patch) } as typeof game.player; },
+    arena: () => {
+      const cur = game.current as unknown as { arenaSnapshot?: () => Record<string, unknown> } | null;
+      return cur?.arenaSnapshot ? structuredClone(cur.arenaSnapshot()) : null;
+    },
   };
   (window as unknown as { __game: GameHooks }).__game = hooks;
 }
