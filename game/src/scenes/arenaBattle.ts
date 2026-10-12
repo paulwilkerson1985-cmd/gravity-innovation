@@ -14,6 +14,7 @@ import {
   type Action, type BattleEvent, type BattleState, type StageKey, type StatusId,
 } from '../engine';
 import { SEAT_COLORS, SEAT_DARK, buildArena, frameBattleCamera, type ArenaSet } from './arenaStage';
+import { battleSpots, placeSpots } from './battleStage';
 import { TurnCollector, curtainBefore, curtainBeforePlayback, type ArenaMode, type LocalMatchSetup, type MatchSummary, type Seat } from './arenaFlow';
 import { abtn, curtain, pips, seatTag } from './arenaUi';
 import { ERROR_TEXT, MAX_TIMEOUTS, type RoomView, type ServerMessage } from '../net/protocol';
@@ -48,7 +49,7 @@ export class ArenaBattleScene extends BaseScene {
   private names: [string, string] = ['Player 1', 'Player 2'];
   /** The seat drawn on the near platform (the local player online). */
   private near: Seat = 0;
-  private spots = [new THREE.Vector3(-1.7, 0, 1.3), new THREE.Vector3(1.75, 0, -1.9)] as const;
+  private spots = battleSpots(innerWidth, innerHeight);
   private views: [CreatureView | null, CreatureView | null] = [null, null];
   private panels!: [Panel, Panel];
   private set!: ArenaSet;
@@ -132,7 +133,16 @@ export class ArenaBattleScene extends BaseScene {
   }
 
   override resize(w: number, hgt: number) {
-    frameBattleCamera(this.camera, this.scene, w, hgt);
+    if (placeSpots(this.spots, w, hgt) && this.set) {
+      this.set.platforms.forEach((p, i) => p.position.copy(this.spots[i]!));
+      this.views.forEach((v, seat) => v?.root.position.copy(this.spot(seat as Seat)));
+    }
+    frameBattleCamera(this.camera, this.scene, w, hgt, this.spots);
+  }
+
+  /** Layout checks (debug hook). */
+  subjects() {
+    return this.views.flatMap((v, i) => (v?.root.visible ? [{ name: i === this.near ? 'mine' : 'foe', obj: v.inner }] : []));
   }
 
   override update(_dt: number, t: number) {
@@ -162,7 +172,7 @@ export class ArenaBattleScene extends BaseScene {
       const bar = hpBar(1, 1);
       const nums = h('div', { class: 'hpnums' });
       const pipsEl = h('span', { class: 'arena-owner-pips' });
-      const root = h('div', { class: `panel arena-panel arena-panel-${pos}`, 'data-testid': `arena-panel-${pos}` },
+      const root = h('div', { class: `panel arena-panel arena-panel-${pos} ${pos === 'near' ? 'bt-mine' : 'bt-foe'}`, 'data-testid': `arena-panel-${pos}` },
         h('div', { class: 'arena-owner' }, pipsEl),
         h('div', { class: 'prow' }, name, badge, level), h('div', { class: 'prow' }, types, h('span', { class: 'hplabel' }, 'HP'), bar), nums);
       root.style.visibility = 'hidden';
@@ -173,14 +183,13 @@ export class ArenaBattleScene extends BaseScene {
     // panels[] is indexed by seat once we know which seat is near (decoratePanels).
     this.panels = [near, far];
     this.text = h('div', { class: 'text', 'data-testid': 'battle-text', 'aria-live': 'polite' });
-    this.menu = h('div', { class: 'menu arena-menu', 'data-testid': 'arena-menu' });
+    this.menu = h('div', { class: 'menu bt-menu arena-menu', 'data-testid': 'arena-menu' });
     arrowNav(this.menu);
     this.banner = h('div', { class: 'arena-banner', hidden: true, role: 'status', 'data-testid': 'arena-banner' });
     this.timerEl = h('div', { class: 'arena-timer', hidden: true, 'data-testid': 'arena-timer' });
     this.oppEl = h('div', { class: 'arena-opp', hidden: true, 'data-testid': 'arena-opp' });
-    const top = h('div', { class: 'arena-top' }, far.root, h('div', { class: 'arena-top-right' }, this.timerEl, this.oppEl));
-    const box = h('div', { class: 'arena-bottom' }, near.root, h('div', { class: 'textbox', onclick: () => this.advance?.() }, this.text), this.menu);
-    this.ui.append(h('div', { class: 'arena-battle-ui' }, top, this.banner, box));
+    const textbox = h('div', { class: 'textbox bt-text', onclick: () => this.advance?.() }, this.text);
+    this.ui.append(h('div', { class: 'arena-battle-ui' }, far.root, h('div', { class: 'arena-top-right' }, this.timerEl, this.oppEl), this.banner, near.root, textbox, this.menu));
     window.addEventListener('keydown', this.globalKeys);
   }
 
@@ -257,7 +266,7 @@ export class ArenaBattleScene extends BaseScene {
   }
 
   private setMenu(kind: string, buttons: HTMLElement[]) {
-    this.menu.className = `menu arena-menu menu-${kind}`;
+    this.menu.className = `menu bt-menu arena-menu menu-${kind}`;
     this.menu.replaceChildren(...buttons);
     this.game.idle = true;
     focusFirst(this.menu);

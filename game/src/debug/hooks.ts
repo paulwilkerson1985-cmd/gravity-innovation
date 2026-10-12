@@ -9,6 +9,7 @@ import type { BagId } from '../game/state';
 import { openGameMenu } from '../ui/menu';
 import { makeCreature } from '../engine';
 import { PARTY_MAX } from '../game/state';
+import * as THREE from 'three';
 
 export interface GameHooks {
   scene(): string | null;
@@ -45,6 +46,9 @@ export interface GameHooks {
   // ---- arena (PvP)
   /** Snapshot of the current arena scene (lobby/builder, battle or victory), else null. */
   arena(): Record<string, unknown> | null;
+  // ---- layout (UI vs 3D framing checks)
+  /** Screen rects (CSS px) of the current scene's key 3D subjects (creatures, figures). */
+  layout(): { w: number; h: number; subjects: { name: string; x: number; y: number; w: number; h: number }[] };
 }
 
 export function installHooks(game: Game) {
@@ -94,6 +98,28 @@ export function installHooks(game: Game) {
     arena: () => {
       const cur = game.current as unknown as { arenaSnapshot?: () => Record<string, unknown> } | null;
       return cur?.arenaSnapshot ? structuredClone(cur.arenaSnapshot()) : null;
+    },
+    layout: () => {
+      const cur = game.current as unknown as { subjects?: () => { name: string; obj: THREE.Object3D }[]; camera: THREE.PerspectiveCamera } | null;
+      const rect = game.renderer.canvas.getBoundingClientRect();
+      const out = { w: rect.width, h: rect.height, subjects: [] as { name: string; x: number; y: number; w: number; h: number }[] };
+      if (!cur?.subjects) return out;
+      cur.camera.updateMatrixWorld();
+      for (const { name, obj } of cur.subjects()) {
+        if (!obj.visible) continue;
+        obj.updateWorldMatrix(true, true);
+        const box = new THREE.Box3().setFromObject(obj, true);
+        if (box.isEmpty()) continue;
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (let i = 0; i < 8; i++) {
+          const v = new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).project(cur.camera);
+          const sx = (v.x * 0.5 + 0.5) * rect.width;
+          const sy = (-v.y * 0.5 + 0.5) * rect.height;
+          x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+        }
+        out.subjects.push({ name, x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) });
+      }
+      return out;
     },
   };
   (window as unknown as { __game: GameHooks }).__game = hooks;

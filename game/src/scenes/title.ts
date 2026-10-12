@@ -3,6 +3,7 @@ import { BaseScene } from './base';
 import { CreatureView } from '../render/creature';
 import { addLights, backdrop, makeSky, platform } from '../render/diorama';
 import { h, focusFirst, confirmDialog, toast, TYPE_COLORS } from '../ui/dom';
+import { boxPoints, fitPoints, freeArea, layoutMode } from './framing';
 import { icon } from '../ui/icons';
 import { openSettings } from '../ui/settings';
 import { audio } from '../audio/audio';
@@ -14,6 +15,7 @@ import type { SavePeek } from '../game/game';
 export class TitleScene extends BaseScene {
   readonly name = 'title' as const;
   private views: CreatureView[] = [];
+  private stands: THREE.Object3D[] = [];
   private slot!: HTMLElement;
   private peek: SavePeek | undefined;
   private peeking: Promise<SavePeek> | null = null;
@@ -39,6 +41,7 @@ export class TitleScene extends BaseScene {
       p.position.copy(v.root.position);
       this.scene.add(p, v.root);
       this.views.push(v);
+      this.stands.push(p);
     });
     this.camera.position.set(0, 2.2, 8.5);
     this.camera.lookAt(0, 1.1, 0);
@@ -73,6 +76,11 @@ export class TitleScene extends BaseScene {
   }
 
   private async refreshSlot() {
+    await this.fillSlot();
+    if (this.ui.isConnected) this.resize(this.game.renderer.width, this.game.renderer.height);
+  }
+
+  private async fillSlot() {
     this.peeking = null;
     const peek = await this.loadPeek();
     if (!this.ui.isConnected) return;
@@ -180,10 +188,27 @@ export class TitleScene extends BaseScene {
 
   override resize(w: number, hgt: number) {
     super.resize(w, hgt);
-    const aspect = w / hgt;
-    const dist = Math.max(8.5, 4.6 / (Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * aspect));
-    this.camera.position.set(0, 2.2 + dist * 0.08, dist);
-    this.camera.lookAt(0, aspect < 1 ? 1.9 : 1.2, 0);
+    // Tall screens: a tighter group pose (the middle kin a step behind) so the trio reads big.
+    const narrow = w / hgt < 0.8;
+    this.views.forEach((v, i) => {
+      const x = (i - 1) * (narrow ? 1.5 : 2.4);
+      const z = i === 1 ? (narrow ? -1.5 : -0.6) : (narrow ? 0.3 : 0);
+      v.root.position.set(x, 0, z);
+      v.root.rotation.y = (1 - i) * (narrow ? 0.3 : 0.45);
+      this.stands[i]!.position.set(x, 0, z);
+    });
+    // The trio stands in the space between the logo and the buttons (beside the buttons on a
+    // landscape phone, where they form a right-hand column).
+    const q = (sel: string) => this.ui.querySelector(sel);
+    const land = layoutMode(w, hgt) === 'land';
+    const area = freeArea(w, hgt, land ? { top: [q('.tagline')], right: [q('.title-buttons')], bottom: [q('.footnote')] } : { top: [q('.tagline')], bottom: [q('.title-buttons')] }, 6);
+    const pts = boxPoints([...this.views.map((v) => v.inner), ...this.stands]);
+    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.2, 1), target: new THREE.Vector3(0, 1.1, -0.2), fill: 0.98, alignY: 'bottom' });
+  }
+
+  /** Layout checks (debug hook). */
+  subjects() {
+    return this.views.map((v, i) => ({ name: `kin${i}`, obj: v.inner }));
   }
 
   override update(_dt: number, t: number) {

@@ -14,6 +14,7 @@ import { arrowNav, focusFirst, h, typeChip } from '../ui/dom';
 import { audio } from '../audio/audio';
 import { species } from '../engine';
 import { formatPlayTime } from '../game/state';
+import { corners, fitPoints, freeArea, layoutMode } from './framing';
 
 const CREDITS = [
   'ORBKIN', '',
@@ -31,6 +32,13 @@ export class VictoryScene extends BaseScene {
   private conf!: ReturnType<typeof confetti>;
   private rays!: ReturnType<typeof lightRays>;
   private routeId = 'plateau';
+  private you!: THREE.Object3D;
+  private top!: HTMLElement;
+  private sheet!: HTMLElement;
+  /** World x extent of the line-up (podiums + you), for framing. */
+  private span: [number, number] = [-2, 2];
+  /** Tall screens: two rows of podiums instead of one long line. */
+  private narrow = innerWidth / innerHeight < 0.8;
 
   enter(params: Record<string, unknown>) {
     const g = this.game;
@@ -59,7 +67,7 @@ export class VictoryScene extends BaseScene {
     for (let i = 0; i < n; i++) {
       const rank = order.indexOf(i);
       const { x, z } = this.slot(i, n);
-      const hgt = heights[rank] ?? 0.4;
+      const hgt = (heights[rank] ?? 0.4) + (this.narrow && rank >= 3 ? 0.55 : 0);
       b.add(GEO.cyl, cols[rank] ?? '#c7b8ff', { p: [x, hgt / 2, z], s: [0.62, hgt, 0.62] }, 0.06);
       b.add(GEO.cyl, '#ffffff', { p: [x, hgt + 0.02, z], s: [0.66, 0.05, 0.66] });
     }
@@ -70,25 +78,30 @@ export class VictoryScene extends BaseScene {
 
     this.rays = lightRays(18, 16, '#fff6cc');
     this.rays.mesh.position.set(0, 2.2, -5);
-    this.rays.mat.opacity = 0.16;
+    this.rays.mat.opacity = 0.07;
     this.scene.add(this.rays.mesh);
 
     party.forEach((c, i) => {
       const rank = order.indexOf(i);
       const { x, z } = this.slot(i, n);
       const v = new CreatureView(species(c.species).look, i);
-      v.root.position.set(x, (heights[rank] ?? 0.4) + 0.05, z);
+      v.root.position.set(x, (heights[rank] ?? 0.4) + (this.narrow && rank >= 3 ? 0.55 : 0) + 0.05, z);
       v.root.rotation.y = -x * 0.08;
       this.scene.add(v.root);
       this.views.push(v);
       void v.appear();
     });
-    // You stand front-left of the line-up, waving the crowd in.
+    // You stand at the open end of the line-up (never in front of a podium), facing your team.
+    const xs = party.map((_, i) => this.slot(i, n).x);
+    const right = Math.max(0, ...xs);
     const you = personMesh(PLAYER_LOOK);
     you.scale.setScalar(1.25);
-    you.position.set(-3.9, 0, 1.5);
-    you.rotation.y = 0.45;
+    if (this.narrow) you.position.set(2.95, 0, -1.45);
+    else you.position.set(right + 1.55, 0, 0.35);
+    you.rotation.y = -0.6;
     this.scene.add(you);
+    this.you = you;
+    this.span = this.narrow ? [Math.min(-2, ...xs) - 1.0, 3.6] : [Math.min(0, ...xs) - 1.1, right + 2.1];
 
     this.conf = confetti(170, 16, 9, 7);
     this.scene.add(this.conf.mesh);
@@ -104,11 +117,10 @@ export class VictoryScene extends BaseScene {
       h('button', { class: 'btn btn-fight', 'data-testid': 'btn-hof-continue', onclick: () => void g.goto('route', { route: this.routeId }) }, 'Continue adventure'),
       h('button', { class: 'btn btn-back', 'data-testid': 'btn-hof-title', onclick: () => void g.goto('title') }, 'Title screen'));
     arrowNav(buttons);
-    this.ui.append(
-      h('div', { class: 'hof-top' },
-        h('div', { class: 'hof-title', 'data-testid': 'hof-title' }, 'Hall of Fame'),
-        h('div', { class: 'hof-sub' }, `${p.name === 'You' ? 'You are' : `${p.name} is`} the Champion of Crown Plateau!`)),
-      h('div', { class: 'sheet hof-sheet' },
+    this.top = h('div', { class: 'hof-top' },
+      h('div', { class: 'hof-title', 'data-testid': 'hof-title' }, 'Hall of Fame'),
+      h('div', { class: 'hof-sub' }, `${p.name === 'You' ? 'You are' : `${p.name} is`} the Champion of Crown Plateau!`));
+    this.sheet = h('div', { class: 'sheet hof-sheet' },
         team,
         h('div', { class: 'hof-stats' },
           h('span', {}, h('b', {}, formatPlayTime(p.playTime)), ' played'),
@@ -116,8 +128,8 @@ export class VictoryScene extends BaseScene {
           h('span', {}, h('b', {}, String(p.seen.length)), ' seen'),
           h('span', {}, h('b', {}, String(p.defeatedTrainers.length)), ' trainers beaten')),
         credits,
-        buttons),
-    );
+        buttons);
+    this.ui.append(this.top, this.sheet);
     focusFirst(buttons);
     audio.music('victory');
     void wait(9000).then(() => { if (this.game.current === this) audio.music('title'); });
@@ -134,22 +146,34 @@ export class VictoryScene extends BaseScene {
   /** Podium positions: centre first, then alternating outwards. */
   private slot(i: number, n: number): { x: number; z: number } {
     const rank = this.podiumOrder(n).indexOf(i);
+    if (this.narrow) {
+      // Front row: ranks 0-2 (centre, left, right); back row: ranks 3-5 between and beside them.
+      const front: [number, number][] = [[0, 0.1], [-1.9, 0], [1.9, 0]];
+      const back: [number, number][] = [[-0.95, -1.7], [0.95, -1.7], [-2.85, -1.7]];
+      const [x, z] = (rank < 3 ? front[rank] : back[rank - 3]) ?? [0, 0];
+      return { x, z };
+    }
     const side = rank === 0 ? 0 : rank % 2 ? -1 : 1;
     const step = Math.ceil(rank / 2);
-    return { x: side * step * 1.75, z: -0.4 - step * 0.35 };
+    // Two metres apart (big kin no longer overlap), each pair a step further back.
+    return { x: side * step * 2.0, z: -0.4 - step * 0.45 };
   }
 
   override resize(w: number, hgt: number) {
     super.resize(w, hgt);
-    const aspect = w / hgt;
-    const halfW = aspect < 1 ? 5.4 : 8.4;
-    const dist = Math.max(9, halfW / (Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * aspect));
-    this.camera.position.set(0, 2.4 + dist * 0.16, dist);
-    this.camera.lookAt(0, 1.2, 0);
+    if (!this.sheet) return;
+    // The line-up stands in the band between the title and the sheet (left of the sheet on a
+    // landscape phone and on wide screens, where the sheet is a side column).
+    const side = layoutMode(w, hgt) !== 'portrait';
+    const area = freeArea(w, hgt, side ? { top: [this.top], right: [this.sheet] } : { top: [this.top], bottom: [this.sheet] }, 6);
+    const pts = corners(new THREE.Vector3(this.span[0], 0, this.narrow ? -2.6 : -2.0), new THREE.Vector3(this.span[1], this.narrow ? 3.1 : 2.5, 0.9));
+    const dist = fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.22, 1), target: new THREE.Vector3((this.span[0] + this.span[1]) / 2, 1.1, -0.5), fill: 0.98 });
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 6; this.scene.fog.far = dist + 40; }
-    // Stage in the band between the title and the bottom sheet.
-    this.camera.setViewOffset(w, hgt, 0, hgt * (aspect < 1 ? 0.2 : 0.13), w, hgt);
-    this.camera.updateProjectionMatrix();
+  }
+
+  /** Layout checks (debug hook). */
+  subjects() {
+    return [...this.views.map((v, i) => ({ name: `kin${i}`, obj: v.inner })), { name: 'you', obj: this.you }];
   }
 
   override update(_dt: number, t: number) {

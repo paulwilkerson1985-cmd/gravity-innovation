@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { BaseScene } from './base';
 import './adventure.css';
 import { GEO, MeshBuilder, flatMaterial } from '../render/builder';
-import { PALETTES, addLights, cloud, flowers, grassTuft, island, makeSky, rock, roundTree, staticMesh, tree } from '../render/diorama';
+import { PALETTES, addLights, cloud, flowers, grassTuft, island, rock, roundTree, staticMesh, tree } from '../render/diorama';
+import { corners, fitPoints, freeArea, layoutMode } from './framing';
 import { banner, deadTree, fence, lavaRiver, palm, pillar, shell, snowPine, trainerBadge, umbrella, vent } from '../render/props';
 import { PLAYER_LOOK, personMesh, trainerLook } from '../render/trainer';
 import { arrowNav, focusFirst, h } from '../ui/dom';
@@ -25,6 +26,30 @@ const TRAINER_SPOTS: Record<number, [number, number][]> = {
   1: [[1.35, -0.85]],
   2: [[1.4, -0.95], [-1.45, -1.05]],
 };
+
+/** Wild level range of a route, derived from its hotspot tables (what you will actually meet). */
+export function wildRange(route: RouteData): [number, number] | null {
+  const slots = route.hotspots.flatMap((s) => (s.kind === 'trainer' ? [] : s.table));
+  if (!slots.length) return null;
+  return [Math.min(...slots.map((e) => e.min)), Math.max(...slots.map((e) => e.max))];
+}
+
+/** Screen-space sky: a vertical gradient texture (the route camera looks down, so a sky dome would read flat). */
+function skyGradient(theme: Theme): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 4; c.height = 256;
+  const ctx = c.getContext('2d')!;
+  const pal = PALETTES[theme];
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, pal.skyTop);
+  g.addColorStop(0.62, pal.skyBottom);
+  g.addColorStop(1, new THREE.Color(pal.skyBottom).lerp(new THREE.Color(pal.skyTop), 0.35).getStyle());
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 4, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 const LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>';
 
@@ -116,7 +141,11 @@ export class RouteScene extends BaseScene {
   private badges: THREE.Object3D[] = [];
   private busy = false;
   private status!: HTMLElement;
+  private top!: HTMLElement;
+  private sheet!: HTMLElement;
   private ambientUpdate: ((t: number) => void) | null = null;
+  private sky: THREE.Texture | null = null;
+  private you!: THREE.Object3D;
 
   enter(params: Record<string, unknown>) {
     const g = this.game;
@@ -126,13 +155,20 @@ export class RouteScene extends BaseScene {
     this.route = g.dex().routes.get(id)!;
     const theme = this.route.theme;
     audio.music('route');
-    this.scene.add(makeSky(theme));
+    this.sky = skyGradient(theme);
+    this.scene.background = this.sky;
     addLights(this.scene, theme);
 
     const rng = new Rng(id.length * 977 + id.charCodeAt(0));
     const b = new MeshBuilder();
     island(b, 4.6, theme);
     dressing(b, theme, rng);
+    // A soft cloud sea far below and around the floating island gives the map depth.
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + rng.next() * 0.3;
+      const r = 7.5 + rng.next() * 4;
+      cloud(b, Math.cos(a) * r, -3.2 - rng.next() * 1.8, Math.sin(a) * r * 0.8 - 1.5, 1.4 + rng.next() * 1.2);
+    }
     this.scene.add(staticMesh(b));
 
     const marker = new THREE.OctahedronGeometry(0.14, 0);
@@ -189,8 +225,10 @@ export class RouteScene extends BaseScene {
     this.scene.add(amb.points);
     this.ambientUpdate = amb.update;
     const you = personMesh(PLAYER_LOOK);
-    you.position.set(0, 0, 1.15);
+    // On the plateau the path is a stone stairway up to the dais: stand at its foot instead.
+    if (theme === 'summit') { you.position.set(0.85, 0, 2.55); you.rotation.y = -0.35; } else you.position.set(0, 0, 1.15);
     this.scene.add(you);
+    this.you = you;
     this.onPick((o) => void this.explore((o.userData.pick as { hotspot: string }).hotspot));
 
     // ---- UI
@@ -210,17 +248,20 @@ export class RouteScene extends BaseScene {
         title: open ? `${r.name} (Lv ${r.levelRange[0]}–${r.levelRange[1]})` : `Locked — defeat ${blockers.map((t) => `${t.title} ${t.name}`).join(' and ')} to open ${r.name}`,
         onclick: () => { if (r.id !== this.route.id) { audio.sfx('select'); void g.goto('route', { route: r.id }); } },
       }, h('span', { class: 'tab-name' }, r.name), open ? null : h('span', { class: 'tab-need' }, need));
+      if (!open) tab.setAttribute('aria-label', `${r.name}, locked: ${need}`);
       if (!open) tab.prepend(h('span', { class: 'tab-lock' }));
       return tab;
     }));
-    tabs.querySelectorAll('.tab-lock').forEach((el) => { el.innerHTML = LOCK_SVG; });
     arrowNav(tabs);
-    this.ui.append(
-      h('div', { class: 'route-top' },
-        h('div', { class: 'route-name', 'data-testid': 'route-name' }, h('strong', {}, this.route.name), h('span', {}, ` Lv ${this.route.levelRange[0]}–${this.route.levelRange[1]}`),
+    const range = wildRange(this.route);
+    // The next locked route and what opens it, for the status line (tabs only show a lock).
+    const nextLocked = routes.find((r) => !isRouteUnlocked(g.player, r.id));
+    const nextNeed = nextLocked ? routeBlockers(g.player, nextLocked).map((t) => t.name) : [];
+    this.top = h('div', { class: 'route-top' },
+        h('div', { class: 'route-name', 'data-testid': 'route-name' }, h('strong', {}, this.route.name), range ? h('span', {}, ` Lv ${range[0]}–${range[1]}`) : null,
           g.player.champion ? h('span', { class: 'champ-pill' }, 'Champion') : null),
-        tabs),
-      h('div', { class: 'sheet route-ui' },
+        tabs);
+    this.sheet = h('div', { class: 'sheet route-ui' },
         h('p', { class: 'hint' }, this.hint(lead ? lead.nickname ?? g.dex().species.get(lead.species)!.name : '')),
         spotButtons,
         h('div', { class: 'route-actions' },
@@ -228,9 +269,12 @@ export class RouteScene extends BaseScene {
           h('button', { class: 'btn btn-kin', 'data-testid': 'btn-party', onclick: () => void g.goto('party', { from: 'route', route: this.route.id }) }, 'Party'),
           h('button', { class: 'btn btn-rest', 'data-testid': 'btn-rest', onclick: () => this.rest() }, 'Rest'),
         ),
+        nextLocked && nextNeed.length ? h('div', { class: 'route-next', 'data-testid': 'route-next' }, h('span', { class: 'tab-lock' }), `${nextLocked.name}: beat ${nextNeed.join(' & ')} to open`) : null,
         this.status,
-      ),
-    );
+      );
+    this.ui.append(this.top, this.sheet);
+    this.resize(g.renderer.width, g.renderer.height);
+    this.ui.querySelectorAll('.tab-lock').forEach((el) => { el.innerHTML = LOCK_SVG; });
     focusFirst(spotButtons);
   }
 
@@ -245,19 +289,22 @@ export class RouteScene extends BaseScene {
     const p = this.game.player;
     let meta: string;
     let cls = '';
+    let label = s.label;
     if (s.kind === 'trainer' && s.trainer) {
       const t = getTrainer(s.trainer);
       const beaten = isTrainerDefeated(p, t.id);
       cls = beaten ? 'beaten' : 'challenge';
-      meta = beaten ? (t.id === CHAMPION_ID ? 'Hall of Fame' : 'Defeated ✓') : `Trainer · ${t.party.length} kin`;
+      // Short name on the button, the trainer's title in the subtitle.
+      label = t.name;
+      meta = beaten ? (t.id === CHAMPION_ID ? 'Hall of Fame' : `Defeated ✓ · ${t.title}`) : `${t.title} · ${t.party.length} kin`;
     } else {
       const lo = Math.min(...s.table.map((e) => e.min));
       const hi = Math.max(...s.table.map((e) => e.max));
       meta = `Wild · Lv ${lo}–${hi}`;
     }
-    return h('button', { class: `btn btn-spot spot-${s.kind} ${cls}`, 'data-testid': `spot-${s.id}`, onclick: () => void this.explore(s.id) },
+    return h('button', { class: `btn btn-spot spot-${s.kind} ${cls}`, 'data-testid': `spot-${s.id}`, title: s.label, onclick: () => void this.explore(s.id) },
       h('span', { class: `icon icon-${s.kind}`, 'aria-hidden': 'true' }),
-      h('span', { class: 'spot-text' }, h('span', { class: 'mname' }, s.label), h('span', { class: 'mmeta' }, meta)));
+      h('span', { class: 'spot-text' }, h('span', { class: 'mname' }, label), h('span', { class: 'mmeta' }, meta)));
   }
 
   private renderStatus() {
@@ -304,12 +351,25 @@ export class RouteScene extends BaseScene {
 
   override resize(w: number, hgt: number) {
     super.resize(w, hgt);
-    const aspect = w / hgt;
-    const dist = Math.max(10, (aspect < 1 ? 4.7 : 5.6) / (Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * aspect));
-    this.camera.position.set(0, dist * 0.62, dist * 0.82);
-    this.camera.lookAt(0, 0, 0);
-    this.camera.setViewOffset(w, hgt, 0, hgt * (aspect < 1 ? 0.1 : 0.12), w, hgt);
-    this.camera.updateProjectionMatrix();
+    if (!this.sheet) return;
+    // Fit the whole island (tallest props included) between the header and the sheet, or
+    // left of the sheet on a landscape phone.
+    const land = layoutMode(w, hgt) === 'land';
+    const area = freeArea(w, hgt, land ? { top: [this.top], right: [this.sheet] } : { top: [this.top], bottom: [this.sheet] }, 4);
+    const pts = corners(new THREE.Vector3(-4.75, -0.8, -4.6), new THREE.Vector3(4.75, 2.9, 4.7));
+    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.62, 0.82), target: new THREE.Vector3(0, 0.6, 0), fill: 1 });
+  }
+
+  /** Layout checks (debug hook): the player and the trainers on the map. */
+  subjects() {
+    const out = [{ name: 'you', obj: this.you }];
+    for (const [id, grp] of this.hotspots) out.push({ name: id, obj: grp });
+    return out;
+  }
+
+  override exit() {
+    this.sky?.dispose();
+    super.exit();
   }
 
   override update(_dt: number, t: number) {

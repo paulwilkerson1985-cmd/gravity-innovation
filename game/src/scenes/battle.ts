@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { BaseScene } from './base';
 import './adventure.css';
 import { CreatureView } from '../render/creature';
-import { addLights, backdrop, makeSky, platform } from '../render/diorama';
+import { addLights, backdrop, makeSky } from '../render/diorama';
+import { PAD_COLORS, battlePad, battleSpots, frameBattle, placeSpots } from './battleStage';
 import { ORB_COLORS, burst, makeOrb } from '../render/fx';
 import { ambient, moveFx } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
@@ -36,6 +37,14 @@ const STATUS_TEXT: Record<StatusId, [string, string, string, string]> = {
 };
 const STAT_LABELS: [keyof Stats, string][] = [['hp', 'Max HP'], ['atk', 'Attack'], ['def', 'Defense'], ['spe', 'Speed']];
 
+/** One short line per item for the compact battle bag (the full blurb is in the tooltip). */
+function itemShort(id: ItemId): string {
+  const e = getItem(id).effect;
+  if (e.kind === 'heal') return e.amount === 'full' ? 'Full HP' : `+${e.amount} HP`;
+  if (e.kind === 'cure') return 'Cures status';
+  return 'Revives';
+}
+
 /** Text pacing per settings.textSpeed: hold multiplier and typewriter characters per second. */
 const PACE = { slow: { hold: 1.6, cps: 40 }, normal: { hold: 1, cps: 75 }, fast: { hold: 0.5, cps: 170 } } as const;
 
@@ -53,7 +62,8 @@ export class BattleScene extends BaseScene {
   private trainer: TrainerData | null = null;
   private trainerFig: THREE.Mesh | null = null;
   private views: [CreatureView | null, CreatureView | null] = [null, null];
-  private spots = [new THREE.Vector3(-1.7, 0, 1.3), new THREE.Vector3(1.75, 0, -1.9)] as const;
+  private spots = battleSpots(innerWidth, innerHeight);
+  private pads: THREE.Object3D[] = [];
   private activeSlot: [number, number] = [0, 0];
   private shownHp: [number, number] = [0, 0];
   private panels!: [Panel, Panel];
@@ -99,12 +109,13 @@ export class BattleScene extends BaseScene {
     addLights(this.scene, theme);
     this.scene.fog = new THREE.Fog(new THREE.Color(theme === 'ridge' ? '#ffd2a8' : theme === 'summit' ? '#c7d4ff' : '#d9f2ff'), 18, 45);
     this.scene.add(backdrop(theme, 11));
-    const padColor = theme === 'coast' ? '#e9cf86' : theme === 'ridge' ? '#c79560' : theme === 'summit' ? '#e6ecf7' : '#8fdc6a';
-    const p0 = platform(padColor, 1.25);
+    const [padTop, padDark] = PAD_COLORS[theme] ?? PAD_COLORS.meadow!;
+    const p0 = battlePad(padTop, 1.2, { dark: padDark });
     p0.position.copy(this.spots[0]);
-    const p1 = platform(padColor, 1.15);
+    const p1 = battlePad(padTop, 1.1, { dark: padDark });
     p1.position.copy(this.spots[1]);
     this.scene.add(p0, p1);
+    this.pads = [p0, p1];
     const amb = ambient(theme);
     this.scene.add(amb.points);
     this.ambientUpdate = amb.update;
@@ -115,22 +126,21 @@ export class BattleScene extends BaseScene {
   }
 
   override resize(w: number, hgt: number) {
-    const aspect = w / hgt;
-    const cam = this.camera;
-    cam.aspect = aspect;
-    cam.fov = 38;
-    const target = new THREE.Vector3(0.05, 0.55, -0.3);
-    const halfWidth = aspect < 1 ? 2.75 : 3.6;
-    const tanV = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    const dist = Math.max(7.2, halfWidth / (tanV * aspect));
-    if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 8; this.scene.fog.far = dist + 32; }
-    const dir = new THREE.Vector3(-0.28, 0.34, 1).normalize();
-    cam.position.copy(target).addScaledVector(dir, dist);
-    cam.lookAt(target);
-    // Shift the view up so the creatures sit above the bottom UI.
-    const shift = aspect < 1 ? 0.14 : 0.1;
-    cam.setViewOffset(w, hgt, 0, hgt * shift, w, hgt);
-    cam.updateProjectionMatrix();
+    if (placeSpots(this.spots, w, hgt)) {
+      // Rotated into another layout: move the pads, kin and trainer to the new spots.
+      this.pads.forEach((p, i) => p.position.copy(this.spots[i]!));
+      this.views.forEach((v, i) => v?.root.position.copy(this.spots[i]!));
+      if (this.trainerFig?.visible) this.trainerFig.position.copy(this.spots[1]);
+    }
+    frameBattle(this.camera, this.scene, w, hgt, this.spots);
+  }
+
+  /** Layout checks (debug hook): the kin on the field and the trainer. */
+  subjects() {
+    const out: { name: string; obj: THREE.Object3D }[] = [];
+    this.views.forEach((v, i) => { if (v?.root.visible) out.push({ name: i === 0 ? 'mine' : 'foe', obj: v.inner }); });
+    if (this.trainerFig?.visible) out.push({ name: 'trainer', obj: this.trainerFig });
+    return out;
   }
 
   private ambientUpdate: ((t: number) => void) | null = null;
@@ -154,21 +164,20 @@ export class BattleScene extends BaseScene {
       bar.append(ghost);
       const nums = mine ? h('div', { class: 'hpnums', 'data-testid': 'hp-mine' }) : undefined;
       const xp = mine ? h('div', { class: 'xpbar', 'data-testid': 'xp-bar' }, h('div', { class: 'xpfill' })) : undefined;
-      const dots = h('div', { class: 'pdots', 'aria-hidden': 'true' });
-      const root = h('div', { class: `panel ${mine ? 'panel-mine' : 'panel-foe'}`, 'data-testid': mine ? 'panel-mine' : 'panel-foe' },
-        h('div', { class: 'prow' }, name, badge, level), h('div', { class: 'prow' }, types, h('span', { class: 'hplabel' }, 'HP'), bar),
-        mine ? h('div', { class: 'prow prow-sub' }, h('span', { class: 'xplabel' }, 'XP'), xp, nums) : null, dots);
+      const dots = h('span', { class: 'pdots', 'aria-hidden': 'true' });
+      const root = h('div', { class: `panel ${mine ? 'panel-mine bt-mine' : 'panel-foe bt-foe'}`, 'data-testid': mine ? 'panel-mine' : 'panel-foe' },
+        h('div', { class: 'prow' }, name, dots, level), h('div', { class: 'prow' }, types, badge, h('span', { class: 'hplabel' }, 'HP'), bar),
+        mine ? h('div', { class: 'prow prow-sub' }, h('span', { class: 'xplabel' }, 'XP'), xp, nums) : null);
       root.style.visibility = 'hidden';
       return { root, name, level, bar, ghost, badge, types, dots, ...(nums ? { nums } : {}), ...(xp ? { xp } : {}) };
     };
     this.panels = [panel(true), panel(false)];
     this.text = h('div', { class: 'text', 'data-testid': 'battle-text', 'aria-hidden': 'true' });
     this.live = h('div', { class: 'sr-only', 'aria-live': 'polite' });
-    this.menu = h('div', { class: 'menu' });
+    this.menu = h('div', { class: 'menu bt-menu' });
     arrowNav(this.menu);
-    const box = h('div', { class: 'battle-bottom' }, this.panels[0].root,
-      h('div', { class: 'textbox', onclick: () => this.advance?.() }, this.text, h('span', { class: 'text-next', 'aria-hidden': 'true' })), this.menu);
-    this.battleUi = h('div', { class: 'battle-ui' }, this.panels[1].root, box, this.live);
+    const textbox = h('div', { class: 'textbox bt-text', onclick: () => this.advance?.() }, this.text, h('span', { class: 'text-next', 'aria-hidden': 'true' }));
+    this.battleUi = h('div', { class: 'battle-ui' }, this.panels[1].root, this.panels[0].root, textbox, this.menu, this.live);
     this.ui.append(this.battleUi);
     // Menu sounds: one delegated listener for every button the menu ever shows.
     this.menu.addEventListener('click', (e) => {
@@ -292,8 +301,10 @@ export class BattleScene extends BaseScene {
       this.advance = () => {
         if (!typed) { typed = true; this.text.textContent = msg; this.text.classList.add('waiting'); } else finish();
       };
+      let shown = -1;
       void tween((msg.length / pace.cps) * 1000, (k) => {
-        if (!typed) this.text.textContent = msg.slice(0, Math.ceil(k * msg.length));
+        const n = Math.ceil(k * msg.length);
+        if (!typed && n !== shown) { shown = n; this.text.textContent = msg.slice(0, n); }
       }).then(() => {
         typed = true;
         this.text.textContent = msg;
@@ -383,7 +394,7 @@ export class BattleScene extends BaseScene {
   }
 
   private setMenu(kind: string, buttons: HTMLElement[], back: (() => void) | null = null, focus = true) {
-    this.menu.className = `menu menu-${kind}`;
+    this.menu.className = `menu bt-menu menu-${kind}`;
     this.menu.replaceChildren(...buttons);
     if (back) this.menu.append(h('button', { class: 'btn btn-back', 'data-back': true, 'data-testid': 'btn-back', onclick: back }, 'Back'));
     this.game.idle = true;
@@ -401,12 +412,15 @@ export class BattleScene extends BaseScene {
     this.setMenu('moves', me.moves.map((m, i) => {
       const data = getMove(m.id);
       const mult = data.category === 'attack' ? typeMultiplier(data.type, foe.types) : 1;
-      const tag = mult > 1 ? h('span', { class: 'eff eff-up' }, 'Strong') : mult < 1 ? h('span', { class: 'eff eff-down' }, 'Weak') : null;
+      // Effectiveness hint against the foe on the field (attacks only).
+      const tag = mult > 1 ? h('span', { class: 'eff eff-up', title: 'Super effective' }, mult > 2 ? 'Super ×4' : 'Super')
+        : mult < 1 ? h('span', { class: 'eff eff-down', title: 'Not very effective' }, 'Weak') : null;
       return h('button', {
         class: 'btn btn-move', style: `--c:${TYPE_COLORS[data.type]}`, 'data-testid': `move-${i}`, 'data-pick': i + 1, disabled: m.pp <= 0,
-        title: data.blurb, onclick: () => this.submit({ type: 'move', index: i }),
+        title: `${data.type} · ${data.blurb}`, 'aria-label': `${data.name}, ${data.type}, ${data.category === 'attack' ? `power ${data.power}` : 'status move'}, ${m.pp} of ${m.maxPp} PP`,
+        onclick: () => this.submit({ type: 'move', index: i }),
       }, h('span', { class: 'mname' }, data.name, tag),
-      h('span', { class: 'mmeta' }, `${data.type} · ${data.category === 'attack' ? `Pow ${data.power}` : 'Status'} · PP ${m.pp}/${m.maxPp}`));
+      h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `Pow ${data.power}` : 'Status'} · PP ${m.pp}/${m.maxPp}`));
     }), () => this.showMain());
     this.text.textContent = 'Choose a move.';
   }
@@ -437,8 +451,8 @@ export class BattleScene extends BaseScene {
       return h('button', {
         class: 'btn btn-orb', style: `--c:${ORB_COLORS[id]}`, 'data-testid': `orb-${id}`, 'data-pick': i + 1, disabled: have <= 0 || !canCatch,
         onclick: () => this.submit({ type: 'catch', orb: id }),
-      }, h('span', { class: 'mname' }, h('i', { class: 'orb-ico', style: `--c:${ORB_COLORS[id]}` }), `${ORBS[id].name} ×${have}`),
-      h('span', { class: 'mmeta' }, canCatch ? `≈ ${Math.round(p * 100)}% catch` : 'Can’t catch'));
+      }, h('span', { class: 'mname' }, h('i', { class: 'orb-ico', style: `--c:${ORB_COLORS[id]}` }), ORBS[id].name),
+      h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${have}`), canCatch ? ` · ≈${Math.round(p * 100)}%` : ' · Can’t catch'));
     });
   }
 
@@ -456,7 +470,7 @@ export class BattleScene extends BaseScene {
       return h('button', {
         class: 'btn btn-item', 'data-testid': `item-${id}`, 'data-pick': i + 1, disabled: !usable, title: it.blurb,
         onclick: () => this.showItemTargets(id),
-      }, h('span', { class: 'mname' }, `${it.name} ×${this.game.player.bag[id] ?? 0}`), h('span', { class: 'mmeta' }, usable ? it.blurb.replace(/^.*?\. /, '') : 'No one needs this'));
+      }, h('span', { class: 'mname' }, it.name), h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${this.game.player.bag[id] ?? 0}`), ` · ${usable ? itemShort(id) : 'Not needed'}`));
     });
   }
 
@@ -474,12 +488,19 @@ export class BattleScene extends BaseScene {
     }), () => this.showBag('items'));
   }
 
-  private kinButton(c: BattleCreature, i: number, testid: string, enabled: boolean, onclick: () => void, note = '') {
+  private kinButton(c: BattleCreature, i: number, testid: string, enabled: boolean, onclick: () => void, note = '', current = false) {
     const bar = hpBar(c.hp, c.stats.hp);
-    const st = c.status ? h('span', { class: 'badge', style: `--c:${STATUS_TEXT[c.status][2]}` }, STATUS_TEXT[c.status][0]) : null;
-    return h('button', { class: `btn btn-kinpick ${c.hp <= 0 ? 'fainted' : ''}`, 'data-testid': testid, 'data-pick': i + 1, disabled: !enabled, onclick },
-      h('span', { class: 'kin-row' }, h('span', { class: 'mname' }, c.name), st, h('span', { class: 'plevel' }, `Lv${c.level}`)),
-      h('span', { class: 'kin-row' }, bar, h('span', { class: 'mmeta' }, note || (c.hp <= 0 ? 'Fainted' : `${c.hp}/${c.stats.hp}`))));
+    const st = c.hp > 0 && c.status ? h('span', { class: 'badge', style: `--c:${STATUS_TEXT[c.status][2]}` }, STATUS_TEXT[c.status][0]) : null;
+    const tail = note ? h('span', { class: 'mmeta knote' }, note)
+      : c.hp <= 0 ? h('span', { class: 'badge badge-fnt' }, 'FNT')
+        : h('span', { class: 'mmeta' }, `${c.hp}/${c.stats.hp}`);
+    const lv = h('span', { class: 'plevel' }, `Lv${c.level}`);
+    return h('button', {
+      class: `btn btn-kinpick ${c.hp <= 0 ? 'fainted' : ''} ${current ? 'current' : ''}`, 'data-testid': testid, 'data-pick': i + 1, disabled: !enabled, onclick,
+      title: `${c.name} Lv${c.level} · ${Math.max(0, c.hp)}/${c.stats.hp} HP${c.status ? ` · ${STATUS_TEXT[c.status][3]}` : ''}`,
+    },
+    h('span', { class: 'kin-row' }, h('span', { class: 'mname' }, c.name)),
+    h('span', { class: 'kin-row' }, lv, note || st ? null : bar, note ? null : st, tail));
   }
 
   private showParty(forced: boolean) {
@@ -489,7 +510,8 @@ export class BattleScene extends BaseScene {
     const legal = legalActions(s, 0);
     this.setMenu('party', side.party.map((c, i) => {
       const ok = legal.some((a) => a.type === 'switch' && a.to === i);
-      return this.kinButton(c, i, `kin-${i}`, ok, () => void this.submit({ type: 'switch', to: i }), i === side.active && c.hp > 0 ? 'In battle' : '');
+      const cur = i === side.active && c.hp > 0;
+      return this.kinButton(c, i, `kin-${i}`, ok, () => void this.submit({ type: 'switch', to: i }), cur ? 'In battle' : '', cur);
     }), forced ? null : () => this.showMain());
   }
 
@@ -546,10 +568,12 @@ export class BattleScene extends BaseScene {
         // Turn your own kin a little toward the camera: a readable 3/4 back view, not a rear end.
         if (e.side === 0) view.root.rotation.y -= 0.55;
         this.scene.add(view.root);
+        view.inner.scale.setScalar(0.001);
         this.views[e.side] = view;
         this.setPanel(e.side, e);
         if (e.side === 1) this.game.player = withSeen(this.game.player, e.species);
-        const appear = view.appear();
+        // Your own kin arrives in an orb: a short arc in from the lower left and a pop.
+        const appear = e.side === 0 ? this.throwIn(e.species).then(() => view.appear()) : view.appear();
         audio.cry(e.species);
         if (e.side === 1 && this.state.sides[1].isWild && !this.introDone) await this.say(`A wild ${e.name} appeared!`);
         else if (e.side === 1) await this.say(this.trainer ? `${this.trainerName()} sent out ${e.name}!` : `Foe sent out ${e.name}!`);
@@ -660,6 +684,27 @@ export class BattleScene extends BaseScene {
     }
   }
 
+  /** Send-out flourish for your side: an orb arcs onto the pad and bursts open. */
+  private async throwIn(speciesId: string) {
+    const orb = makeOrb(ORB_COLORS.orb);
+    const land = this.spots[0].clone().add(new THREE.Vector3(0, 0.45, 0));
+    const from = this.spots[0].clone().add(new THREE.Vector3(-1.4, 1.2, 2.2));
+    orb.position.copy(from);
+    this.scene.add(orb);
+    audio.sfx('throw');
+    await tween(300, (k) => {
+      orb.position.lerpVectors(from, land, k);
+      orb.position.y += Math.sin(k * Math.PI) * 0.9;
+      orb.rotation.x = -k * 9;
+    });
+    this.scene.remove(orb);
+    orb.geometry.dispose();
+    (orb.material as THREE.Material).dispose();
+    const type = species(speciesId).types[0];
+    void burst(this.scene, land, TYPE_COLORS[type ?? 'Neutral'] ?? '#ffffff', 1.1, 12);
+    void burst(this.scene, land, '#ffffff', 0.7, 8);
+  }
+
   /** Brief camera shake for big hits. */
   private shake(amount: number) {
     if (animClock.instant) return;
@@ -722,6 +767,16 @@ export class BattleScene extends BaseScene {
       this.panels[1].root.style.visibility = 'hidden';
       audio.sfx('caught');
       await this.say(`Gotcha! ${e.name} was caught!`, 900);
+      // The orb hops once and blinks away with the new friend inside.
+      const y0 = orb.position.y;
+      await tween(320, (k) => {
+        orb.position.y = y0 + Math.sin(k * Math.PI) * 0.35;
+        orb.scale.setScalar(Math.max(0.001, 1 - ease.inCubic(k)));
+      });
+      void this.sparkleAt(1, '#ffe14d');
+      this.scene.remove(orb);
+      orb.geometry.dispose();
+      mat.dispose();
     } else {
       audio.sfx('breakFree');
       void burst(this.scene, ground, '#ffffff', 1);
@@ -833,11 +888,21 @@ export class BattleScene extends BaseScene {
         if (step !== lastTick) { lastTick = step; audio.sfx('xpTick'); }
       });
     };
-    for (const gain of gains) {
+    // The kin on the field gets its own line; the bench shares one line, and only bench kin
+    // with something to show (level-ups, moves) get individual attention afterwards.
+    const ordered = [...gains.filter((g) => g.uid === fieldUid), ...gains.filter((g) => g.uid !== fieldUid)];
+    const bench = ordered.filter((g) => g.uid !== fieldUid && g.amount > 0);
+    let benchSaid = false;
+    for (const gain of ordered) {
       const onField = gain.uid === fieldUid && (this.views[0]?.root.visible ?? false);
       const name = gain.before.nickname ?? species(gain.before.species).name;
       let k0 = xpProgress(gain.before.level, gain.before.xp);
-      await this.say(`${name} gained ${gain.amount} XP!`, 300);
+      if (gain.uid === fieldUid || bench.length === 1) await this.say(`${name} gained ${gain.amount} XP!`, 300);
+      else if (!benchSaid) {
+        benchSaid = true;
+        const amounts = new Set(bench.map((b) => b.amount));
+        await this.say(amounts.size === 1 ? `The rest of your team gained ${bench[0]!.amount} XP!` : 'The rest of your team gained XP too!', 300);
+      }
       for (const ev of gain.events) {
         if (ev.t === 'levelUp') {
           if (onField) {
@@ -898,14 +963,14 @@ export class BattleScene extends BaseScene {
       const list = () => {
         const c = this.game.player.party.find((x) => x.uid === uid);
         if (!c) return resolve();
-        this.flash(`Forget a move for ${m.name} (${meta(m)})?`);
+        this.flash(`Forget which move to learn ${m.name} (${meta(m)})?`);
         this.setMenu('moves menu-forget', [
           ...c.moves.map((mv, i) => {
             const d = getMove(mv.id);
             return h('button', {
               class: 'btn btn-move', style: `--c:${TYPE_COLORS[d.type]}`, 'data-testid': `forget-${i}`, 'data-pick': i + 1, title: d.blurb,
               onclick: () => confirm(i, d.name),
-            }, h('span', { class: 'mname' }, `Forget ${d.name}`), h('span', { class: 'mmeta' }, meta(d)));
+            }, h('span', { class: 'mname' }, d.name), h('span', { class: 'mmeta' }, meta(d)));
           }),
           h('button', { class: 'btn btn-back btn-skip', 'data-testid': 'btn-skip-move', 'data-back': true, onclick: () => void pick(null, '') }, `Don't learn ${m.name}`),
         ], null, false);

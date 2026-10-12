@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GEO, MeshBuilder, flatMaterial } from '../render/builder';
 import { Rng } from '../engine/rng';
 import { ambient } from '../render/movefx';
+import { battlePad, frameBattle } from './battleStage';
 
 /** Player colours, by seat (engine side). */
 export const SEAT_COLORS = ['#ff5d73', '#3d9bff'] as const;
@@ -176,9 +177,9 @@ export function buildArena(scene: THREE.Scene, opts: { nearColor: string; farCol
   const meshB = new THREE.Mesh(crowdB.build(), flatMaterial());
   scene.add(meshA, meshB);
 
-  const p0 = arenaPlatform(opts.nearColor, opts.nearDark, 1.25);
+  const p0 = battlePad(opts.nearColor, 1.2, { dark: opts.nearDark });
   p0.position.copy(opts.spots[0]);
-  const p1 = arenaPlatform(opts.farColor, opts.farDark, 1.18);
+  const p1 = battlePad(opts.farColor, 1.1, { dark: opts.farDark });
   p1.position.copy(opts.spots[1]);
   scene.add(p0, p1);
 
@@ -200,22 +201,10 @@ export function buildArena(scene: THREE.Scene, opts: { nearColor: string; farCol
   };
 }
 
-/** Frame a fixed battle camera on the two spots (same framing idea as the adventure battle). */
-export function frameBattleCamera(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number) {
-  const aspect = w / h;
-  cam.aspect = aspect;
-  cam.fov = 38;
-  const target = new THREE.Vector3(0.05, 0.6, -0.3);
-  const halfWidth = aspect < 1 ? 2.75 : 3.7;
-  const tanV = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-  const dist = Math.max(7.4, halfWidth / (tanV * aspect));
-  if (scene.fog instanceof THREE.Fog) { scene.fog.near = dist + 14; scene.fog.far = dist + 46; }
-  const dir = new THREE.Vector3(-0.28, 0.36, 1).normalize();
-  cam.position.copy(target).addScaledVector(dir, dist);
-  cam.lookAt(target);
-  const shift = aspect < 1 ? 0.15 : 0.1;
-  cam.setViewOffset(w, h, 0, h * shift, w, h);
-  cam.updateProjectionMatrix();
+/** Frame the battle camera on the two spots (shared with the adventure battle). */
+export function frameBattleCamera(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3]) {
+  frameBattle(cam, scene, w, h, spots);
+  if (scene.fog instanceof THREE.Fog) { scene.fog.near += 6; scene.fog.far += 12; }
 }
 
 /** Falling confetti: one instanced mesh (one draw call). */

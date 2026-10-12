@@ -15,6 +15,7 @@ import { focusFirst, h } from '../ui/dom';
 import { audio } from '../audio/audio';
 import { canEvolveNow, species } from '../engine';
 import { evolutionQueue, evolvePartyMember } from '../game/progress';
+import { corners, fitPoints, freeArea, layoutMode } from './framing';
 
 type Flag = 'none' | 'skip' | 'stop';
 
@@ -28,6 +29,7 @@ export class EvolutionScene extends BaseScene {
   private text!: HTMLElement;
   private buttons!: HTMLElement;
   private flashEl!: HTMLElement;
+  private panel!: HTMLElement;
   private flag: Flag = 'none';
   private spin = 0.3;
   private intensity = 0;
@@ -78,7 +80,8 @@ export class EvolutionScene extends BaseScene {
     this.text = h('div', { class: 'text', 'data-testid': 'evo-text', 'aria-live': 'polite' });
     this.buttons = h('div', { class: 'evo-buttons' });
     this.flashEl = h('div', { class: 'evo-flash' });
-    this.ui.append(this.flashEl, h('div', { class: 'evo-ui' }, h('div', { class: 'textbox', onclick: () => this.advance?.() }, this.text), this.buttons));
+    this.panel = h('div', { class: 'evo-ui' }, h('div', { class: 'textbox', onclick: () => this.advance?.() }, this.text), this.buttons);
+    this.ui.append(this.flashEl, this.panel);
     window.addEventListener('keydown', this.keys);
     audio.music('evolution');
     this.resize(g.renderer.width, g.renderer.height);
@@ -87,12 +90,19 @@ export class EvolutionScene extends BaseScene {
 
   override resize(w: number, hgt: number) {
     super.resize(w, hgt);
-    const aspect = w / hgt;
-    const d = aspect < 1 ? 8.2 : 6.2;
-    this.camera.position.set(0, 1.9, d);
-    this.camera.lookAt(0, 0.95, 0);
-    this.camera.setViewOffset(w, hgt, 0, hgt * (aspect < 1 ? 0.12 : 0.1), w, hgt);
-    this.camera.updateProjectionMatrix();
+    if (!this.panel) return;
+    // Pedestal and kin (old or new form) fill the space above the text box — or left of it on
+    // a landscape phone, where the text and buttons form a right-hand column.
+    const land = layoutMode(w, hgt) === 'land';
+    const area = freeArea(w, hgt, land ? { right: [this.panel] } : { bottom: [this.panel] }, 10);
+    const hw = w / hgt < 1 ? 1.0 : 1.45;
+    const pts = corners(new THREE.Vector3(-hw, -0.1, -1.3), new THREE.Vector3(hw, 2.2, 1.3));
+    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.16, 1), target: new THREE.Vector3(0, 0.95, 0), fill: 0.9 });
+  }
+
+  /** Layout checks (debug hook). */
+  subjects() {
+    return this.views.filter((v) => v.root.visible).map((v, i) => ({ name: `kin${i}`, obj: v.inner }));
   }
 
   override update(_dt: number, t: number) {

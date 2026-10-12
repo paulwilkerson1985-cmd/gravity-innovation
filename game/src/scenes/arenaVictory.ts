@@ -5,7 +5,8 @@ import { BaseScene } from './base';
 import { CreatureView } from '../render/creature';
 import { audio } from '../audio/audio';
 import { arrowNav, focusFirst, h, hpBar } from '../ui/dom';
-import { species } from '../engine';
+import { ARENA_LEVEL, calcStats, species } from '../engine';
+import { corners, fitPoints, freeArea, layoutMode } from './framing';
 import { Confetti, SEAT_COLORS, SEAT_DARK, buildArena, podium, type ArenaSet } from './arenaStage';
 import type { LocalMatchSetup, MatchSummary, Seat } from './arenaFlow';
 import { abtn, seatTag } from './arenaUi';
@@ -108,16 +109,18 @@ export class ArenaVictoryScene extends BaseScene {
     const cam = this.camera;
     cam.aspect = w / hgt;
     cam.fov = 40;
-    cam.clearViewOffset();
-    const portrait = w / hgt < 1;
-    const tan = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    const d = Math.max(7.5, 3.6 / (tan * cam.aspect));
-    const target = new THREE.Vector3(0, portrait ? 1.1 : 1.2, -0.6);
-    cam.position.set(0, target.y + d * 0.28, target.z + d);
-    cam.lookAt(target);
-    // Leave room for the title (top) and the stats card (bottom).
-    cam.setViewOffset(w, hgt, 0, hgt * (portrait ? 0.02 : 0.06), w, hgt);
-    cam.updateProjectionMatrix();
+    // The podium fills the space between the winner's name and the stats card (left of the
+    // card on a landscape phone).
+    const q = (sel: string) => this.ui.querySelector(sel);
+    const land = layoutMode(w, hgt) === 'land';
+    const area = freeArea(w, hgt, land ? { top: [q('.arena-win-top')], right: [q('.arena-vcard')] } : { top: [q('.arena-win-top')], bottom: [q('.arena-vcard')] }, 6);
+    const pts = corners(new THREE.Vector3(-2.65, 0, -1.5), new THREE.Vector3(2.65, 2.9, 0.4));
+    fitPoints(cam, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.3, 1), target: new THREE.Vector3(0, 1.2, -0.6), fill: 0.98 });
+  }
+
+  /** Layout checks (debug hook). */
+  subjects() {
+    return this.views.map((v, i) => ({ name: `kin${i}`, obj: v.inner }));
   }
 
   override update(_dt: number, t: number) {
@@ -144,8 +147,13 @@ export class ArenaVictoryScene extends BaseScene {
 
     const team = (seat: Seat) => h('div', { class: 'arena-vteam', style: `--seat:${SEAT_COLORS[seat]}` },
       h('div', { class: 'arena-vteam-head' }, seatTag(seat, s.names[seat]), h('span', { class: 'arena-vkos' }, `${s.kos[seat]} KO${s.kos[seat] === 1 ? '' : 's'}`)),
-      ...s.teams[seat].map((e, i) => h('div', { class: `arena-vkin${(s.hp[seat][i] ?? 0) <= 0 ? ' out' : ''}` },
-        h('span', { class: 'arena-vkin-name' }, e.nickname ?? species(e.species).name), hpBar(Math.max(0, s.hp[seat][i] ?? 0), 1))));
+      ...s.teams[seat].map((e, i) => {
+        const frac = Math.max(0, s.hp[seat][i] ?? 0);
+        const max = calcStats(e.species, ARENA_LEVEL).hp;
+        return h('div', { class: `arena-vkin${frac <= 0 ? ' out' : ''}` },
+          h('span', { class: 'arena-vkin-name' }, e.nickname ?? species(e.species).name), hpBar(frac, 1),
+          h('span', { class: 'arena-vkin-hp' }, `${Math.round(frac * max)}/${max}`));
+      }));
 
     this.note = h('p', { class: 'arena-note info', hidden: true, 'data-testid': 'arena-victory-note', role: 'status' });
     this.actions = h('div', { class: 'arena-row arena-vactions' },
