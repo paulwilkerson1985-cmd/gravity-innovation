@@ -266,6 +266,8 @@ export class CreatureView {
   readonly hover: number;
   readonly idle: IdleStyle;
   private readonly u: CreatureUniforms;
+  /** The rig/blink/act uniforms (shared with the HD-2D sprite material). */
+  get uniforms(): CreatureUniforms { return this.u; }
   private phase: number;
   private busy = false;
   private acting = 0;

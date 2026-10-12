@@ -11,7 +11,7 @@ export interface CreatureUniforms {
   uAmb: { value: number };
 }
 
-const VERT_HEAD = /* glsl */ `
+export const VERT_HEAD = /* glsl */ `
 attribute vec4 rigA;
 attribute vec3 rigB;
 uniform float uTime;
@@ -22,7 +22,7 @@ mat3 orbRotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s, 0.
 mat3 orbRotZ(float a) { float c = cos(a), s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
 `;
 
-const VERT_BODY = /* glsl */ `
+export const VERT_BODY = /* glsl */ `
 #include <begin_vertex>
 {
   float kind = rigA.w;
