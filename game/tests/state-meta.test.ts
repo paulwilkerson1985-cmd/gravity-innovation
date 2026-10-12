@@ -93,9 +93,11 @@ describe('settings & formatting', () => {
     expect(() => setTextSpeed(p, 'warp' as never)).toThrow();
   });
   it('play time', () => {
-    expect(formatPlayTime(0)).toBe('0m');
+    expect(formatPlayTime(0)).toBe('< 1m');
+    expect(formatPlayTime(59)).toBe('< 1m');
+    expect(formatPlayTime(60)).toBe('1m');
     expect(formatPlayTime(59 * 60 + 59)).toBe('59m');
     expect(formatPlayTime(3600 + 5 * 60)).toBe('1h 05m');
-    expect(formatPlayTime(NaN)).toBe('0m');
+    expect(formatPlayTime(NaN)).toBe('< 1m');
   });
 });

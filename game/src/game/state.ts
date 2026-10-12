@@ -154,8 +154,9 @@ export function setTextSpeed(p0: PlayerState, speed: PlayerSettings['textSpeed']
   return p;
 }
 
-/** "12m", "1h 05m". */
+/** "< 1m", "12m", "1h 05m" — the one play-time format used everywhere (save card, menus, Hall of Fame). */
 export function formatPlayTime(seconds: number): string {
+  if (!(seconds >= 60)) return '< 1m';
   const total = Math.max(0, Math.floor((Number.isFinite(seconds) ? seconds : 0) / 60));
   const hrs = Math.floor(total / 60);
   const mins = total % 60;

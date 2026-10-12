@@ -107,7 +107,13 @@ function dressing(b: MeshBuilder, theme: Theme, rng: Rng) {
       lavaRiver(b, [[-3.7, -1.3], [-2.8, -2.0], [-2.1, -2.9], [-1.1, -3.5]]);
       vent(b, -3.2, 1.6, 0.8);
       vent(b, 3.4, -1.8, 1.0);
-      for (let i = 0; i < 5; i++) rock(b, (rng.next() - 0.5) * 6, (rng.next() - 0.5) * 4, 0.5, pal.rock, rng);
+      // Small boulders, kept off the trainers' spots and the path down the middle.
+      for (let i = 0, n = 0; i < 40 && n < 5; i++) {
+        const x = (rng.next() - 0.5) * 6, z = (rng.next() - 0.5) * 4;
+        if (Math.abs(x) < 0.8 || Object.values(TRAINER_SPOTS).flat().some(([tx, tz]) => Math.hypot(x - tx, z - tz) < 1.0)) continue;
+        rock(b, x, z, 0.5, pal.rock, rng);
+        n++;
+      }
       break;
     case 'coast':
       ring(12, (x, z) => (rng.chance(0.65) ? palm(b, x, z, 1 + rng.next() * 0.3, rng) : rock(b, x, z, 1.2 + rng.next(), pal.rock, rng)));

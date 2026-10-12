@@ -123,7 +123,7 @@ export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w:
   const portrait = layoutMode(w, h) === 'portrait';
   // Portrait: your panel sits beside your kin (right of it), so the kin must fit left of it.
   let mineRight = w - 12;
-  if (portrait && nearPanel && kin[0] && kinSpan(cam, w, h, kin[0])[3] > nearPanel.y + 4) mineRight = nearPanel.x - 8;
+  if (portrait && nearPanel && kin[0] && kinSpan(cam, w, h, kin[0])[3] > nearPanel.y + 4) mineRight = nearPanel.x - 14;
   if (kin[0]) {
     const [x0, x1, kh] = kinSpan(cam, w, h, kin[0]);
     const k = Math.min(1, Math.min(w * (portrait ? 0.5 : 0.36), mineRight - 14) / (x1 - x0), (h * (portrait ? 0.3 : 0.5)) / kh);

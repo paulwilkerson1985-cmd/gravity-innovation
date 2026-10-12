@@ -9,6 +9,8 @@ import { openSettings } from '../ui/settings';
 import { audio } from '../audio/audio';
 import { species } from '../engine';
 import { formatPlayTime } from '../game/state';
+import { loadSavedSeat } from '../net/client';
+import { savedSeatStorage } from '../net/session';
 import { SaveError, parseSave, pickSaveFile, summarize, type SaveSummary } from '../game/save';
 import type { SavePeek } from '../game/game';
 
@@ -48,7 +50,13 @@ export class TitleScene extends BaseScene {
 
     this.slot = h('div', { class: 'title-slot', 'data-testid': 'title-slot' });
     const arenaReady = this.game.hasScene('arena');
+    // Reloaded mid online match: offer the way straight back to the seat.
+    const seat = arenaReady ? loadSavedSeat(savedSeatStorage()) : null;
     const buttons = h('div', { class: 'title-buttons' },
+      seat ? h('button', {
+        class: 'btn btn-big btn-rejoin', 'data-testid': 'btn-rejoin',
+        onclick: () => { audio.sfx('select'); void this.game.goto('arena', { rejoin: true }); },
+      }, icon('arena'), `Rejoin your match (${seat.code})`) : null,
       this.slot,
       h('button', { class: 'btn btn-big btn-new', 'data-testid': 'btn-start', onclick: () => void this.start() }, 'New adventure'),
       h('div', { class: 'title-row' },
@@ -100,7 +108,7 @@ export class TitleScene extends BaseScene {
     h('span', { class: 'sc-top' }, icon('play'), 'Continue'),
     h('span', { class: 'sc-info' },
       h('span', { class: 'sc-lead' }, h('span', { class: 'kc-dot', 'aria-hidden': 'true' }), `${s.leadName} Lv${s.leadLevel}`),
-      h('span', { 'data-testid': 'save-playtime' }, s.playTime < 60 ? '< 1m' : formatPlayTime(s.playTime)),
+      h('span', { 'data-testid': 'save-playtime' }, formatPlayTime(s.playTime)),
       h('span', {}, `${s.caught} caught`),
       s.champion ? h('span', { class: 'sc-champ' }, icon('crown'), 'Champion') : ''));
     this.slot.replaceChildren(btn);

@@ -66,8 +66,17 @@
 .kin-row .plevel { font-size: 11px; flex: none; }
 .kin-row .hpbar { flex: 1; min-width: 20px; height: 8px; border-width: 1.5px; }
 .kin-row .mmeta { white-space: nowrap; font-size: 11px; flex: none; }
-.kin-row .badge { font-size: 9px; padding: 2px 4px; flex: none; animation: none; margin-left: 0; }
+.kin-row .badge { font-size: 8px; padding: 1px 3px; border-width: 1.5px; letter-spacing: .02em; flex: none; animation: none; margin-left: 0; }
 .badge-fnt { --c: #b8304a; }
+.kin-row .st-low { display: none; }
+.kin-row .mname.long { font-size: 11.5px; letter-spacing: -.01em; }
+.bt-menu .btn-move .mmeta { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.bt-menu .btn-move .mmeta .eff { flex: none; font-size: 9px; padding: 1px 4px; border-width: 1.5px; }
+.bt-menu .mmeta { flex: none; }
+@media (max-height: 500px) and (orientation: landscape), (max-width: 360px) {
+  .kin-row .st-top { display: none; }
+  .kin-row .st-low { display: inline-block; }
+}
 .menu-forget .btn-skip { background: #5a5480; }
 .menu-end .btn-travel { grid-column: 1 / -1; }
 
@@ -185,13 +194,14 @@
 .hof-kin .mname { flex: 1; }
 .hof-stats { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; font: 700 14px/1.2 var(--font); color: #d8d0ff; }
 .hof-stats b { color: var(--accent); font-size: 17px; }
-.credits-roll { height: 74px; overflow: hidden; border-radius: 10px; background: #1d1838; border: 2px solid #ffffff22; position: relative;
-  mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 25%, #000 75%, transparent); }
-.credits-inner { text-align: center; font: 700 13px/1.5 var(--font); color: #d8d0ff; animation: credits 26s linear infinite; padding-top: 74px; }
-.credits-logo { font: 900 22px/1.2 var(--font); color: var(--accent); letter-spacing: .1em; }
+.credits-roll { height: 104px; overflow: hidden; border-radius: 10px; background: #1d1838; border: 2px solid #ffffff22; position: relative;
+  mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent); }
+.credits-inner { text-align: center; font: 700 13px/1.5 var(--font); color: #d8d0ff; animation: credits 26s linear infinite; padding-top: 104px; }
+.credits-logo { padding: 4px 0; font: 900 22px/1.3 var(--font); color: var(--accent); letter-spacing: .1em; }
 @keyframes credits { from { transform: translateY(0); } to { transform: translateY(-100%); } }
 .hof-buttons { display: flex; gap: 8px; }
-.hof-buttons .btn { flex: 1; }
+.hof-buttons .btn { flex: 1; white-space: nowrap; font-size: 16px; padding-left: 8px; padding-right: 8px; }
+.hof-buttons .btn-fight { flex: 1.5; }
 /* wide & landscape: the sheet is a right-hand column; title and line-up share the left */
 @media (min-aspect-ratio: 1001/1000) and (min-width: 641px), (max-height: 500px) and (orientation: landscape) {
   .hof-sheet { left: auto; right: max(12px, env(safe-area-inset-right)); top: 50%; bottom: auto; transform: translateY(-50%); max-height: calc(100% - 24px); width: min(400px, 36vw); overflow: auto; }
@@ -214,8 +224,9 @@
   .hof-kin .chips { display: none; }
   .hof-kin .mname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hof-sub { font-size: 15px; padding: 0 12px; }
-  .credits-roll { height: 56px; }
-  .credits-inner { padding-top: 56px; }
+  /* phones: the podium gets the room; the credits roll lives on bigger screens */
+  .credits-roll { display: none; }
+  .hof-buttons .btn { font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .credits-inner, .text.waiting + .text-next { animation: none; }
@@ -236,6 +247,8 @@
 }
 .menu-bag .mname, .menu-party .mname { font-size: 14px; }
 .menu-bag .orb-ico { margin-right: 4px; }
+.menu-bag .btn-orb, .menu-bag .btn-item { gap: 1px; }
+.menu-bag .mmeta { line-height: 1.05; }
 .panel .badge { flex: none; font-size: 10px; padding: 2px 5px; }
 .menu-confirm .btn-back { grid-column: auto; }
 /* Yes/No: "No" stays compact so "Yes, forget Battle Cry" gets the room for one line */
@@ -247,8 +260,9 @@
   .btn-kinpick .kin-row .mmeta:not(.knote) { display: none; }
   .menu-bag .mname, .menu-party .mname { font-size: 13px; }
   .bt-menu .mmeta { font-size: 10px; }
-  .menu-bag .btn-orb, .menu-bag .btn-item { padding: 3px 4px; gap: 1px; }
-  .menu-bag .mname { font-size: 12px; gap: 3px; }
+  .menu-bag .btn-orb, .menu-bag .btn-item { padding: 2px 4px; gap: 1px; }
+  .menu-bag .mname { font-size: 11.5px; gap: 3px; }
+  .menu-bag .mn, .menu-bag .mmeta { line-height: 1; }
   .menu-bag .orb-ico { width: 15px; height: 15px; margin-right: 0; }
   .btn-kinpick { padding: 3px 5px !important; }
   .menu-party .kin-row .mname { font-size: 12.5px; letter-spacing: 0; }

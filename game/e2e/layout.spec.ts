@@ -10,6 +10,7 @@ type Hooks = {
   waitIdle(ms?: number): Promise<boolean>;
   debugSetParty(e: unknown[]): void;
   debugGive(id: string, n: number): void;
+  debugDefeat(...ids: string[]): void;
   openMenu(): void;
   save(): Promise<boolean>;
   layout(): { w: number; h: number; subjects: (Rect & { name: string })[] };
@@ -191,6 +192,117 @@ for (const vp of ['phone', 'small'] as const) {
       const k = covered(mine, panel);
       if (k > 0.03) bad.push(`${sp}: ${Math.round(k * 100)}% under the panel`);
       if (mine.x < -2 || mine.x + mine.w > lay.w + 2) bad.push(`${sp}: off-screen ${JSON.stringify(mine)}`);
+    }
+    expect(bad).toEqual([]);
+    await ctx.close();
+  });
+}
+
+// ---------------------------------------------------------------- text never clips (final polish)
+
+/** Labels that must show in full: no ellipsis and no line-clamp cut (scroll size ≤ client size). */
+async function clippedLabels(page: Page, sel: string): Promise<string[]> {
+  return page.evaluate((s) => [...document.querySelectorAll<HTMLElement>(s)]
+    .filter((e) => e.offsetParent !== null && getComputedStyle(e).display !== 'none')
+    .filter((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)
+    .map((e) => `${e.className}: "${e.textContent?.trim()}" ${e.scrollWidth}x${e.scrollHeight} > ${e.clientWidth}x${e.clientHeight}`), sel);
+}
+
+async function insideViewport(page: Page, sel: string): Promise<string[]> {
+  return page.evaluate((s) => [...document.querySelectorAll<HTMLElement>(s)]
+    .filter((e) => e.offsetParent !== null || getComputedStyle(e).position === 'fixed')
+    .map((e) => ({ e, r: e.getBoundingClientRect() }))
+    .filter(({ r }) => r.width > 0 && (r.left < -1 || r.top < -1 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1))
+    .map(({ e, r }) => `${e.className} [${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.right)},${Math.round(r.bottom)}]`), sel);
+}
+
+for (const vp of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
+  test(`text & labels never clip @ ${vp}`, async ({ browser, browserName }, info) => {
+    test.skip(info.project.name !== 'desktop' || browserName !== 'chromium', 'viewports are set per test');
+    test.setTimeout(240_000);
+    const { ctx, page } = await open(browser, vp, '/?seed=9&scene=route&route=meadow', 'route');
+    const bad: string[] = [];
+    const note = (label: string, list: string[]) => { for (const x of list) bad.push(`${label}: ${x}`); };
+
+    // Battle panels (#3 #4 #5): long names, dual types, status badge and party pips at once.
+    await G(page, (g) => {
+      g.debugSetParty([{ species: 'thistlehorn', level: 30, status: 'burn' }, { species: 'breezel', level: 8, hp: 3 }, { species: 'pebblet', level: 7, hp: 0 }, { species: 'maelstrode', level: 30 }, { species: 'vulcrag', level: 30, status: 'shock' }, { species: 'petalwisp', level: 30 }]);
+      g.debugGive('tonic', 3); g.debugGive('mega-tonic', 1); g.debugGive('full-tonic', 1); g.debugGive('remedy', 1); g.debugGive('revive-seed', 1); g.debugGive('star', 5); g.debugGive('bright', 3); g.debugGive('orb', 12);
+      return g.goto('battle', { route: 'meadow', hotspot: 'tall-grass', foe: 'vulcrag', foeLevel: 30 });
+    });
+    await waitScene(page, 'battle');
+    await G(page, (g) => g.waitIdle(30_000));
+    note('panel inside', await insideViewport(page, '.panel'));
+    note('panel name', await clippedLabels(page, '.panel .pname'));
+    const chipRows = await page.evaluate(() => [...document.querySelectorAll('.panel .ptypes')].map((t) => new Set([...t.children].map((c) => Math.round(c.getBoundingClientRect().top))).size));
+    expect(chipRows.every((n) => n <= 1), `type chips stay on one line (${chipRows})`).toBe(true);
+
+    // Menus (#8): every name and meta shows in full.
+    for (const [btn, label] of [['btn-fight', 'moves'], ['btn-bag', 'orbs'], ['btn-kin', 'kin']] as const) {
+      await page.getByTestId(btn).click();
+      await page.waitForTimeout(120);
+      note(label, await clippedLabels(page, '.bt-menu .mn, .bt-menu .mmeta, .bt-menu .kin-row .mname, .bt-menu .btn-back'));
+      if (label === 'orbs') {
+        await page.getByTestId('tab-items').click();
+        await page.waitForTimeout(120);
+        note('items', await clippedLabels(page, '.bt-menu .mn, .bt-menu .mmeta'));
+      }
+      await page.getByTestId('btn-back').click();
+    }
+
+    // Champion speech (#2): the whole line fits the (grown) text box, on screen.
+    await G(page, (g) => {
+      g.debugDefeat('scout-pim', 'hiker-brann', 'adept-sola', 'angler-merrow', 'rider-tavi');
+      g.debugSetParty([{ species: 'pyrelord', level: 30 }]);
+      return g.goto('battle', { route: 'plateau', trainer: 'champion-vale' });
+    });
+    await waitScene(page, 'battle');
+    await page.waitForFunction(() => /climbed/.test(document.querySelector('[data-testid="battle-text"]')?.textContent ?? ''), undefined, { timeout: 20_000 });
+    await page.waitForSelector('[data-testid="battle-text"].waiting', { timeout: 20_000 });
+    note('champion text', await clippedLabels(page, '.textbox.bt-text'));
+    note('champion text box', await insideViewport(page, '.textbox.bt-text'));
+    const shown = (await page.getByTestId('battle-text').textContent()) ?? '';
+    expect(shown.length, 'a page of the speech is shown').toBeGreaterThan(20);
+
+    // Route hotspots (#7): names and subtitles in full on a five-button route.
+    await G(page, (g) => { g.debugDefeat('angler-merrow'); return g.goto('route', { route: 'coast' }); });
+    await waitScene(page, 'route');
+    await page.waitForTimeout(300);
+    note('route', await clippedLabels(page, '.btn-spot .mname, .btn-spot .mmeta'));
+
+    // Party screen (#9): the action bar is on screen.
+    await G(page, (g) => g.goto('party', { from: 'route', route: 'coast' }));
+    await waitScene(page, 'party');
+    await page.waitForTimeout(500);
+    note('party actions', await insideViewport(page, '.kin-actions .btn'));
+    expect(bad).toEqual([]);
+    await ctx.close();
+  });
+}
+
+// Every species as the foe, on two themes, stays inside the screen (#16) — measured from the
+// projected vertices, not a world-aligned box.
+for (const vp of ['phone', 'small', 'landscape'] as const) {
+  test(`battle @ ${vp}: every species as foe stays on screen`, async ({ browser, browserName }, info) => {
+    test.skip(info.project.name !== 'desktop' || browserName !== 'chromium', 'viewports are set per test');
+    test.setTimeout(300_000);
+    const { ctx, page } = await open(browser, vp, '/?seed=4&scene=route&route=meadow', 'route');
+    const bad: string[] = [];
+    for (const route of ['meadow', 'plateau']) {
+      for (const sp of SPECIES) {
+        await page.evaluate(([id, r]) => {
+          const g = (window as unknown as { __game: Hooks & { setFast(on: boolean): void } }).__game;
+          g.setFast(true);
+          g.debugSetParty([{ species: 'cragmaul', level: 30 }]);
+          return g.goto('battle', { route: r, hotspot: 'x', foe: id, foeLevel: 30 });
+        }, [sp, route]);
+        await waitScene(page, 'battle');
+        await G(page, (g) => g.waitIdle(30_000));
+        const lay = await G(page, (g) => g.layout());
+        const foe = lay.subjects.find((x) => x.name === 'foe');
+        if (!foe) { bad.push(`${route}/${sp}: no foe`); continue; }
+        if (foe.x < -2 || foe.y < -2 || foe.x + foe.w > lay.w + 2) bad.push(`${route}/${sp}: ${JSON.stringify(foe)}`);
+      }
     }
     expect(bad).toEqual([]);
     await ctx.close();

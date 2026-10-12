@@ -159,7 +159,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 }
 /* narrow phones: the chips carry the row, so the "HP" label goes (the bar reads as HP) */
 @media (max-width: 380px) {
-  .battle-ui, .arena-battle-ui { --panel-w: min(62%, 280px); }
+  .battle-ui, .arena-battle-ui { --panel-w: min(58%, 280px); }
   .panel .hplabel { display: none; }
   .panel .prow { gap: 6px; }
   .panel { padding: 6px 9px; }
@@ -338,6 +338,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 .btn-title { flex-direction: row; gap: 8px; min-height: 46px; padding: 6px 14px; font-size: 15px; background: #3a2f6be6; }
 .btn-title .ico { width: 20px; height: 20px; }
 .btn-arena:not([disabled]) { background: #e0573a; }
+.btn-rejoin { width: 100%; flex-direction: row; gap: 10px; background: #e0573a; min-height: 52px; font-size: 18px; }
+.btn-rejoin .ico { width: 22px; height: 22px; }
 .kc-dot { width: 14px; height: 14px; flex: none; border-radius: 50%; background: var(--tc, #999); border: 2px solid #fff; box-shadow: 0 1px 0 #0006; }
 
 /* ---------- meta screens: two panels with a turntable model between them */
@@ -567,7 +569,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 
 /* ---- team builder */
 .arena-builder { position: absolute; right: 12px; top: max(12px, env(safe-area-inset-top)); bottom: max(12px, env(safe-area-inset-bottom)); width: min(580px, 54vw); display: flex; flex-direction: column; padding: 0; overflow: hidden; border-color: var(--seat); }
-.arena-scroll { flex: 1; overflow: auto; padding: 12px 14px; display: grid; gap: 12px; align-content: start; overscroll-behavior: contain; }
+.arena-scroll { flex: 1; overflow: auto; padding: 12px 14px; display: grid; gap: 12px; align-content: start; overscroll-behavior: contain;
+  /* content fades out above the footer instead of being cut by a hard line */
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); padding-bottom: 22px; }
 .arena-bfoot { padding: 10px 14px; background: var(--panel-2); border-top: 3px solid #fff3; display: grid; gap: 8px; }
 .arena-bhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .arena-bhead-main { display: grid; gap: 6px; justify-items: start; min-width: 0; }
@@ -684,9 +688,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 .arena-victory-ui { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: max(14px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); pointer-events: none; }
 .arena-victory-ui .arena-card { pointer-events: auto; }
 .arena-win-top { text-align: center; display: grid; gap: 4px; }
-.arena-win-crown { font: 900 13px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); text-shadow: 0 2px 0 var(--ink); }
+.arena-win-crown { justify-self: center; font: 900 15px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); text-shadow: 0 2px 0 var(--ink); background: #1d1838d9; border: 2px solid #ffcf3f88; padding: 6px 14px; border-radius: 999px; }
 .arena-win-name { margin: 0; font: 900 clamp(34px, 8vw, 70px)/1 var(--font); color: var(--seat, var(--accent)); -webkit-text-stroke: 3px var(--ink); text-shadow: 0 6px 0 var(--ink), 0 10px 0 #0005; animation: arena-pop .5s ease-out both; }
-.arena-win-sub { font: 800 16px/1 var(--font); color: #fff; text-shadow: 0 2px 0 var(--ink); }
+.arena-win-sub { justify-self: center; font: 800 16px/1 var(--font); color: #fff; text-shadow: 0 2px 0 var(--ink); background: #1d1838b3; padding: 4px 12px; border-radius: 999px; }
 .arena-vcard { width: min(580px, 100%); display: grid; gap: 10px; }
 .arena-vstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .arena-vstat { display: flex; flex-direction: column; align-items: center; gap: 2px; background: #00000030; border-radius: 12px; padding: 6px; }
@@ -701,7 +705,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 .arena-vkin .hpbar { min-width: 0; height: 8px; }
 .arena-vkin.out .arena-vkin-name { color: #b8b2d8; text-decoration: line-through; text-decoration-thickness: 2px; }
 .arena-vkin.out .arena-vkin-hp { color: #ff8a9a; }
-.arena-vactions .btn { min-height: 52px; }
+.arena-vactions .btn { min-height: 52px; white-space: nowrap; }
+@media (max-width: 380px) { .arena-vactions .btn { font-size: 14px; padding-left: 6px; padding-right: 6px; } .arena-menu .btn-move .mname { font-size: 14px; } }
 .arena-pulse { animation: arena-glow .6s ease-in-out infinite alternate; }
 @keyframes arena-glow { from { box-shadow: 0 4px 0 var(--shadow), 0 0 0 0 #ffcf3f; } to { box-shadow: 0 4px 0 var(--shadow), 0 0 0 6px #ffcf3f; filter: brightness(1.15); } }
 @media (max-aspect-ratio: 1/1) {

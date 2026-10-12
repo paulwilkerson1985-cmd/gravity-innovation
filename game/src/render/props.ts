@@ -84,14 +84,26 @@ export function shell(b: MeshBuilder, x: number, z: number, color: string) {
   b.add(GEO.cone5, color, { p: [x, 0.04, z], r: [Math.PI / 2, 0, 0.5], s: [0.08, 0.12, 0.05] });
 }
 
+/**
+ * A lava channel cut into the ground: dark crusted banks, a glowing flow and a bright core,
+ * with round pools at the bends so the segments read as one stream (not a floating stick).
+ */
 export function lavaRiver(b: MeshBuilder, pts: [number, number][]) {
   for (let i = 0; i < pts.length - 1; i++) {
     const [x0, z0] = pts[i]!;
     const [x1, z1] = pts[i + 1]!;
     const len = Math.hypot(x1 - x0, z1 - z0);
     const ang = Math.atan2(x1 - x0, z1 - z0);
-    b.add(GEO.box, '#ff7a1e', { p: [(x0 + x1) / 2, 0.012, (z0 + z1) / 2], r: [0, ang, 0], s: [0.22, 0.02, len + 0.1] });
-    b.add(GEO.box, '#ffd23f', { p: [(x0 + x1) / 2, 0.02, (z0 + z1) / 2], r: [0, ang, 0], s: [0.08, 0.02, len] });
+    const mid: [number, number, number] = [(x0 + x1) / 2, 0, (z0 + z1) / 2];
+    b.add(GEO.box, '#4a2a1e', { p: [mid[0], 0.008, mid[2]], r: [0, ang, 0], s: [0.62, 0.016, len + 0.05] });
+    b.add(GEO.box, '#ff5a1e', { p: [mid[0], 0.014, mid[2]], r: [0, ang, 0], s: [0.42, 0.016, len] });
+    b.add(GEO.box, '#ffb02e', { p: [mid[0], 0.02, mid[2]], r: [0, ang, 0], s: [0.22, 0.014, len - 0.05] });
+    b.add(GEO.box, '#fff0a0', { p: [mid[0], 0.025, mid[2]], r: [0, ang, 0], s: [0.07, 0.01, len * 0.7] });
+  }
+  for (const [x, z] of pts) {
+    b.add(GEO.disc, '#4a2a1e', { p: [x, 0.006, z], s: [0.36, 0.016, 0.36] });
+    b.add(GEO.disc, '#ff5a1e', { p: [x, 0.013, z], s: [0.24, 0.016, 0.24] });
+    b.add(GEO.disc, '#ffb02e', { p: [x, 0.019, z], s: [0.13, 0.014, 0.13] });
   }
 }
 

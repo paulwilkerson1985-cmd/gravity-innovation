@@ -58,6 +58,8 @@ function orbShadow(): THREE.Mesh {
   return m;
 }
 
+const withClass = (el: HTMLElement, cls: string) => { el.classList.add(cls); return el; };
+
 /** "a" / "an" for a name ("an Orb", "a Bright Orb"). */
 const article = (name: string) => (/^[aeiou]/i.test(name) ? 'an' : 'a');
 
@@ -477,8 +479,9 @@ export class BattleScene extends BaseScene {
         class: 'btn btn-move', style: `--c:${TYPE_COLORS[data.type]}`, 'data-testid': `move-${i}`, 'data-pick': i + 1, disabled: m.pp <= 0,
         title: `${data.type} · ${data.blurb}`, 'aria-label': `${data.name}, ${data.type}, ${data.category === 'attack' ? `power ${data.power}` : 'status move'}, ${m.pp} of ${m.maxPp} PP`,
         onclick: () => this.submit({ type: 'move', index: i }),
-      }, h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name), tag),
-      h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `${data.power} pow` : 'Status'} · ${m.pp} PP`));
+      }, h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name)),
+      // The effectiveness tag rides on the meta line, so the move name keeps the full width.
+      h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `${data.power} pow` : 'Status'} · ${m.pp} PP`, tag));
     }), () => this.showMain());
     this.text.textContent = 'Choose a move.';
   }
@@ -555,12 +558,15 @@ export class BattleScene extends BaseScene {
       : c.status ? h('span', { class: 'badge', style: `--c:${STATUS_TEXT[c.status][2]}` }, STATUS_TEXT[c.status][0]) : null;
     const tail = note ? h('span', { class: 'mmeta knote' }, note) : h('span', { class: 'mmeta hpnums-k' }, `${Math.max(0, c.hp)}/${c.stats.hp}`);
     const lv = h('span', { class: 'plevel' }, `Lv${c.level}`);
+    // The badge sits by the name where there is room, beside the level on tight tiles (CSS picks).
+    const stLow = st ? withClass(st.cloneNode(true) as HTMLElement, 'st-low') : null;
+    const stTop = st ? withClass(st, 'st-top') : null;
     return h('button', {
       class: `btn btn-kinpick ${c.hp <= 0 ? 'fainted' : ''} ${current ? 'current' : ''}`, 'data-testid': testid, 'data-pick': i + 1, disabled: !enabled, onclick,
       title: `${c.name} Lv${c.level} · ${Math.max(0, c.hp)}/${c.stats.hp} HP${c.status ? ` · ${STATUS_TEXT[c.status][3]}` : ''}`,
     },
-    h('span', { class: 'kin-row' }, h('span', { class: 'mname' }, c.name), st),
-    h('span', { class: 'kin-row' }, lv, note ? null : bar, tail));
+    h('span', { class: 'kin-row' }, h('span', { class: `mname ${c.name.length >= 10 ? 'long' : ''}` }, c.name), stTop),
+    h('span', { class: 'kin-row' }, lv, stLow, note ? null : bar, tail));
   }
 
   private showParty(forced: boolean) {
@@ -639,8 +645,8 @@ export class BattleScene extends BaseScene {
         view.inner.scale.setScalar(0.001);
         this.views[e.side] = view;
         fitKinScale(view, e.side);
+        this.setPanel(e.side, e); // filled first: the framing measures the panel at its final size
         this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
-        this.setPanel(e.side, e);
         if (e.side === 1) this.game.player = withSeen(this.game.player, e.species);
         // Your own kin arrives in an orb: a short arc in from the lower left and a pop.
         const appear = e.side === 0 ? this.throwIn(e.species).then(() => view.appear()) : view.appear();
@@ -1066,7 +1072,7 @@ export class BattleScene extends BaseScene {
    */
   private offerMove(uid: string, name: string, ev: Extract<ProgressEvent, { t: 'moveOffer' }>): Promise<void> {
     const m = getMove(ev.move);
-    const meta = (d: ReturnType<typeof getMove>) => `${d.type} · ${d.category === 'attack' ? `Pow ${d.power}` : 'Status'}`;
+    const meta = (d: ReturnType<typeof getMove>) => `${d.type} · ${d.category === 'attack' ? `${d.power} pow` : 'Status'}`;
     return new Promise((resolve) => {
       const list = () => {
         const c = this.game.player.party.find((x) => x.uid === uid);
