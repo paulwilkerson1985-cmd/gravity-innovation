@@ -27,7 +27,7 @@ Boxes are ticked only with evidence (test output or screenshot) recorded in `PRO
 ## M3 Progression
 - [ ] Full roster (18) and moves (30) in data, XP + leveling, move learning
 - [ ] Evolution + skippable transformation sequence
-- [ ] Bestiary, storage box, save/load (IndexedDB, versioned, migrations, export/import)
+- [x] Bestiary, storage box, save/load (IndexedDB, versioned, migrations, export/import) — tests/save.test.ts, e2e/meta.spec.ts
 
 ## M4 Depth
 - [ ] Switching UI, items, status UI, trainers, Skilled + Ace AI, Champion
