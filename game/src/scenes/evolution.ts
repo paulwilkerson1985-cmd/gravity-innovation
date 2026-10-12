@@ -96,7 +96,7 @@ export class EvolutionScene extends BaseScene {
     const land = layoutMode(w, hgt) === 'land';
     const area = freeArea(w, hgt, land ? { right: [this.panel] } : { bottom: [this.panel] }, 10);
     const hw = w / hgt < 1 ? 1.0 : 1.45;
-    const pts = corners(new THREE.Vector3(-hw, -0.1, -1.3), new THREE.Vector3(hw, 2.2, 1.3));
+    const pts = corners(new THREE.Vector3(-hw, -0.1, -1.3), new THREE.Vector3(hw, 1.9, 1.3));
     fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.16, 1), target: new THREE.Vector3(0, 0.95, 0), fill: 0.9 });
   }
 

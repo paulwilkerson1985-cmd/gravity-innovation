@@ -191,7 +191,7 @@ export class TitleScene extends BaseScene {
     // Tall screens: a tighter group pose (the middle kin a step behind) so the trio reads big.
     const narrow = w / hgt < 0.8;
     this.views.forEach((v, i) => {
-      const x = (i - 1) * (narrow ? 1.5 : 2.4);
+      const x = (i - 1) * (narrow ? 1.35 : 2.4);
       const z = i === 1 ? (narrow ? -1.5 : -0.6) : (narrow ? 0.3 : 0);
       v.root.position.set(x, 0, z);
       v.root.rotation.y = (1 - i) * (narrow ? 0.3 : 0.45);
@@ -202,7 +202,8 @@ export class TitleScene extends BaseScene {
     const q = (sel: string) => this.ui.querySelector(sel);
     const land = layoutMode(w, hgt) === 'land';
     const area = freeArea(w, hgt, land ? { top: [q('.tagline')], right: [q('.title-buttons')], bottom: [q('.footnote')] } : { top: [q('.tagline')], bottom: [q('.title-buttons')] }, 6);
-    const pts = boxPoints([...this.views.map((v) => v.inner), ...this.stands]);
+    // Tall screens frame the kin themselves (their stands may run off the sides).
+    const pts = boxPoints(narrow ? this.views.map((v) => v.inner) : [...this.views.map((v) => v.inner), ...this.stands]);
     fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.2, 1), target: new THREE.Vector3(0, 1.1, -0.2), fill: 0.98, alignY: 'bottom' });
   }
 

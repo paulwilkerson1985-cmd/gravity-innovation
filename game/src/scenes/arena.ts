@@ -479,7 +479,7 @@ export class ArenaScene extends BaseScene {
       const o = room.players[room.you === 0 ? 1 : 0];
       const status = this.client?.status;
       const text = status === 'reconnecting' ? 'Reconnecting to the server…'
-        : !o ? `Waiting for a friend to join with code ${room.code}…`
+        : !o ? `Waiting for a friend — share code ${room.code}`
           : !o.connected ? `${o.name} is reconnecting…`
             : o.ready ? `${o.name} is ready!` : `${o.name} joined — building a team…`;
       opp = h('p', { class: `arena-note ${o?.ready ? 'good' : 'info'}`, 'data-testid': 'arena-opp-status' }, !o || !o.ready ? h('span', { class: 'arena-spinner' }) : null, text);

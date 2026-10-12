@@ -11,7 +11,7 @@ export const BATTLE_SPOTS = [new THREE.Vector3(-1.7, 0.2, 1.3), new THREE.Vector
  * How far apart the two pads stand per layout: on a tall phone the kin sit almost on top of
  * each other on screen, so they need more room in the world to stay inside the frame.
  */
-const SPREAD = { wide: 0.72, portrait: 1.4, land: 1.0 } as const;
+const SPREAD = { wide: 0.86, portrait: 1.5, land: 1.35 } as const;
 
 /** Write the spots for this viewport into `out` (mutated so every holder sees the move). Returns true if they changed. */
 export function placeSpots(out: readonly [THREE.Vector3, THREE.Vector3], w: number, h: number): boolean {
@@ -81,7 +81,7 @@ function targetsAt(w: number, h: number, mode: ReturnType<typeof layoutMode>): {
   if (mode === 'portrait') {
     const small = h < 700;
     const textTop = h - 12 - (small ? 144 : 172) - (small ? 6 : 8) - (small ? 64 : 78);
-    return { mine: [w * 0.31, textTop - 16], foe: [w * 0.72, textTop * 0.47] };
+    return { mine: [w * (small ? 0.22 : 0.3), textTop - 16], foe: [w * 0.72, textTop * 0.47] };
   }
   const textTop = h - 12 - 96;
   return { mine: [w * 0.27, textTop - 26], foe: [w * 0.66, Math.min(h * 0.55, h - 320)] };
@@ -90,9 +90,17 @@ function targetsAt(w: number, h: number, mode: ReturnType<typeof layoutMode>): {
 /** Frame the battle camera on BATTLE_SPOTS for the current viewport. */
 export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3]) {
   cam.aspect = w / h;
-  cam.fov = 26;
+  cam.fov = layoutMode(w, h) === 'portrait' ? 20 : 26;
   const t = battleTargets(w, h);
   frameTwo(cam, w, h, spots[0], spots[1], t.mine, t.foe, { dir: new THREE.Vector3(-0.3, 0.42, 1), yawRange: 0.45 });
   const dist = cam.position.distanceTo(spots[0].clone().add(spots[1]).multiplyScalar(0.5));
   if (scene.fog instanceof THREE.Fog) { scene.fog.near = dist + 8; scene.fog.far = dist + 36; }
+}
+
+/**
+ * Your kin stands much closer to the camera than the foe, so a big final form would fill
+ * half a phone screen: damp the near side's scale (1.35 → 1.14, 1.0 stays 1.0).
+ */
+export function nearScale(scale: number): number {
+  return scale <= 1 ? scale : 1 + (scale - 1) * 0.4;
 }

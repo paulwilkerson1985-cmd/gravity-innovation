@@ -138,7 +138,7 @@ export class StarterScene extends BaseScene {
     // Fit the line-up (in either arrangement) into the space the sheet leaves free.
     const land = layoutMode(w, hgt) === 'land';
     const area = freeArea(w, hgt, land ? { right: [this.sheet] } : { bottom: [this.sheet] }, 10);
-    const hw = narrow ? 2.25 : 3.3;
+    const hw = narrow ? 1.85 : 3.3;
     const pts = corners(new THREE.Vector3(-hw, -0.1, -1.6), new THREE.Vector3(hw, 1.75, 2.1));
     fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.42, 1), target: new THREE.Vector3(0, 0.6, 0.2), fill: 0.97 });
   }

@@ -14,7 +14,7 @@ import {
   type Action, type BattleEvent, type BattleState, type StageKey, type StatusId,
 } from '../engine';
 import { SEAT_COLORS, SEAT_DARK, buildArena, frameBattleCamera, type ArenaSet } from './arenaStage';
-import { battleSpots, placeSpots } from './battleStage';
+import { battleSpots, nearScale, placeSpots } from './battleStage';
 import { TurnCollector, curtainBefore, curtainBeforePlayback, type ArenaMode, type LocalMatchSetup, type MatchSummary, type Seat } from './arenaFlow';
 import { abtn, curtain, pips, seatTag } from './arenaUi';
 import { ERROR_TEXT, MAX_TIMEOUTS, type RoomView, type ServerMessage } from '../net/protocol';
@@ -603,6 +603,7 @@ export class ArenaBattleScene extends BaseScene {
 
   private makeView(seat: Seat, speciesId: string) {
     const view = new CreatureView(species(speciesId).look, seat);
+    if (seat === this.near) { view.baseScale = nearScale(view.baseScale); view.inner.scale.setScalar(view.baseScale); }
     view.root.position.copy(this.spot(seat));
     view.faceTowards(seat === this.near ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
     this.scene.add(view.root);

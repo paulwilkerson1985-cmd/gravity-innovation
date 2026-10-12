@@ -545,7 +545,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 .arena-slot.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 3px dashed #fff5; border-radius: 12px; opacity: .75; font: 800 13px/1.2 var(--font); }
 .arena-slot-plus { font: 900 26px/1 var(--font); opacity: .8; }
 .arena-lead { position: absolute; top: -10px; left: 8px; background: var(--accent); color: var(--ink); font: 900 10px/1 var(--font); letter-spacing: .08em; padding: 3px 6px; border-radius: 6px; border: 2px solid var(--ink); text-shadow: none; }
-.arena-slot .mname { font-size: 15px; word-break: break-word; }
+.arena-slot .mname { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arena-slot-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .arena-slot-actions .btn { min-height: 44px; font-size: 14px; padding: 6px 6px; }
 .arena-detail { background: #00000026; border: 2px solid #fff3; border-radius: 14px; padding: 10px; display: grid; gap: 8px; }
@@ -669,6 +669,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
 @keyframes arena-glow { from { box-shadow: 0 4px 0 var(--shadow), 0 0 0 0 #ffcf3f; } to { box-shadow: 0 4px 0 var(--shadow), 0 0 0 6px #ffcf3f; filter: brightness(1.15); } }
 @media (max-aspect-ratio: 1/1) {
   .arena-vstat-v { font-size: 18px; }
+  /* phones: name on its own line, bar + HP numbers under it, so names never truncate */
+  .arena-vkin { grid-template-columns: 1fr auto; row-gap: 3px; }
+  .arena-vkin-name { grid-column: 1 / -1; }
+  .arena-vteam { gap: 6px; }
+  .arena-vcard { gap: 8px; padding: 10px; }
+  .arena-win-name { font-size: clamp(30px, 9vw, 52px); }
+}
+@media (max-aspect-ratio: 1/1) and (max-height: 699px) {
+  .arena-vstat { padding: 3px; }
+  .arena-vstats .small { display: none; }
+  .arena-builder { height: 74%; }
+  .arena-bhead h2 { font-size: 18px; }
+  .arena-rules { display: none; }
+  .arena-roomcode { font-size: 18px; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .arena-win-top { position: absolute; left: max(12px, env(safe-area-inset-left)); right: calc(min(390px, 47vw) + 24px); top: max(8px, env(safe-area-inset-top)); }
@@ -677,6 +691,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2350; col
   .arena-vstat { padding: 4px; }
   .arena-vstat-v { font-size: 17px; }
   .arena-vactions .btn { min-height: 46px; }
+  .arena-vkin { grid-template-columns: 1fr auto; row-gap: 2px; }
+  .arena-vkin-name { grid-column: 1 / -1; }
+  .arena-vstats .small { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .arena-curtain-card, .arena-vs-side, .arena-vs-mid, .arena-win-name, .arena-timer.low, .arena-pulse { animation: none !important; }

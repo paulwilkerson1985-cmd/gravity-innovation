@@ -227,3 +227,8 @@
   .menu-bag .mname, .menu-party .mname { font-size: 13px; }
   .bt-menu .mmeta { font-size: 10px; }
 }
+.bt-menu .mname .mn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 360px) {
+  .card .mname { font-size: 14px; }
+  .bt-menu .btn-move .mname .eff { font-size: 8px; padding: 1px 3px; }
+}

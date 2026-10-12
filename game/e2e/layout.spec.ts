@@ -90,7 +90,7 @@ async function open(browser: Browser, vp: keyof typeof VIEWPORTS, url: string, s
 for (const vp of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
   test.describe(`layout @ ${vp}`, () => {
     // Each test opens its own contexts per viewport, so run once (in the desktop project).
-    test.beforeEach((_fixtures, info) => { test.skip(info.project.name !== 'desktop', 'viewports are set per test'); });
+    test.beforeEach(({ browserName }, info) => { test.skip(info.project.name !== 'desktop' || browserName !== 'chromium', 'viewports are set per test'); });
 
     test('battle: panels anchored, kin clear of the UI, big targets', async ({ browser }) => {
       const { ctx, page } = await open(browser, vp, '/?seed=9&scene=route&route=meadow', 'route');

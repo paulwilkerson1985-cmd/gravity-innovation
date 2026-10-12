@@ -7,7 +7,7 @@ import { BaseScene } from './base';
 import './adventure.css';
 import { CreatureView } from '../render/creature';
 import { addLights, backdrop, makeSky } from '../render/diorama';
-import { PAD_COLORS, battlePad, battleSpots, frameBattle, placeSpots } from './battleStage';
+import { PAD_COLORS, battlePad, battleSpots, frameBattle, nearScale, placeSpots } from './battleStage';
 import { ORB_COLORS, burst, makeOrb } from '../render/fx';
 import { ambient, moveFx } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
@@ -419,7 +419,7 @@ export class BattleScene extends BaseScene {
         class: 'btn btn-move', style: `--c:${TYPE_COLORS[data.type]}`, 'data-testid': `move-${i}`, 'data-pick': i + 1, disabled: m.pp <= 0,
         title: `${data.type} · ${data.blurb}`, 'aria-label': `${data.name}, ${data.type}, ${data.category === 'attack' ? `power ${data.power}` : 'status move'}, ${m.pp} of ${m.maxPp} PP`,
         onclick: () => this.submit({ type: 'move', index: i }),
-      }, h('span', { class: 'mname' }, data.name, tag),
+      }, h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name), tag),
       h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `Pow ${data.power}` : 'Status'} · PP ${m.pp}/${m.maxPp}`));
     }), () => this.showMain());
     this.text.textContent = 'Choose a move.';
@@ -500,7 +500,7 @@ export class BattleScene extends BaseScene {
       title: `${c.name} Lv${c.level} · ${Math.max(0, c.hp)}/${c.stats.hp} HP${c.status ? ` · ${STATUS_TEXT[c.status][3]}` : ''}`,
     },
     h('span', { class: 'kin-row' }, h('span', { class: 'mname' }, c.name)),
-    h('span', { class: 'kin-row' }, lv, note || st ? null : bar, note ? null : st, tail));
+    h('span', { class: 'kin-row' }, lv, note || st || c.hp <= 0 ? null : bar, note ? null : st, tail));
   }
 
   private showParty(forced: boolean) {
@@ -563,6 +563,7 @@ export class BattleScene extends BaseScene {
         this.disposeView(e.side);
         this.activeSlot[e.side] = e.slot;
         const view = new CreatureView(species(e.species).look, e.side);
+        if (e.side === 0) view.baseScale = nearScale(view.baseScale);
         view.root.position.copy(this.spots[e.side]);
         view.faceTowards(e.side === 0 ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
         // Turn your own kin a little toward the camera: a readable 3/4 back view, not a rear end.
