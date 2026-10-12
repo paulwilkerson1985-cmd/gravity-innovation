@@ -202,8 +202,8 @@ export function buildArena(scene: THREE.Scene, opts: { nearColor: string; farCol
 }
 
 /** Frame the battle camera on the two spots (shared with the adventure battle). */
-export function frameBattleCamera(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3], kin: readonly (Framed | null)[] = []) {
-  frameBattle(cam, scene, w, h, spots, kin);
+export function frameBattleCamera(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3], kin: readonly (Framed | null)[] = [], nearPanel?: { x: number; y: number } | null) {
+  frameBattle(cam, scene, w, h, spots, kin, nearPanel);
   if (scene.fog instanceof THREE.Fog) { scene.fog.near += 6; scene.fog.far += 12; }
 }
 

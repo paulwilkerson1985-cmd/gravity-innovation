@@ -81,7 +81,9 @@ function targetsAt(w: number, h: number, mode: ReturnType<typeof layoutMode>): {
   if (mode === 'portrait') {
     const small = h < 700;
     const textTop = h - 12 - (small ? 144 : 172) - (small ? 6 : 8) - (small ? 64 : 78);
-    return { mine: [w * (small ? 0.22 : 0.26), textTop - 16], foe: [w * (small ? 0.76 : 0.72), textTop * 0.47] };
+    // Your kin stands just above its HP panel (which sits beside it, right of centre).
+    const panelTop = textTop - (small ? 6 : 8) - 6 - (small ? 80 : 86);
+    return { mine: [w * 0.27, panelTop + 6], foe: [w * 0.74, textTop * 0.36] };
   }
   const textTop = h - 12 - 96;
   return { mine: [w * 0.27, textTop - 26], foe: [w * 0.66, Math.min(h * 0.55, h - 320)] };
@@ -111,7 +113,7 @@ function kinSpan(cam: THREE.PerspectiveCamera, w: number, h: number, k: Framed):
  * given, a second pass slides a target sideways so a long tail or wide wings never leave the
  * screen (big final forms on a narrow phone).
  */
-export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3], kin: readonly (Framed | null | undefined)[] = []) {
+export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w: number, h: number, spots: readonly [THREE.Vector3, THREE.Vector3], kin: readonly (Framed | null | undefined)[] = [], nearPanel?: { x: number; y: number } | null) {
   cam.aspect = w / h;
   cam.fov = layoutMode(w, h) === 'portrait' ? 20 : 26;
   const t = battleTargets(w, h);
@@ -119,9 +121,12 @@ export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w:
   frameTwo(cam, w, h, spots[0], spots[1], t.mine, t.foe, { dir, yawRange: 0.45 });
   // Your kin may not take more than its share of the screen (wide rays, tall final forms).
   const portrait = layoutMode(w, h) === 'portrait';
+  // Portrait: your panel sits beside your kin (right of it), so the kin must fit left of it.
+  let mineRight = w - 12;
+  if (portrait && nearPanel && kin[0] && kinSpan(cam, w, h, kin[0])[3] > nearPanel.y + 4) mineRight = nearPanel.x - 8;
   if (kin[0]) {
     const [x0, x1, kh] = kinSpan(cam, w, h, kin[0]);
-    const k = Math.min(1, (w * (portrait ? 0.5 : 0.36)) / (x1 - x0), (h * (portrait ? 0.3 : 0.5)) / kh);
+    const k = Math.min(1, Math.min(w * (portrait ? 0.5 : 0.36), mineRight - 14) / (x1 - x0), (h * (portrait ? 0.3 : 0.5)) / kh);
     if (k < 1) kin[0].root.scale.multiplyScalar(k);
   }
   if (kin[1]) {
@@ -130,19 +135,19 @@ export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w:
     if (k < 1) kin[1].root.scale.multiplyScalar(k);
   }
   const margin = 12;
-  const fix = (k: Framed | null | undefined, max: number): number => {
+  const fix = (k: Framed | null | undefined, max: number, right = w - margin): number => {
     if (!k) return 0;
     const [x0, x1] = kinSpan(cam, w, h, k);
     if (x0 < margin) return Math.min(margin - x0, max);
-    if (x1 > w - margin) return -Math.min(x1 - (w - margin), max);
+    if (x1 > right) return -Math.min(x1 - right, max);
     return 0;
   };
-  const dm = fix(kin[0], w * 0.2), df = fix(kin[1], w * 0.2);
+  const dm = fix(kin[0], w * 0.2, Math.min(w - margin, mineRight)), df = fix(kin[1], w * 0.2);
   // A long or low kin (rays, serpents) must not sink behind the text box.
   let dy = 0;
   if (kin[0]) {
     const bottom = kinSpan(cam, w, h, kin[0])[3];
-    const limit = t.mine[1] + 22;
+    const limit = portrait && nearPanel ? nearPanel.y + 10 : t.mine[1] + 22;
     if (bottom > limit) dy = -Math.min(bottom - limit, h * 0.12);
   }
   if (dm || df || dy) frameTwo(cam, w, h, spots[0], spots[1], [t.mine[0] + dm, t.mine[1] + dy], [t.foe[0] + df, t.foe[1]], { dir, yawRange: 0.45 });

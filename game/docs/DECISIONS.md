@@ -40,7 +40,7 @@ The host repo (`gravity-innovation`) is an unrelated physics project, so the gam
 - Catch: spec's Gen-III-style formula exactly; orbs **Orb** 1×, **Bright Orb** 1.5×, **Star Orb** 2×.
 
 ## Rendering
-- Creature models are procedural: body + parts from primitives, flat-shaded with vertex colours and **merged into one mesh per creature** (1 draw call). Evolution = bigger scale + extra parts + richer palette.
+- Creature models are procedural: body + parts from primitives, flat-shaded with vertex colours and **merged into one mesh per creature** (1 draw call). Each species has a bespoke builder and every evolution stage changes the silhouette — see `docs/CREATURES.md`.
 - Creature designs (concept, silhouette, signature part, palette and stage escalation for all 18 species) live in `docs/CREATURES.md`; bespoke builders in `src/render/creatures/`.
 - Pixel-crisp look: internal render scale 0.5 of the (DPR-capped-at-2) canvas, upscaled with `image-rendering: pixelated`.
 
@@ -125,3 +125,4 @@ Full method and numbers are in `docs/BALANCE.md`. The tools are `tools/campaign.
 - **Starter choice**: the chosen kin hops forward into a spotlight (ring + soft beam), grows 1.25×, the others step back and dim.
 - **Route**: screen-space sky gradient + cloud sea (the camera looks down, so a sky dome read flat); the header range is derived from the hotspot tables; trainer buttons show the short name with the title as subtitle; on narrow screens locked tabs show only a lock, the requirement moves to a status line.
 - **Big screens** (≥1600×900) zoom the HTML UI 1.35×; `uiZoom()` keeps the camera targets in sync.
+- **Kin sizes in battle are measured, not assumed**: each kin's rest bounding box is projected after framing; your kin is capped to a share of the screen (portrait: must fit left of its HP panel, ≤30% of the height), the foe to ≤50%/30% of the width; a kin poking off an edge or sinking behind the text box slides its target back in. Small first-stage foes get a mild boost (root scale, so the shadow follows). `e2e/layout.spec.ts` checks all 18 species on portrait phones.

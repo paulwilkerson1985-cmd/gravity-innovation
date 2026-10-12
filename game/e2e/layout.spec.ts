@@ -165,3 +165,34 @@ for (const vp of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
     });
   });
 }
+
+// Every species, as your kin, stays clear of your HP panel on portrait phones (the panel sits
+// right beside it) and inside the screen.
+const SPECIES = ['ashkit', 'cindertail', 'pyrelord', 'dropple', 'rillback', 'maelstrode', 'mossling', 'thistlehorn', 'verdantusk',
+  'flickwing', 'stormoth', 'pebblet', 'cragmaul', 'breezel', 'cyclonyx', 'vulcrag', 'surgeray', 'petalwisp'];
+for (const vp of ['phone', 'small'] as const) {
+  test(`battle @ ${vp}: every species clears your panel`, async ({ browser, browserName }, info) => {
+    test.skip(info.project.name !== 'desktop' || browserName !== 'chromium', 'viewports are set per test');
+    const { ctx, page } = await open(browser, vp, '/?seed=4&scene=route&route=meadow', 'route');
+    const bad: string[] = [];
+    for (const sp of SPECIES) {
+      await page.evaluate((id) => {
+        const g = (window as unknown as { __game: Hooks }).__game;
+        g.debugSetParty([{ species: id, level: 30 }]);
+        return g.goto('battle', { route: 'meadow', hotspot: 'tall-grass' });
+      }, sp);
+      await waitScene(page, 'battle');
+      await G(page, (g) => g.waitIdle(30_000));
+      await page.waitForTimeout(250);
+      const lay = await G(page, (g) => g.layout());
+      const panel = (await rect(page, '[data-testid="panel-mine"]'))!;
+      const mine = lay.subjects.find((x) => x.name === 'mine');
+      if (!mine) { bad.push(`${sp}: no kin`); continue; }
+      const k = covered(mine, panel);
+      if (k > 0.03) bad.push(`${sp}: ${Math.round(k * 100)}% under the panel`);
+      if (mine.x < -2 || mine.x + mine.w > lay.w + 2) bad.push(`${sp}: off-screen ${JSON.stringify(mine)}`);
+    }
+    expect(bad).toEqual([]);
+    await ctx.close();
+  });
+}

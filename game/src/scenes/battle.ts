@@ -132,7 +132,8 @@ export class BattleScene extends BaseScene {
       this.views.forEach((v, i) => v?.root.position.copy(this.spots[i]!));
       if (this.trainerFig?.visible) this.trainerFig.position.copy(this.spots[1]);
     }
-    frameBattle(this.camera, this.scene, w, hgt, this.spots, this.views);
+    const panel = this.panels?.[0].root.getBoundingClientRect();
+    frameBattle(this.camera, this.scene, w, hgt, this.spots, this.views, panel && panel.width > 0 ? { x: panel.left, y: panel.top } : null);
   }
 
   /** Layout checks (debug hook): the kin on the field and the trainer. */

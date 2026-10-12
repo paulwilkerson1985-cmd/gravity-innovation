@@ -137,7 +137,8 @@ export class ArenaBattleScene extends BaseScene {
       this.set.platforms.forEach((p, i) => p.position.copy(this.spots[i]!));
       this.views.forEach((v, seat) => v?.root.position.copy(this.spot(seat as Seat)));
     }
-    frameBattleCamera(this.camera, this.scene, w, hgt, this.spots, [this.views[this.near], this.views[other(this.near)]]);
+    const panel = this.panels?.[this.near].root.getBoundingClientRect();
+    frameBattleCamera(this.camera, this.scene, w, hgt, this.spots, [this.views[this.near], this.views[other(this.near)]], panel && panel.width > 0 ? { x: panel.left, y: panel.top } : null);
   }
 
   /** Layout checks (debug hook). */
