@@ -42,3 +42,13 @@ The host repo (`gravity-innovation`) is an unrelated physics project, so the gam
 ## Rendering
 - Creature models are procedural: body + parts from primitives, flat-shaded with vertex colours and **merged into one mesh per creature** (1 draw call). Evolution = bigger scale + extra parts + richer palette.
 - Pixel-crisp look: internal render scale 0.5 of the (DPR-capped-at-2) canvas, upscaled with `image-rendering: pixelated`.
+
+## Number / taste changes vs. the brief
+- **2-stage lines evolve at level 18** (not 14): gives the common wild lines a longer first form so early routes stay varied.
+- **Starters**: fixed at level 5 with 2 moves; starters do not appear in the wild.
+- **Pixel scale**: internal render height targets ~420 px (DPR capped at 2) and is upscaled with `image-rendering: pixelated`.
+- **Desperation**: a 35-power Neutral recoil move used automatically when every move is out of PP.
+- **Drowsy** lasts 1–3 lost turns; **Shock** = ½ Speed + 25% skip; **Burn** = ½ Attack + 1/16 HP per turn.
+- **Starting bag**: 10 Orb, 3 Bright Orb, 1 Star Orb. Catch menu shows the live catch % per orb ("readable odds").
+- **Blackout**: party is healed and you return to the route (no money loss in v1).
+- **Saves deferred to M3**: the slice keeps state in memory only.

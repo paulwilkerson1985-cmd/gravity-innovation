@@ -3,26 +3,26 @@
 Boxes are ticked only with evidence (test output or screenshot) recorded in `PROGRESS.md`.
 
 ## M0 Scaffold
-- [ ] Vite + TS build, Vitest, ESLint (engine purity rules), Playwright smoke
-- [ ] `npm run verify` (typecheck, lint, tests, build, smoke)
-- [ ] CLAUDE.md, docs (PLAN, DECISIONS, PROGRESS), ASSETS.md
-- [ ] Test hooks: `?seed=`, `?scene=`, `?debug=1`, `window.__game`
-- [ ] One low-poly creature renders
+- [x] Vite + TS build, Vitest, ESLint (engine purity rules), Playwright smoke
+- [x] `npm run verify` (typecheck, lint, tests, build, smoke)
+- [x] CLAUDE.md, docs (PLAN, DECISIONS, PROGRESS), ASSETS.md
+- [x] Test hooks: `?seed=`, `?scene=`, `?debug=1`, `window.__game`
+- [x] One low-poly creature renders
 
 ## M1 Headless battle engine
-- [ ] Seeded PRNG in state, serializable state
-- [ ] Type chart, damage, STAB, crit, PP, priority + speed order, faint/win
-- [ ] Status + stat stages (engine level)
-- [ ] Catch + run (engine level)
-- [ ] Rookie AI
-- [ ] CLI simulator
-- [ ] Tests: type chart, damage bounds, catch statistics, deterministic replay, 1000 AI-vs-AI battles
+- [x] Seeded PRNG in state, serializable state
+- [x] Type chart, damage, STAB, crit, PP, priority + speed order, faint/win
+- [x] Status + stat stages (engine level)
+- [x] Catch + run (engine level)
+- [x] Rookie AI
+- [x] CLI simulator
+- [x] Tests: type chart, damage bounds, catch statistics, deterministic replay, 1000 AI-vs-AI battles
 
 ## M2 Vertical slice
-- [ ] Title → starter pick → route map → wild battle (Fight/Catch/Run) → catch → party view
-- [ ] Battle diorama, HP bars, text box, idle bob + squash-and-stretch, shake-and-click catch
-- [ ] Smoke test drives the slice and screenshots each scene
-- [ ] **Report & stop for review**
+- [x] Title → starter pick → route map → wild battle (Fight/Catch/Run) → catch → party view
+- [x] Battle diorama, HP bars, text box, idle bob + squash-and-stretch, shake-and-click catch
+- [x] Smoke test drives the slice and screenshots each scene
+- [x] **Report & stop for review** (awaiting feedback)
 
 ## M3 Progression
 - [ ] Full roster (18) and moves (30) in data, XP + leveling, move learning
