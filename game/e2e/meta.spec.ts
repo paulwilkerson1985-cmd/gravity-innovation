@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 type P = { party: { species: string; hp: number }[]; box: { species: string }[]; bag: Record<string, number>; money: number; seen: string[]; caught: string[]; playTime: number; settings: { textSpeed: string } };
 type Hooks = {
   scene(): string | null;
+  goto(name: string, params?: Record<string, unknown>): Promise<void>;
   player(): P;
   save(): Promise<boolean>;
   hasSave(): Promise<boolean>;
@@ -301,4 +302,38 @@ test('import after quitting to title is not clobbered by an autosave of the old 
   await waitScene(page, 'route');
   expect((await G(page, (g) => g.player())).money).toBe(4242);
   expect(errors).toEqual([]);
+});
+
+test('scene changes are re-entrancy safe (rapid gotos, double clicks during the fade)', async ({ page }) => {
+  const errors = watchConsole(page);
+  await newAdventure(page);
+  // Three overlapping requests: the latest wins, exactly one scene UI is left.
+  await G(page, (g) => { void g.goto('bag'); void g.goto('shop'); return g.goto('party'); });
+  await waitScene(page, 'party');
+  await page.waitForTimeout(400);
+  expect(await page.locator('.scene-ui').count()).toBe(1);
+  await G(page, (g) => g.goto('route', { route: 'meadow' }));
+  await waitScene(page, 'route');
+  await openMenu(page);
+  await page.getByTestId('menu-bag').dblclick();
+  await waitScene(page, 'bag');
+  await page.waitForTimeout(600);
+  expect(await G(page, (g) => g.scene())).toBe('bag');
+  expect(await page.locator('.scene-ui').count()).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('box party tiles stay ≥ 44px on small phones (portrait and landscape)', async ({ page }, info) => {
+  test.skip(info.project.name === 'phone', 'sets its own viewports');
+  await page.goto('/?seed=5&scene=route&route=meadow');
+  await waitScene(page, 'route');
+  await G(page, (g) => { for (const s of ['breezel', 'dropple', 'breezel', 'dropple', 'breezel']) g.addKin(s, 6); return g.goto('box', {}); });
+  await waitScene(page, 'box');
+  for (const vp of [{ width: 320, height: 568 }, { width: 740, height: 360 }]) {
+    await page.setViewportSize(vp);
+    await page.waitForTimeout(300);
+    const sizes = await page.locator('[data-testid^="box-party-"]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
+    expect(sizes.length).toBe(6);
+    for (const [w, h] of sizes) { expect(w, `${vp.width}x${vp.height} tile width`).toBeGreaterThanOrEqual(44); expect(h).toBeGreaterThanOrEqual(44); }
+  }
 });

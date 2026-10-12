@@ -189,9 +189,34 @@ export class Game {
     try { return downloadSave(this.player); } catch { return null; }
   }
 
-  async goto(name: SceneName, params: Record<string, unknown> = {}) {
-    const f = this.factories.get(name);
-    if (!f) throw new Error(`unknown scene ${name}`);
+  /** The scene change in progress, if any; goto() calls made meanwhile are queued (latest wins). */
+  private transition: Promise<void> | null = null;
+  private queued: { name: SceneName; params: Record<string, unknown>; done: () => void } | null = null;
+
+  /**
+   * Change scene. Re-entrancy safe: while a transition is in flight (double clicks, clicks
+   * during the fade, a scene redirecting from its own enter) only the latest request is kept
+   * and runs right after; superseded requests resolve without changing scene.
+   */
+  goto(name: SceneName, params: Record<string, unknown> = {}): Promise<void> {
+    if (!this.factories.has(name)) return Promise.reject(new Error(`unknown scene ${name}`));
+    if (this.transition) {
+      this.queued?.done();
+      return new Promise((done) => { this.queued = { name, params, done }; });
+    }
+    const t = this.runGoto(name, params);
+    this.transition = t;
+    const settle = () => {
+      if (this.transition === t) this.transition = null;
+      const q = this.queued;
+      this.queued = null;
+      if (q) void this.goto(q.name, q.params).then(q.done, q.done);
+    };
+    return t.then(settle, (err: unknown) => { settle(); throw err; });
+  }
+
+  private async runGoto(name: SceneName, params: Record<string, unknown>) {
+    const f = this.factories.get(name)!;
     closeAllModals();
     if (name === 'title') this.endAdventure();
     if (name === 'route') {
@@ -200,15 +225,21 @@ export class Game {
     }
     this.idle = false;
     flushTweens();
-    await this.fade(true, name === 'battle' ? 'battle' : 'plain');
-    this.current?.exit();
-    const s = f(this);
-    this.current = s;
-    s.resize(this.renderer.width, this.renderer.height);
-    document.body.dataset.scene = name;
-    const entering = s.enter(params);
-    void this.fade(false, 'plain');
-    await entering;
+    this.overlay.inert = true; // no clicks on the old scene's UI while it fades out
+    try {
+      await this.fade(true, name === 'battle' ? 'battle' : 'plain');
+      this.current?.exit();
+      this.overlay.inert = false;
+      const s = f(this);
+      this.current = s;
+      s.resize(this.renderer.width, this.renderer.height);
+      document.body.dataset.scene = name;
+      const entering = s.enter(params);
+      void this.fade(false, 'plain');
+      await entering;
+    } finally {
+      this.overlay.inert = false;
+    }
     if (name === 'route') void this.save();
   }
 
