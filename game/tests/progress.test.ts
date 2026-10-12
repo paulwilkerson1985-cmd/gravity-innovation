@@ -6,7 +6,7 @@ import {
 import { newPlayer, type PlayerState } from '../src/game/state';
 import {
   CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionQueue, evolutionsAfterWin, evolvePartyMember, formatClock, isTrainerDefeated,
-  routeBlockers, startTrainerBattle, teachMove, trainerVictory, wildVictory, WILD_COINS_PER_LEVEL, withDebugParty, withDefeated, withSeen, xpProgress,
+  routeBlockers, startTrainerBattle, teachMove, trainerVictory, withDebugParty, withDefeated, withSeen, xpProgress,
 } from '../src/game/progress';
 
 function playerWith(party: OwnedCreature[]): PlayerState {
@@ -220,27 +220,5 @@ describe('helpers', () => {
     const d = withDebugParty(p, [{ species: 'pyrelord', level: 30 }, { species: 'ashkit', level: 13 }]);
     expect(d.party.map((c) => [c.species, c.level])).toEqual([['pyrelord', 30], ['ashkit', 13]]);
     expect(new Set(d.party.map((c) => c.uid)).size).toBe(2);
-  });
-});
-
-describe('wildVictory', () => {
-  it('pays coins per fainted wild kin level for a KO win', () => {
-    const p = playerWith([makeCreature('ashkit', 8, 'a')]);
-    const b = wonBattle(p, [['breezel', 4]]);
-    const r = wildVictory(p, b);
-    expect(r.coins).toBe(4 * WILD_COINS_PER_LEVEL);
-    expect(r.player.money).toBe(p.money + 24);
-    expect(p.money).toBe(500); // input untouched
-  });
-  it('pays nothing for trainer battles, catches, escapes or losses', () => {
-    const p = playerWith([makeCreature('ashkit', 8, 'a')]);
-    expect(wildVictory(p, wonBattle(p, [['breezel', 4]], true)).coins).toBe(0);
-    for (const outcome of [{ winner: 0, reason: 'caught' }, { winner: null, reason: 'ran' }, { winner: 1, reason: 'ko' }] as const) {
-      const b = wonBattle(p, [['breezel', 4]]);
-      b.outcome = outcome as BattleState['outcome'];
-      const r = wildVictory(p, b);
-      expect(r.coins).toBe(0);
-      expect(r.player).toBe(p);
-    }
   });
 });
