@@ -166,7 +166,13 @@ export class TitleScene extends BaseScene {
       });
       if (!ok) return;
     }
-    await this.game.saves.write(parsed.player);
+    try {
+      await this.game.storeImported(parsed.player);
+    } catch {
+      audio.sfx('denied');
+      toast('Couldn\'t store the imported save on this device.', 'bad', 4000);
+      return;
+    }
     audio.sfx('item');
     toast(parsed.migratedFrom ? `Save imported and upgraded from v${parsed.migratedFrom}!` : 'Save imported!', 'good');
     await this.refreshSlot();

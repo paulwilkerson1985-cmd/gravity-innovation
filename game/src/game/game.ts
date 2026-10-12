@@ -137,10 +137,33 @@ export class Game {
     }
   }
 
+  /**
+   * Leave the running adventure (entering the title screen): flush a pending autosave, then
+   * stop autosave + play time and drop the in-memory player, so nothing stale can be written
+   * over a save imported or chosen later (e.g. by a pagehide autosave).
+   */
+  endAdventure() {
+    if (this.saveEnabled && this.saveTimer) void this.save({ now: true });
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.saveEnabled = false;
+    this.playAcc = 0;
+    this.player = newPlayer(this.opts.seed);
+  }
+
+  /** Store an already parsed/validated save in the slot (title → Import). Never autosaves the old adventure afterwards. */
+  async storeImported(player: PlayerState): Promise<void> {
+    this.endAdventure();
+    await this.writing.catch(() => {}); // any queued write of the old adventure lands first
+    const write = this.saves.write(player);
+    this.writing = write.catch(() => {});
+    await write;
+  }
+
   /** Validate + migrate save text and store it in the slot. Throws SaveError with a friendly message. */
   async importSave(text: string): Promise<SaveSummary> {
     const parsed = parseSave(text);
-    await this.saves.write(parsed.player);
+    await this.storeImported(parsed.player);
     return summarize(parsed.player, parsed.savedAt);
   }
 
@@ -153,6 +176,7 @@ export class Game {
     const f = this.factories.get(name);
     if (!f) throw new Error(`unknown scene ${name}`);
     closeAllModals();
+    if (name === 'title') this.endAdventure();
     if (name === 'route') {
       const r = String(params.route ?? 'meadow');
       if (getDex().routes.has(r)) this.player.lastRoute = r;

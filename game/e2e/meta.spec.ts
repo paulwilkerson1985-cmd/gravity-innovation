@@ -263,3 +263,42 @@ test('export and import a save file', async ({ page }, info) => {
   expect((await G(page, (g) => g.player())).money).toBe(777);
   expect(errors).toEqual([]);
 });
+
+test('import after quitting to title is not clobbered by an autosave of the old adventure', async ({ page }, info) => {
+  const errors = watchConsole(page);
+  await newAdventure(page);
+  await G(page, (g) => g.patchPlayer({ money: 1111 }));
+  const mine = await G(page, (g) => g.player());
+  await openMenu(page);
+  await page.getByTestId('menu-quit').click();
+  await page.getByTestId('confirm-yes').click();
+  await waitScene(page, 'title');
+  // The old adventure is no longer in memory once we're on the title.
+  expect((await G(page, (g) => g.player())).party.length).toBe(0);
+
+  mkdirSync('test-results', { recursive: true });
+  const file = `test-results/meta-clobber-${info.project.name}.json`;
+  writeFileSync(file, JSON.stringify({ format: 'orbkin-save', schema: 2, savedAt: new Date().toISOString(), data: { ...mine, money: 4242 } }));
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('btn-import').click();
+  await (await chooser).setFiles(file);
+  await page.getByTestId('confirm-yes').click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'imported' })).toBeVisible();
+
+  // Backgrounding the tab (autosave triggers) must not write the stale adventure back.
+  await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); document.dispatchEvent(new Event('visibilitychange')); });
+  // Nor does sitting in the arena (no autosave / play time outside an adventure).
+  await page.getByTestId('btn-arena').click();
+  await waitScene(page, 'arena');
+  await page.waitForTimeout(1200);
+  expect((await G(page, (g) => g.player())).playTime).toBe(0);
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+  await page.waitForTimeout(300);
+
+  await page.reload();
+  await waitScene(page, 'title');
+  await page.getByTestId('btn-continue-save').click();
+  await waitScene(page, 'route');
+  expect((await G(page, (g) => g.player())).money).toBe(4242);
+  expect(errors).toEqual([]);
+});
