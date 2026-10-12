@@ -1,9 +1,11 @@
 // Overworld/player state (everything outside a single battle). Plain JSON so it can be
 // saved, exported and inspected by tests. All randomness flows from `rng`.
 import {
-  Rng, createBattle, getDex, healFully, makeCreature, rollEncounter, routeUnlocked, syncFromBattle, toBattle, hashSeed,
+  ORBS, Rng, createBattle, getDex, getItem, healFully, itemHasEffect, makeCreature, rollEncounter, routeUnlocked, syncFromBattle,
+  toBattle, hashSeed, useItemOnCreature,
   type BattleState, type ItemId, type OrbId, type OwnedCreature,
 } from '../engine';
+import { ITEMS } from '../data/items';
 
 export const PARTY_MAX = 6;
 
@@ -130,5 +132,130 @@ export function useOrb(p0: PlayerState, orb: OrbId): PlayerState {
 export function healParty(p0: PlayerState): PlayerState {
   const p = structuredClone(p0);
   p.party = p.party.map(healFully);
+  return p;
+}
+
+// ---------------------------------------------------------------- meta helpers (party, box, bag, shop)
+// All pure: they return a new PlayerState and throw a friendly Error when the action is not allowed.
+
+export const TEXT_SPEEDS: PlayerSettings['textSpeed'][] = ['slow', 'normal', 'fast'];
+
+/** Multiplier for battle-text hold times: slow 1.6×, normal 1×, fast 0.45×. */
+export function textSpeedFactor(p: Pick<PlayerState, 'settings'> | null | undefined): number {
+  const s = p?.settings?.textSpeed;
+  return s === 'slow' ? 1.6 : s === 'fast' ? 0.45 : 1;
+}
+
+export function setTextSpeed(p0: PlayerState, speed: PlayerSettings['textSpeed']): PlayerState {
+  if (!TEXT_SPEEDS.includes(speed)) throw new Error(`bad text speed ${speed}`);
+  const p = structuredClone(p0);
+  p.settings = { ...p.settings, textSpeed: speed };
+  return p;
+}
+
+/** "12m", "1h 05m". */
+export function formatPlayTime(seconds: number): string {
+  const total = Math.max(0, Math.floor((Number.isFinite(seconds) ? seconds : 0) / 60));
+  const hrs = Math.floor(total / 60);
+  const mins = total % 60;
+  return hrs > 0 ? `${hrs}h ${String(mins).padStart(2, '0')}m` : `${mins}m`;
+}
+
+/** Move a party member from one slot to another (the others shift). */
+export function moveInParty(p0: PlayerState, from: number, to: number): PlayerState {
+  const n = p0.party.length;
+  if (!(Number.isInteger(from) && from >= 0 && from < n)) throw new Error(`bad party slot ${from}`);
+  if (!(Number.isInteger(to) && to >= 0 && to < n)) throw new Error(`bad party slot ${to}`);
+  const p = structuredClone(p0);
+  const [c] = p.party.splice(from, 1);
+  p.party.splice(to, 0, c!);
+  return p;
+}
+
+/** Make a party member the lead (slot 0). */
+export function setLead(p0: PlayerState, index: number): PlayerState {
+  return moveInParty(p0, index, 0);
+}
+
+/** Why a party member can't go to the box, or null if it can. */
+export function depositBlocker(p: PlayerState, index: number): string | null {
+  const c = p.party[index];
+  if (!c) return 'No kin in that slot.';
+  if (p.party.length <= 1) return 'You need at least one kin with you.';
+  if (!p.party.some((o, i) => i !== index && o.hp > 0)) return 'Keep at least one kin that can still battle.';
+  return null;
+}
+
+export function depositToBox(p0: PlayerState, index: number): PlayerState {
+  const why = depositBlocker(p0, index);
+  if (why) throw new Error(why);
+  const p = structuredClone(p0);
+  const [c] = p.party.splice(index, 1);
+  p.box.push(c!);
+  return p;
+}
+
+export function withdrawBlocker(p: PlayerState, boxIndex: number): string | null {
+  if (!p.box[boxIndex]) return 'No kin in that box slot.';
+  if (p.party.length >= PARTY_MAX) return `Your party is full (${PARTY_MAX}). Deposit a kin first.`;
+  return null;
+}
+
+export function withdrawFromBox(p0: PlayerState, boxIndex: number): PlayerState {
+  const why = withdrawBlocker(p0, boxIndex);
+  if (why) throw new Error(why);
+  const p = structuredClone(p0);
+  const [c] = p.box.splice(boxIndex, 1);
+  p.party.push(c!);
+  return p;
+}
+
+const ORB_IDS: OrbId[] = ['orb', 'bright', 'star'];
+
+export function isOrb(id: string): id is OrbId {
+  return (ORB_IDS as string[]).includes(id);
+}
+
+/** Every purchasable/ownable bag id in display order (orbs first). */
+export function allBagIds(): BagId[] {
+  return [...ORB_IDS, ...(Object.keys(ITEMS) as ItemId[])];
+}
+
+export function bagName(id: BagId): string {
+  return isOrb(id) ? ORBS[id].name : getItem(id).name;
+}
+
+export function priceOf(id: BagId): number {
+  return isOrb(id) ? ORBS[id].price : getItem(id).price;
+}
+
+export const BAG_STACK_MAX = 99;
+
+/** Largest quantity of `id` the player can buy right now (money and the 99 stack cap). */
+export function maxAffordable(p: PlayerState, id: BagId): number {
+  return Math.max(0, Math.min(Math.floor(p.money / priceOf(id)), BAG_STACK_MAX - bagCount(p, id)));
+}
+
+export function buyItem(p0: PlayerState, id: BagId, qty: number): PlayerState {
+  if (!allBagIds().includes(id)) throw new Error(`unknown item ${id}`);
+  if (!(Number.isInteger(qty) && qty >= 1)) throw new Error(`bad quantity ${qty}`);
+  const cost = priceOf(id) * qty;
+  if (cost > p0.money) throw new Error('Not enough money.');
+  if (bagCount(p0, id) + qty > BAG_STACK_MAX) throw new Error(`You can carry at most ${BAG_STACK_MAX}.`);
+  const p = structuredClone(p0);
+  p.money -= cost;
+  p.bag[id] = bagCount(p0, id) + qty;
+  return p;
+}
+
+/** Out of battle: use an item from the bag on a party member. Throws if none left or no effect. */
+export function useBagItem(p0: PlayerState, item: ItemId, partyIndex: number): PlayerState {
+  if (bagCount(p0, item) <= 0) throw new Error(`No ${getItem(item).name} left.`);
+  const c = p0.party[partyIndex];
+  if (!c) throw new Error('No kin in that slot.');
+  if (!itemHasEffect(c, item)) throw new Error('It won\'t have any effect.');
+  const p = structuredClone(p0);
+  p.party[partyIndex] = useItemOnCreature(c, item);
+  p.bag[item] = bagCount(p0, item) - 1;
   return p;
 }
