@@ -1,33 +1,58 @@
 // Overworld/player state (everything outside a single battle). Plain JSON so it can be
 // saved, exported and inspected by tests. All randomness flows from `rng`.
 import {
-  Rng, createBattle, healFully, makeCreature, rollEncounter, syncFromBattle, toBattle, hashSeed,
-  type BattleState, type OrbId, type OwnedCreature,
+  Rng, createBattle, getDex, healFully, makeCreature, rollEncounter, routeUnlocked, syncFromBattle, toBattle, hashSeed,
+  type BattleState, type ItemId, type OrbId, type OwnedCreature,
 } from '../engine';
 
 export const PARTY_MAX = 6;
 
+export const PLAYER_STATE_VERSION = 2;
+
+export type BagId = OrbId | ItemId;
+
+export interface PlayerSettings {
+  textSpeed: 'slow' | 'normal' | 'fast';
+}
+
+/** Save schema v2. Bump PLAYER_STATE_VERSION and add a migration in save.ts for any change. */
 export interface PlayerState {
-  v: 1;
+  v: 2;
   seed: number;
   rng: number;
   nextUid: number;
   name: string;
   party: OwnedCreature[];
   box: OwnedCreature[];
-  bag: Record<OrbId, number>;
+  /** Orbs and items. Missing keys mean 0. */
+  bag: Partial<Record<BagId, number>>;
   seen: string[];
   caught: string[];
   money: number;
-  unlockedRoutes: string[];
+  defeatedTrainers: string[];
+  champion: boolean;
+  /** Seconds played. */
+  playTime: number;
+  lastRoute: string;
+  settings: PlayerSettings;
 }
 
 export function newPlayer(seed: number): PlayerState {
   return {
-    v: 1, seed, rng: hashSeed(seed, 0x5eed), nextUid: 1, name: 'You',
-    party: [], box: [], bag: { orb: 10, bright: 3, star: 1 },
-    seen: [], caught: [], money: 500, unlockedRoutes: ['meadow'],
+    v: 2, seed, rng: hashSeed(seed, 0x5eed), nextUid: 1, name: 'You',
+    party: [], box: [], bag: { orb: 10, bright: 3, star: 1, tonic: 3 },
+    seen: [], caught: [], money: 500, defeatedTrainers: [], champion: false, playTime: 0, lastRoute: 'meadow',
+    settings: { textSpeed: 'normal' },
   };
+}
+
+export function bagCount(p: PlayerState, id: BagId): number {
+  return p.bag[id] ?? 0;
+}
+
+export function isRouteUnlocked(p: PlayerState, routeId: string): boolean {
+  const r = getDex().routes.get(routeId);
+  return !!r && routeUnlocked(r.unlockAfter, p.defeatedTrainers);
 }
 
 function uid(p: PlayerState): string {
@@ -98,7 +123,7 @@ export function applyBattleResult(p0: PlayerState, battle: BattleState): { playe
 export function useOrb(p0: PlayerState, orb: OrbId): PlayerState {
   if ((p0.bag[orb] ?? 0) <= 0) throw new Error(`no ${orb} left`);
   const p = structuredClone(p0);
-  p.bag[orb]--;
+  p.bag[orb] = (p.bag[orb] ?? 0) - 1;
   return p;
 }
 

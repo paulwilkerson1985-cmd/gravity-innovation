@@ -6,7 +6,7 @@ import { arrowNav, focusFirst, h } from '../ui/dom';
 import { tween } from '../render/anim';
 import { ambient } from '../render/movefx';
 import { Rng } from '../engine/rng';
-import { healParty } from '../game/state';
+import { healParty, isRouteUnlocked } from '../game/state';
 import type { HotspotData, RouteData } from '../engine/types';
 
 const SPOTS: [number, number][] = [[-2.3, 0.7], [2.1, 1.1], [0.4, -2.3], [-1.6, -1.8]];
@@ -116,7 +116,7 @@ export class RouteScene extends BaseScene {
       h('div', { class: 'route-top' },
         h('div', { class: 'route-name' }, h('strong', {}, this.route.name), h('span', {}, ` Lv ${this.route.levelRange[0]}–${this.route.levelRange[1]}`)),
         h('div', { class: 'route-tabs' }, ...routes.map((r) => {
-          const open = g.player.unlockedRoutes.includes(r.id);
+          const open = isRouteUnlocked(g.player, r.id);
           return h('button', { class: `tab ${r.id === this.route.id ? 'on' : ''}`, disabled: !open, title: open ? r.name : 'Locked', onclick: () => void g.goto('route', { route: r.id }) }, open ? r.name : 'Locked');
         }))),
       h('div', { class: 'sheet route-ui' },
