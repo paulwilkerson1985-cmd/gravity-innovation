@@ -27,6 +27,9 @@ export function seatTag(seat: Seat, name: string, extra = ''): HTMLElement {
   return h('span', { class: `arena-seat ${extra}`.trim(), style: `--seat:${SEAT_COLORS[seat]}` }, h('span', { class: 'arena-seat-dot' }), name);
 }
 
+/** How long the curtain ignores input after appearing (held keys / double taps). */
+export const CURTAIN_ARM_MS = 300;
+
 export interface CurtainOptions {
   title: string;
   /** Who should look away (shown under the title). */
@@ -52,8 +55,18 @@ export function curtain(host: HTMLElement, o: CurtainOptions): { el: HTMLElement
       o.subtitle ? h('p', { class: 'arena-curtain-sub' }, o.subtitle) : null,
       go,
     ));
+  // A held key (auto-repeat) or a double tap from the previous choice must not click
+  // through: the button is armed (enabled + focused) only after a short delay, and
+  // Enter/Space are swallowed until then and on repeat.
+  let armed = false;
+  go.disabled = true;
+  go.classList.add('arming');
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); finish(); }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (armed && !e.repeat) finish();
+    }
   };
   let closed = false;
   function finish() {
@@ -65,9 +78,14 @@ export function curtain(host: HTMLElement, o: CurtainOptions): { el: HTMLElement
     resolve();
   }
   host.append(el);
-  // Let the key that triggered the previous choice finish before listening.
-  setTimeout(() => { if (!closed) window.addEventListener('keydown', onKey, true); }, 120);
-  go.focus({ preventScroll: true });
+  window.addEventListener('keydown', onKey, true);
+  setTimeout(() => {
+    if (closed) return;
+    armed = true;
+    go.disabled = false;
+    go.classList.remove('arming');
+    go.focus({ preventScroll: true });
+  }, CURTAIN_ARM_MS);
   return { el, done, dismiss: finish };
 }
 

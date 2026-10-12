@@ -115,6 +115,11 @@ test('hotseat: two teams, curtains hide every choice, full match to the victory 
   await expect(page.getByTestId('arena-curtain')).toContainText('Pass to Rill');
   await expect(page.locator('[data-testid^="slot-"]')).toHaveCount(0);
   await shot(page, '03-curtain', project);
+  // A held Enter (auto-repeat) never clicks through the curtain.
+  await expect(page.getByTestId('arena-curtain-go')).toBeFocused();
+  await page.evaluate(() => { for (let i = 0; i < 5; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true })); });
+  await page.waitForTimeout(250);
+  await expect(page.getByTestId('arena-curtain')).toBeVisible();
   await page.getByTestId('arena-curtain-go').click();
   await expect(page.getByTestId('arena-builder-1')).toBeVisible();
   await expect(page.getByTestId('slot-0')).not.toContainText('Verdantusk');
