@@ -72,7 +72,7 @@ test('vertical slice: title → starter → route → wild battle → catch → 
   await page.getByTestId('btn-fight').click();
   await shot(page, '05-moves', project);
   await page.getByTestId('btn-back').click();
-  await page.getByTestId('btn-catch').click();
+  await page.getByTestId('btn-bag').click();
   await shot(page, '06-orbs', project);
 
   // Throw orbs until something is caught (deterministic for the seed), playing the first throw at full speed.
@@ -86,7 +86,7 @@ test('vertical slice: title → starter → route → wild battle → catch → 
       await page.getByTestId('spot-tall-grass').click();
       await waitScene(page, 'battle');
       await waitIdle(page);
-      await page.getByTestId('btn-catch').click();
+      await page.getByTestId('btn-bag').click();
     }
     for (let turn = 0; turn < 6; turn++) {
       const orb = (await page.getByTestId('orb-star').isEnabled()) ? 'orb-star' : (await page.getByTestId('orb-bright').isEnabled()) ? 'orb-bright' : 'orb-orb';
@@ -100,7 +100,7 @@ test('vertical slice: title → starter → route → wild battle → catch → 
       const b = await page.evaluate(() => (window as unknown as { __game: Hooks }).__game.battle());
       if (b?.phase === 'over') { caught = b.outcome?.reason === 'caught'; break; }
       await page.evaluate(() => (window as unknown as { __game: Hooks }).__game.setFast(true));
-      await page.getByTestId('btn-catch').click();
+      await page.getByTestId('btn-bag').click();
     }
   }
   expect(caught, 'caught a wild kin').toBe(true);
