@@ -156,6 +156,22 @@ export function trainerVictory(p0: PlayerState, trainerId: string): TrainerVicto
   return { player: p, reward, unlocked, crowned };
 }
 
+/** Coins per foe level for beating a wild kin (a KO win, not a catch or an escape). */
+export const WILD_COINS_PER_LEVEL = 6;
+
+/**
+ * Pocket money for a wild win, so a player who runs out of orbs and coins can always earn
+ * more on the early routes: WILD_COINS_PER_LEVEL × the fainted wild kin's level.
+ */
+export function wildVictory(p0: PlayerState, battle: BattleState): { player: PlayerState; coins: number } {
+  const won = battle.outcome?.reason === 'ko' && battle.outcome.winner === 0;
+  if (!won || !battle.sides[1].isWild) return { player: p0, coins: 0 };
+  const coins = battle.sides[1].party.reduce((n, c) => n + (c.hp <= 0 ? c.level * WILD_COINS_PER_LEVEL : 0), 0);
+  const p = structuredClone(p0);
+  p.money += coins;
+  return { player: p, coins };
+}
+
 /** Trainers still standing between the player and a route ("Beat Pim" on a locked tab). */
 export function routeBlockers(p: PlayerState, route: RouteData): TrainerData[] {
   return (route.unlockAfter ?? []).filter((id) => !p.defeatedTrainers.includes(id)).map(getTrainer);
