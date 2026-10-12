@@ -38,3 +38,78 @@ export function coin(): HTMLElement {
   el.setAttribute('aria-hidden', 'true');
   return el;
 }
+
+// ---------------------------------------------------------------- orb icons
+// Orbs are lantern-buds (see render/fx.ts): a pointed faceted pod in leafy sepals with a
+// glowing tip. Tiers: Orb (coral, green sepals), Bright Orb (sky blue + gold halo ring),
+// Star Orb (gold pod in a white 4-point star collar). Drawn as inline SVG so they stay crisp.
+
+export type OrbIconTier = 'orb' | 'bright' | 'star';
+
+const ORB_ICON: Record<OrbIconTier, { body: string; shade: string; light: string; tip: string; collar: string; collarDark: string }> = {
+  orb: { body: '#ff4d6d', shade: '#d62c55', light: '#ff9aab', tip: '#fff1a8', collar: '#4cc35a', collarDark: '#2f8f44' },
+  bright: { body: '#3d9bff', shade: '#2266d8', light: '#9ad6ff', tip: '#ffd23f', collar: '#4cc35a', collarDark: '#2f8f44' },
+  star: { body: '#ffc93d', shade: '#e8901e', light: '#fff0a0', tip: '#ff7ad0', collar: '#ffffff', collarDark: '#d8def5' },
+};
+
+/** SVG markup (24×24 viewBox) for an orb tier. Pure string — safe to call outside the DOM. */
+export function orbIconSvg(tier: OrbIconTier): string {
+  const c = ORB_ICON[tier];
+  const ink = '#1d1838';
+  const collar = tier === 'star'
+    ? `<path d="M12 12.5 3 9.6 8.4 15.6 5.6 21.2 12 18.4 18.4 21.2 15.6 15.6 21 9.6Z" fill="${c.collar}" stroke="${ink}" stroke-width="1.4" stroke-linejoin="round"/>`
+    : `<path d="M12 15.5 4.2 11.4 6.6 18.6Z" fill="${c.collar}" stroke="${ink}" stroke-width="1.3" stroke-linejoin="round"/>`
+      + `<path d="M12 15.5 19.8 11.4 17.4 18.6Z" fill="${c.collarDark}" stroke="${ink}" stroke-width="1.3" stroke-linejoin="round"/>`;
+  const front = tier === 'star' ? '' : `<path d="M12 22 8.2 15.4 12 13.6 15.8 15.4Z" fill="${c.collar}" stroke="${ink}" stroke-width="1.3" stroke-linejoin="round"/>`;
+  const ring = tier === 'bright'
+    ? { back: `<path d="M3.6 12.4C4.6 9.6 19.6 7.6 20.4 9.6" fill="none" stroke="#b57b12" stroke-width="2" stroke-linecap="round"/>`,
+      front: `<path d="M20.4 9.6C21.2 11.8 4.6 15.4 3.6 12.4" fill="none" stroke="${ink}" stroke-width="3.4" stroke-linecap="round"/><path d="M20.4 9.6C21.2 11.8 4.6 15.4 3.6 12.4" fill="none" stroke="#ffc93d" stroke-width="1.8" stroke-linecap="round"/>` }
+    : { back: '', front: '' };
+  return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
+    + ring.back + collar
+    + `<path d="M12 1.8 17.4 9.4Q18.6 15.6 12 18.6 5.4 15.6 6.6 9.4Z" fill="${c.body}" stroke="${ink}" stroke-width="1.5" stroke-linejoin="round"/>`
+    + `<path d="M12 2.6 12 18 15.8 16.2Q17.8 13.6 16.8 9.6Z" fill="${c.shade}"/>`
+    + `<path d="M12 3.4 8.4 9.6 9.6 13.8 12 9.8Z" fill="${c.light}"/>`
+    + ring.front + front
+    + `<path d="M12 .6 13.6 3.2 12 5.6 10.4 3.2Z" fill="${c.tip}" stroke="${ink}" stroke-width="1" stroke-linejoin="round"/>`
+    + `</svg>`;
+}
+
+/** An inline orb icon element. */
+export function orbIcon(tier: OrbIconTier, cls = 'orb-svg'): HTMLElement {
+  const el = document.createElement('span');
+  el.className = cls;
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = orbIconSvg(tier);
+  return el;
+}
+
+const ORB_TIER_COLOR: Record<OrbIconTier, string> = { orb: '#ff4d6d', bright: '#3d9bff', star: '#ffc93d' };
+
+/**
+ * CSS that re-skins the existing orb icon hooks (`.item-ico.ico-<tier>` in the bag/shop and
+ * `i.orb-ico` in the battle Catch menu, keyed by its inline --c colour) with the bud SVGs.
+ */
+export function orbIconCss(): string {
+  const url = (t: OrbIconTier) => `url("data:image/svg+xml,${encodeURIComponent(orbIconSvg(t))}")`;
+  const reset = 'border:0;border-radius:0;box-shadow:none;background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:contain;';
+  let css = '';
+  for (const t of Object.keys(ORB_ICON) as OrbIconTier[]) {
+    const id = t === 'orb' ? 'orb' : t;
+    css += `.item-ico.ico-${id}{${reset}background-image:${url(t)};}`;
+    css += `.item-ico.ico-${id}::after{content:none;display:none;}`;
+    css += `i.orb-ico[style*="${ORB_TIER_COLOR[t]}"]{${reset}background-image:${url(t)};width:18px;height:18px;vertical-align:-3px;}`;
+  }
+  return css;
+}
+
+/** Install the orb icon skin once (called on import in the browser). */
+export function installOrbIcons() {
+  if (typeof document === 'undefined' || document.getElementById('orb-icon-skin')) return;
+  const style = document.createElement('style');
+  style.id = 'orb-icon-skin';
+  style.textContent = orbIconCss();
+  document.head.appendChild(style);
+}
+
+installOrbIcons();

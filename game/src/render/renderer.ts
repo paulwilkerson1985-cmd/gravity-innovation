@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bootWarmScene, warmPrograms } from './materials';
 
 /** Target internal render height in pixels for the chunky, pixel-crisp look. */
 const TARGET_INTERNAL_HEIGHT = 420;
@@ -10,13 +11,18 @@ export class Renderer {
   height = 1;
 
   constructor(parent: HTMLElement) {
-    this.gl = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
+    this.gl = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'default', preserveDrawingBuffer: false });
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
     this.canvas = this.gl.domElement;
     this.canvas.id = 'view';
     parent.appendChild(this.canvas);
     this.resize();
+    // Link the common programs up front (hemisphere + sun + fog is the usual diorama rig).
+    try { warmPrograms(this.gl, bootWarmScene(), new THREE.PerspectiveCamera()); } catch { /* no GL in tests */ }
   }
+
+  /** Scenes whose programs were warmed, with the number of frames rendered so far. */
+  private warmed = new WeakMap<THREE.Scene, number>();
 
   /** Returns true if the size changed. */
   resize(): boolean {
@@ -33,6 +39,11 @@ export class Renderer {
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
+    // Compile the shared material shapes against this scene's lights/fog on its first frame
+    // (hidden behind the scene fade) and once more after it settles, so FX never link mid-turn.
+    const n = this.warmed.get(scene) ?? 0;
+    if (n === 0 || n === 30) warmPrograms(this.gl, scene, camera);
+    if (n <= 30) this.warmed.set(scene, n + 1);
     this.gl.render(scene, camera);
   }
 

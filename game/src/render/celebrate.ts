@@ -12,7 +12,7 @@ export function lightRays(count = 14, length = 9, color = '#fff2b0'): { mesh: TH
       p: [Math.cos(a) * length * 0.5, Math.sin(a) * length * 0.5, 0], r: [0, 0, a + Math.PI / 2], s: [w, length, 0.02],
     });
   }
-  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false, forceSinglePass: true });
   return { mesh: new THREE.Mesh(b.build(), mat), mat };
 }
 
@@ -76,11 +76,12 @@ export function confetti(n = 160, width = 14, height = 9, depth = 6) {
   const e = new THREE.Euler();
   const v = new THREE.Vector3();
   const one = new THREE.Vector3(1, 1, 1);
+  const p = new THREE.Vector3();
   const update = (t: number) => {
     for (let i = 0; i < n; i++) {
       const s = seeds[i]!;
       const y = height - ((s.y0 + t * s.v) % height);
-      const p = new THREE.Vector3(s.x + Math.sin(t * 1.3 + s.sway) * 0.4, y - 1, s.z);
+      p.set(s.x + Math.sin(t * 1.3 + s.sway) * 0.4, y - 1, s.z);
       q.setFromEuler(e.set(t * s.spin, t * s.spin * 0.7, s.sway));
       m.compose(p, q, one);
       for (let k = 0; k < per; k++) {
