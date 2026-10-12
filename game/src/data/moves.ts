@@ -39,12 +39,12 @@ export const MOVES: MoveData[] = [
   // Gale
   atk('breeze-cut', 'Breeze Cut', 'Gale', 40, 100, 25, 'A thin blade of wind.'),
   atk('talon-dive', 'Talon Dive', 'Gale', 65, 95, 15, 'Dives from above, talons first.'),
-  status('updraft', 'Updraft', 'Gale', 100, 15, { kind: 'stage', who: 'self', stat: 'spe', delta: 2, chance: 1 }, 'Rides a rising wind, sharply raising Speed.'),
+  status('updraft', 'Updraft', 'Gale', 100, 10, { kind: 'stage', who: 'self', stat: 'atk', delta: 2, chance: 1 }, 'Rides a rising wind into a dive stance, sharply raising Attack.'),
   atk('cyclone-slam', 'Cyclone Slam', 'Gale', 95, 85, 5, 'Spins into a crushing whirlwind.'),
   // Neutral
   atk('bump', 'Bump', 'Neutral', 40, 100, 35, 'A plain, honest bump.'),
   atk('quick-jab', 'Quick Jab', 'Neutral', 40, 100, 30, 'Always strikes first.', { priority: 1 }),
-  atk('ram-charge', 'Ram Charge', 'Neutral', 80, 90, 10, 'A reckless charge that also hurts the user.', { effect: { kind: 'recoil', fraction: 0.25 } }),
+  atk('ram-charge', 'Ram Charge', 'Neutral', 90, 90, 10, 'A reckless charge that also hurts the user.', { effect: { kind: 'recoil', fraction: 0.25 } }),
   status('battle-cry', 'Battle Cry', 'Neutral', 100, 20, { kind: 'stage', who: 'self', stat: 'atk', delta: 1, chance: 1 }, 'A rousing cry that raises Attack.'),
   status('stare-down', 'Stare Down', 'Neutral', 100, 25, { kind: 'stage', who: 'foe', stat: 'def', delta: -1, chance: 1 }, 'An unblinking stare that lowers the foe\'s Defense.'),
   status('second-wind', 'Second Wind', 'Neutral', 100, 10, { kind: 'heal', fraction: 0.5 }, 'Catches its breath and restores half its HP.'),

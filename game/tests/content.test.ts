@@ -46,6 +46,46 @@ describe('content', () => {
     for (const s of SPECIES) for (let l = 1; l <= 30; l++) expect(movesAtLevel(s.id, l).length).toBeLessThanOrEqual(4);
     for (const st of STARTERS) expect(makeCreature(st, 5, 'x').moves).toHaveLength(2);
   });
+  it('every non-starter species is found in the wild, with sensible level bands', () => {
+    const starterLines = new Set<string>();
+    for (const st of STARTERS) {
+      let s = SPECIES.find((x) => x.id === st);
+      while (s) { starterLines.add(s.id); s = s.evolvesTo ? SPECIES.find((x) => x.id === s!.evolvesTo!.species) : undefined; }
+    }
+    const wild = new Set(ROUTES.flatMap((r) => r.hotspots.flatMap((h) => h.table.map((t) => t.species))));
+    for (const s of SPECIES) expect(wild.has(s.id), s.id).toBe(!starterLines.has(s.id)); // starter lines stay starter-only
+    for (const r of ROUTES) for (const h of r.hotspots) {
+      const total = h.table.reduce((n, t) => n + t.weight, 0);
+      for (const t of h.table) {
+        // Bands sit inside the route's signpost (rare/evolved kin may run up to 2 levels above it).
+        expect(t.min, `${r.id}/${h.id}/${t.species}`).toBeGreaterThanOrEqual(r.levelRange[0]);
+        expect(t.max, `${r.id}/${h.id}/${t.species}`).toBeLessThanOrEqual(r.levelRange[1] + 2);
+        // A wild kin below its own evolution level is never already evolved.
+        const pre = SPECIES.find((x) => x.evolvesTo?.species === t.species);
+        if (pre) expect(t.min, `${t.species} below its evolution level`).toBeGreaterThanOrEqual(pre.evolvesTo!.level);
+        if (t.species === 'petalwisp' || t.species === 'vulcrag' || t.species === 'surgeray') expect(t.weight / total).toBeLessThanOrEqual(0.15);
+      }
+    }
+  });
+  it('no move strictly dominates another of the same type and category', () => {
+    type M = (typeof MOVES)[number];
+    const good = (m: M) => (m.effect && m.effect.kind !== 'recoil' ? m.effect : null);
+    const effectAtLeast = (a: M, b: M) => {
+      if (a.effect?.kind === 'recoil' && b.effect?.kind !== 'recoil') return false;
+      const eb = good(b);
+      if (!eb) return true;
+      const ea = good(a);
+      return !!ea && JSON.stringify({ ...ea, chance: 0 }) === JSON.stringify({ ...eb, chance: 0 })
+        && ('chance' in ea ? ea.chance : 1) >= ('chance' in eb ? eb.chance : 1);
+    };
+    const keys = ['power', 'accuracy', 'pp', 'priority'] as const;
+    for (const a of MOVES) for (const b of MOVES) {
+      if (a === b || a.type !== b.type || a.category !== b.category) continue;
+      const notWorse = keys.every((k) => a[k] >= b[k]) && effectAtLeast(a, b);
+      const better = keys.some((k) => a[k] > b[k]) || JSON.stringify(a.effect) !== JSON.stringify(b.effect);
+      expect(notWorse && better, `${a.id} dominates ${b.id}`).toBe(false);
+    }
+  });
   it('stats grow with level', () => {
     const a = calcStats('ashkit', 5);
     const b = calcStats('ashkit', 30);

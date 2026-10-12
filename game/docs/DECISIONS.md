@@ -101,3 +101,16 @@ The host repo (`gravity-innovation`) is an unrelated physics project, so the gam
 - **Battle camera**: your own kin is turned 0.55 rad toward the camera — a readable 3/4 back view instead of a rear end. Big hits (super effective / crit) add a short camera shake; damage leaves a pale "ghost" chunk on the HP bar that drains after 0.35 s.
 - **Champion difficulty** (headless check, 15 seeds × 3 all-L30 fully evolved parties): greedy "strongest move" play wins 2/15, Ace-style play (switching out of bad matchups) wins 10/15. Vale is meant to be the hardest fight; Full Tonics and smart switching matter. The e2e plays it via `__game.debugSuggest()` (Ace advice) through the real UI.
 - **Hall of Fame**: highest-level kin on the tallest gold centre podium, the rest alternate outwards; confetti, rays, stats (play time, caught, seen, trainers) and a looping credits roll; *victory* jingle then the title theme.
+
+## Balance
+Full method and numbers are in `docs/BALANCE.md`. The tools are `tools/campaign.ts` (headless campaign with a casual, greedy or smart player) and `tools/arena-balance.ts` (Ace vs Ace survey).
+- **XP formula**: yield = ⌊xpYield·L·(L+25)/270·(1.5 if trainer)⌋. Yield grows a little faster than linearly, so late levels don't take several times more battles than early ones.
+- **Bench share**: every conscious party kin that didn't face a fainted foe gets ⌊yield·0.5⌋. Before this, casual teams snowballed one carry: the original data gave 3/90 Champions in simulation, now 90/90. Participants split the full yield as before; PvP gives no XP.
+- **Final starter evolutions at 26** (was 28) so starters reach their last form before Vale. Late big moves come a little earlier (2-stage lines at 24; Vulcrag's Pyre Crash at 23).
+- **Curve**:
+  - Signposts: meadow 2–6, ridge 8–13, coast 15–21, plateau 21–26. The plateau signpost equals Vale's party range.
+  - Trainers: Pim 5/7, Brann 11–14, Sola 11–14, Merrow 22–23, Tavi 20–22, Vale 21–26 (Maelstrode 26 is the ace).
+  - Simulated casual first-try wins: Pim 92%, Brann 78%, Sola 67%, Merrow 73%, Tavi 63%. Vale: 43% casual, 67% with greedy switching, 70% with Ace advice. ~118 battles per campaign.
+- **Vale keeps one status or setup move per kin.** An all-attack Vale proved harder for non-switching players. Maelstrode dropped Second Wind, the source of unwinnable stalls.
+- **Wild tables**: no wild kin is evolved below its evolution level, and bands sit inside the route signpost (+2 for rare or evolved kin). Every non-starter species is wild; starter lines stay starter-only. Rare duals: Petalwisp 3–6%, Vulcrag 10–12%, Surgeray 15%.
+- **PvP**: Updraft is now +2 Attack at 10 PP. +2 Speed was useless on the always-fastest Gale kin. Ram Charge 80 → 90. Small base-stat nudges: Cragmaul and Cyclonyx up; Petalwisp and Surgeray down. Fully evolved win shares now span 45.5–54.7%. A content test forbids a move that strictly dominates another of the same type and category.

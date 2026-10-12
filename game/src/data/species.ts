@@ -5,8 +5,8 @@ const FLAME_LINE: L = [[1, 'bump'], [1, 'cinder-spit'], [7, 'battle-cry'], [11, 
 const TIDE_LINE: L = [[1, 'bump'], [1, 'droplet-shot'], [7, 'brine-mist'], [11, 'riptide-slam'], [16, 'second-wind'], [21, 'stare-down'], [26, 'breaker-crush']];
 const FLORA_LINE: L = [[1, 'bump'], [1, 'seed-sling'], [7, 'stare-down'], [10, 'spore-puff'], [12, 'thorn-lash'], [20, 'second-wind'], [26, 'grove-hammer']];
 const SPARK_LINE: L = [[1, 'quick-jab'], [1, 'static-nip'], [8, 'jolt-wave'], [12, 'volt-lunge'], [17, 'battle-cry'], [20, 'breeze-cut'], [24, 'storm-lance']];
-const TERRA_LINE: L = [[1, 'bump'], [1, 'pebble-toss'], [7, 'bedrock-brace'], [12, 'quake-stomp'], [17, 'ram-charge'], [25, 'landslide']];
-const GALE_LINE: L = [[1, 'quick-jab'], [1, 'breeze-cut'], [7, 'updraft'], [12, 'talon-dive'], [18, 'stare-down'], [25, 'cyclone-slam']];
+const TERRA_LINE: L = [[1, 'bump'], [1, 'pebble-toss'], [7, 'bedrock-brace'], [12, 'quake-stomp'], [17, 'ram-charge'], [24, 'landslide']];
+const GALE_LINE: L = [[1, 'quick-jab'], [1, 'breeze-cut'], [7, 'stare-down'], [12, 'talon-dive'], [17, 'updraft'], [24, 'cyclone-slam']];
 
 export const SPECIES: SpeciesData[] = [
   // ---- Flame starter line
@@ -18,7 +18,7 @@ export const SPECIES: SpeciesData[] = [
   },
   {
     id: 'cindertail', name: 'Cindertail', types: ['Flame'], base: { hp: 60, atk: 72, def: 55, spe: 75 },
-    catchRate: 45, xpYield: 142, evolvesTo: { species: 'pyrelord', level: 28 }, learnset: FLAME_LINE,
+    catchRate: 45, xpYield: 142, evolvesTo: { species: 'pyrelord', level: 26 }, learnset: FLAME_LINE,
     look: { body: 'quad', scale: 1.05, colors: { main: '#f0502a', belly: '#ffd9a0', accent: '#ffcc00' }, parts: ['pointyEars', 'flameTail', 'mane'] },
     blurb: 'Its tail flame burns hotter when it is proud of something.',
   },
@@ -37,7 +37,7 @@ export const SPECIES: SpeciesData[] = [
   },
   {
     id: 'rillback', name: 'Rillback', types: ['Tide'], base: { hp: 70, atk: 64, def: 70, spe: 60 },
-    catchRate: 45, xpYield: 142, evolvesTo: { species: 'maelstrode', level: 28 }, learnset: TIDE_LINE,
+    catchRate: 45, xpYield: 142, evolvesTo: { species: 'maelstrode', level: 26 }, learnset: TIDE_LINE,
     look: { body: 'quad', scale: 1.05, colors: { main: '#2d8fe0', belly: '#bfe6ff', accent: '#e8f8ff' }, parts: ['ears', 'finTail', 'dorsal'] },
     blurb: 'It surfs river rapids on its broad, flat back.',
   },
@@ -56,7 +56,7 @@ export const SPECIES: SpeciesData[] = [
   },
   {
     id: 'thistlehorn', name: 'Thistlehorn', types: ['Flora'], base: { hp: 66, atk: 68, def: 72, spe: 56 },
-    catchRate: 45, xpYield: 142, evolvesTo: { species: 'verdantusk', level: 28 }, learnset: FLORA_LINE,
+    catchRate: 45, xpYield: 142, evolvesTo: { species: 'verdantusk', level: 26 }, learnset: FLORA_LINE,
     look: { body: 'quad', scale: 1.05, colors: { main: '#3ead48', belly: '#d9f7a6', accent: '#b04ad8' }, parts: ['horn', 'leaf', 'leafTail'] },
     blurb: 'Its horn blooms with a purple thistle each spring.',
   },
@@ -87,7 +87,7 @@ export const SPECIES: SpeciesData[] = [
     blurb: 'Often mistaken for a rock until it sneezes.',
   },
   {
-    id: 'cragmaul', name: 'Cragmaul', types: ['Terra'], base: { hp: 80, atk: 92, def: 100, spe: 38 },
+    id: 'cragmaul', name: 'Cragmaul', types: ['Terra'], base: { hp: 80, atk: 94, def: 100, spe: 44 },
     catchRate: 75, xpYield: 162, learnset: TERRA_LINE,
     look: { body: 'biped', scale: 1.3, colors: { main: '#8a6a48', belly: '#cdb592', accent: '#6fd0e0' }, parts: ['horns', 'arms', 'crystals', 'spikes'] },
     blurb: 'A boulder with fists. It polishes its crystals on cliff faces.',
@@ -100,7 +100,7 @@ export const SPECIES: SpeciesData[] = [
     blurb: 'A puffy chick that rides breezes instead of flapping.',
   },
   {
-    id: 'cyclonyx', name: 'Cyclonyx', types: ['Gale'], base: { hp: 66, atk: 84, def: 58, spe: 98 },
+    id: 'cyclonyx', name: 'Cyclonyx', types: ['Gale'], base: { hp: 68, atk: 88, def: 60, spe: 98 },
     catchRate: 75, xpYield: 160, learnset: GALE_LINE,
     look: { body: 'bird', scale: 1.2, colors: { main: '#4fb8e8', belly: '#f0fbff', accent: '#ff8a3d' }, parts: ['wings', 'crest', 'tail'] },
     blurb: 'Its dive whips up a spinning gust that can uproot saplings.',
@@ -108,19 +108,19 @@ export const SPECIES: SpeciesData[] = [
   // ---- Rare dual-type singles
   {
     id: 'vulcrag', name: 'Vulcrag', types: ['Flame', 'Terra'], base: { hp: 75, atk: 92, def: 85, spe: 58 },
-    catchRate: 45, xpYield: 185, learnset: [[1, 'cinder-spit'], [1, 'pebble-toss'], [10, 'searing-fang'], [14, 'quake-stomp'], [20, 'bedrock-brace'], [26, 'pyre-crash'], [29, 'landslide']],
+    catchRate: 45, xpYield: 185, learnset: [[1, 'cinder-spit'], [1, 'pebble-toss'], [10, 'searing-fang'], [14, 'quake-stomp'], [20, 'bedrock-brace'], [23, 'pyre-crash'], [28, 'landslide']],
     look: { body: 'biped', scale: 1.2, colors: { main: '#4a3a3a', belly: '#ff7a30', accent: '#ffb020' }, parts: ['crystals', 'flame', 'arms', 'horns'] },
     blurb: 'Magma glows through the cracks in its stony hide.',
   },
   {
-    id: 'surgeray', name: 'Surgeray', types: ['Tide', 'Spark'], base: { hp: 70, atk: 85, def: 65, spe: 92 },
-    catchRate: 45, xpYield: 185, learnset: [[1, 'droplet-shot'], [1, 'static-nip'], [10, 'jolt-wave'], [14, 'riptide-slam'], [18, 'volt-lunge'], [26, 'storm-lance'], [29, 'breaker-crush']],
+    id: 'surgeray', name: 'Surgeray', types: ['Tide', 'Spark'], base: { hp: 70, atk: 82, def: 64, spe: 90 },
+    catchRate: 45, xpYield: 185, learnset: [[1, 'droplet-shot'], [1, 'static-nip'], [10, 'jolt-wave'], [14, 'riptide-slam'], [18, 'volt-lunge'], [24, 'storm-lance'], [28, 'breaker-crush']],
     look: { body: 'fish', scale: 1.15, colors: { main: '#2b6cd8', belly: '#e0f5ff', accent: '#ffe23a' }, parts: ['fins', 'finTail', 'antennae'] },
     blurb: 'Glides just under the waves. Fishing boats go dark when it passes.',
   },
   {
-    id: 'petalwisp', name: 'Petalwisp', types: ['Flora', 'Gale'], base: { hp: 68, atk: 70, def: 70, spe: 90 },
-    catchRate: 45, xpYield: 185, learnset: [[1, 'seed-sling'], [1, 'breeze-cut'], [10, 'spore-puff'], [14, 'thorn-lash'], [18, 'talon-dive'], [22, 'second-wind'], [27, 'grove-hammer']],
+    id: 'petalwisp', name: 'Petalwisp', types: ['Flora', 'Gale'], base: { hp: 66, atk: 70, def: 68, spe: 88 },
+    catchRate: 45, xpYield: 185, learnset: [[1, 'seed-sling'], [1, 'breeze-cut'], [10, 'spore-puff'], [14, 'thorn-lash'], [18, 'talon-dive'], [22, 'second-wind'], [25, 'grove-hammer']],
     look: { body: 'bird', scale: 1.0, colors: { main: '#ff9ad0', belly: '#fff0f8', accent: '#6ed46a' }, parts: ['wings', 'leaf', 'leafTail'] },
     blurb: 'Drifts on warm air scattering petals. Seen only on bright spring days.',
   },

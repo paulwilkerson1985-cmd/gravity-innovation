@@ -13,14 +13,28 @@ export type ProgressEvent =
 
 const nameOf = (c: OwnedCreature) => c.nickname ?? species(c.species).name;
 
-/** XP a defeated creature is worth. Trainer-owned foes give 1.5×. */
+/**
+ * XP yield = ⌊xpYield · L · (L + XP_LEVEL_OFFSET) / XP_DIVISOR · (TRAINER_XP_BONUS if trainer)⌋.
+ * The (L + offset) term makes yield grow a little faster than linearly, so late levels on the
+ * level³ curve don't need several times more battles than early ones. Tuned in docs/BALANCE.md.
+ */
+export const XP_DIVISOR = 270;
+export const XP_LEVEL_OFFSET = 25;
+export const TRAINER_XP_BONUS = 1.5;
+/** Fraction of a foe's yield given to each conscious party member that did not face it. */
+export const BENCH_XP_SHARE = 0.5;
+
+/** XP a defeated creature is worth. Trainer-owned foes give TRAINER_XP_BONUS×. */
 export function xpYieldFor(speciesId: string, level: number, fromTrainer: boolean): number {
-  return Math.floor(((species(speciesId).xpYield * level) / 7) * (fromTrainer ? 1.5 : 1));
+  const base = (species(speciesId).xpYield * level * (level + XP_LEVEL_OFFSET)) / XP_DIVISOR;
+  return Math.floor(base * (fromTrainer ? TRAINER_XP_BONUS : 1));
 }
 
 /**
  * XP earned by side 0 in a finished battle, keyed by creature uid. Each fainted foe's yield is
- * split evenly (floor, min 1) among the side-0 creatures that faced it and are still conscious.
+ * split evenly (floor, min 1) among the side-0 creatures that faced it and are still conscious;
+ * every other conscious party member gets ⌊yield · BENCH_XP_SHARE⌋ ("the rest of the party
+ * watched and learned"), so a casual player's team keeps pace without lead micro-management.
  * PvP battles award nothing.
  */
 export function awardXp(battle: BattleState): Record<string, number> {
@@ -30,10 +44,17 @@ export function awardXp(battle: BattleState): Record<string, number> {
   const fromTrainer = !battle.sides[1].isWild;
   for (const foe of battle.sides[1].party) {
     if (foe.hp > 0) continue;
-    const eligible = (battle.participants[foe.uid] ?? []).filter((uid) => (mine.find((c) => c.uid === uid)?.hp ?? 0) > 0);
+    const faced = battle.participants[foe.uid] ?? [];
+    const eligible = faced.filter((uid) => (mine.find((c) => c.uid === uid)?.hp ?? 0) > 0);
     if (eligible.length === 0) continue;
-    const share = Math.max(1, Math.floor(xpYieldFor(foe.species, foe.level, fromTrainer) / eligible.length));
+    const total = xpYieldFor(foe.species, foe.level, fromTrainer);
+    const share = Math.max(1, Math.floor(total / eligible.length));
     for (const uid of eligible) out[uid] = (out[uid] ?? 0) + share;
+    const bench = Math.floor(total * BENCH_XP_SHARE);
+    if (bench <= 0) continue;
+    for (const c of mine) {
+      if (c.hp > 0 && !faced.includes(c.uid)) out[c.uid] = (out[c.uid] ?? 0) + bench;
+    }
   }
   return out;
 }

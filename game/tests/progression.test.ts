@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LEVEL_CAP, awardXp, calcStats, canEvolveNow, evolve, gainXp, learnMove, makeCreature, resolveTurn,
+  LEVEL_CAP, TRAINER_XP_BONUS, XP_DIVISOR, XP_LEVEL_OFFSET, BENCH_XP_SHARE, awardXp, calcStats, canEvolveNow, evolve, gainXp, learnMove, makeCreature, resolveTurn,
   xpForLevel, xpYieldFor, species, active, type ProgressEvent,
 } from '../src/engine';
 import { battle, bc } from './helpers';
@@ -8,8 +8,19 @@ import { battle, bc } from './helpers';
 describe('progression', () => {
   it('xpYieldFor follows the formula with a 1.5× trainer bonus', () => {
     const y = species('breezel').xpYield;
-    expect(xpYieldFor('breezel', 7, false)).toBe(Math.floor((y * 7) / 7));
-    expect(xpYieldFor('breezel', 10, true)).toBe(Math.floor(((y * 10) / 7) * 1.5));
+    const raw = (l: number) => (y * l * (l + XP_LEVEL_OFFSET)) / XP_DIVISOR;
+    expect(xpYieldFor('breezel', 7, false)).toBe(Math.floor(raw(7)));
+    expect(xpYieldFor('breezel', 10, true)).toBe(Math.floor(raw(10) * TRAINER_XP_BONUS));
+    expect(TRAINER_XP_BONUS).toBe(1.5);
+  });
+
+  it('XP pacing: battles per level-up at matched levels stays within a casual band', () => {
+    // A same-level wild foe of average yield, fought by the lead: early levels take ~1 battle,
+    // late ones a handful, never dozens (docs/BALANCE.md).
+    const perLevel = (l: number) => (xpForLevel(l + 1) - xpForLevel(l)) / xpYieldFor('cyclonyx', l, false);
+    expect(perLevel(5)).toBeLessThan(2);
+    expect(perLevel(25)).toBeLessThan(6);
+    expect(perLevel(25) / perLevel(5)).toBeLessThan(5);
   });
 
   it('Ashkit at L13 levels to 14 and becomes ready to evolve into Cindertail', () => {
@@ -93,6 +104,12 @@ describe('progression', () => {
     expect(s.outcome?.winner).toBe(0);
     const total = xpYieldFor('breezel', 10, true);
     expect(awardXp(s)).toEqual({ A1: Math.floor(total / 2), A2: Math.floor(total / 2) });
+
+    // A conscious kin that never faced the foe gets the bench share.
+    const { state: s3 } = battle('trainer', 3, [bc('cragmaul', 30, 'A1'), bc('breezel', 10, 'B1')], [bc('breezel', 10, 'F3')]);
+    let t = s3;
+    while (t.phase !== 'over') t = resolveTurn(t, [{ type: 'move', index: 3 }, { type: 'move', index: 0 }]).state;
+    expect(awardXp(t)).toEqual({ A1: xpYieldFor('breezel', 10, true), B1: Math.floor(xpYieldFor('breezel', 10, true) * BENCH_XP_SHARE) });
 
     // A fainted participant gets nothing; the survivor gets it all.
     const s2 = structuredClone(s);

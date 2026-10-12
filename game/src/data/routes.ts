@@ -23,46 +23,48 @@ export const ROUTES: RouteData[] = [
     ],
   },
   {
-    id: 'ridge', name: 'Ember Ridge', levelRange: [8, 14], theme: 'ridge', unlockAfter: ['scout-pim'],
+    id: 'ridge', name: 'Ember Ridge', levelRange: [8, 13], theme: 'ridge', unlockAfter: ['scout-pim'],
     hotspots: [
       { id: 'scrub', kind: 'grass', label: 'Dry scrub', table: [
         { species: 'breezel', weight: 40, min: 8, max: 12 },
-        { species: 'pebblet', weight: 40, min: 8, max: 12 },
-        { species: 'flickwing', weight: 20, min: 9, max: 12 },
+        { species: 'pebblet', weight: 35, min: 8, max: 12 },
+        { species: 'flickwing', weight: 25, min: 9, max: 13 },
       ] },
       { id: 'vent-cave', kind: 'cave', label: 'Steaming cave', table: [
         { species: 'pebblet', weight: 70, min: 10, max: 13 },
-        { species: 'cragmaul', weight: 22, min: 13, max: 14 },
-        { species: 'vulcrag', weight: 8, min: 14, max: 15 },
+        { species: 'flickwing', weight: 18, min: 10, max: 13 },
+        { species: 'vulcrag', weight: 12, min: 13, max: 15 },
       ] },
       { id: 'hiker-brann', kind: 'trainer', label: 'Ridge Hiker Brann', trainer: 'hiker-brann', table: [] },
       { id: 'adept-sola', kind: 'trainer', label: 'Cinder Adept Sola', trainer: 'adept-sola', table: [] },
     ],
   },
   {
-    id: 'coast', name: 'Squall Coast', levelRange: [15, 22], theme: 'coast', unlockAfter: ['hiker-brann', 'adept-sola'],
+    id: 'coast', name: 'Squall Coast', levelRange: [15, 21], theme: 'coast', unlockAfter: ['hiker-brann', 'adept-sola'],
     hotspots: [
       { id: 'dune-grass', kind: 'grass', label: 'Dune grass', table: [
-        { species: 'breezel', weight: 45, min: 15, max: 17 },
+        { species: 'breezel', weight: 40, min: 15, max: 17 },
         { species: 'flickwing', weight: 30, min: 15, max: 17 },
-        { species: 'cyclonyx', weight: 20, min: 18, max: 21 },
-        { species: 'petalwisp', weight: 5, min: 19, max: 21 },
+        { species: 'cyclonyx', weight: 24, min: 18, max: 23 },
+        { species: 'petalwisp', weight: 6, min: 19, max: 23 },
       ] },
       { id: 'shallows', kind: 'water', label: 'Rough shallows', table: [
-        { species: 'surgeray', weight: 25, min: 18, max: 21 },
-        { species: 'stormoth', weight: 30, min: 18, max: 21 },
-        { species: 'breezel', weight: 45, min: 15, max: 17 },
+        { species: 'stormoth', weight: 35, min: 18, max: 23 },
+        { species: 'breezel', weight: 30, min: 15, max: 17 },
+        { species: 'flickwing', weight: 20, min: 15, max: 17 },
+        { species: 'surgeray', weight: 15, min: 19, max: 23 },
       ] },
       { id: 'sea-cliff', kind: 'cave', label: 'Sea cliff', table: [
-        { species: 'pebblet', weight: 55, min: 15, max: 17 },
-        { species: 'cragmaul', weight: 45, min: 18, max: 21 },
+        { species: 'pebblet', weight: 45, min: 15, max: 17 },
+        { species: 'cragmaul', weight: 45, min: 18, max: 23 },
+        { species: 'vulcrag', weight: 10, min: 19, max: 23 },
       ] },
       { id: 'angler-merrow', kind: 'trainer', label: 'Storm Angler Merrow', trainer: 'angler-merrow', table: [] },
       { id: 'rider-tavi', kind: 'trainer', label: 'Gale Rider Tavi', trainer: 'rider-tavi', table: [] },
     ],
   },
   {
-    id: 'plateau', name: 'Crown Plateau', levelRange: [26, 30], theme: 'summit', unlockAfter: ['angler-merrow', 'rider-tavi'],
+    id: 'plateau', name: 'Crown Plateau', levelRange: [21, 26], theme: 'summit', unlockAfter: ['angler-merrow', 'rider-tavi'],
     hotspots: [
       { id: 'champion-vale', kind: 'trainer', label: 'Champion Vale', trainer: 'champion-vale', table: [] },
     ],

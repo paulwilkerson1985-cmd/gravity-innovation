@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LEVEL_CAP, species, awardXp, calcStats, createBattle, getDex, makeCreature, resolveTurn, toBattle, xpForLevel, chooseAction,
+  BENCH_XP_SHARE, LEVEL_CAP, species, awardXp, xpYieldFor, calcStats, createBattle, getDex, makeCreature, resolveTurn, toBattle, xpForLevel, chooseAction,
   type BattleState, type OwnedCreature,
 } from '../src/engine';
 import { newPlayer, type PlayerState } from '../src/game/state';
@@ -33,17 +33,18 @@ function wonBattle(p: PlayerState, foes: [string, number][], fromTrainer = false
 }
 
 describe('applyBattleXp', () => {
-  it('awards the engine XP to participants and records a single level-up', () => {
+  it('awards the engine XP to the participant and the bench share to the rest of the party', () => {
     const c = makeCreature('ashkit', 5, 'a');
-    const p = playerWith([c, makeCreature('breezel', 5, 'b')]);
+    const bench = makeCreature('breezel', 5, 'b');
+    const p = playerWith([c, bench]);
     const b = wonBattle(p, [['breezel', 4]]);
     const award = awardXp(b);
     const r = applyBattleXp(p, b);
-    expect(r.gains).toHaveLength(1);
-    expect(r.gains[0]!.uid).toBe('a');
+    expect(r.gains.map((g) => g.uid)).toEqual(['a', 'b']);
     expect(r.gains[0]!.amount).toBe(award.a);
     expect(r.player.party[0]!.xp).toBe(c.xp + award.a!);
-    expect(r.player.party[1]).toEqual(p.party[1]); // bench did not fight: unchanged
+    expect(award.b).toBe(Math.floor(xpYieldFor('breezel', 4, false) * BENCH_XP_SHARE));
+    expect(r.player.party[1]!.xp).toBe(bench.xp + award.b!); // bench watched: half share
     expect(p.party[0]!.xp).toBe(c.xp); // input untouched
   });
 

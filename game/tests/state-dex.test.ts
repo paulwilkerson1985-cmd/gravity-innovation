@@ -3,7 +3,7 @@ import { evolutionChain, habitatsOf } from '../src/scenes/bestiary';
 
 describe('bestiary derivations', () => {
   it('evolution chains include levels from any stage', () => {
-    expect(evolutionChain('cindertail')).toEqual([{ id: 'ashkit' }, { id: 'cindertail', level: 14 }, { id: 'pyrelord', level: 28 }]);
+    expect(evolutionChain('cindertail')).toEqual([{ id: 'ashkit' }, { id: 'cindertail', level: 14 }, { id: 'pyrelord', level: 26 }]);
     expect(evolutionChain('petalwisp')).toEqual([{ id: 'petalwisp' }]);
   });
   it('habitats come from route encounter tables', () => {

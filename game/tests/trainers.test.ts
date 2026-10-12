@@ -37,7 +37,11 @@ describe('trainers', () => {
     expect(champ.ai).toBe('ace');
     expect(champ.title).toBe('Champion');
     expect(champ.party).toHaveLength(6);
-    for (const p of champ.party) expect(p.level >= 26 && p.level <= 30).toBe(true);
+    for (const p of champ.party) expect(p.level >= 21 && p.level <= 26).toBe(true);
+    // The Champion tops every other trainer and the plateau signpost matches its party.
+    const top = (t: typeof champ) => Math.max(...t.party.map((p) => p.level));
+    for (const t of TRAINERS) if (t !== champ) expect(top(champ)).toBeGreaterThan(top(t));
+    expect(route('plateau').levelRange).toEqual([Math.min(...champ.party.map((p) => p.level)), top(champ)]);
     const types = new Set(champ.party.flatMap((p) => SPECIES.find((s) => s.id === p.species)!.types));
     expect(types.size).toBeGreaterThanOrEqual(5);
     expect(route('plateau').theme).toBe('summit');
@@ -58,7 +62,7 @@ describe('trainers', () => {
   it('validation catches broken trainers and routes', () => {
     const t = structuredClone(TRAINERS);
     t[0]!.party.push({ species: 'nope', level: 5 });
-    t[1]!.party[2]!.moves = ['landslide']; // cragmaul L15 cannot know landslide (L25)
+    t[1]!.party[2]!.moves = ['landslide']; // cragmaul L14 cannot know landslide (L24)
     t[2]!.party[0]!.level = 31;
     t[3]!.party = [];
     const r = structuredClone(ROUTES);
@@ -78,7 +82,7 @@ describe('trainers', () => {
     expect(() => getTrainer('nobody')).toThrow();
     const party = trainerParty('champion-vale');
     expect(party).toHaveLength(6);
-    expect(party[5]!.moves.map((m) => m.id)).toEqual(['breaker-crush', 'riptide-slam', 'brine-mist', 'second-wind']);
+    expect(party[5]!.moves.map((m) => m.id)).toEqual(['breaker-crush', 'riptide-slam', 'brine-mist', 'stare-down']);
     expect(party.every((c) => c.hp === c.stats.hp)).toBe(true);
     const side = trainerSide('rider-tavi');
     expect(side.ai).toBe('ace');
