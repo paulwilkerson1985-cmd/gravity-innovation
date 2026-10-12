@@ -69,6 +69,8 @@ export class ArenaBattleScene extends BaseScene {
   private unsub: (() => void)[] = [];
   private finished = false;
   private exited = false;
+  /** Online: the server dropped our room (restart / expiry). Nothing more to play. */
+  private roomGone = false;
   /** The kin currently out on each side (as last sent out). */
   private cur: [{ name: string; species: string } | null, { name: string; species: string } | null] = [null, null];
 
@@ -357,6 +359,7 @@ export class ArenaBattleScene extends BaseScene {
   // ------------------------------------------------------------------ menus
 
   private showPrompt(seat: Seat) {
+    if (this.roomGone) return;
     this.asking = seat;
     if (this.state.phase === 'replace') return this.showParty(seat, true);
     this.showMain(seat);
@@ -462,7 +465,11 @@ export class ArenaBattleScene extends BaseScene {
       case 'start':
         void this.game.goto('arenaBattle', { online: true, events: m.events });
         return;
+      case 'closed':
+        if (this.client!.seatLost) this.onRoomGone();
+        return;
       case 'error':
+        if (this.client!.seatLost || m.code === 'no-room' || m.code === 'bad-token') { this.onRoomGone(); return; }
         audio.sfx('denied');
         this.flash(ERROR_TEXT[m.code] ?? m.message);
         if (this.room?.mustAct && this.asking === null && !this.playing) this.showPrompt(this.near);
@@ -471,12 +478,29 @@ export class ArenaBattleScene extends BaseScene {
     }
   }
 
+  /** The server no longer has our room: stop prompting and offer the way back to the lobby. */
+  private onRoomGone() {
+    if (this.roomGone || this.finished) return;
+    this.roomGone = true;
+    audio.sfx('denied');
+    this.asking = null;
+    this.room = null;
+    this.deadlineAt = null;
+    this.menu.replaceChildren();
+    this.oppEl.hidden = true;
+    this.text.textContent = 'This match can\'t continue.';
+    this.game.idle = true;
+    const leave = abtn('Leave', { class: 'btn-back', 'data-testid': 'arena-leave', onclick: () => { endOnline(); void this.game.goto('arena', { online: false }); } });
+    this.showBanner('The room closed (the server restarted or the match expired).', 'error', leave);
+    leave.focus({ preventScroll: true });
+  }
+
   private kosFromRoom(room: RoomView) {
     this.kos = [...room.stats.kos];
   }
 
   private onStatus(s: NetStatus) {
-    if (this.exited) return;
+    if (this.exited || this.roomGone) return;
     if (s === 'reconnecting') this.showBanner('Connection lost — reconnecting…', 'warn');
     else if (s === 'open') this.showBanner(null);
     else if (s === 'failed' || s === 'closed') {
@@ -505,7 +529,7 @@ export class ArenaBattleScene extends BaseScene {
   /** Online: reflect the room (prompt, opponent status, timer). */
   private refreshOnline() {
     const room = this.room;
-    if (!room || this.playing || this.finished) return;
+    if (!room || this.playing || this.finished || this.roomGone) return;
     this.setDeadline(room);
     const oppSeat = other(this.near);
     const opp = room.players[oppSeat];
@@ -727,7 +751,7 @@ export class ArenaBattleScene extends BaseScene {
     return {
       scene: 'arenaBattle', mode: this.mode, phase: this.state?.phase ?? null, turn: this.state?.turn ?? 0,
       asking: this.asking, curtain: this.curtainUp, playing: this.playing, near: this.near,
-      outcome: this.state?.outcome ?? null, step: this.localStep, kos: this.kos,
+      outcome: this.state?.outcome ?? null, step: this.localStep, kos: this.kos, roomGone: this.roomGone,
       menuButtons: [...this.menu.querySelectorAll('button')].map((b) => b.dataset.testid ?? ''),
     };
   }

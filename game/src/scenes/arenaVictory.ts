@@ -207,10 +207,22 @@ export class ArenaVictoryScene extends BaseScene {
       if (m.room.phase === 'lobby') { void this.game.goto('arena', { online: true }); return; }
       this.refresh(m.room);
     }
+    if (this.client?.seatLost && (m.t === 'error' || m.t === 'closed')) { this.onRoomGone(); return; }
     if (m.t === 'error') this.say(ERROR_TEXT[m.code] ?? m.message, 'error');
   }
 
+  /** The server dropped the room: no rematch possible, only Exit. */
+  private onRoomGone() {
+    for (const id of ['arena-rematch', 'arena-newteams']) {
+      const b = this.actions.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
+      if (b) b.disabled = true;
+    }
+    this.say('The room closed (the server restarted or it expired).', 'error');
+    this.actions.querySelector<HTMLButtonElement>('[data-testid="arena-exit"]')?.focus({ preventScroll: true });
+  }
+
   private refresh(room: RoomView | null = this.client?.room ?? null) {
+    if (this.client?.seatLost) { this.onRoomGone(); return; }
     if (!room) return;
     const opp = room.players[room.you === 0 ? 1 : 0];
     const me = room.players[room.you];

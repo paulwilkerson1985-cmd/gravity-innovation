@@ -276,6 +276,13 @@ export function createArenaServer(options: ArenaServerOptions = {}): Promise<Are
       if (room.expired(now, ttl)) {
         room.close();
         rooms.delete(code);
+        // Tell anyone still attached, so their UI can offer a way out instead of waiting forever.
+        for (const c of clients) {
+          if (c.room !== room) continue;
+          c.room = null;
+          c.seat = null;
+          c.conn.send({ t: 'closed', reason: 'expired' });
+        }
         log(`room ${code} removed`);
       }
     }

@@ -1,6 +1,7 @@
 // Arena (PvP) end-to-end: hotseat with the pass-the-device curtain, vs CPU, and an online
 // match between two browser contexts through the real arena server (playwright webServer).
 import { expect, test, type Page } from '@playwright/test';
+import { createArenaServer } from '../server/server';
 
 type Snap = Record<string, unknown> & {
   scene: string; curtain?: boolean; asking?: 0 | 1 | null; playing?: boolean; menuButtons?: string[];
@@ -343,3 +344,50 @@ test('online: unreachable server shows a friendly error', async ({ page }) => {
   expect(errors.filter((e) => !/WebSocket/i.test(e))).toEqual([]);
 });
 
+
+test('online: a server restart mid-match shows "room closed" with a way out (no soft-lock)', async ({ browser, page }, info) => {
+  test.skip(info.project.name === 'phone', 'network flow; covered on desktop');
+  let server = await createArenaServer({ port: 0, heartbeatMs: 0, sweepMs: 0 });
+  const port = server.port;
+  const url = `ws://localhost:${port}`;
+  const ctxB = await browser.newContext({ viewport: page.viewportSize()! });
+  const pageB = await ctxB.newPage();
+  try {
+    await page.goto(`/?seed=41&scene=arena&server=${url}`);
+    await pageB.goto(`/?seed=42&scene=arena&server=${url}`);
+    await waitScene(page, 'arena');
+    await waitScene(pageB, 'arena');
+    await page.getByTestId('arena-mode-online').click();
+    await page.getByTestId('arena-create').click();
+    await expect(page.getByTestId('arena-room-code')).toBeVisible({ timeout: 10_000 });
+    const code = (await snap(page))!.room!.code;
+    await pageB.getByTestId('arena-mode-online').click();
+    await pageB.getByTestId('arena-code-input').fill(code);
+    await pageB.getByTestId('arena-join').click();
+    await expect(pageB.getByTestId('arena-room-code')).toContainText(code);
+    await buildRandom(page);
+    await buildRandom(pageB);
+    await waitScene(page, 'arenaBattle');
+    await expect.poll(async () => (await snap(page))?.asking, { timeout: 20_000 }).toBe(0);
+
+    // The server restarts: every room is gone.
+    await server.close();
+    server = await createArenaServer({ port, heartbeatMs: 0, sweepMs: 0 });
+    for (const p of [page, pageB]) {
+      await expect(p.getByTestId('arena-leave')).toBeVisible({ timeout: 20_000 });
+      await expect(p.locator('.arena-banner')).toContainText('room closed');
+    }
+    // No stale prompt comes back.
+    await page.waitForTimeout(1500);
+    expect((await snap(page))!.menuButtons).toEqual([]);
+    await page.getByTestId('arena-leave').click();
+    await waitScene(page, 'arena');
+    // The lobby still works against the new server.
+    await page.getByTestId('arena-mode-online').click();
+    await page.getByTestId('arena-create').click();
+    await expect(page.getByTestId('arena-room-code')).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await ctxB.close();
+    await server.close();
+  }
+});

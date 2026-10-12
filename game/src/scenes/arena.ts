@@ -372,6 +372,7 @@ export class ArenaScene extends BaseScene {
         this.onRoom(m.room);
         return;
       case 'error': {
+        if (this.client?.seatLost) { this.onRoomGone(); return; }
         const text = m.code === 'bad-team' ? `The server refused that team: ${m.message}` : ERROR_TEXT[m.code] ?? m.message;
         audio.sfx('denied');
         if (this.view === 'builder' && this.b) {
@@ -384,9 +385,23 @@ export class ArenaScene extends BaseScene {
         return;
       }
       case 'closed':
+        if (this.client?.seatLost) this.onRoomGone();
         return;
       default:
     }
+  }
+
+  /** The server dropped our room (restart / expiry): back to the online screen with a clear note. */
+  private onRoomGone() {
+    audio.sfx('denied');
+    endOnline();
+    for (const u of this.unsub) u();
+    this.unsub = [];
+    this.client = null;
+    this.b = null;
+    this.mode = 'online';
+    this.onlineNote = { text: 'The room closed (the server restarted or it expired). Create or join a new one.', kind: 'error' };
+    this.show('online');
   }
 
   private onStatus(s: NetStatus) {

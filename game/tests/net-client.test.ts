@@ -73,4 +73,45 @@ describe('ArenaClient', () => {
     await until(() => b.room?.players[0] === null);
     expect(loadSavedSeat(storage)).toBeNull();
   });
+  it('flags a lost seat when the server restarts and the room is gone', async () => {
+    server = await createArenaServer({ port: 0, heartbeatMs: 0, sweepMs: 0 });
+    const port = server.port;
+    const url = `ws://127.0.0.1:${port}`;
+    const storage = memoryStorage();
+    const a = new ArenaClient(url, { socket: factory, backoff: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100], storage });
+    clients.push(a);
+    const seen: ServerMessage[] = [];
+    a.on((m) => seen.push(m));
+    await a.connect();
+    a.send({ t: 'create', v: PROTOCOL_VERSION, name: 'Ember' });
+    await until(() => a.code !== null);
+    expect(a.seatLost).toBe(false);
+    // Restart: the new process has no rooms.
+    await server.close();
+    server = await createArenaServer({ port, heartbeatMs: 0, sweepMs: 0 });
+    await until(() => a.seatLost, 5000);
+    expect(a.code).toBeNull();
+    expect(a.room).toBeNull();
+    expect(loadSavedSeat(storage)).toBeNull();
+    expect(seen.some((m) => m.t === 'error' && m.code === 'no-room')).toBe(true);
+    // A fresh room clears the flag.
+    a.send({ t: 'create', v: PROTOCOL_VERSION, name: 'Ember' });
+    await until(() => a.code !== null);
+    expect(a.seatLost).toBe(false);
+  });
+
+  it('tells attached players when their room expires', async () => {
+    let now = 1_000_000;
+    const clock = { now: () => now, setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms), clearTimeout: (h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>) };
+    server = await createArenaServer({ port: 0, heartbeatMs: 0, sweepMs: 0, clock, ttl: { empty: 1000, idle: 5000 } });
+    const a = new ArenaClient(`ws://127.0.0.1:${server.port}`, { socket: factory });
+    clients.push(a);
+    await a.connect();
+    a.send({ t: 'create', v: PROTOCOL_VERSION, name: 'Solo' });
+    await until(() => a.code !== null);
+    now += 10_000;
+    server.sweep();
+    await until(() => a.seatLost);
+    expect(a.code).toBeNull();
+  });
 });

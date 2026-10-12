@@ -49,6 +49,11 @@ export class ArenaClient {
   room: RoomView | null = null;
   code: string | null = null;
   seat: Seat | null = null;
+  /**
+   * True once the server told us our room/seat is gone (server restart, room expired or
+   * closed): scenes must stop prompting and offer a way out. Cleared by the next welcome.
+   */
+  seatLost = false;
   private token: string | null = null;
   private ws: SocketLike | null = null;
   private listeners = new Set<(m: ServerMessage) => void>();
@@ -156,14 +161,19 @@ export class ArenaClient {
       this.code = m.code;
       this.seat = m.you;
       this.token = m.token;
+      this.seatLost = false;
       this.save();
     }
     if (m.t === 'error' && (m.code === 'bad-token' || m.code === 'no-room') && this.token) {
       // Our seat is gone (server restarted or the room expired).
       this.forget();
+      this.seatLost = true;
     }
     if ('room' in m && m.room) this.room = m.room;
-    if (m.t === 'closed') this.forget();
+    if (m.t === 'closed') {
+      if (m.reason !== 'left' && this.token) this.seatLost = true;
+      this.forget();
+    }
     for (const fn of [...this.listeners]) fn(m);
   }
 
