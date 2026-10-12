@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { MOVES } from '../src/data/moves';
 import { ROUTES } from '../src/data/routes';
 import { SPECIES, STARTERS } from '../src/data/species';
+import { ITEMS } from '../src/data/items';
+import { TRAINERS } from '../src/data/trainers';
 import { ELEMENTS, getDex, validateContent, movesAtLevel, makeCreature, calcStats } from '../src/engine';
 
 describe('content', () => {
@@ -34,7 +36,10 @@ describe('content', () => {
   });
   it('uses no franchise names', () => {
     const banned = /pok[eé]|ball|pikachu|charmander|squirtle|bulbasaur|tackle|ember\b|growl|harden|thunderbolt|flamethrower|surf\b|gust\b|razor leaf|hydro pump|earthquake|rock slide|quick attack|struggle|recover|sleep powder|thunder wave|will-o/i;
-    const names = [...SPECIES.map((s) => s.name), ...MOVES.map((m) => m.name)];
+    const names = [
+      ...SPECIES.map((s) => s.name), ...MOVES.map((m) => m.name), ...Object.values(ITEMS).map((i) => i.name),
+      ...TRAINERS.flatMap((t) => [t.name, t.title, t.intro, t.defeat]),
+    ];
     for (const n of names) expect(n).not.toMatch(banned);
   });
   it('creatures know at most 4 moves and starters begin with 2', () => {

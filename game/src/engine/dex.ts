@@ -3,19 +3,23 @@
 import { MOVES, DESPERATION } from '../data/moves';
 import { SPECIES } from '../data/species';
 import { ROUTES } from '../data/routes';
+import { TRAINERS } from '../data/trainers';
 import { ELEMENTS } from './types';
-import type { MoveData, RouteData, SpeciesData } from './types';
+import type { MoveData, RouteData, SpeciesData, TrainerData } from './types';
 
 export interface Dex {
   species: Map<string, SpeciesData>;
   moves: Map<string, MoveData>;
   routes: Map<string, RouteData>;
+  trainers: Map<string, TrainerData>;
 }
+
+const AI_TIERS = ['rookie', 'skilled', 'ace'];
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const STAT_KEYS = ['hp', 'atk', 'def', 'spe'] as const;
 
-export function validateContent(species: SpeciesData[], moves: MoveData[], routes: RouteData[]): string[] {
+export function validateContent(species: SpeciesData[], moves: MoveData[], routes: RouteData[], trainers: TrainerData[] = TRAINERS): string[] {
   const errors: string[] = [];
   const err = (m: string) => errors.push(m);
   const moveIds = new Set<string>();
@@ -69,9 +73,46 @@ export function validateContent(species: SpeciesData[], moves: MoveData[], route
     for (const c of Object.values(look?.colors ?? {})) if (!HEX.test(c)) err(`species ${s.id}: bad colour ${c}`);
   }
 
+  const trainerIds = new Set<string>();
+  const routeIds = new Set(routes.map((r) => r.id));
+  if (routeIds.size !== routes.length) err('duplicate route id');
+  const byId = new Map(species.map((s) => [s.id, s]));
+  for (const t of trainers) {
+    const where = `trainer ${t.id}`;
+    if (!/^[a-z0-9-]+$/.test(t.id)) err(`${where}: bad id`);
+    if (trainerIds.has(t.id)) err(`${where}: duplicate id`);
+    trainerIds.add(t.id);
+    if (!t.name || !t.title || !t.intro || !t.defeat) err(`${where}: missing text`);
+    if (!routeIds.has(t.routeId)) err(`${where}: unknown route ${t.routeId}`);
+    if (!AI_TIERS.includes(t.ai)) err(`${where}: bad ai tier`);
+    if (!(Number.isInteger(t.reward) && t.reward >= 0)) err(`${where}: bad reward`);
+    if (t.party.length < 1 || t.party.length > 6) err(`${where}: party must have 1–6 kin`);
+    for (const p of t.party) {
+      const sp = byId.get(p.species);
+      if (!sp) { err(`${where}: unknown species ${p.species}`); continue; }
+      if (!(Number.isInteger(p.level) && p.level >= 1 && p.level <= 30)) err(`${where}: bad level ${p.level}`);
+      if (p.moves) {
+        if (p.moves.length < 1 || p.moves.length > 4) err(`${where}/${p.species}: needs 1–4 moves`);
+        if (new Set(p.moves).size !== p.moves.length) err(`${where}/${p.species}: repeated move`);
+        for (const mid of p.moves) {
+          if (!moveIds.has(mid)) err(`${where}/${p.species}: unknown move ${mid}`);
+          else if (!sp.learnset.some(([l, id]) => id === mid && l <= p.level)) err(`${where}/${p.species}: cannot know ${mid} at L${p.level}`);
+        }
+      }
+    }
+  }
+  const trainerHotspots = new Set<string>();
+
   for (const r of routes) {
     if (r.hotspots.length === 0) err(`route ${r.id}: no hotspots`);
+    for (const u of r.unlockAfter ?? []) if (!trainerIds.has(u)) err(`route ${r.id}: unlockAfter unknown trainer ${u}`);
     for (const h of r.hotspots) {
+      if (h.kind === 'trainer') {
+        const t = trainers.find((x) => x.id === h.trainer);
+        if (!t) err(`route ${r.id}/${h.id}: unknown trainer ${h.trainer}`);
+        else if (t.routeId !== r.id) err(`route ${r.id}/${h.id}: trainer ${t.id} belongs to ${t.routeId}`);
+        if (h.trainer) trainerHotspots.add(h.trainer);
+      } else if (h.trainer) err(`route ${r.id}/${h.id}: only trainer hotspots name a trainer`);
       if (h.kind !== 'trainer' && h.table.length === 0) err(`route ${r.id}/${h.id}: empty table`);
       for (const slot of h.table) {
         if (!speciesIds.has(slot.species)) err(`route ${r.id}/${h.id}: unknown species ${slot.species}`);
@@ -80,6 +121,7 @@ export function validateContent(species: SpeciesData[], moves: MoveData[], route
       }
     }
   }
+  for (const t of trainers) if (!trainerHotspots.has(t.id)) err(`trainer ${t.id}: no hotspot on any route`);
   return errors;
 }
 
@@ -93,6 +135,7 @@ export function getDex(): Dex {
     species: new Map(SPECIES.map((s) => [s.id, s])),
     moves: new Map([...MOVES, DESPERATION].map((m) => [m.id, m])),
     routes: new Map(ROUTES.map((r) => [r.id, r])),
+    trainers: new Map(TRAINERS.map((t) => [t.id, t])),
   };
   return cached;
 }
@@ -107,4 +150,10 @@ export function move(id: string): MoveData {
   const m = getDex().moves.get(id);
   if (!m) throw new Error(`unknown move ${id}`);
   return m;
+}
+
+export function getTrainer(id: string): TrainerData {
+  const t = getDex().trainers.get(id);
+  if (!t) throw new Error(`unknown trainer ${id}`);
+  return t;
 }

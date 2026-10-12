@@ -19,10 +19,11 @@ export const ROUTES: RouteData[] = [
         { species: 'pebblet', weight: 85, min: 3, max: 6 },
         { species: 'flickwing', weight: 15, min: 3, max: 5 },
       ] },
+      { id: 'scout-pim', kind: 'trainer', label: 'Sprout Scout Pim', trainer: 'scout-pim', table: [] },
     ],
   },
   {
-    id: 'ridge', name: 'Ember Ridge', levelRange: [8, 14], theme: 'ridge',
+    id: 'ridge', name: 'Ember Ridge', levelRange: [8, 14], theme: 'ridge', unlockAfter: ['scout-pim'],
     hotspots: [
       { id: 'scrub', kind: 'grass', label: 'Dry scrub', table: [
         { species: 'breezel', weight: 40, min: 8, max: 12 },
@@ -34,10 +35,12 @@ export const ROUTES: RouteData[] = [
         { species: 'cragmaul', weight: 22, min: 13, max: 14 },
         { species: 'vulcrag', weight: 8, min: 14, max: 15 },
       ] },
+      { id: 'hiker-brann', kind: 'trainer', label: 'Ridge Hiker Brann', trainer: 'hiker-brann', table: [] },
+      { id: 'adept-sola', kind: 'trainer', label: 'Cinder Adept Sola', trainer: 'adept-sola', table: [] },
     ],
   },
   {
-    id: 'coast', name: 'Squall Coast', levelRange: [15, 22], theme: 'coast',
+    id: 'coast', name: 'Squall Coast', levelRange: [15, 22], theme: 'coast', unlockAfter: ['hiker-brann', 'adept-sola'],
     hotspots: [
       { id: 'dune-grass', kind: 'grass', label: 'Dune grass', table: [
         { species: 'breezel', weight: 45, min: 15, max: 17 },
@@ -54,6 +57,14 @@ export const ROUTES: RouteData[] = [
         { species: 'pebblet', weight: 55, min: 15, max: 17 },
         { species: 'cragmaul', weight: 45, min: 18, max: 21 },
       ] },
+      { id: 'angler-merrow', kind: 'trainer', label: 'Storm Angler Merrow', trainer: 'angler-merrow', table: [] },
+      { id: 'rider-tavi', kind: 'trainer', label: 'Gale Rider Tavi', trainer: 'rider-tavi', table: [] },
+    ],
+  },
+  {
+    id: 'plateau', name: 'Crown Plateau', levelRange: [26, 30], theme: 'summit', unlockAfter: ['angler-merrow', 'rider-tavi'],
+    hotspots: [
+      { id: 'champion-vale', kind: 'trainer', label: 'Champion Vale', trainer: 'champion-vale', table: [] },
     ],
   },
 ];

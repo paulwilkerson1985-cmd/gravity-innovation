@@ -4,9 +4,11 @@ import { ORBS, catchProbability, rollCatch } from './catch';
 import { MAX_STAGE, effectiveStat, rollDamage } from './damage';
 import { move as getMove, species } from './dex';
 import { DESPERATION } from '../data/moves';
+import { ITEM_IDS } from '../data/items';
+import { applyItem, getItem, itemAffects } from './items';
 import { Rng } from './rng';
 import type {
-  Action, BattleCreature, BattleEvent, BattleKind, BattleState, MoveData, Side, TurnResult,
+  Action, BattleCreature, BattleEvent, BattleKind, BattleRules, BattleState, MoveData, Side, TurnResult,
 } from './types';
 
 export const DEFAULT_TURN_LIMIT = 300;
@@ -19,7 +21,18 @@ export interface SideInit {
   party: BattleCreature[];
 }
 
-export function createBattle(kind: BattleKind, seed: number, a: SideInit, b: SideInit): { state: BattleState; events: BattleEvent[] } {
+/** Default rules per battle kind: wild = everything, trainer = items only, pvp = nothing. */
+export function defaultRules(kind: BattleKind): BattleRules {
+  switch (kind) {
+    case 'wild': return { items: true, catch: true, run: true };
+    case 'trainer': return { items: true, catch: false, run: false };
+    case 'pvp': return { items: false, catch: false, run: false };
+  }
+}
+
+export interface BattleOptions { rules?: Partial<BattleRules> }
+
+export function createBattle(kind: BattleKind, seed: number, a: SideInit, b: SideInit, opts: BattleOptions = {}): { state: BattleState; events: BattleEvent[] } {
   const mk = (s: SideInit): Side => {
     const first = s.party.findIndex((c) => c.hp > 0);
     if (first < 0) throw new Error(`${s.name} has no conscious creatures`);
@@ -33,7 +46,7 @@ export function createBattle(kind: BattleKind, seed: number, a: SideInit, b: Sid
     };
   };
   const state: BattleState = {
-    v: 1, kind, rng: seed >>> 0, turn: 0, phase: 'choose',
+    v: 1, kind, rules: { ...defaultRules(kind), ...opts.rules }, rng: seed >>> 0, turn: 0, phase: 'choose',
     sides: [mk(a), mk(b)], runAttempts: 0, participants: {}, outcome: null, turnLimit: DEFAULT_TURN_LIMIT,
   };
   const events: BattleEvent[] = [sendEvent(state, 1), sendEvent(state, 0)];
@@ -83,16 +96,34 @@ export function legalActions(state: BattleState, side: 0 | 1): Action[] {
   const out: Action[] = moves.length ? moves : [{ type: 'move', index: -1 }];
   out.push(...switches);
   const foeSide = state.sides[other(side)];
-  if (state.kind === 'wild' && !s.isWild && foeSide.isWild) {
-    out.push({ type: 'run' });
+  const vsWild = state.kind === 'wild' && !s.isWild && foeSide.isWild;
+  if (vsWild && state.rules.run) out.push({ type: 'run' });
+  if (vsWild && state.rules.catch) {
     for (const orb of Object.keys(ORBS) as (keyof typeof ORBS)[]) out.push({ type: 'catch', orb });
+  }
+  if (state.rules.items && s.controller === 'human' && !s.isWild) {
+    for (const item of ITEM_IDS) {
+      s.party.forEach((c, target) => {
+        if (itemAffects({ hp: c.hp, maxHp: c.stats.hp, status: c.status }, item)) out.push({ type: 'item', item, target });
+      });
+    }
   }
   if (state.kind !== 'wild' && s.controller === 'human') out.push({ type: 'forfeit' });
   return out;
 }
 
+function sameAction(a: Action, b: Action): boolean {
+  switch (a.type) {
+    case 'move': return b.type === 'move' && a.index === b.index;
+    case 'switch': return b.type === 'switch' && a.to === b.to;
+    case 'catch': return b.type === 'catch' && a.orb === b.orb;
+    case 'item': return b.type === 'item' && a.item === b.item && a.target === b.target;
+    default: return a.type === b.type;
+  }
+}
+
 export function isLegal(state: BattleState, side: 0 | 1, action: Action): boolean {
-  return legalActions(state, side).some((a) => JSON.stringify(a) === JSON.stringify(action));
+  return legalActions(state, side).some((a) => sameAction(a, action));
 }
 
 export class IllegalActionError extends Error {}
@@ -103,6 +134,7 @@ function actionPriority(state: BattleState, side: 0 | 1, action: Action): number
   switch (action.type) {
     case 'forfeit': return 100;
     case 'run': case 'catch': return 50;
+    case 'item': return 30;
     case 'switch': return 20;
     case 'move': return action.index < 0 ? 0 : getMove(active(state, side).moves[action.index]!.id).priority;
     default: return -100;
@@ -156,7 +188,12 @@ export function resolveTurn(input: BattleState, actions: [Action, Action]): Turn
     }
     if (action.type === 'switch') {
       doSwitch(state, side, action.to, events);
+      state.sides[side].lastSwitchTurn = state.turn;
       noteParticipation(state);
+      continue;
+    }
+    if (action.type === 'item') {
+      useItem(state, side, action.item, action.target, events);
       continue;
     }
     if (me.hp <= 0) continue; // fainted earlier this turn
@@ -206,6 +243,23 @@ export function resolveTurn(input: BattleState, actions: [Action, Action]): Turn
   }
   state.rng = rng.state;
   return { state, events };
+}
+
+function useItem(state: BattleState, side: 0 | 1, item: Extract<Action, { type: 'item' }>['item'], target: number, events: BattleEvent[]) {
+  const c = state.sides[side].party[target]!;
+  const r = applyItem({ hp: c.hp, maxHp: c.stats.hp, status: c.status }, item);
+  events.push({ t: 'item', side, item, itemName: getItem(item).name, target, name: c.name });
+  c.hp = r.hp;
+  c.status = r.status;
+  if (r.status !== 'drowsy') c.sleepTurns = 0;
+  if (r.revived) {
+    c.stages = { atk: 0, def: 0, spe: 0 };
+    events.push({ t: 'revive', side, slot: target, name: c.name, hp: c.hp, maxHp: c.stats.hp });
+  } else if (r.cured) {
+    events.push({ t: 'cure', side, slot: target, name: c.name, status: r.cured });
+  } else {
+    events.push({ t: 'heal', side, name: c.name, amount: r.healed, hp: c.hp, maxHp: c.stats.hp, slot: target });
+  }
 }
 
 function end(state: BattleState, events: BattleEvent[], winner: 0 | 1 | null, reason: NonNullable<BattleState['outcome']>['reason']) {

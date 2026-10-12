@@ -8,3 +8,6 @@ export * from './catch';
 export * from './battle';
 export * from './ai';
 export * from './encounter';
+export * from './items';
+export * from './progression';
+export * from './trainer';

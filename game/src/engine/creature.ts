@@ -80,3 +80,10 @@ export function healFully(c: OwnedCreature): OwnedCreature {
     moves: c.moves.map((m) => ({ id: m.id, pp: move(m.id).pp })),
   };
 }
+
+/** Every distinct move a species can learn at or below `level` (learnset order). */
+export function learnableMoves(speciesId: string, level: number): string[] {
+  const out: string[] = [];
+  for (const [lvl, id] of species(speciesId).learnset) if (lvl <= level && !out.includes(id)) out.push(id);
+  return out;
+}
