@@ -492,6 +492,30 @@ export class CreatureView {
     this.acting--;
   }
 
+  /** A missed attack: a quick sidestep hop with a lean, then back — no flash, no recoil. */
+  async dodge() {
+    this.acting++;
+    const x0 = this.inner.position.x;
+    const y0 = this.inner.position.y;
+    const fwd = new THREE.Vector3(0, 0, 1);
+    await tween(200, (k) => {
+      const e = ease.outCubic(k);
+      this.inner.position.x = x0 + 0.38 * e;
+      this.inner.position.y = y0 + Math.sin(k * Math.PI) * 0.14;
+      this.body.quaternion.setFromAxisAngle(fwd, -0.22 * e);
+      this.squash(1 - 0.12 * Math.sin(k * Math.PI));
+    });
+    await tween(260, (k) => {
+      const e = ease.inOut(k);
+      this.inner.position.x = x0 + 0.38 * (1 - e);
+      this.body.quaternion.setFromAxisAngle(fwd, -0.22 * (1 - e));
+    });
+    this.inner.position.x = x0;
+    this.inner.position.y = y0;
+    this.settleBody();
+    this.acting--;
+  }
+
   /** Hurt hop with eyes shut → topple sideways → flatten and sink. */
   async faint() {
     this.busy = true;
@@ -539,6 +563,9 @@ export class CreatureView {
   }
 
   setBusy(b: boolean) { this.busy = b; }
+
+  /** Self-lit ambient lift (default 0.16): your own kin, seen from behind and in its own shadow, gets a little more. */
+  setAmbientLift(v: number) { this.u.uAmb.value = v; }
 
   /** Free GPU resources (geometry, material, shadow). */
   dispose() {

@@ -84,9 +84,10 @@ export function partyAlive(p: PlayerState): boolean {
 
 export interface WildSetup { player: PlayerState; battle: BattleState; events: ReturnType<typeof createBattle>['events'] }
 
-export function startWildBattle(p0: PlayerState, routeId: string, hotspotId: string): WildSetup {
+export function startWildBattle(p0: PlayerState, routeId: string, hotspotId: string, debugFoe?: { species: string; level: number }): WildSetup {
   const p = structuredClone(p0);
-  const roll = rollEncounter(routeId, hotspotId, p.rng);
+  // Test/debug hook (battle scene `foe=` param): meet a given species on any route's theme.
+  const roll = debugFoe ? { species: debugFoe.species, level: debugFoe.level, rng: p.rng } : rollEncounter(routeId, hotspotId, p.rng);
   const rng = new Rng(roll.rng);
   const battleSeed = (rng.next() * 2 ** 32) >>> 0;
   p.rng = rng.state;

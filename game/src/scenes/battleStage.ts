@@ -142,15 +142,24 @@ export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w:
     if (x1 > right) return -Math.min(x1 - right, max);
     return 0;
   };
-  const dm = fix(kin[0], w * 0.2, Math.min(w - margin, mineRight)), df = fix(kin[1], w * 0.2);
-  // A long or low kin (rays, serpents) must not sink behind the text box.
-  let dy = 0;
-  if (kin[0]) {
-    const bottom = kinSpan(cam, w, h, kin[0])[3];
-    const limit = portrait && nearPanel ? nearPanel.y + 10 : t.mine[1] + 22;
-    if (bottom > limit) dy = -Math.min(bottom - limit, h * 0.12);
+  // Re-solving moves the camera (yaw/distance), which shifts the kin again: iterate a few
+  // passes so a wide foe (Verdantusk's tusks) really ends up inside the screen.
+  let dm = 0, df = 0, dy = 0;
+  for (let pass = 0; pass < 4; pass++) {
+    const ddm = fix(kin[0], w * 0.2, Math.min(w - margin, mineRight)), ddf = fix(kin[1], w * 0.2);
+    // A long or low kin (rays, serpents) must not sink behind the text box.
+    let ddy = 0;
+    if (kin[0]) {
+      const bottom = kinSpan(cam, w, h, kin[0])[3];
+      const limit = portrait && nearPanel ? nearPanel.y + 10 : t.mine[1] + 22;
+      if (bottom > limit) ddy = -Math.min(bottom - limit, h * 0.12);
+    }
+    if (Math.abs(ddm) < 0.5 && Math.abs(ddf) < 0.5 && Math.abs(ddy) < 0.5) break;
+    dm = THREE.MathUtils.clamp(dm + ddm, -w * 0.25, w * 0.25);
+    df = THREE.MathUtils.clamp(df + ddf, -w * 0.25, w * 0.25);
+    dy = Math.max(dy + ddy, -h * 0.14);
+    frameTwo(cam, w, h, spots[0], spots[1], [t.mine[0] + dm, t.mine[1] + dy], [t.foe[0] + df, t.foe[1]], { dir, yawRange: 0.45 });
   }
-  if (dm || df || dy) frameTwo(cam, w, h, spots[0], spots[1], [t.mine[0] + dm, t.mine[1] + dy], [t.foe[0] + df, t.foe[1]], { dir, yawRange: 0.45 });
   const dist = cam.position.distanceTo(spots[0].clone().add(spots[1]).multiplyScalar(0.5));
   if (scene.fog instanceof THREE.Fog) { scene.fog.near = dist + 8; scene.fog.far = dist + 36; }
 }

@@ -16,6 +16,10 @@ export interface MoveFxOptions {
   power?: number;
   /** Target height in world units; estimated from the scene when omitted. */
   targetHeight?: number;
+  /** The attack misses: the projectile drifts past the target, no impact or signature. */
+  miss?: boolean;
+  /** Battle camera: big signatures are scaled down to fit the screen around the target (portrait phones). */
+  camera?: THREE.Camera;
 }
 
 interface Ctx {
@@ -31,6 +35,7 @@ interface Ctx {
   /** Power factor: 0.8 weak, 1 normal, 1.3 strong. */
   P: number;
   tier: 0 | 1 | 2;
+  camera?: THREE.Camera;
 }
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -74,7 +79,92 @@ function makeCtx(scene: THREE.Scene, from: THREE.Vector3, to: THREE.Vector3, o: 
   const tier: 0 | 1 | 2 = power <= 45 ? 0 : power <= 70 ? 1 : 2;
   const ground = V(to.x, Math.min(est.floor, to.y), to.z);
   const centre = ground.clone().add(V(0, h * 0.5, 0));
-  return { scene, from: from.clone(), to: to.clone(), ground, centre, h, P: [0.8, 1, 1.3][tier]!, tier };
+  let P = [0.8, 1, 1.3][tier]!;
+  if (o.camera) P *= screenFit(o.camera, ground, h * P);
+  return { scene, from: from.clone(), to: to.clone(), ground, centre, h, P, tier, camera: o.camera };
+}
+
+/**
+ * How much a signature of world size `s` (height ≈ 1.9 s, half-width ≈ 1.3 s, the tallest
+ * crowns and widest rings) must shrink to stay inside the screen around `ground`. 1 = fits.
+ * On a portrait phone the foe stands near the top-right corner, so strong moves get trimmed
+ * there instead of being cut off by the screen edge.
+ */
+function screenFit(camera: THREE.Camera, ground: THREE.Vector3, s: number): number {
+  camera.updateMatrixWorld();
+  const g = ground.clone().project(camera);
+  if (g.z > 1 || Math.abs(g.x) > 1.2 || Math.abs(g.y) > 1.2) return 1;
+  const up = V(0, 1, 0);
+  const right = V(1, 0, 0).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+  right.y = 0;
+  right.normalize();
+  const perUp = ground.clone().add(up).project(camera).y - g.y;
+  const perSide = Math.abs(ground.clone().add(right).project(camera).x - g.x);
+  if (perUp <= 0 || perSide <= 0) return 1;
+  const roomUp = (0.98 - g.y) / perUp;
+  const roomSide = Math.min(0.99 - g.x, g.x + 0.99) / perSide;
+  return THREE.MathUtils.clamp(Math.min(1, roomUp / (1.9 * s), roomSide / (1.3 * s)), 0.55, 1);
+}
+
+// ------------------------------------------------------------------ miss
+
+const WHIFF: Record<string, [string, string]> = {
+  Flame: ['#ff7a1e', '#fff3a0'], Tide: ['#3d9bff', '#bfe6ff'], Flora: ['#3fae4f', '#eaffb0'], Spark: ['#ffc81e', '#ffffff'],
+  Terra: ['#a3825c', '#e6d2b0'], Gale: ['#8fd8ff', '#ffffff'], Neutral: ['#d8d0ff', '#ffffff'],
+};
+
+/**
+ * A missed attack: the element's projectile streaks past the target (over its shoulder, on the
+ * side facing the middle of the screen) and fades out — no flash, burst, ring or signature.
+ */
+async function whiff(c: Ctx, type: MoveElement) {
+  const [col, light] = WHIFF[type] ?? WHIFF.Neutral!;
+  const geo = cached(`whiff-${type}`, (b) => {
+    b.add(GEO.ball, col, { s: 0.2 }, 0.15);
+    b.add(GEO.ball, light, { p: [-0.04, 0.05, 0.08], s: 0.11 });
+  });
+  const dir = c.centre.clone().sub(c.from);
+  dir.y = 0;
+  dir.normalize();
+  let lateral = V(-dir.z, 0, dir.x);
+  if (c.camera) {
+    // Pass on the side that keeps the streak on screen (toward the middle).
+    const a = c.centre.clone().addScaledVector(lateral, c.h).project(c.camera);
+    const b = c.centre.clone().addScaledVector(lateral, -c.h).project(c.camera);
+    if (Math.abs(b.x) < Math.abs(a.x)) lateral = lateral.negate();
+  }
+  // Beside the target at its shoulder, then on past it and out.
+  const by = c.centre.clone().addScaledVector(lateral, 0.75 * c.h).add(V(0, 0.25 * c.h, 0));
+  const past = by.clone().addScaledVector(lateral, 0.35 * c.h).addScaledVector(dir, 1.4 * c.h).add(V(0, 0.2 * c.h, 0));
+  const f = fxMesh(c.scene, geo, 'normal');
+  const trail = new Particles(c.scene, 60, GEO.oct, 'normal');
+  const p = V();
+  const prev = c.from.clone();
+  let acc = 0;
+  let swished = false;
+  await animate(600, (k, dt) => {
+    if (k < 0.6) arcPoint(p, c.from, by, ease.inOut(k / 0.6), 0.35);
+    else p.lerpVectors(by, past, (k - 0.6) / 0.4);
+    f.mesh.position.copy(p);
+    f.mesh.scale.setScalar(1.35 * c.P * (k > 0.6 ? 1 - ((k - 0.6) / 0.4) * 0.7 : 1));
+    f.mat.opacity = k > 0.6 ? 1 - (k - 0.6) / 0.4 : 1;
+    if (!swished && k >= 0.6) {
+      swished = true;
+      // A pale whoosh where it sails by: reads as "just missed", not as a hit.
+      void flash(c.scene, by, '#ffffff', 0.5 * c.h, 260, 'crescent', 'normal', 0.8);
+    }
+    acc += dt;
+    const step = p.clone().sub(prev);
+    while (acc > 0.016 && k < 0.85) {
+      acc -= 0.016;
+      trail.emit(p.clone().addScaledVector(step, -rnd(0, 1)), V(rnd(-0.15, 0.15), rnd(0, 0.3), rnd(-0.15, 0.15)), { color: rnd() < 0.6 ? col : light, size: rnd(0.08, 0.14) * c.P, life: 0.32, end: 0 });
+    }
+    prev.copy(p);
+    trail.step(dt);
+  });
+  f.done();
+  void trail.run(350);
+  await wait(80);
 }
 
 /** Quadratic arc point from a to b with peak height `arc`. */
@@ -569,6 +659,7 @@ export async function moveFx(scene: THREE.Scene, type: MoveElement, from: THREE.
   const o = typeof opts === 'number' ? { power: opts } : opts;
   const c = makeCtx(scene, from, to, o);
   fxSeed(type.length * 97 + c.tier * 13);
+  if (o.miss) return whiff(c, type);
   let tail: Promise<unknown> | void;
   switch (type) {
     case 'Flame': tail = await flame(c); break;
@@ -589,7 +680,7 @@ export type StatusCue = 'buff' | 'debuff' | 'burn' | 'shock' | 'drowsy' | 'heal'
  * stat boost, falling ones for a drop, flame licks for burn, sparks for shock, floating Z's
  * for drowsy, green pluses for healing, a white sparkle ring for a cure.
  */
-export async function statusFx(scene: THREE.Scene, type: StatusCue, at: THREE.Vector3, height = 1.2): Promise<void> {
+export async function statusFx(scene: THREE.Scene, type: StatusCue, at: THREE.Vector3, height = 1.2, boost = 1): Promise<void> {
   fxSeed(type.length * 41);
   const h = THREE.MathUtils.clamp(height, 0.8, 2.6);
   const centre = at.clone().add(V(0, h * 0.5, 0));
@@ -604,8 +695,9 @@ export async function statusFx(scene: THREE.Scene, type: StatusCue, at: THREE.Ve
   };
   const s = spec[type];
   const flat = s.shape.attributes.position!.count < 200 && !(s.shape === GEO.cone4 || s.shape === GEO.box);
-  const ps = new Particles(scene, 24, s.shape, type === 'shock' || type === 'cure' ? 'add' : 'normal', { billboard: flat });
-  const n = type === 'drowsy' ? 3 : 10;
+  const ps = new Particles(scene, 32, s.shape, type === 'shock' || type === 'cure' ? 'add' : 'normal', { billboard: flat });
+  // `boost` (portrait phones: 1.5) makes the cue bigger and denser so it reads on a small screen.
+  const n = Math.round((type === 'drowsy' ? 3 : 10) * (boost > 1 ? 1 + (boost - 1) * 0.6 : 1));
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2;
     const r = h * 0.42;
@@ -615,7 +707,7 @@ export async function statusFx(scene: THREE.Scene, type: StatusCue, at: THREE.Ve
       ? V(rnd(-2, 2), rnd(-2, 2), rnd(-2, 2))
       : type === 'drowsy' ? V(0.25, 0.6, 0) : V(0, s.up * (1.2 + (i % 2) * 0.4) * h, 0);
     ps.emit(type === 'shock' ? centre.clone().add(V(rnd(-0.4, 0.4) * h, rnd(-0.4, 0.4) * h, rnd(-0.2, 0.2))) : p, v, {
-      color: s.colors[i % s.colors.length]!, size: (type === 'drowsy' ? 0.16 : flat ? 0.13 : 0.07) * Math.sqrt(h), life: type === 'drowsy' ? 0.9 : 0.6,
+      color: s.colors[i % s.colors.length]!, size: (type === 'drowsy' ? 0.16 : flat ? 0.13 : 0.07) * Math.sqrt(h) * boost, life: (type === 'drowsy' ? 0.9 : 0.6) * (boost > 1 ? 1.15 : 1),
       end: type === 'burn' ? 0 : 0.6, stretch: type === 'burn' ? 2.2 : type === 'shock' ? 4 : 1, spin: type === 'shock' ? 15 : 0,
     });
   }

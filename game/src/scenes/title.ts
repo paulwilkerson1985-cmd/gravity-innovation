@@ -61,7 +61,7 @@ export class TitleScene extends BaseScene {
     );
     this.ui.append(h('div', { class: 'title-ui' },
       h('h1', { class: 'logo' }, h('span', {}, 'ORB'), h('span', {}, 'KIN')),
-      h('p', { class: 'tagline' }, 'Befriend wild kin. Battle with heart.'),
+      h('p', { class: 'tagline' }, h('span', {}, 'Befriend wild kin.'), ' ', h('span', {}, 'Battle with heart.')),
       buttons,
       h('p', { class: 'footnote' }, `${this.game.dex().species.size} kin to discover · prototype build`),
     ));

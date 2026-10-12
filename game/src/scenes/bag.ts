@@ -54,7 +54,7 @@ export class BagScene extends MetaScene {
     const items = ids.filter((id) => !isOrb(id));
     const row = (id: BagId) => h('button', {
       class: `btn item-row ${this.sel === id ? 'selected' : ''}`, 'data-testid': `bag-${id}`,
-      onclick: () => { audio.sfx('cursor'); this.select(id); },
+      onclick: () => { audio.sfx('cursor'); this.select(id); this.revealDetail(this.detail); },
     }, itemIcon(id), h('span', { class: 'ir-main' }, h('span', { class: 'mname' }, bagName(id))), h('span', { class: 'ir-count' }, `×${bagCount(this.game.player, id)}`));
     if (orbs.length) sections.push(h('h4', { class: 'meta-sub' }, 'Orbs'), ...orbs.map(row));
     if (items.length) sections.push(h('h4', { class: 'meta-sub' }, 'Items'), ...items.map(row));

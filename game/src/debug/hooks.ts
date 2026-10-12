@@ -108,15 +108,23 @@ export function installHooks(game: Game) {
       for (const { name, obj } of cur.subjects()) {
         if (!obj.visible) continue;
         obj.updateWorldMatrix(true, true);
-        const box = new THREE.Box3().setFromObject(obj, true);
-        if (box.isEmpty()) continue;
+        // Project the meshes' vertices (sampled), not the corners of a world box: a diagonal
+        // part (long tusks, a tail) would make a world-aligned box far wider than the model.
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (let i = 0; i < 8; i++) {
-          const v = new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).project(cur.camera);
-          const sx = (v.x * 0.5 + 0.5) * rect.width;
-          const sy = (-v.y * 0.5 + 0.5) * rect.height;
-          x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
-        }
+        const v = new THREE.Vector3();
+        obj.traverse((o) => {
+          const m = o as THREE.Mesh;
+          const pos = m.isMesh && m.visible ? m.geometry.attributes.position : undefined;
+          if (!pos) return;
+          const step = Math.max(1, Math.floor(pos.count / 3000));
+          for (let i = 0; i < pos.count; i += step) {
+            v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).project(cur.camera);
+            const sx = (v.x * 0.5 + 0.5) * rect.width;
+            const sy = (-v.y * 0.5 + 0.5) * rect.height;
+            x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+          }
+        });
+        if (!Number.isFinite(x0)) continue;
         out.subjects.push({ name, x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) });
       }
       return out;

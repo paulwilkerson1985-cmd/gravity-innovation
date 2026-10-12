@@ -2,6 +2,7 @@
 // battle it only plays back engine events — locally from resolveTurn, online from the
 // server's event log. Hotseat choices are hidden behind a pass-the-device curtain.
 import * as THREE from 'three';
+import { layoutMode } from './framing';
 import { BaseScene } from './base';
 import { CreatureView } from '../render/creature';
 import { burst } from '../render/fx';
@@ -38,6 +39,9 @@ export interface ArenaBattleParams {
 }
 
 const other = (s: Seat): Seat => (s === 0 ? 1 : 0);
+
+/** How long a freshly shown battle menu ignores Enter/Space (anti-mash). */
+const MENU_ARM_MS = 250;
 
 export class ArenaBattleScene extends BaseScene {
   readonly name = 'arenaBattle' as const;
@@ -216,7 +220,9 @@ export class ArenaBattleScene extends BaseScene {
     // Held keys (auto-repeat) never click through prompts.
     if (e.repeat && (e.key === 'Enter' || e.key === ' ' || e.key === 'z')) { e.preventDefault(); return; }
     if (e.target instanceof HTMLInputElement) return;
-    if (this.advance && (e.key === 'Enter' || e.key === ' ' || e.key === 'z')) { e.preventDefault(); this.advance(); }
+    if (this.advance && (e.key === 'Enter' || e.key === ' ' || e.key === 'z')) { e.preventDefault(); this.advance(); return; }
+    // A fresh menu ignores confirm keys for a beat, so mashing through text can't commit a move.
+    if ((e.key === 'Enter' || e.key === ' ') && performance.now() - this.menuAt < MENU_ARM_MS) { e.preventDefault(); return; }
     if (e.key === 'Escape' || e.key === 'x') this.menu.querySelector<HTMLButtonElement>('[data-back]')?.click();
   };
 
@@ -266,8 +272,11 @@ export class ArenaBattleScene extends BaseScene {
     return this.cur[other(seat)]?.name === name ? `${this.names[seat]}'s ${name}` : name;
   }
 
+  private menuAt = 0;
+
   private setMenu(kind: string, buttons: HTMLElement[]) {
     this.menu.className = `menu bt-menu arena-menu menu-${kind}`;
+    this.menuAt = performance.now();
     this.menu.replaceChildren(...buttons);
     this.game.idle = true;
     focusFirst(this.menu);
@@ -408,8 +417,9 @@ export class ArenaBattleScene extends BaseScene {
     this.text.textContent = `${this.who(seat)}Choose a move for ${me.name}.`;
     this.setMenu('moves', [...me.moves.map((m, i) => {
       const data = getMove(m.id);
-      return abtn([h('span', { class: 'mname' }, data.name), h('span', { class: 'mmeta' }, `${data.type} · ${data.category === 'attack' ? `Pow ${data.power}` : 'Status'} · PP ${m.pp}/${m.maxPp}`)], {
-        class: 'btn-move', style: `--c:${TYPE_COLORS[data.type]}`, 'data-testid': `move-${i}`, disabled: m.pp <= 0, title: data.blurb,
+      return abtn([h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name)), h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `${data.power} pow` : 'Status'} · ${m.pp} PP`)], {
+        class: 'btn-move', style: `--c:${TYPE_COLORS[data.type]}`, 'data-testid': `move-${i}`, disabled: m.pp <= 0,
+        title: `${data.type} · ${data.blurb} (${m.pp}/${m.maxPp} PP)`,
         onclick: () => this.choose(seat, { type: 'move', index: i }),
       });
     }), this.backBtn(seat)]);
@@ -421,7 +431,7 @@ export class ArenaBattleScene extends BaseScene {
     const legal = legalActions(this.state, seat);
     const buttons = side.party.map((c, i) => {
       const ok = legal.some((a) => a.type === 'switch' && a.to === i);
-      const meta = c.hp <= 0 ? 'Fainted' : i === side.active ? 'In battle' : `HP ${c.hp}/${c.stats.hp}${c.status ? ` · ${STATUS_TEXT[c.status][0]}` : ''}`;
+      const meta = c.hp <= 0 ? 'Fainted' : i === side.active ? 'In battle' : `${c.hp}/${c.stats.hp}${c.status ? ` · ${STATUS_TEXT[c.status][0]}` : ''}`;
       return abtn([h('span', { class: 'mname' }, c.name), h('span', { class: 'chips' }, ...c.types.map(typeChip)), h('span', { class: 'mmeta' }, meta)], {
         class: 'btn-kinpick', 'data-testid': `kin-${i}`, disabled: !ok, onclick: () => this.choose(seat, { type: 'switch', to: i }),
       });
@@ -606,13 +616,20 @@ export class ArenaBattleScene extends BaseScene {
   private cue(seat: Seat, type: StatusCue): Promise<void> {
     const v = this.views[seat];
     if (!v?.root.visible) return Promise.resolve();
-    return statusFx(this.scene, type, this.spot(seat).clone(), kinHeight(v));
+    return statusFx(this.scene, type, this.spot(seat).clone(), kinHeight(v), layoutMode(innerWidth, innerHeight) === 'portrait' ? 1.5 : 1);
   }
 
   private makeView(seat: Seat, speciesId: string) {
     const view = new CreatureView(species(speciesId).look, seat);
     view.root.position.copy(this.spot(seat));
     view.faceTowards(seat === this.near ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
+    if (seat === this.near) {
+      // Same 3/4 back view as the adventure battle; flat kin turn further, and a little extra light.
+      view.root.rotation.y -= 0.55;
+      const bb = view.mesh.geometry.boundingBox;
+      if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
+      view.setAmbientLift(0.3);
+    }
     this.scene.add(view.root);
     this.views[seat] = view;
     fitKinScale(view, seat === this.near ? 0 : 1);
@@ -633,15 +650,16 @@ export class ArenaBattleScene extends BaseScene {
     this.game.idle = false;
     this.menu.replaceChildren();
     this.timerEl.hidden = true;
-    for (const e of events) {
+    for (let i = 0; i < events.length; i++) {
       if (this.exited) return;
-      await this.playOne(e);
+      // The next event rides along: a move followed by its `miss` plays a whiff, not a hit.
+      await this.playOne(events[i]!, events[i + 1]);
     }
     for (const seat of [0, 1] as const) this.updatePips(seat);
     this.playing = false;
   }
 
-  private async playOne(e: BattleEvent) {
+  private async playOne(e: BattleEvent, next?: BattleEvent) {
     const v = (seat: Seat) => this.views[seat];
     switch (e.t) {
       case 'turn': return;
@@ -669,7 +687,9 @@ export class ArenaBattleScene extends BaseScene {
           const to = this.spot(foe).clone().add(new THREE.Vector3(0, 0.6, 0));
           const lunge = me?.lunge(this.spot(foe));
           await wait(140);
-          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, data.power)]);
+          const miss = next?.t === 'miss' && next.side === e.side;
+          const dodge = miss ? wait(330).then(() => v(foe)?.dodge()) : null;
+          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, { power: data.power, camera: this.camera, miss }), dodge]);
         } else {
           await me?.pulse(TYPE_COLORS[data.type]!);
         }

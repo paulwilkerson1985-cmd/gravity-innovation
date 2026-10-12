@@ -97,7 +97,8 @@ export class EvolutionScene extends BaseScene {
     const area = freeArea(w, hgt, land ? { right: [this.panel] } : { bottom: [this.panel] }, 10);
     const hw = w / hgt < 1 ? 1.0 : 1.45;
     const pts = corners(new THREE.Vector3(-hw, -0.1, -1.3), new THREE.Vector3(hw, 1.9, 1.3));
-    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.16, 1), target: new THREE.Vector3(0, 0.95, 0), fill: 0.9 });
+    // Portrait (width-bound): stand the pedestal right above the text box, glow and sky above.
+    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.16, 1), target: new THREE.Vector3(0, 0.95, 0), fill: 0.9, alignY: !land && w / hgt < 1 ? 'bottom' : 'center' });
   }
 
   /** Layout checks (debug hook). */

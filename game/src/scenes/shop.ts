@@ -38,7 +38,7 @@ export class ShopScene extends MetaScene {
     this.money.replaceChildren(coin(), String(p.money));
     this.list.replaceChildren(...allBagIds().map((id) => h('button', {
       class: `btn item-row ${this.sel === id ? 'selected' : ''} ${priceOf(id) > p.money ? 'pricey' : ''}`, 'data-testid': `shop-${id}`,
-      onclick: () => { audio.sfx('cursor'); this.select(id); },
+      onclick: () => { audio.sfx('cursor'); this.select(id); this.revealDetail(this.detail); },
     },
     itemIcon(id),
     h('span', { class: 'ir-main' }, h('span', { class: 'mname' }, bagName(id)), h('span', { class: 'small' }, `In bag: ${bagCount(p, id)}`)),

@@ -3,6 +3,7 @@
 // After the battle it plays back the progression results (XP, level-ups, move offers,
 // trainer rewards, route unlocks) computed by src/game/progress.ts.
 import * as THREE from 'three';
+import { layoutMode } from './framing';
 import { BaseScene } from './base';
 import './adventure.css';
 import { CreatureView } from '../render/creature';
@@ -24,7 +25,7 @@ import {
 import { ITEM_IDS } from '../data/items';
 import { applyBattleResult, startWildBattle, useOrb } from '../game/state';
 import {
-  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionsAfterWin, startTrainerBattle, teachMove, trainerVictory, withSeen,
+  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionsAfterWin, startTrainerBattle, teachMove, trainerVictory, wildVictory, withSeen,
   type BattleXp, type TrainerVictory,
   xpProgress, type CreatureGain,
 } from '../game/progress';
@@ -42,9 +43,23 @@ const STAT_LABELS: [keyof Stats, string][] = [['hp', 'Max HP'], ['atk', 'Attack'
 function itemShort(id: ItemId): string {
   const e = getItem(id).effect;
   if (e.kind === 'heal') return e.amount === 'full' ? 'Full HP' : `+${e.amount} HP`;
-  if (e.kind === 'cure') return 'Cures status';
-  return 'Revives';
+  if (e.kind === 'cure') return 'Cure';
+  return 'Revive';
 }
+
+/** Height of a resting orb's centre above the pad top (its bottom tip touches the pad). */
+const ORB_REST_Y = 0.36;
+
+/** A soft contact shadow for an orb resting on a pad. */
+function orbShadow(): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.2, 14), new THREE.MeshBasicMaterial({ color: 0x1a1030, transparent: true, opacity: 0, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.renderOrder = -0.4;
+  return m;
+}
+
+/** "a" / "an" for a name ("an Orb", "a Bright Orb"). */
+const article = (name: string) => (/^[aeiou]/i.test(name) ? 'an' : 'a');
 
 /** Text pacing per settings.textSpeed: hold multiplier and typewriter characters per second. */
 const PACE = { slow: { hold: 1.6, cps: 40 }, normal: { hold: 1, cps: 75 }, fast: { hold: 0.5, cps: 170 } } as const;
@@ -55,6 +70,9 @@ interface Panel {
 }
 
 type BagTab = 'orbs' | 'items';
+
+/** How long a freshly shown battle menu ignores Enter/Space (anti-mash). */
+const MENU_ARM_MS = 250;
 
 export class BattleScene extends BaseScene {
   readonly name = 'battle' as const;
@@ -96,7 +114,8 @@ export class BattleScene extends BaseScene {
       events = setup.events;
       if (getTrainer(trainerId).routeId !== this.routeId) this.routeId = getTrainer(trainerId).routeId;
     } else {
-      const setup = startWildBattle(g.player, this.routeId, route?.hotspots.some((s) => s.id === hotspotId && s.kind !== 'trainer') ? hotspotId : route?.hotspots.find((s) => s.kind !== 'trainer')?.id ?? 'tall-grass');
+      const debugFoe = typeof params.foe === 'string' && g.dex().species.has(params.foe) ? { species: params.foe, level: Number(params.foeLevel ?? 20) || 20 } : undefined;
+      const setup = startWildBattle(g.player, this.routeId, route?.hotspots.some((s) => s.id === hotspotId && s.kind !== 'trainer') ? hotspotId : route?.hotspots.find((s) => s.kind !== 'trainer')?.id ?? 'tall-grass', debugFoe);
       g.player = setup.player;
       this.state = setup.battle;
       events = setup.events;
@@ -197,6 +216,9 @@ export class BattleScene extends BaseScene {
     // activation key, including the browser's own Enter/Space-on-focused-button default.
     if (e.repeat && (e.key === 'Enter' || e.key === ' ' || e.key === 'z' || /^[1-9]$/.test(e.key))) { e.preventDefault(); return; }
     if (this.advance && (e.key === 'Enter' || e.key === ' ' || e.key === 'z')) { e.preventDefault(); this.advance(); return; }
+    // Mashing through text must not fall straight into Fight → first move: a fresh menu
+    // ignores confirm keys for a beat (separate presses, not only held ones).
+    if ((e.key === 'Enter' || e.key === ' ') && performance.now() - this.menuAt < MENU_ARM_MS) { e.preventDefault(); return; }
     if (e.key === 'Escape' || e.key === 'x' || e.key === 'Backspace') {
       const back = this.menu.querySelector<HTMLButtonElement>('[data-back]');
       if (back) { e.preventDefault(); back.click(); }
@@ -289,28 +311,56 @@ export class BattleScene extends BaseScene {
     return PACE[this.game.player.settings?.textSpeed ?? 'normal'] ?? PACE.normal;
   }
 
-  /** Show a line of text (typewriter); resolves after a short hold or when the player taps / presses a key. */
-  private say(msg: string, hold = 700): Promise<void> {
+  /**
+   * Show a line of text (typewriter); resolves after a short hold or when the player taps /
+   * presses a key. A line too long for the text box (even grown into the free menu slot) is
+   * split into pages, each shown in turn.
+   */
+  private async say(msg: string, hold = 700): Promise<void> {
     this.menu.replaceChildren();
     this.live.textContent = msg;
     this.game.idle = false;
-    if (animClock.instant) { this.text.textContent = msg; return Promise.resolve(); }
+    if (animClock.instant) { this.text.textContent = msg; return; }
+    for (const page of this.paginate(msg)) await this.sayPage(page, hold);
+  }
+
+  /** Split `msg` at word boundaries into chunks that each fit the text box as laid out now. */
+  private paginate(msg: string): string[] {
+    const box = this.text.parentElement;
+    if (!box || box.offsetParent === null) return [msg];
+    const fits = (t: string) => { this.text.textContent = t; return box.scrollHeight <= box.clientHeight + 1; };
+    if (fits(msg)) return [msg];
+    const out: string[] = [];
+    let cur = '';
+    for (const w of msg.split(' ')) {
+      const t = cur ? `${cur} ${w}` : w;
+      if (cur && !fits(`${t} …`)) { out.push(`${cur} …`); cur = w; } else cur = t;
+    }
+    out.push(cur);
+    this.text.textContent = '';
+    return out;
+  }
+
+  private sayPage(msg: string, hold: number): Promise<void> {
     const pace = this.pace();
+    // The untyped rest is laid out (transparent) from the start: words never jump to the next
+    // line mid-typing and the box has its final size at once.
+    const rest = h('span', { class: 'untyped' });
+    const typed = document.createTextNode('');
+    this.text.replaceChildren(typed, rest);
+    this.text.classList.remove('waiting');
     return new Promise((resolve) => {
-      let typed = false;
+      let full = false;
       let done = false;
       const finish = () => { if (!done) { done = true; this.advance = null; this.text.classList.remove('waiting'); resolve(); } };
-      this.advance = () => {
-        if (!typed) { typed = true; this.text.textContent = msg; this.text.classList.add('waiting'); } else finish();
-      };
+      const showAll = () => { full = true; this.text.textContent = msg; this.text.classList.add('waiting'); };
+      this.advance = () => { if (!full) showAll(); else finish(); };
       let shown = -1;
       void tween((msg.length / pace.cps) * 1000, (k) => {
         const n = Math.ceil(k * msg.length);
-        if (!typed && n !== shown) { shown = n; this.text.textContent = msg.slice(0, n); }
+        if (!full && n !== shown) { shown = n; typed.data = msg.slice(0, n); rest.textContent = msg.slice(n); }
       }).then(() => {
-        typed = true;
-        this.text.textContent = msg;
-        this.text.classList.add('waiting');
+        if (!full) showAll();
         return wait((hold + msg.length * 14) * pace.hold);
       }).then(finish);
     });
@@ -395,8 +445,11 @@ export class BattleScene extends BaseScene {
     this.live.textContent = msg;
   }
 
+  private menuAt = 0;
+
   private setMenu(kind: string, buttons: HTMLElement[], back: (() => void) | null = null, focus = true) {
     this.menu.className = `menu bt-menu menu-${kind}`;
+    this.menuAt = performance.now();
     this.menu.replaceChildren(...buttons);
     if (back) this.menu.append(h('button', { class: 'btn btn-back', 'data-back': true, 'data-testid': 'btn-back', onclick: back }, 'Back'));
     this.game.idle = true;
@@ -415,14 +468,17 @@ export class BattleScene extends BaseScene {
       const data = getMove(m.id);
       const mult = data.category === 'attack' ? typeMultiplier(data.type, foe.types) : 1;
       // Effectiveness hint against the foe on the field (attacks only).
-      const tag = mult > 1 ? h('span', { class: 'eff eff-up', title: 'Super effective' }, mult > 2 ? 'Super ×4' : 'Super')
-        : mult < 1 ? h('span', { class: 'eff eff-down', title: 'Not very effective' }, 'Weak') : null;
+      // Long word on roomy screens, a compact ×2 / ×½ on narrow ones (CSS picks).
+      const eff = (cls: string, title: string, long: string, short: string) => h('span', { class: `eff ${cls}`, title },
+        h('span', { class: 'eff-long' }, long), h('span', { class: 'eff-short' }, short));
+      const tag = mult > 1 ? eff('eff-up', 'Super effective', mult > 2 ? 'Super ×4' : 'Super', mult > 2 ? '×4' : '×2')
+        : mult < 1 ? eff('eff-down', 'Not very effective', 'Weak', mult < 0.5 ? '×¼' : '×½') : null;
       return h('button', {
         class: 'btn btn-move', style: `--c:${TYPE_COLORS[data.type]}`, 'data-testid': `move-${i}`, 'data-pick': i + 1, disabled: m.pp <= 0,
         title: `${data.type} · ${data.blurb}`, 'aria-label': `${data.name}, ${data.type}, ${data.category === 'attack' ? `power ${data.power}` : 'status move'}, ${m.pp} of ${m.maxPp} PP`,
         onclick: () => this.submit({ type: 'move', index: i }),
       }, h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name), tag),
-      h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `Pow ${data.power}` : 'Status'} · PP ${m.pp}/${m.maxPp}`));
+      h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `${data.power} pow` : 'Status'} · ${m.pp} PP`));
     }), () => this.showMain());
     this.text.textContent = 'Choose a move.';
   }
@@ -453,8 +509,9 @@ export class BattleScene extends BaseScene {
       return h('button', {
         class: 'btn btn-orb', style: `--c:${ORB_COLORS[id]}`, 'data-testid': `orb-${id}`, 'data-pick': i + 1, disabled: have <= 0 || !canCatch,
         onclick: () => this.submit({ type: 'catch', orb: id }),
-      }, h('span', { class: 'mname' }, orbIcon(id, 'orb-ico'), ORBS[id].name),
-      h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${have}`), canCatch ? ` · ≈${Math.round(p * 100)}%` : ' · Can’t catch'));
+        title: `${ORBS[id].name} · ${have} left${canCatch ? ` · about ${Math.round(p * 100)}% to catch` : ''}`,
+      }, h('span', { class: 'mname' }, orbIcon(id, 'orb-ico'), h('span', { class: 'mn' }, ORBS[id].name)),
+      h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${have}`), canCatch ? ` · ≈${Math.round(p * 100)}%` : ''));
     });
   }
 
@@ -472,7 +529,7 @@ export class BattleScene extends BaseScene {
       return h('button', {
         class: 'btn btn-item', 'data-testid': `item-${id}`, 'data-pick': i + 1, disabled: !usable, title: it.blurb,
         onclick: () => this.showItemTargets(id),
-      }, h('span', { class: 'mname' }, it.name), h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${this.game.player.bag[id] ?? 0}`), ` · ${usable ? itemShort(id) : 'Not needed'}`));
+      }, h('span', { class: 'mname' }, h('span', { class: 'mn' }, it.name)), h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${this.game.player.bag[id] ?? 0}`), ` · ${usable ? itemShort(id) : 'No need'}`));
     });
   }
 
@@ -491,18 +548,19 @@ export class BattleScene extends BaseScene {
   }
 
   private kinButton(c: BattleCreature, i: number, testid: string, enabled: boolean, onclick: () => void, note = '', current = false) {
-    const bar = hpBar(c.hp, c.stats.hp);
-    const st = c.hp > 0 && c.status ? h('span', { class: 'badge', style: `--c:${STATUS_TEXT[c.status][2]}` }, STATUS_TEXT[c.status][0]) : null;
-    const tail = note ? h('span', { class: 'mmeta knote' }, note)
-      : c.hp <= 0 ? h('span', { class: 'badge badge-fnt' }, 'FNT')
-        : h('span', { class: 'mmeta' }, `${c.hp}/${c.stats.hp}`);
+    // Row 1: name + status/FNT badge. Row 2: level, HP bar and numbers (or a note) — the same
+    // shape for every tile, so a status never pushes the bar out.
+    const bar = hpBar(Math.max(0, c.hp), c.stats.hp);
+    const st = c.hp <= 0 ? h('span', { class: 'badge badge-fnt' }, 'FNT')
+      : c.status ? h('span', { class: 'badge', style: `--c:${STATUS_TEXT[c.status][2]}` }, STATUS_TEXT[c.status][0]) : null;
+    const tail = note ? h('span', { class: 'mmeta knote' }, note) : h('span', { class: 'mmeta hpnums-k' }, `${Math.max(0, c.hp)}/${c.stats.hp}`);
     const lv = h('span', { class: 'plevel' }, `Lv${c.level}`);
     return h('button', {
       class: `btn btn-kinpick ${c.hp <= 0 ? 'fainted' : ''} ${current ? 'current' : ''}`, 'data-testid': testid, 'data-pick': i + 1, disabled: !enabled, onclick,
       title: `${c.name} Lv${c.level} · ${Math.max(0, c.hp)}/${c.stats.hp} HP${c.status ? ` · ${STATUS_TEXT[c.status][3]}` : ''}`,
     },
-    h('span', { class: 'kin-row' }, h('span', { class: 'mname' }, c.name)),
-    h('span', { class: 'kin-row' }, lv, note || st || c.hp <= 0 ? null : bar, note ? null : st, tail));
+    h('span', { class: 'kin-row' }, h('span', { class: 'mname' }, c.name), st),
+    h('span', { class: 'kin-row' }, lv, note ? null : bar, tail));
   }
 
   private showParty(forced: boolean) {
@@ -534,7 +592,8 @@ export class BattleScene extends BaseScene {
   }
 
   private async play(events: BattleEvent[]) {
-    for (const e of events) await this.playOne(e);
+    // The next event is passed along: a move followed by its `miss` plays a whiff, not a hit.
+    for (let i = 0; i < events.length; i++) await this.playOne(events[i]!, events[i + 1]);
   }
 
   private disposeView(side: 0 | 1) {
@@ -548,7 +607,7 @@ export class BattleScene extends BaseScene {
     this.views[side] = null;
   }
 
-  private async playOne(e: BattleEvent) {
+  private async playOne(e: BattleEvent, next?: BattleEvent) {
     const v = (side: 0 | 1) => this.views[side];
     switch (e.t) {
       case 'turn': return;
@@ -568,7 +627,14 @@ export class BattleScene extends BaseScene {
         view.root.position.copy(this.spots[e.side]);
         view.faceTowards(e.side === 0 ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
         // Turn your own kin a little toward the camera: a readable 3/4 back view, not a rear end.
-        if (e.side === 0) view.root.rotation.y -= 0.55;
+        if (e.side === 0) {
+          view.root.rotation.y -= 0.55;
+          // Flat kin (rays) read as a sliver edge-on: turn them further to show their top/side.
+          const bb = view.mesh.geometry.boundingBox;
+          if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
+          // Lit a touch brighter than the foe, so a brown kin never melts into a brown pad.
+          view.setAmbientLift(0.3);
+        }
         this.scene.add(view.root);
         view.inner.scale.setScalar(0.001);
         this.views[e.side] = view;
@@ -595,7 +661,9 @@ export class BattleScene extends BaseScene {
           const to = this.spots[e.side === 0 ? 1 : 0].clone().add(new THREE.Vector3(0, 0.6, 0));
           const lunge = me?.lunge(this.spots[e.side === 0 ? 1 : 0]);
           await wait(140);
-          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, data.power)]);
+          const miss = next?.t === 'miss' && next.side === e.side;
+          const dodge = miss ? wait(330).then(() => v(e.side === 0 ? 1 : 0)?.dodge()) : null;
+          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, { power: data.power, camera: this.camera, miss }), dodge]);
         } else await me?.pulse(TYPE_COLORS[data.type]!);
         return;
       }
@@ -624,7 +692,7 @@ export class BattleScene extends BaseScene {
       }
       case 'item':
         audio.sfx('item');
-        return this.say(`You used a ${e.itemName} on ${e.name}!`, 350);
+        return this.say(`You used ${article(e.itemName)} ${e.itemName} on ${e.name}!`, 350);
       case 'heal': {
         audio.sfx('heal');
         const onField = e.slot === undefined || e.slot === this.activeSlot[e.side];
@@ -691,13 +759,17 @@ export class BattleScene extends BaseScene {
   private cue(side: 0 | 1, type: StatusCue): Promise<void> {
     const v = this.views[side];
     if (!v?.root.visible) return Promise.resolve();
-    return statusFx(this.scene, type, this.spots[side].clone(), kinHeight(v));
+    return statusFx(this.scene, type, this.spots[side].clone(), kinHeight(v), layoutMode(innerWidth, innerHeight) === 'portrait' ? 1.5 : 1);
   }
 
   /** Send-out flourish for your side: an orb arcs onto the pad and bursts open. */
   private async throwIn(speciesId: string) {
     const orb = makeOrb(ORB_COLORS.orb);
-    const land = this.spots[0].clone().add(new THREE.Vector3(0, 0.45, 0));
+    // Never bigger than the kin it carries: a small kin on a big screen gets a smaller orb.
+    const mine = this.views[0];
+    const sc = mine ? THREE.MathUtils.clamp(kinHeight(mine) / 1.5, 0.5, 1) : 1;
+    orb.scale.setScalar(sc);
+    const land = this.spots[0].clone().add(new THREE.Vector3(0, ORB_REST_Y * sc + 0.1, 0));
     const from = this.spots[0].clone().add(new THREE.Vector3(-1.4, 1.2, 2.2));
     orb.position.copy(from);
     this.scene.add(orb);
@@ -732,14 +804,18 @@ export class BattleScene extends BaseScene {
   }
 
   private async playCatch(e: Extract<BattleEvent, { t: 'catch' }>) {
-    await this.say(`You threw a ${ORBS[e.orb].name}!`, 200);
+    await this.say(`You threw ${article(ORBS[e.orb].name)} ${ORBS[e.orb].name}!`, 200);
     audio.sfx('throw');
     const orb = makeOrb(ORB_COLORS[e.orb], e.orb);
     const from = this.spots[0].clone().add(new THREE.Vector3(0.3, 1.0, 0.2));
     const target = this.spots[1].clone().add(new THREE.Vector3(0, 0.75, 0.35));
-    const ground = this.spots[1].clone().add(new THREE.Vector3(0, 0.22, 0.35));
+    // The orb rests ON the pad (its bottom tip at the pad top), with a little contact shadow,
+    // and is lit a touch so it doesn't go dull against the pad in the shade.
+    const ground = this.spots[1].clone().add(new THREE.Vector3(0, ORB_REST_Y, 0.35));
     orb.position.copy(from);
     this.scene.add(orb);
+    const shadow = orbShadow();
+    shadow.position.set(ground.x, this.spots[1].y + 0.012, ground.z);
     // Arc throw.
     await tween(520, (k) => {
       orb.position.lerpVectors(from, target, k);
@@ -756,10 +832,15 @@ export class BattleScene extends BaseScene {
       });
       foe.root.visible = false;
     }
+    this.scene.add(shadow);
+    const shadowMat = shadow.material as THREE.MeshBasicMaterial;
     await tween(260, (k) => {
       orb.position.lerpVectors(target, ground, ease.inCubic(k));
       orb.rotation.x = 0;
+      shadowMat.opacity = 0.32 * k;
+      shadow.scale.setScalar(0.6 + 0.4 * k);
     });
+    (orb.material as THREE.MeshLambertMaterial).emissive.setScalar(0.1);
     await tween(140, (k) => { orb.position.y = ground.y + Math.sin(k * Math.PI) * 0.18; });
     // Shakes.
     for (let i = 0; i < e.shakes; i++) {
@@ -775,7 +856,7 @@ export class BattleScene extends BaseScene {
       audio.sfx('click');
       orbLockFx(orb);
       void orbCelebrate(this.scene, ground.clone().add(new THREE.Vector3(0, 0.3, 0)), e.orb);
-      await tween(200, (k) => mat.emissive.setScalar(0.6 * (1 - k)));
+      await tween(200, (k) => mat.emissive.setScalar(0.1 + 0.5 * (1 - k)));
       void burst(this.scene, ground.clone().add(new THREE.Vector3(0, 0.2, 0)), '#ffe14d', 1.2, 10);
       this.panels[1].root.style.visibility = 'hidden';
       audio.sfx('caught');
@@ -785,15 +866,20 @@ export class BattleScene extends BaseScene {
       await tween(320, (k) => {
         orb.position.y = y0 + Math.sin(k * Math.PI) * 0.35;
         orb.scale.setScalar(Math.max(0.001, 1 - ease.inCubic(k)));
+        shadowMat.opacity = 0.32 * (1 - k);
       });
       void this.sparkleAt(1, '#ffe14d');
-      this.scene.remove(orb);
+      this.scene.remove(orb, shadow);
+      shadow.geometry.dispose();
+      shadowMat.dispose();
       orb.geometry.dispose();
       mat.dispose();
     } else {
       audio.sfx('breakFree');
       void burst(this.scene, ground, '#ffffff', 1);
-      this.scene.remove(orb);
+      this.scene.remove(orb, shadow);
+      shadow.geometry.dispose();
+      shadowMat.dispose();
       orb.geometry.dispose();
       mat.dispose();
       if (foe) {
@@ -822,12 +908,17 @@ export class BattleScene extends BaseScene {
     let p = res.player;
     let xp: BattleXp | null = null;
     let victory: TrainerVictory | null = null;
+    let wildCoins = 0;
     if (won) {
       xp = applyBattleXp(p, this.state);
       p = xp.player;
       if (this.trainer) {
         victory = trainerVictory(p, this.trainer.id);
         p = victory.player;
+      } else {
+        const w = wildVictory(p, this.state);
+        p = w.player;
+        wildCoins = w.coins;
       }
     } else if (o.reason === 'ko') {
       p = blackout(p);
@@ -845,6 +936,10 @@ export class BattleScene extends BaseScene {
     if (won && xp) {
       audio.music('victory');
       await this.playGains(xp.gains);
+      if (wildCoins > 0) {
+        audio.sfx('item');
+        await this.say(`You found ${wildCoins} coins!`, 500);
+      }
       if (this.trainer && victory) {
         const t = this.trainer;
         await this.trainerWalk(true);

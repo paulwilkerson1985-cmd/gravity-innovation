@@ -245,7 +245,7 @@ export class RouteScene extends BaseScene {
       const tab = h('button', {
         class: `tab ${r.id === this.route.id ? 'on' : ''} ${open ? '' : 'locked'}`, 'data-testid': `tab-${r.id}`, role: 'tab',
         'aria-selected': r.id === this.route.id ? 'true' : 'false', disabled: !open,
-        title: open ? `${r.name} (Lv ${r.levelRange[0]}–${r.levelRange[1]})` : `Locked — defeat ${blockers.map((t) => `${t.title} ${t.name}`).join(' and ')} to open ${r.name}`,
+        title: open ? `${r.name}${wildRange(r) ? ` (Lv ${wildRange(r)![0]}–${wildRange(r)![1]})` : ''}` : `Locked — defeat ${blockers.map((t) => `${t.title} ${t.name}`).join(' and ')} to open ${r.name}`,
         onclick: () => { if (r.id !== this.route.id) { audio.sfx('select'); void g.goto('route', { route: r.id }); } },
       }, h('span', { class: 'tab-name' }, r.name), open ? null : h('span', { class: 'tab-need' }, need));
       if (!open) tab.setAttribute('aria-label', `${r.name}, locked: ${need}`);
@@ -356,7 +356,7 @@ export class RouteScene extends BaseScene {
     // left of the sheet on a landscape phone.
     const land = layoutMode(w, hgt) === 'land';
     const area = freeArea(w, hgt, land ? { top: [this.top], right: [this.sheet] } : { top: [this.top], bottom: [this.sheet] }, 4);
-    const pts = corners(new THREE.Vector3(-4.75, -0.8, -4.6), new THREE.Vector3(4.75, 2.9, 4.7));
+    const pts = corners(new THREE.Vector3(-4.6, -0.5, -4.4), new THREE.Vector3(4.6, 2.55, 4.6));
     fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.62, 0.82), target: new THREE.Vector3(0, 0.6, 0), fill: 1 });
   }
 

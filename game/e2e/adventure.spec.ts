@@ -67,8 +67,8 @@ async function bestMove(page: Page): Promise<string> {
   for (let i = 0; i < n; i++) {
     const b = buttons.nth(i);
     const text = (await b.textContent()) ?? '';
-    const pow = Number(/Pow (\d+)/.exec(text)?.[1] ?? 0);
-    const score = pow * (/Strong/.test(text) ? 2 : /Weak/.test(text) ? 0.5 : 1);
+    const pow = Number(/(\d+) pow/.exec(text)?.[1] ?? 0);
+    const score = pow * (/Super/.test(text) ? 2 : /Weak/.test(text) ? 0.5 : 1);
     if (score > bestScore) { bestScore = score; best = (await b.getAttribute('data-testid'))!; }
   }
   return best;

@@ -2,6 +2,7 @@
 // single turntable model in the middle, HTML panels left/right (stacked under the model in
 // portrait), and Back handling that returns to the route the screen was opened from.
 import * as THREE from 'three';
+import { uiZoom } from './framing';
 import { BaseScene } from './base';
 import { CreatureView } from '../render/creature';
 import { GEO, MeshBuilder } from '../render/builder';
@@ -115,6 +116,18 @@ export abstract class MetaScene extends BaseScene {
     }
   }
 
+  /**
+   * Portrait phones stack the panels in one scroller with the detail on top: after picking an
+   * item low in the list, scroll back up so its detail (and Buy / Use) is in view.
+   */
+  protected revealDetail(el: HTMLElement) {
+    const scroller = el.closest('.meta-ui');
+    if (!(scroller instanceof HTMLElement) || scroller.scrollHeight <= scroller.clientHeight + 1) return;
+    const panel = el.closest('.meta-panel') ?? el;
+    const top = panel.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    if (top < 0 || top > scroller.clientHeight * 0.6) scroller.scrollBy({ top: top - 4, behavior: reduceMotion() ? 'auto' : 'smooth' });
+  }
+
   protected setCaption(text: string, sub = '') {
     this.caption.replaceChildren(h('strong', {}, text), sub ? h('span', {}, sub) : '');
     this.caption.classList.toggle('empty', !text);
@@ -143,6 +156,24 @@ export abstract class MetaScene extends BaseScene {
     if (portrait) this.camera.setViewOffset(w, hgt, 0, hgt * 0.32, w, hgt);
     else this.camera.setViewOffset(w, hgt, 0, -hgt * 0.02, w, hgt);
     this.camera.updateProjectionMatrix();
+    this.placeCaption(w, hgt, portrait);
+  }
+
+  /** Wide screens: the name caption sits right under the pedestal (or above the model if there is no room). */
+  private placeCaption(w: number, hgt: number, portrait: boolean) {
+    if (!this.caption) return;
+    const st = this.caption.style;
+    if (portrait) { st.top = ''; st.bottom = ''; return; }
+    this.camera.updateMatrixWorld();
+    const py = (p: THREE.Vector3) => (-p.project(this.camera).y * 0.5 + 0.5) * hgt;
+    const zoom = uiZoom(w, hgt);
+    const below = py(new THREE.Vector3(0, -0.2, 1.3)) + 8;
+    const captionH = 62 * zoom;
+    if (below + captionH <= hgt - 6) { st.top = `${below / zoom}px`; st.bottom = 'auto'; return; }
+    // No room under the stand (landscape phone): float the caption above the model instead.
+    const above = py(new THREE.Vector3(0, this.frameH + 0.25, 0)) - 6;
+    st.top = `${Math.max(4, (above - captionH) / zoom)}px`;
+    st.bottom = 'auto';
   }
 
   override update(_dt: number, t: number) {

@@ -19,7 +19,7 @@ export class StarterScene extends BaseScene {
   private pads: THREE.Object3D[] = [];
   private spot!: THREE.Group;
   private sheet!: HTMLElement;
-  private narrow = innerWidth / innerHeight < 0.8;
+  private narrow = innerWidth / innerHeight < 1.2;
 
   enter() {
     this.scene.add(makeSky('meadow'));
@@ -52,7 +52,8 @@ export class StarterScene extends BaseScene {
     this.info = h('div', { class: 'starter-info', 'data-testid': 'starter-info' }, 'Tap a kin to meet it.');
     const row = h('div', { class: 'starter-cards' }, ...STARTERS.map((id, i) => {
       const s = species(id);
-      const b = h('button', { class: 'btn card', 'data-testid': `starter-${id}`, onclick: () => this.select(i) },
+      // Keyboard activation (click with detail 0) moves focus straight to "Choose X!".
+      const b = h('button', { class: 'btn card', 'data-testid': `starter-${id}`, onclick: (e: Event) => this.select(i, (e as MouseEvent).detail === 0) },
         h('span', { class: 'mname' }, s.name), h('span', { class: 'chips' }, ...s.types.map(typeChip)));
       this.cards.push(b);
       return b;
@@ -68,8 +69,9 @@ export class StarterScene extends BaseScene {
     this.resize(this.game.renderer.width, this.game.renderer.height);
   }
 
-  private select(i: number) {
-    if (this.selected === i) return;
+  private select(i: number, focusConfirm = false) {
+    const focus = () => { if (focusConfirm) this.info.querySelector<HTMLButtonElement>('[data-testid="btn-confirm-starter"]')?.focus(); };
+    if (this.selected === i) return focus();
     this.selected = i;
     const id = STARTERS[i]!;
     const s = species(id);
@@ -83,7 +85,7 @@ export class StarterScene extends BaseScene {
     // The chosen kin steps forward into the spotlight (and hops); the others step back.
     const from = this.views.map((v) => v.root.position.clone());
     const to = this.views.map((_, j) => this.slot(j, i));
-    const s0 = this.views.map((v) => v.root.scale.x);
+    const s0 = [...this.scales];
     void tween(380, (k) => {
       const e = ease.outCubic(k);
       this.views.forEach((_, j) => {
@@ -94,24 +96,35 @@ export class StarterScene extends BaseScene {
     });
     this.spot.visible = true;
     this.spot.position.set(to[i]!.x, 0, to[i]!.z);
+    this.spot.scale.setScalar(this.narrow ? 0.85 : 1);
     this.resize(this.game.renderer.width, this.game.renderer.height);
+    focus();
   }
 
   /** Where kin j stands when `sel` is chosen (-1: none yet, a straight line-up). */
   private slot(j: number, sel: number): THREE.Vector3 {
-    // Narrow screens use a tighter, staggered line-up so each kin stays big enough to read.
-    const k = this.narrow ? 0.66 : 1;
-    if (sel < 0) return new THREE.Vector3((j - 1) * 2.2 * k, 0, this.narrow && j === 1 ? -0.7 : 0);
-    if (j === sel) return new THREE.Vector3((j - 1) * 1.0 * k, 0, 1.05);
-    return new THREE.Vector3((j - 1) * 2.35 * k, 0, -0.55 - (this.narrow ? 0.5 : 0));
+    // Narrow free areas (portrait phones, the landscape strip left of the sheet) use a
+    // triangle: the middle kin steps back so the three stand close and read big.
+    if (this.narrow) {
+      if (sel < 0) return new THREE.Vector3((j - 1) * 0.95, 0, j === 1 ? -1.3 : 0.55);
+      if (j === sel) return new THREE.Vector3((j - 1) * 0.35, 0, 1.05);
+      return new THREE.Vector3((j - 1) * 1.05, 0, -1.05);
+    }
+    if (sel < 0) return new THREE.Vector3((j - 1) * 1.95, 0, 0);
+    if (j === sel) return new THREE.Vector3((j - 1) * 0.9, 0, 1.05);
+    return new THREE.Vector3((j - 1) * 2.15, 0, -0.55);
   }
 
+  private scales = [1, 1, 1];
+
+  /** Narrow screens show the kin bigger on slimmer pads (the line-up is width-bound there). */
   private placeAt(j: number, p: THREE.Vector3, scale: number) {
     const v = this.views[j]!;
+    this.scales[j] = scale;
     v.root.position.copy(p);
-    v.root.scale.setScalar(scale);
+    v.root.scale.setScalar(scale * (this.narrow ? 1.3 : 1));
     this.pads[j]!.position.set(p.x, Math.min(p.y, 0), p.z);
-    this.pads[j]!.scale.setScalar(scale);
+    this.pads[j]!.scale.setScalar(scale * (this.narrow ? 0.85 : 1));
   }
 
   /** Layout checks (debug hook). */
@@ -129,18 +142,23 @@ export class StarterScene extends BaseScene {
   override resize(w: number, hgt: number) {
     super.resize(w, hgt);
     if (!this.sheet) return;
-    const narrow = w / hgt < 0.8;
-    if (narrow !== this.narrow) {
-      this.narrow = narrow;
-      this.views.forEach((v, j) => this.placeAt(j, this.slot(j, this.selected), v.root.scale.x));
-      if (this.selected >= 0) this.spot.position.copy(this.slot(this.selected, this.selected)).setY(0);
-    }
     // Fit the line-up (in either arrangement) into the space the sheet leaves free.
     const land = layoutMode(w, hgt) === 'land';
     const area = freeArea(w, hgt, land ? { right: [this.sheet] } : { bottom: [this.sheet] }, 10);
-    const hw = narrow ? 1.85 : 3.3;
-    const pts = corners(new THREE.Vector3(-hw, -0.1, -1.6), new THREE.Vector3(hw, 1.75, 2.1));
-    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.42, 1), target: new THREE.Vector3(0, 0.6, 0.2), fill: 0.97 });
+    const narrow = area.w / area.h < 1.45;
+    if (narrow !== this.narrow) {
+      this.narrow = narrow;
+      this.views.forEach((_, j) => this.placeAt(j, this.slot(j, this.selected), this.scales[j]!));
+      if (this.selected >= 0) this.spot.position.copy(this.slot(this.selected, this.selected)).setY(0);
+      this.spot.scale.setScalar(narrow ? 0.85 : 1);
+    }
+    // Boxes hug the pads of either arrangement (unselected pads at 0.9 scale, the chosen one forward).
+    // A narrow area looks down more steeply, so the triangle's depth fills the height too.
+    const pts = narrow
+      ? corners(new THREE.Vector3(-1.85, -0.1, -2.2), new THREE.Vector3(1.85, 1.9, 2.1))
+      : corners(new THREE.Vector3(-3.0, -0.1, -1.5), new THREE.Vector3(3.0, 1.8, 2.0));
+    const dir = narrow ? new THREE.Vector3(0, land ? 0.55 : 0.8, 1) : new THREE.Vector3(0, 0.42, 1);
+    fitPoints(this.camera, w, hgt, pts, area, { dir, target: new THREE.Vector3(0, 0.6, 0.0), fill: 0.98, alignY: narrow && !land ? 'bottom' : 'center' });
   }
 
   override update(_dt: number, t: number) {
