@@ -118,7 +118,7 @@ describe('orbs', () => {
     expect(new Set(sizes.map((x) => x.verts)).size).toBe(3);
     const plain = sizes.find((x) => x.t === 'orb')!;
     expect(plain.s.y).toBeGreaterThan(plain.s.x);
-    for (const x of sizes) expect(x.s.y).toBeLessThan(0.7);
+    for (const x of sizes) expect(x.s.y).toBeLessThan(0.85); // about the old orb's footprint
   });
 
   it('makeOrb keeps the old call shape and gives each orb its own emissive material', () => {

@@ -30,9 +30,9 @@ export type OrbTier = keyof typeof ORB_COLORS;
 
 export interface OrbStyle { body: string; shade: string; light: string; collar: string; collarDark: string; tip: string; ring?: string; star?: boolean; sepals: number }
 export const ORB_STYLES: Record<OrbTier, OrbStyle> = {
-  orb: { body: '#ff4d6d', shade: '#d62c55', light: '#ff8fa0', collar: '#4cc35a', collarDark: '#2f8f44', tip: '#fff1a8', sepals: 4 },
-  bright: { body: '#3d9bff', shade: '#2266d8', light: '#8fd0ff', collar: '#4cc35a', collarDark: '#2f8f44', tip: '#ffd23f', ring: '#ffc93d', sepals: 5 },
-  star: { body: '#ffc93d', shade: '#e8901e', light: '#fff0a0', collar: '#ffffff', collarDark: '#dfe6ff', tip: '#ff7ad0', star: true, sepals: 4 },
+  orb: { body: '#ff4d6d', shade: '#d62c55', light: '#ff8fa0', collar: '#5fd36b', collarDark: '#3fae3a', tip: '#fff1a8', sepals: 4 },
+  bright: { body: '#3d9bff', shade: '#2266d8', light: '#8fd0ff', collar: '#5fd36b', collarDark: '#3fae3a', tip: '#ffd23f', ring: '#ffc93d', sepals: 5 },
+  star: { body: '#ffc93d', shade: '#e8901e', light: '#fff0a0', collar: '#fffbe8', collarDark: '#ffe6f4', tip: '#ff7ad0', star: true, sepals: 4 },
 };
 
 function tierOf(color: string): OrbTier {
@@ -56,30 +56,28 @@ export function orbGeometry(tier: OrbTier, colorOverride?: string): THREE.Buffer
   // Bud: round-ish faceted belly + tall pointed top (two-tone facets via offset copies).
   b.add(lower, st.body, { p: [0, -0.04, 0], s: [0.2, 0.36, 0.2] }, 0.25);
   b.add(bottom, st.shade, { p: [0, -0.18, 0], r: [Math.PI, 0, 0], s: [0.2 / 0.55 * 0.55, 0.36, 0.2 / 0.55 * 0.55] }, 0.2);
-  b.add(upper, st.body, { p: [0, 0.135, 0], s: [0.2, 0.3, 0.2] }, 0.3);
-  // Light facet stripes: thin slivers on alternate faces, rotated half a facet so they sit on the faces.
-  for (let i = 0; i < sides; i += 2) {
-    const a = ((i + 0.5) / sides) * Math.PI * 2;
-    b.add(GEO.box, st.light, { p: [Math.sin(a) * 0.168, 0.06, Math.cos(a) * 0.168], r: [-0.55, a, 0], s: [0.035, 0.2, 0.012] });
-  }
+  b.add(upper, st.body, { p: [0, 0.18, 0], s: [0.2, 0.26, 0.2] }, 0.3);
+  // lighter upper facets on the sunny side
+  b.add(upper, st.light, { p: [-0.012, 0.185, 0.012], r: [0, Math.PI / sides, 0], s: [0.19, 0.245, 0.19] }, 0.2);
+  // A lighter facet cap on the upper front-left (catches the sun) — a glossy highlight.
   // Glowing tip.
-  b.add(GEO.oct, st.tip, { p: [0, 0.3, 0], s: [0.05, 0.075, 0.05] });
+  b.add(GEO.oct, st.tip, { p: [0, 0.33, 0], s: [0.055, 0.08, 0.055] });
   // Collar.
   if (st.star) {
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      b.add(GEO.cone4, i % 2 ? st.collarDark : st.collar, { p: [Math.sin(a) * 0.2, -0.08, Math.cos(a) * 0.2], r: [Math.PI / 2 - 0.25, a, 0], s: [0.07, 0.2, 0.035] });
-    }
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2;
-      b.add(GEO.cone4, st.collarDark, { p: [Math.sin(a) * 0.16, -0.1, Math.cos(a) * 0.16], r: [Math.PI / 2 - 0.1, a, 0], s: [0.045, 0.11, 0.025] });
+    // A flat 4-point star collar (big cream points, small pink ones between).
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 4;
+      const big = i % 2 === 0;
+      const r = big ? 0.2 : 0.16;
+      // Flattened octahedra lying almost flat (top faces catch the light), long axis outward.
+      b.add(GEO.oct, big ? st.collar : st.tip, { p: [Math.sin(a) * r, -0.07, Math.cos(a) * r], r: [0, a - Math.PI / 2, big ? 0.25 : 0.2], s: big ? [0.17, 0.035, 0.075] : [0.09, 0.03, 0.05] });
     }
   } else {
     for (let i = 0; i < st.sepals; i++) {
       const a = (i / st.sepals) * Math.PI * 2 + 0.3;
-      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.55, a, 0, 'YXZ'));
-      const p = new THREE.Vector3(0, 0.09, 0).applyQuaternion(q).add(new THREE.Vector3(Math.sin(a) * 0.15, -0.16, Math.cos(a) * 0.15));
-      b.add(GEO.cone4, i % 2 ? st.collarDark : st.collar, { p: [p.x, p.y, p.z], q, s: [0.085, 0.24, 0.03] });
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.8, a, 0, 'YXZ'));
+      const p = new THREE.Vector3(0, 0.1, 0).applyQuaternion(q).add(new THREE.Vector3(Math.sin(a) * 0.15, -0.15, Math.cos(a) * 0.15));
+      b.add(GEO.cone4, i % 2 ? st.collarDark : st.collar, { p: [p.x, p.y, p.z], q, s: [0.1, 0.26, 0.035] });
     }
     // little stem nub
     b.add(GEO.cyl, st.collarDark, { p: [0, -0.25, 0], s: [0.04, 0.05, 0.04] });
@@ -90,7 +88,7 @@ export function orbGeometry(tier: OrbTier, colorOverride?: string): THREE.Buffer
     ring.dispose();
   }
   lower.dispose(); bottom.dispose(); upper.dispose();
-  return b.build();
+  return b.build().scale(1.12, 1.12, 1.12).translate(0, 0.06, 0);
 }
 
 const orbGeoCache = new Map<string, THREE.BufferGeometry>();
@@ -119,7 +117,7 @@ export function makeOrb(color: string, tier?: OrbTier): THREE.Mesh {
 interface OrbFx { sparks: THREE.Mesh; glint: THREE.Mesh; sparkT: number; glintT: number; lastZ: number; lastClock: number; locked: boolean }
 
 const SPARK_N = 8;
-const TIP = new THREE.Vector3(0, 0.3, 0);
+const TIP = new THREE.Vector3(0, 0.44, 0);
 
 function attachOrbReactions(orb: THREE.Mesh, tier: OrbTier) {
   // Sparkle puff: 8 little 4-point stars; positions are rewritten per frame.
@@ -185,9 +183,9 @@ function attachOrbReactions(orb: THREE.Mesh, tier: OrbTier) {
         camQ.copy(inv).multiply(cam.quaternion);
         for (let i = 0; i < SPARK_N; i++) {
           const a = (i / SPARK_N) * Math.PI * 2 + i;
-          const r = 0.08 + k * (0.22 + (i % 3) * 0.06);
+          const r = 0.1 + k * (0.3 + (i % 3) * 0.08);
           p.set(Math.cos(a) * r, 0.3 + k * (0.18 + (i % 2) * 0.12) - k * k * 0.12, Math.sin(a) * r).applyQuaternion(inv);
-          const s = 0.075 * (1 - k) * (i % 2 ? 1 : 0.7);
+          const s = 0.12 * (1 - k * k) * (i % 2 ? 1 : 0.7);
           m.compose(p, camQ, sc.set(s, s, s));
           const e = m.elements;
           for (let v = 0; v < nv; v++) {
