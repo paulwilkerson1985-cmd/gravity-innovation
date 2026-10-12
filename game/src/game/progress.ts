@@ -4,7 +4,7 @@
 import {
   LEVEL_CAP, Rng, awardXp, canEvolveNow, createBattle, evolve, gainXp, getDex, getTrainer, learnMove, makeCreature,
   species, toBattle, trainerSide, xpForLevel,
-  type BattleEvent, type BattleState, type OwnedCreature, type ProgressEvent, type RouteData, type TrainerData,
+  type BattleEvent, type BattleState, type OwnedCreature, type ProgressEvent, type RouteData, type StatusId, type TrainerData,
 } from '../engine';
 import { healParty, isRouteUnlocked, type BagId, type PlayerState } from './state';
 
@@ -175,7 +175,7 @@ export function xpProgress(level: number, xp: number): number {
 }
 
 /** "m:ss" or "h:mm:ss" for a play time in seconds. */
-export function formatPlayTime(seconds: number): string {
+export function formatClock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   const hh = Math.floor(s / 3600);
   const mm = Math.floor((s % 3600) / 60);
@@ -186,12 +186,30 @@ export function formatPlayTime(seconds: number): string {
 
 // ------------------------------------------------------------------ debug
 
-export interface DebugEntry { species: string; level: number }
+export interface DebugEntry {
+  species: string;
+  level: number;
+  /** Absolute XP (clamped into the level's band). */
+  xp?: number;
+  /** XP still needed for the next level (alternative to `xp`). */
+  xpToNext?: number;
+  hp?: number;
+  status?: StatusId | null;
+}
 
 /** Replace the party with fresh creatures (debug/test hook). */
 export function withDebugParty(p0: PlayerState, entries: readonly DebugEntry[]): PlayerState {
   const p = structuredClone(p0);
-  p.party = entries.slice(0, 6).map((e) => makeCreature(e.species, e.level, `c${p.nextUid++}`));
+  p.party = entries.slice(0, 6).map((e) => {
+    const c = makeCreature(e.species, e.level, `c${p.nextUid++}`);
+    const lo = xpForLevel(e.level);
+    const hi = e.level >= LEVEL_CAP ? lo : xpForLevel(e.level + 1) - 1;
+    if (e.xp !== undefined) c.xp = Math.max(lo, Math.min(hi, e.xp));
+    if (e.xpToNext !== undefined) c.xp = Math.max(lo, Math.min(hi, xpForLevel(e.level + 1) - e.xpToNext));
+    if (e.hp !== undefined) c.hp = Math.max(0, Math.min(c.hp, e.hp));
+    if (e.status !== undefined) c.status = e.status;
+    return c;
+  });
   for (const c of p.party) markCaught(p, c.species);
   return p;
 }

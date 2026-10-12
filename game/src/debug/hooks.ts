@@ -3,6 +3,9 @@ import { animClock, flushTweens, pendingTweens } from '../render/anim';
 import type { Game } from '../game/game';
 import type { SceneName } from '../scenes/base';
 import type { BattleScene } from '../scenes/battle';
+import { withDebugParty, withDefeated, type DebugEntry } from '../game/progress';
+import { chooseAction, type Action } from '../engine';
+import type { BagId } from '../game/state';
 import { openGameMenu } from '../ui/menu';
 import { makeCreature } from '../engine';
 import { PARTY_MAX } from '../game/state';
@@ -30,6 +33,15 @@ export interface GameHooks {
   addKin(species: string, level?: number): void;
   /** Debug: shallow-patch the player state (e.g. { money: 5000 }). */
   patchPlayer(patch: Record<string, unknown>): void;
+  // ---- adventure (XP, trainers, evolution)
+  /** Debug: replace the party, e.g. [{ species: 'ashkit', level: 13, xpToNext: 1 }]. */
+  debugSetParty(entries: DebugEntry[]): void;
+  /** Debug: mark trainers as defeated (opens routes; the Champion also sets the flag). */
+  debugDefeat(...trainerIds: string[]): void;
+  /** Debug: set how many of a bag item / orb the player holds. */
+  debugGive(id: BagId, count: number): void;
+  /** Debug: what the Ace AI would do for your side right now (lets e2e play strong battles via the UI). */
+  debugSuggest(): Action | null;
   // ---- arena (PvP)
   /** Snapshot of the current arena scene (lobby/builder, battle or victory), else null. */
   arena(): Record<string, unknown> | null;
@@ -71,6 +83,14 @@ export function installHooks(game: Game) {
       game.player = p;
     },
     patchPlayer: (patch) => { game.player = { ...game.player, ...structuredClone(patch) } as typeof game.player; },
+    debugSetParty: (entries) => { game.player = withDebugParty(game.player, entries); },
+    debugDefeat: (...ids) => { game.player = withDefeated(game.player, ids); },
+    debugSuggest: () => {
+      if (game.current?.name !== 'battle') return null;
+      const st = (game.current as BattleScene).snapshot();
+      return st.phase === 'over' ? null : chooseAction(st, 0, 'ace');
+    },
+    debugGive: (id, count) => { game.player = { ...game.player, bag: { ...game.player.bag, [id]: Math.max(0, Math.floor(count)) } }; },
     arena: () => {
       const cur = game.current as unknown as { arenaSnapshot?: () => Record<string, unknown> } | null;
       return cur?.arenaSnapshot ? structuredClone(cur.arenaSnapshot()) : null;

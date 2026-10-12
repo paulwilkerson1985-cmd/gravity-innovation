@@ -5,7 +5,7 @@ import {
 } from '../src/engine';
 import { newPlayer, type PlayerState } from '../src/game/state';
 import {
-  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionQueue, evolvePartyMember, formatPlayTime, isTrainerDefeated,
+  CHAMPION_ID, applyBattleXp, blackout, consumeBag, evolutionQueue, evolvePartyMember, formatClock, isTrainerDefeated,
   routeBlockers, startTrainerBattle, teachMove, trainerVictory, withDebugParty, withDefeated, withSeen, xpProgress,
 } from '../src/game/progress';
 
@@ -195,12 +195,12 @@ describe('helpers', () => {
     expect(() => consumeBag(q, 'revive-seed')).toThrow();
   });
 
-  it('xpProgress, formatPlayTime, withSeen, withDebugParty', () => {
+  it('xpProgress, formatClock, withSeen, withDebugParty', () => {
     expect(xpProgress(5, xpForLevel(5))).toBe(0);
     expect(xpProgress(5, (xpForLevel(5) + xpForLevel(6)) / 2)).toBeCloseTo(0.5);
     expect(xpProgress(30, xpForLevel(30))).toBe(1);
-    expect(formatPlayTime(65)).toBe('1:05');
-    expect(formatPlayTime(3725)).toBe('1:02:05');
+    expect(formatClock(65)).toBe('1:05');
+    expect(formatClock(3725)).toBe('1:02:05');
     const p = newPlayer(1);
     expect(withSeen(p, 'breezel').seen).toContain('breezel');
     expect(p.seen).not.toContain('breezel');
