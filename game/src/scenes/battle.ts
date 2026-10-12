@@ -777,6 +777,11 @@ export class BattleScene extends BaseScene {
         }
       }
     } else if (o.reason === 'ko') {
+      if (this.trainer) {
+        await this.trainerWalk(true);
+        await this.say(`${this.trainer.name}: “Not bad, but not enough! Come back when your kin are stronger.”`, 800);
+      }
+      this.panels[0].root.style.visibility = 'hidden';
       g.player = blackout(g.player);
       await this.say('You hurried back to the spring to rest. Your kin are healed.', 900);
     }
