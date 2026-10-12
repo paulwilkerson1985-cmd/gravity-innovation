@@ -141,7 +141,7 @@ Full method and numbers are in `docs/BALANCE.md`. The tools are `tools/campaign.
 
 ## Final polish (pre-playtest)
 - **Wild wins pay pocket money**: `wildVictory()` adds 6 coins × the fainted wild kin's level (shown as "You found N coins!"), so a player who spent every orb and coin can always earn more on the early routes. Catches, escapes, losses and trainer battles pay nothing extra.
-- **Missed attacks whiff**: the scene looks one event ahead; a `move` followed by its `miss` plays the element's projectile streaking past the target's shoulder while the target sidesteps — no flash, burst, ground ring, signature or hit flash. Strong signatures shrink (≥ 0.55×) to stay on screen around the target on portrait phones.
+- **Missed attacks whiff**: the scene looks one event ahead; a `move` followed by its `miss` plays the element's projectile streaking past the target's shoulder while the target sidesteps — no flash, burst, ground ring, signature or hit flash. Strong signatures shrink (≥ 0.7×) to stay on screen around the target on portrait phones.
 - **Battle text**: during playback the text box may grow into the empty menu slot (portrait: it drops to the bottom of the screen, so there is no bare band); `say()` pages anything still too long. Text is laid out in full from the first letter (the untyped rest is transparent), so words never jump lines mid-typing.
 - **Hotseat perspective**: each player chooses from their own side (their kin, platform and panel come to the front behind the curtain); turns play out from seat 0's side, and the first prompt after a watched turn gets a "Pass to …" curtain.
 - **Anti-mash**: a freshly shown battle menu ignores Enter/Space for 250 ms, so mashing through text never commits Fight → first move.

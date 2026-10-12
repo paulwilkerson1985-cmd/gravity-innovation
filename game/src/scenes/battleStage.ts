@@ -56,7 +56,7 @@ export function battlePad(color: string, radius: number, opts: { dark?: string; 
 /** Pad colours per route theme: [top, skirt]. Summit pads are a mid slate so they read on snow. */
 export const PAD_COLORS: Record<string, [string, string]> = {
   meadow: ['#8fdc6a', '#4f9a3a'],
-  ridge: ['#d89a5a', '#8a5638'],
+  ridge: ['#e4ad70', '#8a5638'], // a light sandstone top, so brown Terra kin don't melt into it
   coast: ['#f0cf7a', '#b8915a'],
   summit: ['#9aa6c4', '#5a6386'],
   title: ['#8fdc6a', '#4f9a3a'],
@@ -108,6 +108,23 @@ function kinSpan(cam: THREE.PerspectiveCamera, w: number, h: number, k: Framed):
   return [x0, x1, y1 - y0, y1];
 }
 
+/** Like kinSpan, but from the projected vertices (sampled): the model's true on-screen size. */
+function kinSpanPrecise(cam: THREE.PerspectiveCamera, w: number, h: number, k: Framed): [number, number, number] {
+  const pos = k.mesh.geometry.attributes.position;
+  if (!pos) return kinSpan(cam, w, h, k).slice(0, 3) as [number, number, number];
+  k.root.updateWorldMatrix(true, false);
+  const m = new THREE.Matrix4().compose(k.root.position, k.root.quaternion, new THREE.Vector3().setScalar(k.baseScale * k.root.scale.x));
+  const v = new THREE.Vector3();
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const step = Math.max(1, Math.floor(pos.count / 1500));
+  for (let i = 0; i < pos.count; i += step) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(m).project(cam);
+    const x = (v.x * 0.5 + 0.5) * w, y = (-v.y * 0.5 + 0.5) * h;
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  return [x0, x1, y1 - y0];
+}
+
 /**
  * Frame the battle camera on the spots for the current viewport. With the kin on the field
  * given, a second pass slides a target sideways so a long tail or wide wings never leave the
@@ -126,8 +143,13 @@ export function frameBattle(cam: THREE.PerspectiveCamera, scene: THREE.Scene, w:
   if (portrait && nearPanel && kin[0] && kinSpan(cam, w, h, kin[0])[3] > nearPanel.y + 4) mineRight = nearPanel.x - 14;
   if (kin[0]) {
     const [x0, x1, kh] = kinSpan(cam, w, h, kin[0]);
-    const k = Math.min(1, Math.min(w * (portrait ? 0.5 : 0.36), mineRight - 14) / (x1 - x0), (h * (portrait ? 0.3 : 0.5)) / kh);
-    if (k < 1) kin[0].root.scale.multiplyScalar(k);
+    const maxK = Math.min(Math.min(w * (portrait ? 0.5 : 0.36), mineRight - 14) / (x1 - x0), (h * (portrait ? 0.3 : 0.5)) / kh);
+    // Small or flat kin seen from behind (Pebblet, Surgeray) get a minimum on-screen size.
+    const [px0, px1, pkh] = kinSpanPrecise(cam, w, h, kin[0]);
+    const size = Math.max(px1 - px0, pkh * 1.25);
+    const minSize = portrait ? w * 0.36 : h * 0.24;
+    const k = Math.min(maxK, size < minSize ? Math.min(1.45, minSize / size) : 1);
+    if (k !== 1) kin[0].root.scale.multiplyScalar(k);
   }
   if (kin[1]) {
     const [x0, x1] = kinSpan(cam, w, h, kin[1]);

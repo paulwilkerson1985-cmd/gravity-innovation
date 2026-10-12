@@ -85,7 +85,7 @@ function makeCtx(scene: THREE.Scene, from: THREE.Vector3, to: THREE.Vector3, o: 
 }
 
 /**
- * How much a signature of world size `s` (height ≈ 1.9 s, half-width ≈ 1.3 s, the tallest
+ * How much a signature of world size `s` (height ≈ 1.6 s, half-width ≈ 1.15 s, the tallest
  * crowns and widest rings) must shrink to stay inside the screen around `ground`. 1 = fits.
  * On a portrait phone the foe stands near the top-right corner, so strong moves get trimmed
  * there instead of being cut off by the screen edge.
@@ -103,7 +103,7 @@ function screenFit(camera: THREE.Camera, ground: THREE.Vector3, s: number): numb
   if (perUp <= 0 || perSide <= 0) return 1;
   const roomUp = (0.98 - g.y) / perUp;
   const roomSide = Math.min(0.99 - g.x, g.x + 0.99) / perSide;
-  return THREE.MathUtils.clamp(Math.min(1, roomUp / (1.9 * s), roomSide / (1.3 * s)), 0.55, 1);
+  return THREE.MathUtils.clamp(Math.min(1, roomUp / (1.6 * s), roomSide / (1.15 * s)), 0.7, 1);
 }
 
 // ------------------------------------------------------------------ miss
