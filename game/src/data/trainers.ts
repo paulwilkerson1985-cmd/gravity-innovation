@@ -57,7 +57,7 @@ export const TRAINERS: TrainerData[] = [
     ],
     reward: 1500,
     intro: 'Feel that wind off the sea? It only blows for those who can keep their footing.',
-    defeat: 'Blown clean off the cliff! The road to Crown Plateau is yours. The Champion waits.',
+    defeat: 'Blown clean off the cliff! Beat both coast trainers and the road to Crown Plateau is yours.',
   },
   // ---- Crown Plateau
   {
