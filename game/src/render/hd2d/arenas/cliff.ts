@@ -281,7 +281,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
       { min: V(-22, -3.5, -14), max: V(-8, 1.5, -5), vmin: V(0.5, -0.02, 0.02), vmax: V(0.9, 0.04, 0.12), count: Math.round(10 * lowK), life: [26, 34], size: [2.6, 4.2] },
       { min: V(-24, SEA_Y + 1, -20), max: V(-6, SEA_Y + 5, -6), vmin: V(0.6, 0, 0), vmax: V(1.0, 0.05, 0.1), count: Math.round(12 * lowK), life: [26, 34], size: [3.0, 5.0] },
     ],
-    colorA: hdr('#d8e0e6', 1.0), colorB: hdr('#8a96a2', 0.95), grow: [0.8, 1.3], opacity: 0.5,
+    colorA: hdr('#d8e0e6', 1.0), colorB: hdr('#aab4bc', 0.95), grow: [0.8, 1.3], opacity: 0.4,
   }, rng);
   const rain = particles({
     kind: 'rain',

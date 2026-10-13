@@ -489,7 +489,7 @@ void main() {
   bool on = abs(y - floor(wingY + 0.5)) < 0.5 || (x == 3.0 && y == 4.0);
   if (!on) discard;
   gl_FragColor = vec4(x == 3.0 ? uColB : uColA, 1.0);
-#elif defined(STEAM) || defined(MIST)
+#elif defined(STEAM)
   // Steam: a round soft puff, radial alpha quantised to 3 flat steps (pixel-art translucency),
   // lit warm from below (the lava) and cool on top; it grows and fades as it rises.
   float r = length(c) * 2.0;
