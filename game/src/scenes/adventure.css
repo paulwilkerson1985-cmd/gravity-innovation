@@ -126,7 +126,7 @@
 /* wide: a popped-up list covers your box; hide the box rather than show it half-covered */
 @media (min-aspect-ratio: 1001/1000) and (min-width: 641px) and (min-height: 501px) {
   .battle-ui:has(.bt-menu.menu-bag) .panel.bt-mine, .battle-ui:has(.bt-menu.menu-party) .panel.bt-mine, .battle-ui:has(.bt-menu.menu-forget) .panel.bt-mine,
-  .arena-battle-ui:has(.bt-menu.menu-party) .panel.bt-mine, .arena-battle-ui:has(.bt-menu.menu-moves:not(:has(.move-info))) .panel.bt-mine { visibility: hidden; }
+  .battle-ui:has(.bt-menu.menu-end) .panel.bt-mine, .arena-battle-ui:has(.bt-menu.menu-party) .panel.bt-mine { visibility: hidden; }
 }
 
 /* ---- kin list: name (+ status) over level, HP bar and numbers */
