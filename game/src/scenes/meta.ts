@@ -14,6 +14,10 @@ import { isOrb, type BagId } from '../game/state';
 import { h } from '../ui/dom';
 import { returnToRoute } from '../ui/menu';
 import { reduceMotion } from '../ui/prefs';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import type { SpriteSubject } from '../render/hd2d/sprite';
+import { PLINTH_TOP, buildRoomSet } from '../render/hd2d/screens/room';
+import { Hd2dScreenStage } from './hd2dScreen';
 
 export type ModelMode = 'color' | 'silhouette';
 
@@ -32,6 +36,12 @@ export abstract class MetaScene extends BaseScene {
   /** Height (world units) of the current model, used to frame the camera. */
   private frameH = 1;
   private extraMaterial: THREE.Material | null = null;
+  /** HD-2D staging (`?gfx=hd2d`): the warm stone room with the plinth, else null. */
+  protected hd2d: Hd2dScreenStage | null = null;
+  /** The baked sprite of the current item prop (HD-2D). */
+  private propSprite: SpriteSubject | null = null;
+  /** Turntable step (rad) in HD-2D: the sprite turns in whole steps, never smearing texels. */
+  private static readonly STEP = Math.PI / 8;
   private keyHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.modal-root')) return;
     e.preventDefault();
@@ -41,11 +51,17 @@ export abstract class MetaScene extends BaseScene {
   protected setupStage(params: Record<string, unknown>) {
     this.params = params;
     if (this.game.player.party.length === 0) this.game.debugParty();
-    this.scene.add(makeSky('title'));
-    addLights(this.scene, 'meadow');
-    this.scene.fog = new THREE.Fog('#ffc8e4', 14, 34);
-    this.stand = platform('#fff6e0', 1.15);
-    this.scene.add(this.stand);
+    if (hd2dRequested()) {
+      let plinth: THREE.Mesh | null = null;
+      this.hd2d = new Hd2dScreenStage(this.game, this.scene, this.camera, (q) => { const r = buildRoomSet(q); plinth = r.plinth; return r; });
+      this.stand = plinth!;
+    } else {
+      this.scene.add(makeSky('title'));
+      addLights(this.scene, 'meadow');
+      this.scene.fog = new THREE.Fog('#ffc8e4', 14, 34);
+      this.stand = platform('#fff6e0', 1.15);
+      this.scene.add(this.stand);
+    }
     this.caption = h('div', { class: 'meta-caption', 'aria-hidden': 'true' });
     window.addEventListener('keydown', this.keyHandler);
   }
@@ -65,6 +81,7 @@ export abstract class MetaScene extends BaseScene {
 
   protected clearModel() {
     if (this.view) {
+      this.hd2d?.removeKin(this.view);
       this.scene.remove(this.view.root);
       this.view.mesh.geometry.dispose();
       this.view.material.dispose();
@@ -74,6 +91,8 @@ export abstract class MetaScene extends BaseScene {
     }
     if (this.extraMaterial) { this.extraMaterial.dispose(); this.extraMaterial = null; }
     if (this.prop) {
+      this.hd2d?.removeSubject(this.propSprite);
+      this.propSprite = null;
       this.scene.remove(this.prop);
       this.prop.traverse((o) => {
         const m = o as THREE.Mesh;
@@ -93,8 +112,10 @@ export abstract class MetaScene extends BaseScene {
       (v.shadow.material as THREE.MeshBasicMaterial).opacity = 0.12;
     }
     this.view = v;
-    v.root.position.y = 0.1; // on the stand's top surface
+    v.root.position.y = this.hd2d ? PLINTH_TOP : 0.1; // on the stand's top surface
     this.scene.add(v.root);
+    // HD-2D: the kin is its battle sprite (a silhouette stays the flat dark mesh).
+    if (this.hd2d && mode === 'color') this.hd2d.addKin(v);
     this.spinBase = 0;
     this.spinT0 = null;
     v.mesh.geometry.computeBoundingBox();
@@ -107,6 +128,9 @@ export abstract class MetaScene extends BaseScene {
     this.clearModel();
     this.prop = obj;
     this.scene.add(obj);
+    // HD-2D: vertex-coloured item models become baked pixel sprites too.
+    const mesh = obj as THREE.Mesh;
+    if (this.hd2d && mesh.isMesh && mesh.geometry.getAttribute('color')) this.propSprite = this.hd2d.addMesh(mesh, { texelHeight: 26 });
     this.spinT0 = null;
     this.frame(1.25);
     if (!reduceMotion()) {
@@ -150,14 +174,20 @@ export abstract class MetaScene extends BaseScene {
     // Narrow portrait screens also need horizontal room for the 2.4-wide stand.
     if (portrait) d = Math.max(d, 3.0 / (0.85 * tan * (w / hgt)));
     d = Math.max(portrait ? 6 : 5.2, d);
-    const lookY = H * 0.42;
-    this.camera.position.set(0, lookY + d * 0.2, d);
+    const lookY = H * 0.42 + (this.hd2d ? PLINTH_TOP : 0);
+    // HD-2D looks down a little more (the plinth top and the floor pool read) from a bit further.
+    if (this.hd2d) d *= 1.6;
+    this.camera.position.set(0, lookY + d * (this.hd2d ? 0.3 : 0.2), d);
     this.camera.lookAt(0, lookY, 0);
     if (portrait) this.camera.setViewOffset(w, hgt, 0, hgt * 0.32, w, hgt);
     else this.camera.setViewOffset(w, hgt, 0, -hgt * 0.02, w, hgt);
     this.camera.updateProjectionMatrix();
+    this.hd2d?.framed(new THREE.Vector3(0, lookY, 0));
     this.placeCaption(w, hgt, portrait);
   }
+
+  /** HD-2D render stats (debug hook), null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
 
   /** Wide screens: the name caption sits right under the pedestal (or above the model if there is no room). */
   private placeCaption(w: number, hgt: number, portrait: boolean) {
@@ -185,12 +215,22 @@ export abstract class MetaScene extends BaseScene {
       if (this.motion === 'spin') obj.rotation.y = this.spinBase + (t - this.spinT0) * (slow ? 0.15 : 0.6);
       else obj.rotation.y = Math.sin(t * 0.6) * (slow ? 0.2 : 0.7);
       if (this.prop) this.prop.position.y = 0.75 + (slow ? 0 : Math.sin(t * 2) * 0.06);
+      if (this.hd2d) {
+        // Pixel-stable turntable: whole steps of 22.5° (each step re-bakes the sprite once),
+        // and the item bob in whole sprite texels.
+        const k = MetaScene.STEP;
+        obj.rotation.y = Math.round(obj.rotation.y / k) * k;
+        if (this.prop) this.prop.position.y = PLINTH_TOP + 0.65 + Math.round(((slow ? 0 : Math.sin(t * 2) * 0.06)) / 0.04) * 0.04;
+      }
     }
+    this.hd2d?.update(t);
   }
 
   override exit() {
     window.removeEventListener('keydown', this.keyHandler);
     this.clearModel();
+    this.hd2d?.dispose();
+    this.hd2d = null;
     super.exit();
   }
 }
