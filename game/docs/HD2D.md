@@ -308,6 +308,34 @@ outdoor clearing from these pieces only — copy it as a starting point. Sheet:
   'snow' | 'dust' | 'rain' | 'fireflies', { min, max, count, override? }, rng)` → one `Points`,
   all motion in the vertex shader, square pixel points; wire `update(t)` and
   `setPixelSize(px)` into your `ArenaRig`.
+### Kit perf (cave arena) and sheets
+Draw calls unchanged (high 52 → 53: the brazier glow joins the glow batch; low 45/44).
+Triangles: high 23k → 81k (chamfered boulders, shadow pass included), low 15k → 35k
+(`lite` pillow boulders). Sprite bake: 2× supersampled on high only (≈ +10% frame on
+SwiftShader), 1:1 on low (≈ 0%).
+
+Frame ms (`__game.benchFrames`, min of 6×8 frames, SwiftShader; the machine ran 3 other
+agents' browsers at load 7–30 on 4 cores, so ranges are wide — compare the columns, not the
+absolute values): baseline 9172436 / HEAD-with-old-sprite / HEAD, same load window.
+
+| Tier · viewport | baseline | HEAD, old sprite.ts | HEAD |
+|---|---|---|---|
+| low · 393×851 | 95–170 | 200–215 | 210–349 |
+| low · 1280×720 | 186–240 | 178–314 | 348–483 |
+| high · 1280×720 | 269–519 | 680–1009 | 424–987 |
+
+On HEAD, `?post=voxel,oldprops` (old cube rock + old lodge) was **not** faster on phone-low
+(181–204 vs 165–221 ms), so the remaining gap to the baseline is mostly outside the rock/props
+(HEAD also carries the other arena/UI/stage changes since the baseline). Needs a quiet
+machine or a real phone to settle. Sheets: `kit-cave-before-after.jpg`,
+`kit-cave-tiers-viewports.jpg`, `kit-sprites-people.jpg` (each pair: before | after),
+`kit-lodge-props.jpg`, `kit-outdoor.jpg`.
+
+Known gaps: rubble heaps are paler/smaller than the reference's grey piles; wall boulders are
+still on a cell grid (no 3-wide or diagonal stones); far walls use full chamfers on high (an
+LOD by camera distance would cut ~30% of rock triangles); foliage is not wind-occluded or
+LOD'd; water is unlit (match `light` by hand) and has no reflections; arenas still carry
+local kits (`arenas/localKit.ts`, `outdoorKit.ts`, `nightKit.ts`) that could migrate to `kit/`.
 <!-- kit:end -->
 
 ## Conventions for new arenas
