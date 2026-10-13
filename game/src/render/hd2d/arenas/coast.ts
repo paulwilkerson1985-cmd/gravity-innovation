@@ -20,7 +20,7 @@ import { BATTLE_POOL } from './meadow';
 import { paintPlanks } from '../textures';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  cachedCanvas, grey, hdr, levelAt, makeGrade, orientedBox, paintAlpha, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater, rockStack,
+  cachedCanvas, grey, hdr, levelAt, makeGrade, orientedBox, paintAlpha, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater, rockStack, sunlitRock,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -29,16 +29,16 @@ export const ARENA: ArenaDef = {
   match: [{ route: 'coast' }, { route: 'coast', hotspot: 'dune-grass' }, { trainer: 'angler-merrow' }],
   build: (o) => buildCoastArena({ seed: o.seed, quality: o.quality, trainer: o.trainerBattle }),
   grade: coastGrade,
-  background: '#d8b48c',
-  fog: '#e2b88e',
-  fogRange: [10, 52],
+  background: '#cfd4cc',
+  fog: '#d8d2c2',
+  fogRange: [16, 70],
 };
 
 export function coastGrade(): Grade {
   return makeGrade({
-    gain: new THREE.Vector3(1.07, 1.0, 0.88), lift: new THREE.Vector3(0.0, 0.008, 0.024),
-    saturation: 0.8, contrast: 1.1,
-    shadowTint: new THREE.Color('#203a66'), highTint: new THREE.Color('#ffcc90'), splitAmount: 0.2,
+    gain: new THREE.Vector3(1.04, 1.0, 0.94), lift: new THREE.Vector3(0.0, 0.008, 0.02),
+    saturation: 0.86, contrast: 1.1,
+    shadowTint: new THREE.Color('#1c3a66'), highTint: new THREE.Color('#ffd8a8'), splitAmount: 0.14,
     vignette: 0.36, vignetteSoft: 0.58, exposure: 1.18, shadowDesat: 0.15,
   });
 }
@@ -48,6 +48,8 @@ export interface CoastOptions { seed?: number; quality?: 'high' | 'low'; trainer
 const WATER_Y = -0.16;
 /** Sea stacks: x, z, foot radius, height above the water. */
 const STACKS = [[-4.8, -9.0, 1.25, 2.7], [5.6, -10.6, 1.45, 3.5], [-0.6, -12.6, 0.95, 1.8], [9.4, -13.5, 0.8, 1.4]] as const;
+/** The golden-hour sun: low, from the back-left (behind the sea stacks). */
+const SUN_FROM = new THREE.Vector3(-0.42, 0.33, -0.85);
 
 export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   const rng = new Rng(opts.seed ?? 31);
@@ -108,12 +110,14 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   for (const [sx, sz, r, h] of STACKS) {
     rockStack(rock, V(sx, WATER_Y - 0.5, sz), r, h + 0.5, rng, { foot: '#a89888', top: '#fff8ec', taper: 0.55 });
   }
-  group.add(mk(rock.build(), track(surfaceMaterial(texStone, undefined, true))));
+  // Warm sunlit tops, a rim on the sun-side flanks, a wet dark foot, moss and bird-lime streaks.
+  group.add(mk(sunlitRock(rock.build(), { sun: SUN_FROM, waterY: WATER_Y, moss: 0.22, lime: 0.16 }), track(surfaceMaterial(texStone, undefined, true))));
   // ---- sand floor (dry → wet toward the water) + caps share the sand texture
   {
     const g = floorGrid(hm, texSand, 64, {
       res: 2, heightAt: sandY, aoK: 0.6,
-      tintAt: (x, z) => { const s = z - shoreZ(x); const wet = 1 - THREE.MathUtils.smoothstep(s, 0.6, 1.6); return [1 - wet * 0.32, 1 - wet * 0.3, 1 - wet * 0.24]; },
+      // A clear darker WET band along the waterline (then dry sand), not a long soft gradient.
+      tintAt: (x, z) => { const s = z - shoreZ(x); const wet = 1 - THREE.MathUtils.smoothstep(s, 0.9, 1.25); return [1 - wet * 0.4, 1 - wet * 0.36, 1 - wet * 0.28]; },
     });
     group.add(mk(g, track(surfaceMaterial(texSand)), false, true));
     // Apron: the dune runs on far past the near frustum (portrait phones see far under the
@@ -132,11 +136,12 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   const water = pixelWater({
     rect: { x0: -50, z0: -100, w: 100, d: 108 }, y: WATER_Y, fieldRes: 256, range: 7,
     land: (x, z) => sandY(x, z) > WATER_Y || levelAt(hm, x, z) > 0 || STACKS.some(([sx, sz, r]) => Math.hypot(x - sx, z - sz) < r * 0.95),
-    ramp: ['#123a5e', '#1a5680', '#26769a', '#3a94aa', '#64b0b4', '#a8cfc0'],
-    foam: '#fff6e8', wet: '#7a6048', swash: 0.55, deep: 6, waveK: 1.5, waveSpeed: 1.6, caps: 0.25, far: -10, chop: 0.5,
+    // Deep blue offshore → TURQUOISE shallows over the sand.
+    ramp: ['#0f3858', '#145a7a', '#16809a', '#1ea4aa', '#46c4b4', '#98e2cc'],
+    foam: '#fff8ee', wet: '#6e5640', swash: 0.55, deep: 6, waveK: 1.5, waveSpeed: 1.6, caps: 0.2, far: -10, chop: 0.4,
     // Glitter path toward the low sun (back-left), warm horizon haze.
     glitter: { x: -6.3, slope: -0.49, width: 2.2, strength: 0.9, color: '#ffd28a' },
-    haze: { color: '#e8c49a', from: -14, to: -46 },
+    haze: { color: '#d8d4c2', from: -24, to: -64 },
   });
   track(water);
   group.add(water.mesh);
@@ -156,9 +161,8 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   for (let z = pier.z0 - 0.3; z > pier.z1; z -= 1.6) for (const sx of [-1, 1]) {
     drift.box([pier.x + sx * (pier.w / 2) - 0.1, -0.9, z - 0.1], [pier.x + sx * (pier.w / 2) + 0.1, pier.y + (z < pier.z1 + 2 ? 0.55 : 0.1), z + 0.1], grey(0.7), rng);
   }
-  // Rail on the sea end + a lantern post and a crate of rope.
+  // Rail on the sea end.
   drift.box([pier.x - pier.w / 2, pier.y + 0.4, pier.z1 + 0.2], [pier.x + pier.w / 2, pier.y + 0.48, pier.z1 + 0.32], grey(0.8), rng);
-  orientedBox(drift, V(pier.x - 0.3, pier.y + 0.2, pier.z0 - 1.4), V(0.4, 0.4, 0.4), V(0, 1, 0), grey(0.75), rng, 0.3);
   // Rowboat: hull from oriented planks, beached on its side at the left.
   {
     const c = V(-4.9, 0.18, -2.3), yaw = 0.5;
@@ -245,6 +249,16 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
     if (clear(x, z)) continue;
     leaves.tuft(V(x, sandY(x, z) - 0.02, z), 0.4, 0.4 + rng.next() * 0.3, dune, grey(0.9), rng, 2);
   }
+  // Phone foreground: dune grass in patches over the near dune (shading off toward the camera).
+  for (let p = 0; p < (q === 'high' ? 26 : 18); p++) {
+    const cx = -14 + rng.next() * 20, cz = 6.2 + rng.next() * 7;
+    const kind = rng.chance(0.7) ? dune : grass;
+    for (let i = 0; i < 3 + rng.int(4); i++) {
+      const x = cx + (rng.next() - 0.5) * 2.2, z = cz + (rng.next() - 0.5) * 1.4;
+      const k = 0.95 - 0.4 * THREE.MathUtils.smoothstep(z, 6, 13);
+      leaves.tuft(V(x, sandY(x, Math.min(z, hm.z0 + hm.nz * CELL)) - 0.02, z), 0.5 + rng.next() * 0.3, 0.6 + rng.next() * 0.5, kind, grey(k * (0.85 + rng.next() * 0.25)), rng, 2);
+    }
+  }
   const fol = foliageMaterial(foliageAtlas(), { strength: 0.12, speed: 1.3 });
   track(fol.material); track(fol.depth);
   const folMesh = mk(leaves.build(), fol.material, true, true);
@@ -267,7 +281,7 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
 
   // ---- light: a low golden-hour sun from the back-left (≈ 19°), long shadows toward the camera,
   // drifting cloud shadows + a lit pool on the battle floor; weak cool sky fill.
-  const sunFrom = V(-0.42, 0.33, -0.85);
+  const sunFrom = SUN_FROM.clone();
   const rig = sunRig(group, {
     target: V(0.1, 0, 0), from: sunFrom, distance: 36, angle: 0.48, penumbra: 0.2, shadowRadius: 2,
     color: '#ffb46e', intensity: 12.5, cookie: null,
@@ -285,8 +299,9 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   const lowK = q === 'high' ? 1 : 0.5;
   const spray = particles({
     kind: 'spray',
-    emitters: outcrops.map(([x, z, r]) => ({ min: V(x - r, WATER_Y, z - r * 0.6), max: V(x + r, WATER_Y + 0.3, z + r * 0.4), vmin: V(-0.4, 1.0, 0.0), vmax: V(0.4, 2.0, 0.6), count: Math.round(18 * lowK), life: [0.8, 1.6] as [number, number], size: [0.12, 0.22] as [number, number] })),
-    colorA: hdr('#ffffff', 1.1), colorB: hdr('#a8d8e8', 0.95), accel: V(0, -2.6, 0), grow: [0.8, 1.6], opacity: 0.95,
+    // Short bursts where the waves break on the outcrops: low, quick, falling straight back.
+    emitters: outcrops.map(([x, z, r]) => ({ min: V(x - r * 0.8, WATER_Y, z - r * 0.4), max: V(x + r * 0.8, WATER_Y + 0.15, z + r * 0.3), vmin: V(-0.3, 0.9, 0.0), vmax: V(0.3, 1.6, 0.4), count: Math.round(9 * lowK), life: [0.45, 0.8] as [number, number], size: [0.14, 0.24] as [number, number] })),
+    colorA: hdr('#ffffff', 1.1), colorB: hdr('#a8d8e8', 0.95), accel: V(0, -5.5, 0), grow: [0.9, 1.5], opacity: 0.95,
   }, rng);
   const gulls = particles({
     kind: 'gull',

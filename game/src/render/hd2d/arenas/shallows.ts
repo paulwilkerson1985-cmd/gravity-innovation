@@ -6,15 +6,15 @@
 // (a world-space gobo pool; the water under it lifts and glitters) with long shadows.
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
-import { Heightmap, VoxelBatch, surfaceMaterial, type ArenaRig } from '../arena';
+import { Heightmap, VoxelBatch, dustMotes, lightBeams, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
 import { rubblePile } from '../kit/rock';
-import { paintBoulder } from '../textures';
+import { RAMPS, paintBoulder, paintSteel } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, makeGrade, orientedBox, paintDrift, paintSand, particles, pixelWater, rockStack,
+  grey, hdr, makeGrade, orientedBox, paintDrift, paintSand, particles, pixelWater, rockStack, sunlitRock, tube,
 } from './localKit';
 import { gobo, lightPools, sunRig } from './outdoorKit';
 
@@ -41,6 +41,8 @@ export function shallowsGrade(): Grade {
 export interface ShallowsOptions { seed?: number; quality?: 'high' | 'low'; trainer?: boolean }
 
 const WATER_Y = -0.14;
+/** The low storm-break sun (≈ 25°) from the back-left. */
+const SUN_FROM = new THREE.Vector3(-0.62, 0.45, -0.64);
 
 export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   const rng = new Rng(opts.seed ?? 37);
@@ -52,7 +54,8 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   const updates: ((t: number) => void)[] = [];
   const pixelers: ((px: number) => void)[] = [];
 
-  const texSand = cachedTexture('wet-sand', () => paintSand(43, 64, RAMPS2.wetSand));
+  // Light dry sand on the crown (the brightest stage), darkened into a wet band at the rim.
+  const texSand = cachedTexture('sand-bar', () => paintSand(43, 64, RAMPS2.sand));
   const texRock = cachedTexture('sea-boulder', () => paintBoulder(29, 32, RAMPS2.seaRock));
   const texDrift = cachedTexture('drift', () => paintDrift(25, 32));
 
@@ -80,16 +83,22 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   ];
   const onStack = (x: number, z: number) => stacks.some(([sx, sz, r]) => Math.hypot(x - sx, (z - sz) * 1.1) < r * 0.95);
   const rock = new VoxelBatch(32);
-  for (const [sx, sz, r, h] of stacks) rockStack(rock, V(sx, WATER_Y - 0.7, sz), r, h + 0.7, rng, { foot: '#b0b8b8', top: '#ffffff', taper: 0.58 });
+  for (const [sx, sz, r, h] of stacks) rockStack(rock, V(sx, WATER_Y - 0.7, sz), r, h + 0.7, rng, { foot: '#b0b8b8', top: '#fff6e8', taper: 0.58 });
   // A few loose boulders at the foot of each stack, half in the water.
   for (const [sx, sz, r] of stacks.slice(0, 8)) rubblePile(rock, [sx, WATER_Y - 0.15, sz + r * 0.6], rng, { radius: r * 0.7, heap: 0.35, big: Math.min(0.6, r * 0.4) });
-  group.add(mk(rock.build(), track(surfaceMaterial(texRock, undefined, true))));
+  // Warm sunlit tops and a rim from the low sun, a wet dark foot, moss and bird-lime streaks.
+  group.add(mk(sunlitRock(rock.build(), { sun: SUN_FROM, waterY: WATER_Y, moss: 0.3, lime: 0.2 }), track(surfaceMaterial(texRock, undefined, true))));
 
-  // ---- sand (dry crown → wet rim)
+  // ---- sand (dry crown → a clear darker wet band at the rim)
   {
     const g = floorGrid(hm, texSand, 64, {
       res: 2, heightAt: sandY, aoK: 0.3,
-      tintAt: (x, z) => { const r = barR(x, z); const dry = 1 - THREE.MathUtils.smoothstep(r, 0.35, 0.8); return [1 + dry * 0.38, 1 + dry * 0.34, 1 + dry * 0.26]; },
+      tintAt: (x, z) => {
+        const r = barR(x, z);
+        const wet = THREE.MathUtils.smoothstep(r, 0.72, 0.8);
+        const k = 1.06 - wet * 0.42 - THREE.MathUtils.smoothstep(r, 0.3, 0.72) * 0.08;
+        return [k, k * 0.98, k * (0.95 + wet * 0.08)];
+      },
     });
     group.add(mk(g, track(surfaceMaterial(texSand)), false, true));
   }
@@ -99,9 +108,10 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   const water = pixelWater({
     rect: { x0: -44, z0: -80, w: 88, d: 124 }, y: WATER_Y, fieldRes: 288, range: 6,
     land: (x, z) => sandY(x, z) > WATER_Y || onStack(x, z),
-    ramp: ['#102a3e', '#173c54', '#21526a', '#326a7c', '#4e8890', '#86b4b2'],
-    foam: '#eef6f2', wet: '#5e4c3c', swash: 0.4, deep: 4, waveK: 1.9, waveSpeed: 1.9, caps: 0.5, far: -9, chop: 0.6,
-    pool: { x: 0.4, z: -0.2, rx: 7.5, rz: 5.0, outside: -0.7, inside: 0.5 },
+    // Storm-dark open water, TURQUOISE over the sand round the bar (lifted under the sun break).
+    ramp: ['#0e2a3e', '#143e56', '#1a5c70', '#1f8090', '#3caaa6', '#8ad6c4'],
+    foam: '#f2f8f2', wet: '#5e4c3c', swash: 0.4, deep: 4, waveK: 1.9, waveSpeed: 1.9, caps: 0.3, far: -9, chop: 0.45, glints: false,
+    pool: { x: 0.4, z: -0.2, rx: 7.0, rz: 4.6, outside: -0.9, inside: 0.55 },
     glitter: { x: -3.8, slope: -0.75, width: 1.6, strength: 0.7, color: '#ffe0a8' },
     haze: { color: '#8a9aa6', from: -16, to: -44 },
   });
@@ -112,6 +122,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   // ---- props: wreck, mooring post, driftwood, pebbles & shells on the bar
   const drift = new VoxelBatch(32);
   const props = new VoxelBatch(32);
+  const paint = props; // painted props (buoy) share the neutral paint batch
   const wetBits = new VoxelBatch(32);
   // Half-sunken hull at the back right: a keel and curved ribs sticking out of the water.
   {
@@ -130,11 +141,17 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     for (let k = 0; k < 3; k++) orientedBox(drift, c.clone().addScaledVector(side, 0.55 + k * 0.04).addScaledVector(fwd, -0.3 + k * 0.2).add(V(0, 0.25 + k * 0.28, 0)), V(0.08, 0.26, 2.6 - k * 0.5), V(0.5, 1, 0).applyAxisAngle(V(0, 1, 0), yaw), grey(0.62 + k * 0.08), rng, yaw + Math.PI / 2);
     orientedBox(drift, c.clone().addScaledVector(fwd, 1.8).add(V(0, 0.7, 0)), V(0.16, 1.5, 0.16), V(0.5, 1, 0).applyAxisAngle(V(0, 1, 0), yaw), grey(0.75), rng); // stem post
   }
-  // Mooring post with red/white bands and a buoy (a colour accent at the front left).
+  // A weathered mooring float tied to a driftwood stake at the front left (the colour accent):
+  // a round, faded-red buoy with a white band, half afloat, a rope down to the stake.
   {
-    const p = V(-4.6, WATER_Y, 2.6);
-    for (let k = 0; k < 5; k++) orientedBox(props, p.clone().add(V(0, 0.18 + k * 0.3, 0)), V(0.24, 0.3, 0.24), V(0.05, 1, 0), new THREE.Color(k % 2 ? '#f2efe6' : '#d0402e'), rng, 0.3);
-    orientedBox(props, p.clone().add(V(0.55, 0.05, 0.4)), V(0.36, 0.3, 0.36), V(0, 1, 0), new THREE.Color('#ff7a2a'), rng, 0.7);
+    const p = V(-4.4, WATER_Y, 2.7);
+    tube(drift, p.clone().add(V(0, -0.3, 0)), p.clone().add(V(0.12, 1.25, 0.05)), (t) => 0.13 - t * 0.04, { sides: 7, rings: 3, wobble: 0.08, seed: 3, tint: (t) => grey(0.82 + t * 0.2) });
+    const bp = p.clone().add(V(0.62, -0.06, 0.38));
+    tube(paint, bp.clone().add(V(0, -0.2, 0)), bp.clone().add(V(0, 0.42, 0)), (t) => Math.sin(Math.PI * (0.08 + t * 0.84)) * 0.27, {
+      sides: 10, rings: 6, tint: (t) => new THREE.Color(t > 0.42 && t < 0.62 ? '#ece6da' : '#c44a34'),
+    });
+    tube(paint, bp.clone().add(V(0, 0.4, 0)), bp.clone().add(V(0, 0.56, 0)), () => 0.05, { sides: 6, rings: 1, tint: () => new THREE.Color('#3a3634') });
+    orientedBox(drift, p.clone().add(V(0.33, 0.12, 0.2)), V(0.035, 0.75, 0.035), V(0.82, 0.12, 0.5), grey(0.7), rng); // rope
   }
   // Driftwood on the bar ends.
   for (const [x, z, a, l] of [[-3.7, 2.7, 0.8, 1.5], [3.8, -2.9, -0.2, 1.7], [0.9, 2.0, 2.4, 0.9]] as const) {
@@ -177,7 +194,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
 
   group.add(mk(drift.build(), track(surfaceMaterial(texDrift, undefined, true))));
   group.add(mk(wetBits.build(), track(surfaceMaterial(texRock, undefined, true))));
-  group.add(mk(props.build(), track(surfaceMaterial(null))));
+  group.add(mk(props.build(), track(surfaceMaterial(cachedTexture('paint-weathered', () => paintSteel(47, 16, RAMPS.paint)), undefined, true))));
 
   if (opts.trainer) {
     const m = decal(troddenMarking('#5e4a38', '#e8d8b8', ['#e8e0d0', '#a89a88', '#5e4a38']), 0.1, 0.012, 0.0, TRODDEN_SIZE, TRODDEN_SIZE, { rot: Math.atan2(2.0, 2.8) });
@@ -185,25 +202,40 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     group.add(m);
   }
 
-  // ---- light: storm light — one warm sun break (≈ 38°, back-left) on the sandbar with long
-  // shadows, drifting dark cloud shadows everywhere else, cool weak sky fill.
+  // ---- light: storm light — ONE low warm sun (≈ 25°, back-left) breaking through: a broken-
+  // cloud gobo (dark drifting cloud shade everywhere, a clear sun pool on the sandbar), one long
+  // shaft falling onto the bar, cool weak sky fill. The sunlit island is the brightest stage.
   const rig = sunRig(group, {
-    target: V(0.3, 0, -0.1), from: V(-0.55, 0.62, -0.55), distance: 34, angle: 0.5, penumbra: 0.2, shadowRadius: 2,
-    color: '#ffdcaa', intensity: 11.5, cookie: null,
-    sky: '#9aaccc', ground: '#3a5560', hemi: 1.55,
-    fill: '#9ab0c8', fillIntensity: 0.35, quality: q,
+    target: V(0.3, 0, -0.1), from: SUN_FROM, distance: 34, angle: 0.5, penumbra: 0.2, shadowRadius: 2,
+    color: '#ffd29a', intensity: 13.5, cookie: null,
+    sky: '#8a9cbc', ground: '#2e4650', hemi: 1.3,
+    fill: '#8aa4c0', fillIntensity: 0.3, quality: q,
   });
   const key = rig.key;
-  const gob = gobo(key, { kind: 'clouds', seed: 9, pool: { x: 0.3, z: -0.1, ru: 4.6, rv: 2.9, angle: Math.atan2(-2.0, 2.8), soft: 0.35 }, outside: 0.38, shade: 0.4, cover: 0.5, scale: 10, drift: [0.3, 0.12], y: 0.1 });
+  const gob = gobo(key, { kind: 'clouds', seed: 9, pool: { x: 0.3, z: -0.1, ru: 4.9, rv: 2.9, angle: Math.atan2(-2.0, 2.8), soft: 0.3 }, outside: 0.48, shade: 0.4, cover: 0.5, scale: 9, drift: [0.3, 0.12], y: 0.1 });
   track(gob);
   updates.push(gob.update);
-  group.add(lightPools([[0.3, -0.1, 9.6, 6.2]], '#4a3a20', 1.2));
+  group.add(lightPools([[0.3, -0.1, 9.8, 6.0]], '#5a4426', 1.5));
+  // One shaft from the cloud break onto the sandbar, with a few motes.
+  const dir = SUN_FROM.clone().normalize().negate();
+  const beams: BeamSpec[] = [{ start: V(0.6, 0, 0.1).addScaledVector(dir, -11 / -dir.y), end: V(0.6, 0, 0.1), width: [0.9, 3.2] }];
+  const rays = lightBeams(beams, '#ffe2b0', 0.2);
+  track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
+  group.add(rays.mesh);
+  updates.push(rays.update);
+  const motes = dustMotes(beams, q === 'high' ? 18 : 10, rng, '#fff2cc');
+  track(motes.points.geometry); track(motes.points.material as THREE.Material);
+  group.add(motes.points);
+  updates.push(motes.update);
+  pixelers.push(motes.setPixelSize);
 
   // ---- spray off the rocks and the bar ends, a few gulls
   const lowK = q === 'high' ? 1 : 0.5;
-  const sprayEmit = [...stacks.slice(0, 7).map(([x, z, r]) => ({ x, z, r: r + 0.2 })), ...outcrops.map(([x, z, r]) => ({ x, z, r }))]
-    .map(({ x, z, r }) => ({ min: V(x - r, WATER_Y, z - r * 0.5), max: V(x + r, WATER_Y + 0.2, z + r * 0.5), vmin: V(-0.5, 1.2, -0.2), vmax: V(0.5, 2.4, 0.5), count: Math.round(14 * lowK), life: [0.8, 1.5] as [number, number], size: [0.12, 0.24] as [number, number] }));
-  const spray = particles({ kind: 'spray', emitters: sprayEmit, colorA: hdr('#ffffff', 1.12), colorB: hdr('#9cc8d8', 0.95), accel: V(0.3, -2.8, 0), grow: [0.8, 1.7], opacity: 0.95 }, rng);
+  // Spray only where waves break on the stack bases: short, low bursts that fall straight back
+  // (no specks drifting over the frame).
+  const sprayEmit = stacks.slice(0, 7).map(([x, z, r]) => ({ x, z: z + r * 0.75, r: r * 0.8 }))
+    .map(({ x, z, r }) => ({ min: V(x - r, WATER_Y, z - 0.1), max: V(x + r, WATER_Y + 0.12, z + 0.2), vmin: V(-0.3, 0.9, -0.1), vmax: V(0.3, 1.5, 0.3), count: Math.round(7 * lowK), life: [0.45, 0.8] as [number, number], size: [0.16, 0.26] as [number, number] }));
+  const spray = particles({ kind: 'spray', emitters: sprayEmit, colorA: hdr('#ffffff', 1.12), colorB: hdr('#9cc8d8', 0.95), accel: V(0.3, -5.5, 0), grow: [0.9, 1.5], opacity: 0.95 }, rng);
   const gulls = particles({
     kind: 'gull',
     emitters: [{ min: V(-2, 5.0, -9), max: V(2, 5.8, -7), vmin: V(3, 0.2, 0.3), vmax: V(4, 0.4, 0.5), count: 3, life: [10, 10], size: [0.85, 1.0] }],
