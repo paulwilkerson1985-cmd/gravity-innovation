@@ -17,6 +17,7 @@ import { hd2dRequested } from '../render/hd2d/pipeline';
 import { stadiumPodium } from '../render/hd2d/arenas/stadium';
 import { Figure } from '../render/hd2d/characters';
 import { Hd2dArenaStage, seatLook } from './hd2dArena';
+import './adventure.css';
 
 export interface ArenaVictoryParams {
   summary: MatchSummary;
@@ -80,6 +81,9 @@ export class ArenaVictoryScene extends BaseScene {
     for (const pl of this.set.platforms) pl.visible = false;
     this.set.cheer(6);
     pod.mesh.position.set(0, 0, -0.6);
+    // HD-2D ceremony light: one spotlight on the podium, the court cones out, the crowd sinks
+    // into the dark bowl.
+    this.hd2d?.rig.focus(new THREE.Vector3(0.4, 0, -0.6), 0.5);
     this.scene.add(pod.mesh);
     const stand = (speciesId: string, at: THREE.Vector3, i: number, fainted: boolean) => {
       const v = new CreatureView(species(speciesId).look, i);
@@ -107,7 +111,8 @@ export class ArenaVictoryScene extends BaseScene {
       stand(s.teams[0][0]!.species, pod.tops[1], 0, false);
       stand(s.teams[1][0]!.species, pod.tops[2], 1, false);
     }
-    this.confetti = new Confetti(200, { x: 6, z: 3.5, top: 7.5 }, s.winner === null ? undefined : [color, '#ffffff', '#ffcf3f', color, SEAT_DARK[s.winner], '#43d36b']);
+    // HD-2D: denser confetti over a tighter, closer podium.
+    this.confetti = new Confetti(this.hd2d ? 380 : 200, this.hd2d ? { x: 5, z: 3, top: 6.5 } : { x: 6, z: 3.5, top: 7.5 }, s.winner === null ? undefined : [color, '#ffffff', '#ffcf3f', color, SEAT_DARK[s.winner], '#43d36b']);
     this.confetti.mesh.position.set(0, 0, -0.6);
     this.scene.add(this.confetti.mesh);
 
@@ -138,14 +143,16 @@ export class ArenaVictoryScene extends BaseScene {
     // The podium fills the space between the winner's name and the stats card (left of the
     // card on a landscape phone).
     const q = (sel: string) => this.ui.querySelector(sel);
-    const land = layoutMode(w, hgt) === 'land';
-    const area = freeArea(w, hgt, land ? { top: [q('.arena-win-top')], right: [q('.arena-vcard')] } : { top: [q('.arena-win-top')], bottom: [q('.arena-vcard')] }, 12);
+    const mode = layoutMode(w, hgt);
+    // HD-2D docks the card at the side on every non-portrait layout (the podium keeps the rest).
+    const side = mode === 'land' || (!!this.hd2d && mode !== 'portrait');
+    const area = freeArea(w, hgt, side ? { top: [q('.arena-win-top')], right: [q('.arena-vcard')] } : { top: [q('.arena-win-top')], bottom: [q('.arena-vcard')] }, 12);
     // Top at 3.5: a tall winner (Pyrelord's crown) on the top step stays clear of the title.
     if (this.hd2d) {
       // HD-2D: a higher 3/4 view (the bowl and crowd behind), the winner included on the right.
       cam.clearViewOffset();
-      const pts = corners(new THREE.Vector3(-2.65, 0, -1.5), new THREE.Vector3(this.winnerFig ? 3.6 : 2.65, 3.5, 0.6));
-      const dist = fitPoints(cam, w, hgt, pts, area, { dir: new THREE.Vector3(-0.08, 0.5, 1), target: new THREE.Vector3(0.3, 1.2, -0.6), fill: 0.9 });
+      const pts = corners(new THREE.Vector3(-2.6, 0, -1.4), new THREE.Vector3(this.winnerFig ? 3.5 : 2.6, 3.2, 0.5));
+      const dist = fitPoints(cam, w, hgt, pts, area, { dir: new THREE.Vector3(-0.08, 0.42, 1), target: new THREE.Vector3(0.3, 1.2, -0.6), fill: 0.98 });
       this.hd2d.afterFrame(dist);
       return;
     }
@@ -212,7 +219,7 @@ export class ArenaVictoryScene extends BaseScene {
       this.actions,
     );
     arrowNav(card);
-    this.ui.append(h('div', { class: 'arena-victory-ui' }, top, card));
+    this.ui.append(h('div', { class: `arena-victory-ui${this.hd2d ? ' hd2d-dock' : ''}` }, top, card));
     this.ui.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.leave(); });
     focusFirst(this.actions);
   }

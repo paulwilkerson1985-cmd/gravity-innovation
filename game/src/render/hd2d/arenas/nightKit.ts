@@ -354,6 +354,7 @@ attribute vec2 aCorner;
 attribute vec4 aInfo;   // x: seed, y: row (variant), z: scale, w: jump height when excited
 attribute vec3 aTint;
 attribute float aShade;  // per-sprite brightness (e.g. crowd rows darken toward the back)
+attribute vec2 aSil;     // x: silhouette amount (back rows fall to a dark shape), y: top rim light
 uniform float uTime;
 uniform float uFps;
 uniform float uFrames;
@@ -364,8 +365,10 @@ uniform vec2 uSize;
 varying vec2 vUv;
 varying vec3 vTint;
 varying float vShade;
+varying vec2 vSil;
 void main() {
   vShade = aShade;
+  vSil = aSil;
   float span = uSplit > 0.5 ? uFrames * 0.5 : uFrames;
   float excited = (uSplit > 0.5 && fract(aInfo.x * 3.71) < uHype) ? 1.0 : 0.0;
   float speed = uFps * (uSplit > 0.5 ? mix(0.3, 1.0, excited) : 1.0) * (0.75 + 0.5 * fract(aInfo.x * 7.13));
@@ -382,9 +385,13 @@ void main() {
 const BB_FRAG = /* glsl */ `
 uniform sampler2D tMap;
 uniform float uGain;
+uniform vec2 uTexel;     // 1 / sheet size
+uniform vec3 uSilCol;    // silhouette colour (linear)
+uniform vec3 uRimCol;    // rim light colour (linear)
 varying vec2 vUv;
 varying vec3 vTint;
 varying float vShade;
+varying vec2 vSil;
 void main() {
   vec4 c = texture2D(tMap, vUv);
   if (c.a < 0.5) discard;
@@ -393,7 +400,10 @@ void main() {
   vec3 col = c.rgb;
   float isKey = step(c.g, 0.05) * step(0.3, c.r) * step(abs(c.r - c.b), 0.05);
   col = mix(col, vTint * mix(0.55, 1.0, step(0.75, c.r)), isKey);
-  gl_FragColor = vec4(col * uGain * vShade, 1.0);
+  col = mix(col * uGain * vShade, uSilCol, vSil.x);
+  // Rim light from the floodlights above: the topmost texel of the silhouette (heads, raised arms).
+  if (vSil.y > 0.0 && texture2D(tMap, vUv + vec2(0.0, uTexel.y)).a < 0.5) col = mix(col, uRimCol, vSil.y);
+  gl_FragColor = vec4(col, 1.0);
 }`;
 
 export interface Billboards {
@@ -409,10 +419,13 @@ export interface Billboards {
  * take the per-sprite tint (shirt colours), dark magenta a shaded tint. `split`: the first half
  * of the frames loop slowly (idle), the second half fast with a hop for the `hype` fraction.
  */
-export function billboards(sheet: THREE.Texture, frames: number, rows: number, size: [number, number], items: { at: THREE.Vector3; row: number; scale?: number; jump?: number; tint?: THREE.Color; shade?: number; seed: number }[], o: { fps?: number; gain?: number; split?: boolean } = {}): Billboards {
+export function billboards(sheet: THREE.Texture, frames: number, rows: number, size: [number, number],
+  items: { at: THREE.Vector3; row: number; scale?: number; jump?: number; tint?: THREE.Color; shade?: number; seed: number; sil?: number; rim?: number }[],
+  o: { fps?: number; gain?: number; split?: boolean; silColor?: THREE.ColorRepresentation; rimColor?: THREE.ColorRepresentation } = {}): Billboards {
   const n = items.length;
   const center = new Float32Array(n * 4 * 3), corner = new Float32Array(n * 4 * 2), info = new Float32Array(n * 4 * 4), tint = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2);
   const shadeA = new Float32Array(n * 4);
+  const silA = new Float32Array(n * 4 * 2);
   const index: number[] = [];
   const cs = [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]] as const;
   const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]] as const;
@@ -426,6 +439,7 @@ export function billboards(sheet: THREE.Texture, frames: number, rows: number, s
       const c = it.tint ?? new THREE.Color(1, 1, 1);
       tint.set([c.r, c.g, c.b], v * 3);
       shadeA[v] = it.shade ?? 1;
+      silA[v * 2] = it.sil ?? 0; silA[v * 2 + 1] = it.rim ?? 0;
     }
     const b = i * 4;
     index.push(b, b + 1, b + 2, b, b + 2, b + 3);
@@ -438,12 +452,16 @@ export function billboards(sheet: THREE.Texture, frames: number, rows: number, s
   g.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
   g.setAttribute('aTint', new THREE.BufferAttribute(tint, 3));
   g.setAttribute('aShade', new THREE.BufferAttribute(shadeA, 1));
+  g.setAttribute('aSil', new THREE.BufferAttribute(silA, 2));
   g.setIndex(index);
   const material = new THREE.ShaderMaterial({
     vertexShader: BB_VERT, fragmentShader: BB_FRAG,
     uniforms: {
       tMap: { value: sheet }, uTime: { value: 0 }, uFps: { value: o.fps ?? 6 }, uFrames: { value: frames }, uRows: { value: rows },
       uHype: { value: 0 }, uSplit: { value: o.split ? 1 : 0 }, uSize: { value: new THREE.Vector2(...size) }, uGain: { value: o.gain ?? 1 },
+      uTexel: { value: new THREE.Vector2(1 / Math.max(1, (sheet.image as { width?: number } | null)?.width ?? 1), 1 / Math.max(1, (sheet.image as { height?: number } | null)?.height ?? 1)) },
+      uSilCol: { value: new THREE.Color(o.silColor ?? '#0b0918') },
+      uRimCol: { value: new THREE.Color(o.rimColor ?? '#e8e4ff') },
     },
   });
   const mesh = new THREE.Mesh(g, material);
