@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "sim": "tsx tools/sim.ts",
     "server": "tsx server/index.ts",
+    "font": "tsx tools/pixelfont/build.ts",
     "smoke": "playwright test",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build && npm run smoke"
   },

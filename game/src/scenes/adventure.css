@@ -103,7 +103,8 @@
 }
 @media (max-width: 360px), (max-height: 500px) and (orientation: landscape) {
   .menu-moves .btn-move .mmeta { display: none; }
-  .menu-moves .btn-move .mname .eff { display: inline-block; }
+  .menu-moves .btn-move .mname .eff { display: inline-block; position: absolute; right: 2px; top: 2px; }
+  .menu-moves .btn-move:has(.eff) { padding-right: 26px; }
   .menu-moves:has(.move-info) .move-info { font: var(--f1); line-height: 14px; gap: 2px; }
 }
 .btn-move .mmeta .eff { margin-left: 4px; }
@@ -112,6 +113,7 @@
 .menu-bag { grid-template-columns: 1fr 1fr 1fr; }
 .menu-bag .btn-orb, .menu-bag .btn-item { grid-column: 1 / -1; flex-direction: row; justify-content: flex-start; align-items: center; gap: 10px; }
 .menu-bag .btn-orb .mname, .menu-bag .btn-item .mname { flex: 1; min-width: 0; }
+.menu.bt-menu.menu-bag { scroll-padding-top: calc(var(--row) + 4px); }
 .menu-bag .tab-btn, .menu-bag .btn-back { align-items: center; padding-left: 18px; position: sticky; top: 0; z-index: 2; background: var(--paper); }
 .menu-bag .tab-btn:hover, .menu-bag .btn-back:hover { background: var(--sel); }
 .menu-bag .tab-btn.on { background: var(--amber); box-shadow: inset 0 2px 0 var(--amber-hi), inset 0 -2px 0 #00000026; }
@@ -146,13 +148,15 @@
   .kin-row:has(.knote) .st-low { display: none; }
   .btn-kinpick .kin-row .mmeta:not(.knote) { display: none; }
 }
+@media (max-width: 360px) { .bt-menu .btn-kinpick { padding: 2px 2px 2px 14px; } .bt-menu .btn-kinpick::before { left: 4px; } }
 .menu-forget .btn-skip { grid-column: 1 / -1; }
 .menu-forget .btn-move { justify-content: center; }
 .menu-end .btn { grid-column: 1 / -1; }
 .menu-end .btn-travel { grid-column: 1 / -1; }
 .menu-confirm .btn-back { grid-column: auto; }
 .bt-menu.menu-confirm:not(.arena-menu) { grid-template-columns: minmax(84px, 1fr) 2.4fr; }
-.menu-confirm .btn { white-space: nowrap; }
+.menu-confirm .btn { white-space: normal; }
+.menu-confirm .btn .mn, .menu-confirm .btn { line-height: 20px; }
 @media (max-width: 360px) { .menu-confirm .btn { font: var(--f1); } }
 /* moves without an info box (forget list, arena) and the end menu pop up as taller lists */
 .menu.bt-menu.menu-forget, .menu.bt-menu.menu-moves:not(:has(.move-info)) { height: auto; min-height: var(--menu-h); max-height: var(--pop-h); grid-auto-rows: minmax(var(--row), auto); align-content: end; }
