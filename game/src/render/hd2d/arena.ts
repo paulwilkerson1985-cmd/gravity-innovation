@@ -12,9 +12,9 @@
 //    glow, beams, dust) — ~12 calls for the whole set.
 import * as THREE from 'three';
 import { Rng } from '../../engine/rng';
-import { RAMPS, cachedTexture, paintBoulder, paintBoards, paintDirt, paintPlanks, paintPlaster, paintRock, paintRug, paintSteel, paintStone } from './textures';
+import { RAMPS, cachedTexture, paintBoulderAtlas, paintBoards, paintDirt, paintPlanks, paintPlaster, paintRock, paintRug, paintSteel, paintStone } from './textures';
 import type { SpriteLight } from './sprite';
-import { boulderColumns, pebbles, rubblePile } from './kit/rock';
+import { boulder, boulderColumns, clusterBump, pebbles, rubblePile, terraceLevel, wobbleAt } from './kit/rock';
 import { banner, barrel, bookcase, brazier, crate, table, type PropBatches } from './kit/props';
 
 import { CELL, LEVEL, TEXEL } from './kit/units';
@@ -39,6 +39,12 @@ export class VoxelBatch {
   private col: number[] = [];
   /** Face-local coords for the pixel bevel: (u, v, width, ±height); negative height = side face. */
   private face: number[] = [];
+  /**
+   * Opt-in baked sky key (world direction, normalised on use): at build() every vertex colour is
+   * multiplied by 0.55 + 0.75 · max(0, n · bake) — bright top planes, mid fronts, dark undersides
+   * whatever the dynamic lights do. Off (null) by default.
+   */
+  bake: THREE.Vector3 | null = null;
   constructor(readonly tileTexels = 32) {}
 
   get count() { return this.pos.length / 3; }
@@ -60,7 +66,7 @@ export class VoxelBatch {
   }
 
   /** One quad (two triangles). `ao` per corner [a, b, c, d]; corners in CCW order seen from the normal side. */
-  quad(a: V3, b: V3, c: V3, d: V3, n: V3, uv: [number, number][], tint: THREE.Color, ao: [number, number, number, number] = [1, 1, 1, 1]) {
+  quad(a: V3, b: V3, c: V3, d: V3, n: V3, uv: [number, number][], tint: THREE.Color, ao: [number, number, number, number] = [1, 1, 1, 1], flat = false) {
     const corners = [a, b, c, d];
     const W = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), H = Math.hypot(d[0] - a[0], d[1] - a[1], d[2] - a[2]);
     const fl: [number, number][] = [[0, 0], [W, 0], [W, H], [0, H]];
@@ -73,7 +79,8 @@ export class VoxelBatch {
       this.pos.push(p[0], p[1], p[2]);
       this.nor.push(n[0], n[1], n[2]);
       this.uv.push(uv[i]![0], uv[i]![1]);
-      this.face.push(fl[i]![0], fl[i]![1], W, H * sideSign);
+      if (flat) this.face.push(0, 0, -1, 1);
+      else this.face.push(fl[i]![0], fl[i]![1], W, H * sideSign);
       this.col.push(tint.r * ao[i]!, tint.g * ao[i]!, tint.b * ao[i]!);
     }
   }
@@ -81,8 +88,9 @@ export class VoxelBatch {
   /**
    * Axis-aligned box from `min` to `max`. `faces` skips sides (order: +x -x +y -y +z -z).
    * `ao(face, corner)` may return a per-corner AO factor; default darkens side bottoms.
+   * `flat` codes every face as a seamless bevel facet (no dark seam, no lip) in any material.
    */
-  box(min: V3, max: V3, tint: THREE.Color, rng: Rng, o: { skip?: boolean[]; aoBottom?: number; aoTop?: [number, number, number, number]; texOff?: [number, number]; topK?: number } = {}) {
+  box(min: V3, max: V3, tint: THREE.Color, rng: Rng, o: { skip?: boolean[]; aoBottom?: number; aoTop?: [number, number, number, number]; texOff?: [number, number]; topK?: number; flat?: boolean } = {}) {
     const [x0, y0, z0] = min, [x1, y1, z1] = max;
     const t = 1 / (TEXEL * this.tileTexels);
     const ox = o.texOff?.[0] ?? rng.int(this.tileTexels) / this.tileTexels;
@@ -91,23 +99,24 @@ export class VoxelBatch {
     const ab = o.aoBottom ?? 0.62;
     const top = o.aoTop ?? [1, 1, 1, 1];
     const sk = o.skip ?? [];
+    const fl = !!o.flat;
     // Side faces: bottom corners get `ab`, top corners 1.
     const side = (a: V3, b: V3, c: V3, d: V3, n: V3, w: number) =>
-      this.quad(a, b, c, d, n, [[ox, oy], [ox + w, oy], [ox + w, oy + sy], [ox, oy + sy]], tint, [ab, ab, 1, 1]);
+      this.quad(a, b, c, d, n, [[ox, oy], [ox + w, oy], [ox + w, oy + sy], [ox, oy + sy]], tint, [ab, ab, 1, 1], fl);
     if (!sk[0]) side([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], sz);
     if (!sk[1]) side([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], sz);
-    if (!sk[2]) this.quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], [[ox, oy], [ox + sx, oy], [ox + sx, oy + sz], [ox, oy + sz]], o.topK ? tint.clone().multiplyScalar(o.topK) : tint, top);
-    if (!sk[3]) this.quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0], [[ox, oy], [ox + sx, oy], [ox + sx, oy + sz], [ox, oy + sz]], tint, [ab, ab, ab, ab]);
+    if (!sk[2]) this.quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], [[ox, oy], [ox + sx, oy], [ox + sx, oy + sz], [ox, oy + sz]], o.topK ? tint.clone().multiplyScalar(o.topK) : tint, top, fl);
+    if (!sk[3]) this.quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0], [[ox, oy], [ox + sx, oy], [ox + sx, oy + sz], [ox, oy + sz]], tint, [ab, ab, ab, ab], fl);
     if (!sk[4]) side([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], sx);
     if (!sk[5]) side([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], sx);
   }
 
-  /** Box rotated about Y by `ry` around its centre (props, rubble). */
-  rotBox(center: V3, size: V3, ry: number, tint: THREE.Color, rng: Rng, rx = 0) {
+  /** Box rotated about Y by `ry` (then X by `rx`, Z by `rz`) around its centre (props, rubble). */
+  rotBox(center: V3, size: V3, ry: number, tint: THREE.Color, rng: Rng, rx = 0, rz = 0) {
     const start = this.pos.length;
     const h: V3 = [size[0] / 2, size[1] / 2, size[2] / 2];
     this.box([-h[0], -h[1], -h[2]], [h[0], h[1], h[2]], tint, rng, { skip: [false, false, false, true, false, false], aoBottom: 0.7 });
-    const m = new THREE.Matrix4().compose(new THREE.Vector3(...center), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, 0)), new THREE.Vector3(1, 1, 1));
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(...center), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
     const nm = new THREE.Matrix3().getNormalMatrix(m);
     const v = new THREE.Vector3();
     for (let i = start; i < this.pos.length; i += 3) {
@@ -124,7 +133,23 @@ export class VoxelBatch {
     cat(this.pos, o.pos); cat(this.nor, o.nor); cat(this.uv, o.uv); cat(this.col, o.col); cat(this.face, o.face);
   }
 
+  /** Multiply the colour of every vertex so far by `k(x, y, z)` (e.g. darken the foreground). */
+  shade(k: (x: number, y: number, z: number) => number) {
+    for (let i = 0; i < this.pos.length; i += 3) {
+      const f = k(this.pos[i]!, this.pos[i + 1]!, this.pos[i + 2]!);
+      if (f !== 1) { this.col[i]! *= f; this.col[i + 1]! *= f; this.col[i + 2]! *= f; }
+    }
+  }
+
   build(): THREE.BufferGeometry {
+    if (this.bake) {
+      const L = this.bake.clone().normalize();
+      for (let i = 0; i < this.nor.length; i += 3) {
+        const f = 0.55 + 0.75 * Math.max(0, this.nor[i]! * L.x + this.nor[i + 1]! * L.y + this.nor[i + 2]! * L.z);
+        this.col[i]! *= f; this.col[i + 1]! *= f; this.col[i + 2]! *= f;
+      }
+      this.bake = null; // applied once
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
@@ -137,34 +162,53 @@ export class VoxelBatch {
   }
 }
 
-/** A lit, pixel-textured surface material (shadows on). Vertex colour carries tint × AO. */
-export function surfaceMaterial(map: THREE.Texture | null, emissive?: THREE.ColorRepresentation, bevel = false): THREE.MeshLambertMaterial {
+/**
+ * A lit, pixel-textured surface material (shadows on). Vertex colour carries tint × AO.
+ * `bevel` adds the texel bevel (addBevel); `seam = false` drops its dark 1-texel seam on box
+ * faces (rock, stone and core materials — planks and crates keep it).
+ */
+export function surfaceMaterial(map: THREE.Texture | null, emissive?: THREE.ColorRepresentation, bevel = false, seam = true): THREE.MeshLambertMaterial {
   const m = new THREE.MeshLambertMaterial({ map, vertexColors: true });
-  if (bevel) addBevel(m);
+  if (bevel) addBevel(m, seam);
   if (emissive !== undefined) { m.emissive = new THREE.Color(emissive); m.emissiveMap = map; }
   return m;
 }
 
 /**
- * Pixel bevel for VoxelBatch geometry: a 1-texel dark seam around every face and a 1–2 texel
- * lit lip along the top of side faces, quantised to the texel grid. Turns flat cubes into
- * chunky hand-shaded boulders (the reference's "each rock is drawn" look) at no geometry cost.
+ * Pixel bevel for VoxelBatch geometry, quantised to the texel grid, coded per vertex in `aFace`
+ * (u, v, width, ±height):
+ *  * box faces (width > 0): a 1-texel dark seam around the face (unless `seam` is false) and a
+ *    1–2 texel lit lip along the top of side faces — chunky hand-made planks and crates;
+ *  * rock faces (width ≤ -1.5, kit/rock.ts boulders; real width = -width - 2): never a seam;
+ *    sides get a quantised vertical value gradient (×0.75 at the foot → 1.0 at the top), tops a
+ *    soft 2-texel lit rim along their far edge — rounded, lit rock;
+ *  * bevel facets (width = -1): no seam, brightness × height.
  */
-export function addBevel(m: THREE.MeshLambertMaterial) {
+export function addBevel(m: THREE.MeshLambertMaterial, seam = true) {
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = 'attribute vec4 aFace;\nvarying vec4 vFace;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFace = aFace;');
     sh.fragmentShader = 'varying vec4 vFace;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
       {
         float tx = ${TEXEL.toFixed(5)};
-        if (vFace.z < 0.0) {
-          // Chamfer facet (kit/rock.ts): no seam; a fixed brightness, quantised per texel row
-          // so the facet keeps a crisp 1-texel edge against the face it bevels.
+        if (vFace.z < -1.5) {
+          // Rock face: no seam. Quantised per texel and in 4 value bands.
+          vec2 p = floor(vFace.xy / tx);
+          float n = max(1.0, floor(abs(vFace.w) / tx));
+          if (vFace.w < 0.0) {
+            float t = clamp((p.y + 0.5) / n, 0.0, 1.0);
+            diffuseColor.rgb *= 0.75 + 0.25 * min(1.0, floor(t * 4.0) / 3.0);
+          } else {
+            float top = n - 1.0 - p.y;
+            diffuseColor.rgb *= top < 0.5 ? 1.12 : top < 1.5 ? 1.06 : 1.0;
+          }
+        } else if (vFace.z < 0.0) {
+          // Bevel facet (kit/rock.ts): no seam; a fixed brightness.
           diffuseColor.rgb *= vFace.w;
         } else {
         vec2 p = floor(vFace.xy / tx);
         vec2 n = max(vec2(1.0), floor(abs(vFace.zw) / tx));
         float e = min(min(p.x, n.x - 1.0 - p.x), min(p.y, n.y - 1.0 - p.y));
-        float k = e < 0.5 ? 0.58 : e < 1.5 ? 0.84 : 1.0;
+        float k = ${seam ? 'e < 0.5 ? 0.58 : e < 1.5 ? 0.84 : 1.0' : '1.0'};
         if (vFace.w < 0.0) {
           float top = n.y - 1.0 - p.y;
           if (top < 1.5 && min(p.x, n.x - 1.0 - p.x) > 0.5) k = top < 0.5 ? 1.32 : 1.16;
@@ -175,7 +219,21 @@ export function addBevel(m: THREE.MeshLambertMaterial) {
         }
       }`);
   };
-  m.customProgramCacheKey = () => 'hd2d-bevel';
+  m.customProgramCacheKey = () => (seam ? 'hd2d-bevel' : 'hd2d-bevel-rock');
+}
+
+/**
+ * Scale the ambient (hemisphere) light a Lambert material receives by `k`, leaving direct light
+ * alone: a floor with dark shade and full-strength sun patches. Composes with addBevel.
+ */
+export function scaleAmbient(m: THREE.MeshLambertMaterial, k: number) {
+  const prev = m.onBeforeCompile.bind(m);
+  const prevKey = m.customProgramCacheKey.bind(m);
+  m.onBeforeCompile = (sh, r) => {
+    prev(sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>\n\treflectedLight.indirectDiffuse *= ${k.toFixed(3)};`);
+  };
+  m.customProgramCacheKey = () => `${prevKey()}|amb${k.toFixed(3)}`;
 }
 
 function mesh(g: THREE.BufferGeometry, m: THREE.Material, cast = true, receive = true): THREE.Mesh {
@@ -257,8 +315,10 @@ attribute vec3 aEnd;
 attribute vec2 aSide;   // x: -1..1 across, y: 0..1 along
 attribute vec2 aWidth;  // width at start, end
 attribute float aSeed;
+attribute float aGain;  // per-shaft intensity (haze cones are dim)
 varying vec2 vSide;
 varying float vSeed;
+varying float vGain;
 void main() {
   vec3 axis = aEnd - aStart;
   vec3 p = mix(aStart, aEnd, aSide.y);
@@ -267,6 +327,7 @@ void main() {
   p += across * aSide.x * mix(aWidth.x, aWidth.y, aSide.y) * 0.5;
   vSide = aSide;
   vSeed = aSeed;
+  vGain = aGain;
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }`;
 
@@ -276,33 +337,41 @@ uniform float uTime;
 uniform float uIntensity;
 varying vec2 vSide;
 varying float vSeed;
+varying float vGain;
 void main() {
-  float across = 1.0 - smoothstep(0.55, 0.95, abs(vSide.x));
-  float along = smoothstep(0.0, 0.35, vSide.y) * (1.0 - smoothstep(0.75, 1.0, vSide.y));
-  // Slow shimmer: dust drifting through the shaft.
-  float flick = 0.82 + 0.18 * sin(vSide.y * 9.0 - uTime * 0.7 + vSeed * 6.0) * sin(vSide.x * 3.0 + uTime * 0.4 + vSeed);
-  float a = across * along * flick * uIntensity;
+  // Broad, soft shaft: gaussian across, a soft start and a long fade toward the floor.
+  float x = vSide.x, y = vSide.y;
+  float across = exp(-x * x * 3.0) * (1.0 - smoothstep(0.8, 1.0, abs(x)));
+  float along = smoothstep(0.0, 0.15, y) * (1.0 - 0.6 * y) * (1.0 - smoothstep(0.9, 1.0, y));
+  // Faint internal streaks running down the shaft, and a slow shimmer of drifting dust.
+  float streak = 0.86 + 0.14 * sin(x * 7.0 + vSeed * 17.0) * sin(x * 17.0 - vSeed * 5.0);
+  float flick = 0.9 + 0.1 * sin(y * 7.0 - uTime * 0.6 + vSeed * 6.0);
+  float a = across * along * streak * flick * uIntensity * vGain;
   gl_FragColor = vec4(uColor * a, 1.0);
 }`;
 
-export interface BeamSpec { start: THREE.Vector3; end: THREE.Vector3; width: [number, number] }
+/** A light shaft: axis from `start` to `end`, ribbon width at both ends, optional gain (default 1). */
+export interface BeamSpec { start: THREE.Vector3; end: THREE.Vector3; width: [number, number]; gain?: number }
 
 /** Volumetric light shafts: camera-facing ribbons around each beam axis, additive. One draw call. */
 export function lightBeams(beams: BeamSpec[], color: THREE.ColorRepresentation, intensity = 0.32): { mesh: THREE.Mesh; update: (t: number) => void } {
   const n = beams.length;
   const g = new THREE.BufferGeometry();
   const segs = 6;
-  const start: number[] = [], end: number[] = [], side: number[] = [], width: number[] = [], seed: number[] = [], pos: number[] = [];
+  const start: number[] = [], end: number[] = [], side: number[] = [], width: number[] = [], seed: number[] = [], gain: number[] = [], pos: number[] = [];
   const index: number[] = [];
   beams.forEach((b, k) => {
     const base = (start.length / 3);
-    for (let s = 0; s <= segs; s++) for (const x of [-1, 1]) {
+    // Across: 4 columns (-1, -0.33, 0.33, 1) so the gaussian profile interpolates smoothly.
+    const cols = [-1, -1 / 3, 1 / 3, 1];
+    for (let s = 0; s <= segs; s++) for (const x of cols) {
       start.push(b.start.x, b.start.y, b.start.z); end.push(b.end.x, b.end.y, b.end.z);
-      side.push(x, s / segs); width.push(b.width[0], b.width[1]); seed.push(k / n); pos.push(0, 0, 0);
+      side.push(x, s / segs); width.push(b.width[0], b.width[1]); seed.push(k / n); gain.push(b.gain ?? 1); pos.push(0, 0, 0);
     }
-    for (let s = 0; s < segs; s++) {
-      const a = base + s * 2;
-      index.push(a, a + 1, a + 3, a, a + 3, a + 2);
+    const nc = cols.length;
+    for (let s = 0; s < segs; s++) for (let c = 0; c + 1 < nc; c++) {
+      const a = base + s * nc + c;
+      index.push(a, a + 1, a + nc + 1, a, a + nc + 1, a + nc);
     }
   });
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -311,6 +380,7 @@ export function lightBeams(beams: BeamSpec[], color: THREE.ColorRepresentation, 
   g.setAttribute('aSide', new THREE.Float32BufferAttribute(side, 2));
   g.setAttribute('aWidth', new THREE.Float32BufferAttribute(width, 2));
   g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 1));
+  g.setAttribute('aGain', new THREE.Float32BufferAttribute(gain, 1));
   g.setIndex(index);
   const m = new THREE.ShaderMaterial({
     vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG,
@@ -327,6 +397,7 @@ const DUST_VERT = /* glsl */ `
 attribute vec3 aStart;
 attribute vec3 aEnd;
 attribute vec4 aRnd;    // along, across-x, across-y, phase
+attribute vec2 aWidth;  // shaft width at start, end
 uniform float uTime;
 uniform float uSize;
 varying float vA;
@@ -340,7 +411,12 @@ void main() {
   p += u * aRnd.y * w + v * aRnd.z * w * 0.6;
   p.x += sin(uTime * 0.6 + aRnd.w * 20.0) * 0.08;
   p.y += sin(uTime * 0.45 + aRnd.w * 13.0) * 0.06;
-  vA = (0.5 + 0.5 * sin(uTime * 2.0 + aRnd.w * 40.0)) * smoothstep(0.0, 0.15, t) * (1.0 - smoothstep(0.8, 1.0, t));
+  // Motes glow with the shaft they float in: its gaussian across-profile and length fade, so
+  // they gather in the bright core.
+  float hw = max(0.05, 0.5 * mix(aWidth.x, aWidth.y, t));
+  float x = aRnd.y * w / hw;
+  float core = exp(-x * x * 3.0) * smoothstep(0.0, 0.15, t) * (1.0 - 0.6 * t) * (1.0 - smoothstep(0.8, 1.0, t));
+  vA = (0.5 + 0.5 * sin(uTime * 2.0 + aRnd.w * 40.0)) * core;
   vec4 mv = viewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
   gl_PointSize = uSize;
@@ -353,10 +429,11 @@ void main() { gl_FragColor = vec4(uColor * vA, 1.0); }`;
 
 /** Floating dust motes inside the beams: square 1–2 px points (no texture), additive. One draw call. */
 export function dustMotes(beams: BeamSpec[], perBeam: number, rng: Rng, color: THREE.ColorRepresentation = '#fff0c8'): { points: THREE.Points; update: (t: number) => void; setPixelSize: (px: number) => void } {
-  const start: number[] = [], end: number[] = [], rnd: number[] = [], pos: number[] = [];
+  const start: number[] = [], end: number[] = [], rnd: number[] = [], width: number[] = [], pos: number[] = [];
   for (const b of beams) for (let i = 0; i < perBeam; i++) {
     start.push(b.start.x, b.start.y, b.start.z); end.push(b.end.x, b.end.y, b.end.z);
     rnd.push(rng.next(), (rng.next() - 0.5) * b.width[0] * 0.5, (rng.next() - 0.5) * b.width[0] * 0.5, rng.next());
+    width.push(b.width[0], b.width[1]);
     pos.push(0, 0, 0);
   }
   const g = new THREE.BufferGeometry();
@@ -364,6 +441,7 @@ export function dustMotes(beams: BeamSpec[], perBeam: number, rng: Rng, color: T
   g.setAttribute('aStart', new THREE.Float32BufferAttribute(start, 3));
   g.setAttribute('aEnd', new THREE.Float32BufferAttribute(end, 3));
   g.setAttribute('aRnd', new THREE.Float32BufferAttribute(rnd, 4));
+  g.setAttribute('aWidth', new THREE.Float32BufferAttribute(width, 2));
   const m = new THREE.ShaderMaterial({
     vertexShader: DUST_VERT, fragmentShader: DUST_FRAG,
     uniforms: { uTime: { value: 0 }, uSize: { value: 1 }, uColor: { value: new THREE.Color(color).multiplyScalar(1.1) } },
@@ -415,10 +493,11 @@ export interface ArenaRig {
 export interface CaveArenaOptions { seed?: number; quality?: 'high' | 'low' }
 
 /**
- * Ember Ridge cave arena: a sunken dirt floor inside tiered blocky rock, a raised miners'
- * lodge (wood floor, shelves, crates, workbench, cart) up a stair with red rails at the back
- * right, a big window high in the back-left wall pouring warm light shafts onto the floor,
- * grey rubble piles, a front ledge with its own stair. All original.
+ * Ember Ridge cave arena: a sunken dirt floor ringed by 2–3 concentric boulder ledges, a raised
+ * miners' lodge (wood floor, shelves, crates, workbench, cart) up a stair with red stringers at
+ * the back right, a big window in the back cliff pouring broad warm shafts onto the floor, grey
+ * rubble piles on the floor and the ledges, an open front with a small stair at the left
+ * corner. All original.
  */
 export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const flags = new Set((new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('post') ?? '').split(','));
@@ -428,10 +507,11 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   group.name = 'hd2d-cave-arena';
   const disposables: { dispose(): void }[] = [];
   const track = <T extends { dispose(): void }>(x: T) => { disposables.push(x); return x; };
+  const voxel = flags.has('voxel');
 
-  // ---- textures (cached for the session)
-  const texRock = cachedTexture('rock', () => paintRock(5, 32));
-  const texStone = flags.has('voxel') ? cachedTexture('stone', () => paintStone(9, 32)) : cachedTexture('boulder-stone', () => paintBoulder(9, 32, RAMPS.stone));
+  // ---- textures (cached for the session). Rock and rubble: 64² atlases of four variants.
+  const texRock = voxel ? cachedTexture('rock', () => paintRock(5, 32)) : cachedTexture('cave-boulder-atlas', () => paintBoulderAtlas(5, RAMPS.boulder));
+  const texStone = voxel ? cachedTexture('stone', () => paintStone(9, 32)) : cachedTexture('cave-rubble-atlas', () => paintBoulderAtlas(9, RAMPS.rubble));
   const texDirt = cachedTexture('dirt', () => paintDirt(3, 64));
   const texPlank = cachedTexture('plank', () => paintPlanks(4, 64, 64, 8));
   const texBoards = cachedTexture('boards', () => paintBoards(6, 32));
@@ -439,61 +519,91 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const texSteel = cachedTexture('paint', () => paintSteel(2, 16, RAMPS.paint));
   const texRug = cachedTexture('rug', () => paintRug(32));
 
-  // ---- heightmap: floor (0) ringed by rising tiers
+  // ---- heightmap: the floor (0) ringed by stepped ledges from a smooth SDF
   const X0 = -13.5, Z0 = -12.6;
-  const hm = new Heightmap(30, 21, X0, Z0);
+  const hm = new Heightmap(30, 23, X0, Z0); // z to 8.1: past the bottom edge of the frame
   const floorHalfX = 5.4, floorFront = 3.6, floorBack = -3.0;
   const platformY = 3; // lodge floor in LEVELs (2.1 units)
   const lodge = { x0: 1.6, x1: 9.4, z0: -10.0, z1: -4.4 };
-  const stair = { x0: 2.5, x1: 3.6 };
-  const frontStair = { x0: -4.6, x1: -3.5 };
+  const stair = { x0: 2.7, x1: 4.5 };
+  const frontStair = { x0: -5.4, x1: -3.6, z0: 3.65, z1: 5.4 };
   const cliffZ = -6.3; // back wall face (windows) for x < lodge.x0
+  // Signed distance to the floor: a rounded rectangle open toward the camera (+z).
+  const R = 1.6;
+  const sdf = (x: number, z: number) => {
+    const qx = Math.abs(x) - (floorHalfX - R), qz = floorBack + R - z;
+    return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - R;
+  };
+  // Each ledge is two cells deep and 1–2 LEVELs high; three tiers, then the walls.
+  const TIER_LV = [0, 2, 3, 5];
+  const ph = rng.next() * 10;
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
-    // Distance outside the (slightly ragged) floor rectangle.
-    const wob = Math.sin(x * 1.3 + z * 0.7) * 0.35 + Math.sin(z * 2.1 - x * 0.4) * 0.25;
-    const dx = Math.max(0, Math.abs(x) - floorHalfX - wob);
-    const dzB = Math.max(0, floorBack - z - wob * 0.6);
-    const dzF = Math.max(0, z - floorFront - wob * 0.5);
-    let lv = 0;
-    if (dzF > 0 && dx <= 0) lv = Math.min(2, 1 + Math.floor(dzF / 2.2)); // front ledge: low, lets the camera in
-    else {
-      const d = Math.max(dx, dzB, dzF * 0.6);
-      // Terraces: each tier is a ledge about two blocks deep, one or two blocks high.
-      if (d > 0) lv = 1 + Math.floor(d / 1.75) + (d > 3.5 ? Math.floor((d - 3.5) / 1.2) : 0);
-      // The left wall rises higher than the right.
-      if (x < -1 && d > 0) lv += Math.floor((-1 - x) / 8);
-      if (dzB > 0 && dx <= 0) lv = Math.min(lv, 1 + Math.floor(dzB / 0.8));
-    }
+    const tier = terraceLevel(sdf(x, z) - wobbleAt(x, z, ph, 0.2), 2 * CELL, 9);
+    let lv = tier < TIER_LV.length ? TIER_LV[tier]! : 8;
+    if (tier > 0 && tier < TIER_LV.length) lv = Math.max(1, lv + clusterBump(i, j, ph, 0.03));
+    // The open front: floor in the middle, a low 1–2 level corner either side.
+    if (z > floorFront && Math.abs(x) <= floorHalfX) lv = Math.abs(x) < 3.5 ? 0 : Math.abs(x) < 4.5 ? 1 : 2;
+    // Ledges in front of the window cliff stay low so the windows sit above them.
+    if (z > cliffZ && z < floorBack && x > -9.0 && x < lodge.x0) lv = Math.min(lv, z > floorBack - 2 * CELL ? 2 : 3);
     // The lodge sits on a level shelf; the ledge in front of it rises to the platform height.
     if (x > lodge.x0 && x < lodge.x1 && z < lodge.z1) lv = 0;
     else if (x > lodge.x0 && x < lodge.x1 && z < floorBack) lv = z > floorBack - 0.9 ? Math.min(lv, 2) : platformY;
     // Stair cuts.
     if (x > stair.x0 && x < stair.x1 && z < floorBack + 0.5 && z > lodge.z1 - 0.2) lv = 0;
-    if (x > frontStair.x0 && x < frontStair.x1 && z > floorFront - 0.3) lv = 0;
-    // Back cliff (window wall), tall left wall, right wall, wall behind the lodge.
+    if (x > frontStair.x0 && x < frontStair.x1 && z > frontStair.z0 - 0.1 && z < frontStair.z1) lv = 0;
+    // Back cliff (window wall), wall behind the lodge, right wall.
     if (z < cliffZ && x < lodge.x0) lv = Math.max(lv, 9);
-    if (x < -9) lv = Math.max(lv, 7 + Math.floor((-9 - x) * 0.5));
-    if (x > 9.4) lv = Math.max(lv, 5);
     if (z < lodge.z0) lv = Math.max(lv, 9);
-    // Jagged tops: quantise with noise so tiers read as stacked boulders, not steps.
-    // Boulder clusters (2×2 cells) poke up or sink a level, so ledges aren't ruler-straight.
-    const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
-    const n = cl - Math.floor(cl);
-    if (lv > 0 && lv < 9) lv = Math.max(1, lv + (n > 0.8 ? 1 : n < 0.1 ? -1 : 0) + (rng.chance(0.06) ? 1 : 0));
+    if (x > lodge.x1 && z < floorBack) lv = Math.max(lv, 5);
+    // The right side stays low (≤ 5 levels) in front of the lodge's back wall: its lit tops read
+    // at the top right of the frame instead of a tall dark cliff.
+    if (x > lodge.x0 && z > lodge.z0) lv = Math.min(lv, 5);
     hm.set(i, j, lv);
   }
+  const isStair = (x: number, z: number) => (x > stair.x0 - 0.1 && x < stair.x1 + 0.1 && z < floorBack + 0.6 && z > lodge.z1 - 0.3) || (x > frontStair.x0 - 0.1 && x < frontStair.x1 + 0.4 && z > frontStair.z0 - 0.2 && z < frontStair.z1 + 0.2);
+  // Kin, people and the trainer's walk stay clear of props.
+  const keepOut = [{ x: -1.3, z: 1.0, r: 1.3 }, { x: 1.5, z: -1.0, r: 1.3 }, { x: -2.5, z: 1.9, r: 0.8 }, { x: 2.75, z: -1.95, r: 0.8 }, { x: 2.5, z: -0.65, r: 0.7 }];
+  const clear = (x: number, z: number, r: number) => keepOut.every((c) => (x - c.x) ** 2 + (z - c.z) ** 2 > (c.r + r) ** 2);
+  // Baked sky key for rock and stone: lit tops, mid fronts, dark undersides.
+  const LBAKE = new THREE.Vector3(0, 1, 0.4);
+  // Geometry nearer than the floor front sinks into foreground shade.
+  const fore = (_x: number, _y: number, z: number) => 1 - 0.4 * THREE.MathUtils.smoothstep(z, floorFront, floorFront + 0.8);
 
   // ---- rock (one mesh)
-  const rock = new VoxelBatch(32);
-  if (flags.has('voxel')) rockColumns(hm, rock, rng, RAMPS.rock);
+  const rock = new VoxelBatch(voxel ? 32 : 64);
+  if (voxel) rockColumns(hm, rock, rng, RAMPS.rock);
   else boulderColumns(hm, rock, rng, { lite: q === 'low' });
-  const rockMat = track(surfaceMaterial(flags.has('voxel') ? texRock : cachedTexture('boulder-earth', () => paintBoulder(5, 32, RAMPS.boulder)), undefined, true));
+  // A dark pebble skirt along the wall foot (≤ 0.4 units out onto the floor).
+  {
+    const per = q === 'high' ? 3 : 1;
+    for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
+      if (hm.get(i, j) !== 0) continue;
+      const cx = hm.cx(i), cz = hm.cz(j);
+      if (cz < lodge.z1 + 0.3 || Math.abs(cx) > floorHalfX + 2 || isStair(cx, cz)) continue;
+      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nv = hm.get(i + a, j + b);
+        if (nv <= 0 || nv > 90 || isStair(hm.cx(i + a), hm.cz(j + b))) continue;
+        for (let k = 0; k < per; k++) {
+          const along = (rng.next() - 0.5) * CELL, out = rng.next() ** 2 * 0.4 + 0.02;
+          const x = cx + a * (CELL / 2 - out) + (b !== 0 ? along : 0), z = cz + b * (CELL / 2 - out) + (a !== 0 ? along : 0);
+          if (!clear(x, z, 0.1)) continue;
+          const s = 0.07 + rng.next() * 0.1 * (1 - out);
+          boulder(rock, [x, s * 0.2, z], [s * 1.3, s * 0.7, s * 1.1], new THREE.Color(1, 1, 1).multiplyScalar(0.45 + rng.next() * 0.25), rng, {
+            ry: rng.next() * 3, jitter: s * 0.08, topJitter: s * 0.1, aoBottom: 0.5, topK: 1.2, topOnly: true,
+          });
+        }
+      }
+    }
+  }
+  rock.shade(fore);
+  rock.bake = LBAKE;
+  const rockMat = track(surfaceMaterial(texRock, undefined, true, false));
   group.add(mesh(rock.build(), rockMat));
 
-  // ---- floor: one textured grid with baked AO toward the walls
+  // ---- floor: one textured grid (2 vertices per cell) with a soft AO band along the wall foot
   {
-    const g = new THREE.PlaneGeometry(hm.nx * CELL, hm.nz * CELL, hm.nx, hm.nz);
+    const g = new THREE.PlaneGeometry(hm.nx * CELL, hm.nz * CELL, hm.nx * 2, hm.nz * 2);
     g.rotateX(-Math.PI / 2);
     g.translate(X0 + (hm.nx * CELL) / 2, 0, Z0 + (hm.nz * CELL) / 2);
     const pos = g.attributes.position!;
@@ -503,56 +613,86 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     for (let k = 0; k < pos.count; k++) {
       const x = pos.getX(k), z = pos.getZ(k);
       uv.setXY(k, x / tile, -z / tile);
-      const [i, j] = hm.cell(x - 0.01, z - 0.01);
-      let near = 0;
-      for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1], [-1, 0], [0, -1], [-1, -1], [1, -1], [-1, 1]] as const) {
+      const [i, j] = hm.cell(x, z);
+      let dmin = 9, tall = 0;
+      for (let b = -2; b <= 2; b++) for (let a = -2; a <= 2; a++) {
         const v = hm.get(i + a, j + b);
-        if (v < 90) near = Math.max(near, Math.min(v, 3) * (a === 0 && b === 0 ? 1 : 0.8));
+        if (v <= 0 || v > 90 || isStair(hm.cx(i + a), hm.cz(j + b))) continue;
+        const d = Math.hypot(Math.max(0, Math.abs(x - hm.cx(i + a)) - CELL / 2), Math.max(0, Math.abs(z - hm.cz(j + b)) - CELL / 2));
+        dmin = Math.min(dmin, d);
+        tall = Math.max(tall, Math.min(v, 4) * Math.exp(-d / 1.2));
       }
-      const wide = Math.min(4, hm.maxNear(i, j, 2));
-      const ao = 1 - 0.13 * near - 0.06 * wide;
+      const ao = 1 - 0.45 * Math.exp(-dmin / 0.3) - 0.035 * tall;
       col.set([ao, ao * 0.98, ao * 0.96], k * 3);
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    group.add(mesh(g, track(surfaceMaterial(texDirt)), false, true));
+    const floorMat = track(surfaceMaterial(texDirt));
+    scaleAmbient(floorMat, 0.62); // shade stays earthy while the sun patches burn bright
+    group.add(mesh(g, floorMat, false, true));
   }
 
-  // ---- stairs (stone) with red rails, and rubble piles (one stone mesh)
-  const stone = new VoxelBatch(32);
+  // ---- stairs (stone) with red stringers, rubble piles, pebbles (one stone mesh)
+  const stone = new VoxelBatch(voxel ? 32 : 64);
   const metal = new VoxelBatch(16);
   const wood = new VoxelBatch(32);
   const props = new VoxelBatch(32);
-  const steps = (x0: number, x1: number, zFrom: number, zTo: number, yFrom: number, yTo: number, n: number) => {
+  const red = rampColor(RAMPS.rail, 3);
+  /**
+   * A solid stone stair running along `axis` from `from` (floor, y = 0) to `to` (y = yTo), between
+   * `c0`..`c1` across: bright treads, dark risers, and a solid sloped red stringer slab either
+   * side with a lit cap along its top.
+   */
+  const steps = (axis: 'x' | 'z', c0: number, c1: number, from: number, to: number, yTo: number, n: number) => {
     for (let s = 0; s < n; s++) {
-      const za = zFrom + ((zTo - zFrom) * s) / n, zb = zFrom + ((zTo - zFrom) * (s + 1)) / n;
-      const y = yFrom + ((yTo - yFrom) * (s + 1)) / n;
-      stone.box([x0, 0, Math.min(za, zb)], [x1, y, Math.max(za, zb)], new THREE.Color(1, 1, 1).multiplyScalar(0.95 + rng.next() * 0.12), rng, { skip: [false, false, false, true, false, false], aoBottom: 0.7 });
+      const a = from + ((to - from) * s) / n, b = from + ((to - from) * (s + 1)) / n;
+      const y = (yTo * (s + 1)) / n;
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      // Bright treads, dark risers: a dark tint with a strong top multiplier.
+      const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.55 + rng.next() * 0.06);
+      const o = { skip: [false, false, false, true, false, false], aoBottom: 0.8, topK: 2.1 };
+      if (axis === 'z') stone.box([c0, 0, lo], [c1, y, hi], tint, rng, o);
+      else stone.box([lo, 0, c0], [hi, y, c1], tint, rng, o);
     }
-    // Rails: posts + a sloped bar on each side.
-    const red = rampColor(RAMPS.rail, 4).multiplyScalar(1.3);
-    for (const x of [x0 - 0.1, x1 + 0.1]) {
-      for (let s = 0; s <= 2; s++) {
-        const k = s / 2;
-        const z = zFrom + (zTo - zFrom) * k, y = yFrom + (yTo - yFrom) * k;
-        metal.box([x - 0.08, y, z - 0.08], [x + 0.08, y + 0.7, z + 0.08], red, rng);
+    const len = Math.hypot(to - from, yTo);
+    const mid = (from + to) / 2;
+    const cap = red.clone().multiplyScalar(1.6);
+    for (const c of [c0 - 0.1, c1 + 0.1]) {
+      if (axis === 'z') {
+        const ang = Math.atan2(yTo, from - to);
+        const up = new THREE.Vector3(0, Math.cos(ang), Math.sin(ang));
+        if (up.y < 0) up.negate();
+        metal.rotBox([c, yTo / 2 + 0.16, mid], [0.2, 0.62, len + 0.2], 0, red, rng, ang);
+        metal.rotBox([c, yTo / 2 + 0.16 + up.y * 0.32, mid + up.z * 0.32], [0.22, 0.06, len + 0.2], 0, cap, rng, ang);
+      } else {
+        const ang = Math.atan2(yTo, to - from);
+        const up = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
+        if (up.y < 0) up.negate();
+        metal.rotBox([mid, yTo / 2 + 0.16, c], [len + 0.2, 0.62, 0.2], 0, red, rng, 0, ang);
+        metal.rotBox([mid + up.x * 0.32, yTo / 2 + 0.16 + up.y * 0.32, c], [len + 0.2, 0.06, 0.22], 0, cap, rng, 0, ang);
       }
-      const len = Math.hypot(zTo - zFrom, yTo - yFrom);
-      const ang = Math.atan2(yTo - yFrom, zFrom - zTo);
-      metal.rotBox([x, (yFrom + yTo) / 2 + 0.7, (zFrom + zTo) / 2], [0.2, 0.16, len + 0.24], 0, red, rng, ang);
     }
   };
-  steps(stair.x0, stair.x1, floorBack + 0.5, lodge.z1 - 0.1, 0, platformY * LEVEL, 6);
-  steps(frontStair.x0, frontStair.x1, floorFront - 0.2, floorFront + 1.6, 0, 2 * LEVEL, 3);
+  steps('z', stair.x0, stair.x1, floorBack + 0.5, lodge.z1 - 0.1, platformY * LEVEL, 5);
+  // The front stair climbs sideways from the floor up onto the left corner ledge.
+  steps('x', frontStair.z0, frontStair.z1, frontStair.x1 + 0.1, frontStair.x0, 2 * LEVEL, 4);
 
-  const rubble = (cx: number, cz: number, r: number, n: number) => rubblePile(stone, [cx, 0, cz], rng, { radius: r * 1.3, count: Math.round(n * 0.8), big: Math.min(0.8, r * 0.75), heap: 0.6, tint: new THREE.Color(0.95, 0.95, 0.97) });
-  rubble(-4.7, -2.1, 1.0, 22);
-  rubble(-5.0, 1.5, 0.9, 18);
-  rubble(4.9, 2.3, 1.2, 26);
-  rubble(5.1, -1.3, 0.7, 12);
-  rubble(-1.6, -2.9, 0.6, 9);
-  rubble(1.0, 3.5, 0.8, 12);
+  // Grey rubble on a cool, light stone ramp: on the floor, at each stair foot and on ledge tops.
+  const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
+  const rubble = (x: number, z: number, r: number) => {
+    if (!clear(x, z, r * 1.1)) return;
+    // Several stones of a size, not one boulder: the biggest is ~0.7 of min(0.95, r).
+    rubblePile(stone, [x, topAt(x, z), z], rng, { radius: r * 1.2, count: 12 + rng.int(4), big: Math.min(0.95, r) * 0.72, heap: 0.75 });
+  };
+  rubble(-4.4, -2.0, 0.95); // left back floor, in the window light
+  rubble(-4.5, 2.0, 0.8); // left front floor
+  rubble(4.5, 2.1, 1.0); // right front floor
+  rubble(5.0, -2.25, 0.7); // foot of the lodge stair
+  rubble(-3.0, 3.3, 0.5); // foot of the front stair
+  rubble(-6.6, -1.0, 0.65); // on the first left ledge
+  rubble(6.6, 0.6, 0.55); // on the first right ledge
+  rubble(6.3, 5.0, 0.7); // on the right front corner ledge
   // Scattered pebbles on the floor.
-  pebbles(stone, [-floorHalfX, floorBack, floorHalfX, floorFront], 40, rng, [{ x: -1.3, z: 1.0, r: 1.2 }, { x: 1.5, z: -1.0, r: 1.2 }, { x: -2.5, z: 1.9, r: 0.6 }, { x: 2.75, z: -1.95, r: 0.6 }]);
+  pebbles(stone, [-floorHalfX, floorBack, floorHalfX, floorFront + 2], 46, rng, keepOut.map((c) => ({ ...c, r: c.r * 0.8 })));
 
   // ---- the lodge: plank floor, plaster back wall with steel frame, shelves and props
   const ly = platformY * LEVEL;
@@ -560,8 +700,8 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // Front trim beam along the ledge.
   metal.box([lodge.x0, ly - 0.05, lodge.z1 - 0.08], [lodge.x1, ly + 0.07, lodge.z1 + 0.06], rampColor(RAMPS.steel, 4), rng);
   const plaster = new VoxelBatch(32);
-  plaster.box([lodge.x0, ly, lodge.z0 - 0.3], [lodge.x1, ly + 3.4, lodge.z0], new THREE.Color(1, 1, 1), rng, { aoBottom: 0.55 });
-  plaster.box([lodge.x1 - 0.05, ly, lodge.z0], [lodge.x1 + 0.3, ly + 3.4, lodge.z1 - 1.6], new THREE.Color(0.85, 0.85, 0.85), rng, { aoBottom: 0.55 });
+  plaster.box([lodge.x0, ly, lodge.z0 - 0.3], [lodge.x1, ly + 3.4, lodge.z0], new THREE.Color(1.15, 1.12, 1.08), rng, { aoBottom: 0.6 });
+  plaster.box([lodge.x1 - 0.05, ly, lodge.z0], [lodge.x1 + 0.3, ly + 3.4, lodge.z1 - 1.6], new THREE.Color(1, 0.98, 0.95), rng, { aoBottom: 0.6 });
   // Steel posts + header beam.
   const steelC = rampColor(RAMPS.steel, 4);
   for (const x of [lodge.x0 + 0.15, (lodge.x0 + lodge.x1) / 2 + 0.6, lodge.x1 - 0.2]) {
@@ -569,8 +709,8 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   }
   metal.box([lodge.x0, ly + 3.0, lodge.z0], [lodge.x1, ly + 3.4, lodge.z0 + 0.35], steelC, rng);
   metal.box([lodge.x0 - 0.05, ly, lodge.z1 - 0.2], [lodge.x0 + 0.25, ly + 3.4, lodge.z1 + 0.1], steelC, rng);
-  // Fewer, bigger, readable props (kit/props.ts): bookcases with same-hue runs of books,
-  // framed crates, a table, banners on the wall, braziers on the floor.
+  // Fewer, bigger, readable props (kit/props.ts): bookcases pulled forward into frame, crates,
+  // a table on the rug, banners on the wall, a brazier on the floor.
   const glowProps = new VoxelBatch(16);
   const pb: PropBatches = { wood, paint: props, glow: glowProps, stone };
   const legacyProps = flags.has('oldprops');
@@ -593,22 +733,20 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
       }
     }
   } else {
-    for (let u = 0; u < 3; u++) bookcase(pb, [lodge.x0 + 1.3 + u * 1.55, ly, lodge.z0 + 0.8], rng, { w: 1.4, h: 1.95, d: 0.5 });
+    for (let u = 0; u < 3; u++) bookcase(pb, [lodge.x0 + 1.3 + u * 1.55, ly, lodge.z0 + 1.6], rng, { w: 1.4, h: 1.95, d: 0.5 });
   }
-  // Crates (stacked), a table on the rug, banners, braziers.
+  // Crates (stacked), a table on the rug, banners, a brazier, a crate and barrel by the wall.
   crate(pb, [lodge.x0 + 1.0, ly, lodge.z1 - 0.9], 0.55, rng, { ry: 0.2 });
   crate(pb, [lodge.x0 + 1.65, ly, lodge.z1 - 0.75], 0.45, rng, { ry: -0.15 });
   crate(pb, [lodge.x0 + 1.1, ly + 0.55, lodge.z1 - 0.9], 0.4, rng, { ry: 0.45 });
-  crate(pb, [-5.3, 0, -2.75], 0.55, rng, { ry: 0.3 });
-  crate(pb, [-5.75, 0, -2.4], 0.42, rng, { ry: -0.2 });
-  crate(pb, [5.8, 0, 0.5], 0.5, rng, { ry: -0.4 });
-  barrel(pb, [6.0, 0, -0.35], 0.24, 0.62, rng);
+  crate(pb, [4.85, 0, 0.1], 0.5, rng, { ry: -0.4 });
+  barrel(pb, [4.95, 0, -0.65], 0.24, 0.62, rng);
   if (!legacyProps) {
     table(pb, [lodge.x0 + 4.4, ly, lodge.z1 - 1.5], [1.5, 0.75, 0.5], rng);
     banner(pb, [lodge.x0 + 6.1, ly + 2.8, lodge.z0 + 0.02], rng, { w: 0.75, h: 1.5, cloth: '#2f5a8a', trim: '#e0b048' });
     banner(pb, [lodge.x0 + 7.1, ly + 2.8, lodge.z0 + 0.02], rng, { w: 0.75, h: 1.5, cloth: '#9a3328', trim: '#e0b048' });
   }
-  const brazierLights = legacyProps ? [] : [brazier(pb, [-5.1, 0, -0.4], rng), brazier(pb, [4.0, 0, -3.0], rng, { r: 0.28, h: 0.7 })];
+  const brazierLights = legacyProps ? [] : [brazier(pb, [-5.0, 0, -0.15], rng)];
   // Workbench.
   const benchX = lodge.x1 - 2.6, benchZ = lodge.z0 + 1.5;
   table(pb, [benchX + 0.8, ly, benchZ + 0.35], [1.6, 0.7, 0.72], rng);
@@ -626,11 +764,9 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     const px = lodge.x0 + 5.7 + rng.next() * 0.9, py = ly + 1.3 + rng.next() * 0.55;
     props.box([px, py, lodge.z0 + 0.06], [px + 0.18, py + 0.22, lodge.z0 + 0.08], new THREE.Color(rng.pick(['#efe2c4', '#ffd23f', '#9ad0ff'])), rng);
   }
-  // Pickaxes and a lantern post on the arena floor (props).
-  for (const [x, z, ry] of [[-5.5, 0.3, 0.3], [5.8, -0.6, -0.4]] as const) {
-    wood.rotBox([x, 0.42, z], [0.06, 0.84, 0.06], ry, new THREE.Color(0.9, 0.9, 0.9), rng, 0.25);
-    metal.rotBox([x + 0.1, 0.84, z], [0.42, 0.07, 0.07], ry, rampColor(RAMPS.steel, 4), rng, 0.25);
-  }
+  // A pickaxe leaning by the left wall (props).
+  wood.rotBox([-5.15, 0.42, 0.85], [0.06, 0.84, 0.06], 0.3, new THREE.Color(0.9, 0.9, 0.9), rng, 0.25);
+  metal.rotBox([-5.05, 0.84, 0.85], [0.42, 0.07, 0.07], 0.3, rampColor(RAMPS.steel, 4), rng, 0.25);
 
   // Rug in the lodge (its own texture).
   {
@@ -641,46 +777,46 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     group.add(rug);
   }
 
-  const stoneMat = track(surfaceMaterial(texStone, undefined, true));
+  stone.shade(fore);
+  stone.bake = LBAKE;
+  metal.shade(fore);
+  const stoneMat = track(surfaceMaterial(texStone, undefined, true, false));
   group.add(mesh(stone.build(), stoneMat));
-  group.add(mesh(wood.build(), track(surfaceMaterial(texPlank, undefined, true))));
+  // Wood: a warm lift (the lodge glows in the window light).
+  const woodMat = track(surfaceMaterial(texPlank, undefined, true));
+  woodMat.color.setRGB(1.14, 1.04, 0.9);
+  woodMat.emissive.set('#2a1608');
+  woodMat.emissiveMap = texPlank;
+  group.add(mesh(wood.build(), woodMat));
   group.add(mesh(metal.build(), track(surfaceMaterial(texSteel, undefined, true))));
-  group.add(mesh(plaster.build(), track(surfaceMaterial(texPlaster)), false, true));
+  // Plaster glows a little (bounce from the sunlit planks) so the lodge reads at the top edge.
+  group.add(mesh(plaster.build(), track(surfaceMaterial(texPlaster, '#8a6a4a')), false, true));
   group.add(mesh(props.build(), track(surfaceMaterial(texSteel))));
 
-  // ---- window high in the back-left cliff + a smaller one on the left wall (emissive)
-  const win = { x: -2.7, y: 4.0, z: cliffZ - 0.08, w: 2.8, h: 1.8 };
-  const win2 = { x: -6.6, y: 4.3, z: cliffZ - 0.08, w: 1.6, h: 1.5 };
+  // ---- window in the back cliff (big) + a smaller one to its left (emissive)
+  const win = { x: -2.7, y: 3.2, z: cliffZ - 0.08, w: 2.8, h: 1.8 };
+  const win2 = { x: -7.4, y: 3.4, z: cliffZ - 0.08, w: 1.6, h: 1.5 };
   const glow = new VoxelBatch(16);
   glow.append(glowProps);
   const frame = new VoxelBatch(32);
   const pane = new THREE.Color('#fff2cc').multiplyScalar(3.2);
-  const addWindow = (cx: number, cy: number, cz: number, w: number, hh: number, normalX: boolean) => {
-    const cols = normalX ? 2 : 3, rows = 2;
-    if (!normalX) {
-      glow.box([cx - w / 2, cy - hh / 2, cz - 0.05], [cx + w / 2, cy + hh / 2, cz + 0.02], pane, rng);
-      for (let i = 0; i <= cols; i++) { const x = cx - w / 2 + (w * i) / cols; frame.box([x - 0.07, cy - hh / 2 - 0.07, cz], [x + 0.07, cy + hh / 2 + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
-      for (let j = 0; j <= rows; j++) { const y = cy - hh / 2 + (hh * j) / rows; frame.box([cx - w / 2 - 0.07, y - 0.07, cz], [cx + w / 2 + 0.07, y + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
-    } else {
-      glow.box([cx - 0.02, cy - hh / 2, cz - w / 2], [cx + 0.05, cy + hh / 2, cz + w / 2], pane, rng);
-      for (let i = 0; i <= cols; i++) { const z = cz - w / 2 + (w * i) / cols; frame.box([cx, cy - hh / 2 - 0.07, z - 0.07], [cx + 0.12, cy + hh / 2 + 0.07, z + 0.07], new THREE.Color(0.55, 0.55, 0.55), rng); }
-      for (let j = 0; j <= rows; j++) { const y = cy - hh / 2 + (hh * j) / rows; frame.box([cx, y - 0.07, cz - w / 2 - 0.07], [cx + 0.12, y + 0.07, cz + w / 2 + 0.07], new THREE.Color(0.55, 0.55, 0.55), rng); }
-    }
+  const addWindow = (cx: number, cy: number, cz: number, w: number, hh: number) => {
+    const cols = 3, rows = 2;
+    glow.box([cx - w / 2, cy - hh / 2, cz - 0.05], [cx + w / 2, cy + hh / 2, cz + 0.02], pane, rng);
+    for (let i = 0; i <= cols; i++) { const x = cx - w / 2 + (w * i) / cols; frame.box([x - 0.07, cy - hh / 2 - 0.07, cz], [x + 0.07, cy + hh / 2 + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
+    for (let j = 0; j <= rows; j++) { const y = cy - hh / 2 + (hh * j) / rows; frame.box([cx - w / 2 - 0.07, y - 0.07, cz], [cx + w / 2 + 0.07, y + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
   };
-  // Carve the window openings out of the rock (no blocks in front of the panes).
-  addWindow(win.x, win.y, win.z, win.w, win.h, false);
-  addWindow(win2.x, win2.y, win2.z, win2.w, win2.h, false);
-  // Ember crystals glowing in the rock (bloom accents).
-  for (const [x, y, z] of [[-6.9, 1.5, -4.1], [6.8, 1.0, -3.6], [-6.6, 0.9, 3.1], [7.4, 1.7, 1.0], [-2.9, 1.5, -4.2]] as const) {
-    for (let i = 0; i < 3; i++) glow.rotBox([x + (rng.next() - 0.5) * 0.3, y + rng.next() * 0.2, z + (rng.next() - 0.5) * 0.3], [0.09, 0.26 + rng.next() * 0.18, 0.09], rng.next() * 3, new THREE.Color('#ff8a2a').multiplyScalar(2.4), rng, (rng.next() - 0.5) * 0.8);
-  }
-  const glowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: true }));
+  addWindow(win.x, win.y, win.z, win.w, win.h);
+  addWindow(win2.x, win2.y, win2.z, win2.w, win2.h);
+  // Ember crystals: tapered hex-prism clusters seated in the wall foot and on a ledge (bloom).
+  for (const [x, y, z, n] of [[-5.42, 0, 0.75, 4], [5.42, 0, 1.0, 3], [0.6, 2 * LEVEL, -3.25, 5]] as const) crystalCluster(glow, [x, y, z], n, rng);
+  const glowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: true, fog: false }));
   group.add(mesh(glow.build(), glowMat, false, false));
   group.add(mesh(frame.build(), track(surfaceMaterial(texBoards))));
   // Clear rock in front of the windows (and keep a sight line for the light).
   carveWindow(group, win, win2);
 
-  // ---- lights: warm window key (cookie spot, shadows), small window spot, fill, hemisphere
+  // ---- lights: warm window key (cookie spot, shadows), side fill, hemisphere
   const keyColor = new THREE.Color('#ffd7a0');
   const key = new THREE.SpotLight(keyColor, 110, 0, 0.42, 0.55, 1.2);
   key.position.set(win.x + 0.3, win.y + 0.6, win.z - 0.6);
@@ -696,68 +832,55 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   group.add(key, key.target);
   // The small window gets beams and a light-pool decal but no light of its own: a second
   // cookie spot cost ~20% of the frame for a patch the decal fakes well (docs/HD2D.md).
-  const key2 = { position: new THREE.Vector3(win2.x + 0.2, win2.y + 0.5, win2.z - 0.6), target: { position: new THREE.Vector3(-3.2, 0, 1.2) } };
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#ffd9b0'), new THREE.Color('#3a2116'), 1.7);
+  const key2 = new THREE.SpotLight(keyColor, 0, 0, 0.42, 0.55, 1.2);
+  key2.position.set(win2.x + 0.2, win2.y + 0.5, win2.z - 0.6);
+  key2.target.position.set(-4.3, 0, 1.2);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#ffe0b8'), new THREE.Color('#24130b'), 1.8);
   group.add(hemi);
-  // Soft front fill so camera-facing rock never drops to black (no shadows).
-  const fill = new THREE.DirectionalLight(new THREE.Color('#ffb98a'), 1.1);
-  fill.position.set(3, 6, 10);
+  // Weak side fill (no shadows): keeps camera-facing rock out of pure black without flattening it.
+  const fill = new THREE.DirectionalLight(new THREE.Color('#ffb98a'), 0.3);
+  fill.position.set(-8, 7, 3);
   group.add(fill, fill.target);
-  // Lodge lantern + ember glows (warm point accents) on the high tier only.
+  // Lodge lantern + ember glow (warm point accents) on the high tier only.
   if (q === 'high' && !flags.has('nopoints')) {
-    const lantern = new THREE.PointLight(new THREE.Color('#ffa24a'), 6, 6, 1.6);
+    const lantern = new THREE.PointLight(new THREE.Color('#ffb060'), 16, 9, 1.4);
     lantern.position.set(lodge.x0 + 4.2, ly + 2.2, lodge.z1 - 1.6);
     group.add(lantern);
     const ember = new THREE.PointLight(new THREE.Color('#ff7a2e'), 3, 4.5, 1.6);
-    ember.position.copy(brazierLights[0] ?? new THREE.Vector3(-7.0, 1.2, -4.0));
+    ember.position.copy(brazierLights[0] ?? new THREE.Vector3(-5.0, 1.2, -0.2));
     group.add(ember);
   }
 
-  // ---- god rays + dust
+  // ---- god rays + dust: two broad soft shafts per window plus a wide dim haze cone
   const beamColor = new THREE.Color('#ffd49a');
   const beams: BeamSpec[] = [];
-  const dir = key.target.position.clone().sub(key.position).normalize();
-  const shafts = [[-0.95, -0.35], [-0.55, 0.3], [-0.15, -0.1], [0.25, 0.35], [0.6, -0.3], [0.95, 0.15]] as const;
-  for (const [ox, oy] of shafts) {
-    const s = new THREE.Vector3(win.x + ox * win.w * 0.4, win.y + oy * win.h * 0.4, win.z + 0.2);
-    const len = (s.y / -dir.y) * (0.92 + rng.next() * 0.08);
-    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [0.32, 0.8 + rng.next() * 0.45] });
+  const shafts = (w: typeof win, from: THREE.Object3D, to: THREE.Vector3, gain: number) => {
+    const dir = to.clone().sub(from.position).normalize();
+    for (const ox of [-0.25, 0.25]) {
+      const s = new THREE.Vector3(w.x + ox * w.w, w.y - 0.05, w.z + 0.25);
+      const len = (s.y / -dir.y) * 0.97;
+      beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w.w * 0.62, w.w * 0.62 * 1.6], gain });
+    }
+  };
+  shafts(win, key, key.target.position, 1);
+  shafts(win2, key2, key2.target.position, 0.85);
+  const shaftCount = beams.length;
+  {
+    const dir = key.target.position.clone().sub(key.position).normalize();
+    const s = new THREE.Vector3(win.x, win.y, win.z + 0.3);
+    beams.push({ start: s, end: s.clone().addScaledVector(dir, (s.y / -dir.y) * 0.95), width: [win.w * 1.5, win.w * 2.9], gain: 0.3 });
   }
-  const dir2 = key2.target.position.clone().sub(key2.position).normalize();
-  for (const ox of [-0.3, 0.3]) {
-    const s = new THREE.Vector3(win2.x + ox * win2.w, win2.y, win2.z + 0.2);
-    beams.push({ start: s, end: s.clone().addScaledVector(dir2, (s.y / -dir2.y) * 0.9), width: [0.45, 1.1] });
-  }
-  const rays = lightBeams(beams, beamColor, 0.26);
+  const rays = lightBeams(beams, beamColor, 0.27);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
   if (!flags.has('norays')) group.add(rays.mesh);
-  const dust = dustMotes(beams, q === 'high' ? 50 : 26, rng);
+  const dust = dustMotes(beams.slice(0, shaftCount), q === 'high' ? 22 : 12, rng, new THREE.Color('#ffd9a0').multiplyScalar(0.75));
   track(dust.points.geometry); track(dust.points.material as THREE.Material);
   group.add(dust.points);
-  // Bright light pools where the main shafts land (a soft additive decal; the cookie light
-  // does the real lighting, this adds the hazy bounce the reference glows with).
-  {
-    const c = document.createElement('canvas');
-    c.width = c.height = 32;
-    const ctx = c.getContext('2d')!;
-    const gr = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    gr.addColorStop(0, 'rgba(255,214,150,0.55)'); gr.addColorStop(1, 'rgba(255,214,150,0)');
-    ctx.fillStyle = gr; ctx.fillRect(0, 0, 32, 32);
-    const tex = track(new THREE.CanvasTexture(c));
-    const g = new THREE.PlaneGeometry(1, 1);
-    g.rotateX(-Math.PI / 2);
-    const m = track(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(0.55, 0.42, 0.28) }));
-    for (const [land, sx, sz, k] of [[key.target.position, 5.5, 3.8, 1], [key2.target.position, 3.2, 2.4, 1.4]] as const) {
-      const pool = new THREE.Mesh(g, k === 1 ? m : track(m.clone()));
-      if (k !== 1) (pool.material as THREE.MeshBasicMaterial).color.multiplyScalar(k);
-      pool.position.set(land.x, 0.02, land.z);
-      pool.scale.set(sx, 1, sz);
-      pool.renderOrder = 2;
-      group.add(pool);
-    }
-  }
+  // Light pools: a soft additive decal where the shafts land, shaped like the projected window
+  // cookie (the key's real light does the shading; this adds the hazy bounce the reference glows
+  // with, and IS the small window's patch), plus a window-light patch on the lodge planks.
+  group.add(lightPools(track, [key, key2], [1, 1.4], { x0: -8.5, x1: 4.5, z0: floorBack - 0.4, z1: floorFront + 2.6 }, { x0: lodge.x0 + 1.3, x1: lodge.x0 + 4.1, z0: lodge.z1 - 3.1, z1: lodge.z1 - 0.9, y: ly + 0.014 }));
 
-  // Shadow camera: the spot's frustum is already tight around the floor.
   const spriteLight: SpriteLight = {
     keyDir: key.position.clone().sub(key.target.position).normalize(),
     keyColor: new THREE.Color('#ffd7a0').multiplyScalar(0.62),
@@ -777,6 +900,114 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     setPixelSize(px) { dust.setPixelSize(px); },
     dispose() { for (const d of disposables) d.dispose(); group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); }); },
   };
+}
+
+/** The window cookie (windowCookie layout) as an analytic soft mask at cookie uv. */
+function cookieMask(u: number, v: number, cols = 3, rows = 2): number {
+  const px = u * 64, py = v * 64;
+  if (px < 4 || px > 60 || py < 8 || py > 56) return 0;
+  const ss = THREE.MathUtils.smoothstep;
+  let m = ss(px, 5, 10) * (1 - ss(px, 54, 59)) * ss(py, 9, 14) * (1 - ss(py, 50, 55));
+  const r = Math.hypot(px - 32, py - 32);
+  m *= 1 - ss(r, 19, 32);
+  for (let i = 1; i < cols; i++) m *= ss(Math.abs(px - (6 + (52 * i) / cols)), 0.5, 3.5);
+  for (let j = 1; j < rows; j++) m *= ss(Math.abs(py - (10 + (44 * j) / rows)), 0.5, 3.5);
+  return m;
+}
+
+/**
+ * One additive decal mesh (one draw call) with two quads: the floor light pools of the given
+ * cookie spots (projected exactly like SpotLight.map, softened), and a pane-shaped window-light
+ * patch on the lodge planks.
+ */
+function lightPools(track: <T extends { dispose(): void }>(x: T) => T, spots: THREE.SpotLight[], gains: number[], fl: { x0: number; x1: number; z0: number; z1: number }, lp: { x0: number; x1: number; z0: number; z1: number; y: number }): THREE.Mesh {
+  const W = 104, H = 72, H2 = 24;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H + H2;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(W, H + H2);
+  const col = [255, 208, 148];
+  const put = (x: number, y: number, v: number) => {
+    const k = (y * W + x) * 4, a = Math.min(1, v);
+    img.data[k] = col[0]! * a; img.data[k + 1] = col[1]! * a; img.data[k + 2] = col[2]! * a; img.data[k + 3] = 255;
+  };
+  const p = new THREE.Vector3();
+  const mats = spots.map((s) => {
+    s.updateMatrixWorld(true); s.target.updateMatrixWorld(true);
+    s.shadow.updateMatrices(s);
+    return s.shadow.matrix.clone();
+  });
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const wx = fl.x0 + ((x + 0.5) / W) * (fl.x1 - fl.x0), wz = fl.z0 + ((y + 0.5) / H) * (fl.z1 - fl.z0);
+    let v = 0;
+    mats.forEach((m, k) => {
+      // 5-tap blur in world space (≈ 0.12 units) for soft pane edges.
+      let acc = 0;
+      for (const [dx, dz] of [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.12], [0, -0.12]] as const) {
+        p.set(wx + dx, 0, wz + dz);
+        const e = m.elements;
+        const w = e[3]! * p.x + e[7]! * p.y + e[11]! * p.z + e[15]!;
+        if (w <= 0) continue;
+        p.applyMatrix4(m);
+        acc += cookieMask(p.x, p.y);
+      }
+      v += (acc / 5) * gains[k]!;
+    });
+    put(x, y, v * 0.38);
+  }
+  // Lodge patch: a 2×2-pane window of light slanting across the planks.
+  for (let y = 0; y < H2; y++) for (let x = 0; x < W; x++) {
+    const u = x / W, t = y / H2;
+    const su = u - (1 - t) * 0.18; // slant
+    const ss = THREE.MathUtils.smoothstep;
+    let m = ss(su, 0.08, 0.2) * (1 - ss(su, 0.7, 0.82)) * ss(t, 0.06, 0.22) * (1 - ss(t, 0.8, 0.95));
+    m *= ss(Math.abs(su - 0.45), 0.01, 0.05) * ss(Math.abs(t - 0.5), 0.02, 0.07);
+    put(x, H + y, m * 0.85);
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = track(new THREE.CanvasTexture(c));
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const g = new THREE.BufferGeometry();
+  const vF = 1 - H / (H + H2); // canvas row 0 is v = 1 (flipY)
+  const quad = (x0: number, x1: number, z0: number, z1: number, y: number, va: number, vb: number) => [
+    [x0, y, z0, 0, va], [x0, y, z1, 0, vb], [x1, y, z1, 1, vb], [x0, y, z0, 0, va], [x1, y, z1, 1, vb], [x1, y, z0, 1, va],
+  ];
+  const verts = [...quad(fl.x0, fl.x1, fl.z0, fl.z1, 0.02, 1, vF), ...quad(lp.x0, lp.x1, lp.z0, lp.z1, lp.y, vF, 0)];
+  g.setAttribute('position', new THREE.Float32BufferAttribute(verts.flatMap((v) => [v[0]!, v[1]!, v[2]!]), 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(verts.flatMap((v) => [v[3]!, v[4]!]), 2));
+  const m = track(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+  const out = new THREE.Mesh(g, m);
+  out.renderOrder = 2;
+  return out;
+}
+
+/** A cluster of `n` tapered hex-prism crystals (HDR ≈ 1.3, bloom) growing from `at`. */
+function crystalCluster(b: VoxelBatch, at: V3, n: number, rng: Rng) {
+  const F: Face4 = [0, 0, -1, 1];
+  for (let k = 0; k < n; k++) {
+    const h = 0.22 + rng.next() * 0.32 * (k === 0 ? 1.4 : 1), r = 0.05 + rng.next() * 0.035;
+    const a = rng.next() * Math.PI * 2, d = k === 0 ? 0 : 0.07 + rng.next() * 0.1;
+    const base = new THREE.Vector3(at[0] + Math.cos(a) * d, at[1] - 0.03, at[2] + Math.sin(a) * d * 0.7);
+    const axis = new THREE.Vector3(Math.cos(a) * (k === 0 ? 0.1 : 0.45), 1, Math.sin(a) * (k === 0 ? 0.1 : 0.35)).normalize();
+    const side = new THREE.Vector3(1, 0, 0).cross(axis).normalize(), side2 = axis.clone().cross(side).normalize();
+    const ring = (t: number, rr: number) => Array.from({ length: 6 }, (_, i) => {
+      const th = (i / 6) * Math.PI * 2;
+      return base.clone().addScaledVector(axis, h * t).addScaledVector(side, Math.cos(th) * rr).addScaledVector(side2, Math.sin(th) * rr);
+    });
+    const r0 = ring(0, r), r1 = ring(0.72, r * 0.62), tip = base.clone().addScaledVector(axis, h);
+    const hot = new THREE.Color('#ff6418').multiplyScalar(1.3), tipC = new THREE.Color('#ffa040').multiplyScalar(1.3);
+    const v3 = (v: THREE.Vector3): V3 => [v.x, v.y, v.z];
+    for (let i = 0; i < 6; i++) {
+      const i2 = (i + 1) % 6;
+      const mid = r0[i]!.clone().add(r0[i2]!).multiplyScalar(0.5).sub(base).normalize();
+      const shade = 0.62 + 0.38 * Math.max(0, mid.z * 0.8 + mid.x * 0.3); // faces toward the camera glow most
+      const cA = hot.clone().multiplyScalar(shade), cB = tipC.clone().multiplyScalar(shade);
+      const n: V3 = [mid.x, mid.y, mid.z];
+      b.tri([v3(r0[i]!), v3(r0[i2]!), v3(r1[i2]!)], n, [[0, 0], [0, 0], [0, 0]], [cA, cA, cB], [F, F, F]);
+      b.tri([v3(r0[i]!), v3(r1[i2]!), v3(r1[i]!)], n, [[0, 0], [0, 0], [0, 0]], [cA, cB, cB], [F, F, F]);
+      b.tri([v3(r1[i]!), v3(r1[i2]!), v3(tip)], n, [[0, 0], [0, 0], [0, 0]], [cB, cB, tipC], [F, F, F]);
+    }
+  }
 }
 
 /** Remove rock blocks that would sit in front of the window panes (post-pass on the rock mesh). */

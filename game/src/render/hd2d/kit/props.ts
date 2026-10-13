@@ -39,8 +39,9 @@ export function bookcase(b: PropBatches, at: V3, rng: Rng, o: { w?: number; h?: 
   const x0 = x - w / 2, x1 = x + w / 2, z0 = z - d, z1 = z;
   const wood = C(o.tint ?? '#ffffff', 0.92);
   const frame = 0.08;
-  // Back panel (darker), sides, top, kick plate.
-  b.wood.box([x0, y, z0], [x1, y + h, z0 + 0.06], wood.clone().multiplyScalar(0.62), rng, { skip: NO_BOTTOM });
+  // Back panel (a little darker, but light enough that the book runs read against it), sides,
+  // top, kick plate.
+  b.wood.box([x0, y, z0], [x1, y + h, z0 + 0.06], wood.clone().multiplyScalar(0.86), rng, { skip: NO_BOTTOM });
   for (const sx of [x0, x1 - frame]) b.wood.box([sx, y, z0], [sx + frame, y + h, z1], wood, rng, { skip: NO_BOTTOM });
   b.wood.box([x0, y + h - frame, z0], [x1, y + h, z1], wood.clone().multiplyScalar(1.05), rng, { skip: NO_BOTTOM });
   b.wood.box([x0 + frame, y, z0], [x1 - frame, y + 0.14, z1], wood.clone().multiplyScalar(0.8), rng, { skip: NO_BOTTOM });

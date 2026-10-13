@@ -16,10 +16,12 @@ function checkGeometry(g: THREE.BufferGeometry) {
 }
 
 describe('hd2d kit: rock', () => {
-  it('a boulder is a closed chamfered box with outward normals', () => {
+  it('a boulder is a closed rounded block with outward normals', () => {
     const b = new VoxelBatch(32);
     boulder(b, [0, 0.5, 0], [1, 1, 1], new THREE.Color(1, 1, 1), new Rng(1), { skip: [false, false, false, false, false, false], jitter: 0, topJitter: 0 });
-    expect(tris(b)).toBe(6 * 2 + 12 * 2 + 8); // faces + edge bevels + corners
+    // Octagonal rings (8 quads per band): foot bevel + bottom cap, two side bands around the bulge,
+    // two top-edge bevel bands, top cap.
+    expect(tris(b)).toBe(16 + 6 + 2 * 16 + 2 * 16 + 6);
     const g = b.build();
     checkGeometry(g);
     const pos = g.attributes.position!, nor = g.attributes.normal!;
@@ -35,13 +37,13 @@ describe('hd2d kit: rock', () => {
     boulder(full, [0, 0, 0], [1, 1, 1], new THREE.Color(1, 1, 1), new Rng(2));
     boulder(flat, [0, 0, 0], [1, 1, 1], new THREE.Color(1, 1, 1), new Rng(2), { flatBottom: true });
     expect(tris(flat)).toBeLessThan(tris(full));
-    expect(tris(full)).toBeLessThan(44);
+    expect(tris(full)).toBeLessThan(92);
   });
 
-  it('a top-only (pillow) boulder is 18 closed-looking triangles', () => {
+  it('a top-only (pillow) boulder is 26 closed-looking triangles', () => {
     const b = new VoxelBatch(32);
     boulder(b, [0, 0.5, 0], [1, 1, 1], new THREE.Color(1, 1, 1), new Rng(1), { topOnly: true, skip: [false, false, false, true, false, false] });
-    expect(tris(b)).toBe(18);
+    expect(tris(b)).toBe(3 * 4 * 2 + 2); // side, steep and shallow top bevel bands + top cap
     checkGeometry(b.build());
   });
 
