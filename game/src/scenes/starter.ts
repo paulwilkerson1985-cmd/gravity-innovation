@@ -12,6 +12,7 @@ import { ease, tween } from '../render/anim';
 import { hd2dRequested } from '../render/hd2d/pipeline';
 import { DAIS_TOP, buildStarterSet, daisSpot, type StarterSet } from '../render/hd2d/screens/meadowScreens';
 import { Hd2dScreenStage } from './hd2dScreen';
+import type { SpriteSubject } from '../render/hd2d/sprite';
 
 export class StarterScene extends BaseScene {
   readonly name = 'starter' as const;
@@ -26,6 +27,8 @@ export class StarterScene extends BaseScene {
   /** HD-2D staging (`?gfx=hd2d`): the meadow clearing with stone daises, else null. */
   private hd2d: Hd2dScreenStage | null = null;
   private hd2dSet: StarterSet | null = null;
+  /** HD-2D sprite of each starter (the unchosen ones are dimmed like the default path does). */
+  private subs: SpriteSubject[] = [];
 
   enter() {
     const set = hd2dRequested() ? buildStarterSet : null;
@@ -45,7 +48,7 @@ export class StarterScene extends BaseScene {
       const p = this.hd2d ? this.pads[i]! : battlePad(['#ff9a6a', '#7cc4ff', '#8fdc6a'][i] ?? '#f2e6c8', 0.85);
       v.root.userData.pick = { index: i };
       p.userData.pick = { index: i };
-      if (this.hd2d) { this.scene.add(v.root); this.hd2d.addKin(v); } else { this.scene.add(p, v.root); this.pads.push(p); }
+      if (this.hd2d) { this.scene.add(v.root); this.subs.push(this.hd2d.addKin(v)); } else { this.scene.add(p, v.root); this.pads.push(p); }
       this.views.push(v);
       this.placeAt(i, this.slot(i, -1), 1);
     });
@@ -221,6 +224,8 @@ export class StarterScene extends BaseScene {
       v.root.rotation.y = i === this.selected ? Math.sin(t * 1.5) * 0.5 : 0;
       if (this.selected >= 0 && i !== this.selected) v.material.color.setScalar(0.72);
       else v.material.color.setScalar(1);
+      const sub = this.subs[i];
+      if (sub) sub.lift = this.selected >= 0 && i !== this.selected ? -0.2 : 0;
     });
   }
 }
