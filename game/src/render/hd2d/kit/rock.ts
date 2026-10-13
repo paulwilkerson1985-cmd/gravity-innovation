@@ -218,7 +218,7 @@ export interface BoulderWallOptions {
   core?: number;
   /**
    * Share of top stones that run two cells deep when the row behind them has the same height
-   * (default 0): a ledge top becomes one wide lit shelf of big stones instead of two rows of tops.
+   * (default 0): a ledge top becomes one wide lit shelf of big stones instead of rows of tops.
    */
   deep?: number;
   /** Cheap top-bevel-only boulders for every block (low tier). Buried top blocks always use them. */
@@ -332,10 +332,13 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
       }
       const top = tall || blockTop;
       const openTop = tall ? upTop : topLevel;
-      // Deep stones: a front-row top stone swallows the same-height row behind it.
+      // Deep stones: a top stone swallows the same-height row behind it (when the two rows also
+      // end alike, so no side face goes missing).
       const ca = Math.floor((sx0 - hm.x0) / CELL + 1e-3), cb = Math.floor((sx1 - hm.x0) / CELL - 1e-3);
-      let deep = top && front && pDeep > 0 && j > 0 && rng.chance(pDeep);
+      const lvTop = (openTop - baseY) / LEVEL;
+      let deep = top && pDeep > 0 && j > 0 && rng.chance(pDeep);
       for (let i = ca; deep && i <= cb; i++) if (Math.abs(hm.get(i, j - 1) - hm.get(i, j)) > 0.01) deep = false;
+      if (deep && (covered(cb + 1, j - 1, lvTop) !== covered(cb + 1, j, lvTop) || covered(ca - 1, j - 1, lvTop) !== covered(ca - 1, j, lvTop))) deep = false;
       let backD = back;
       if (deep) {
         for (let ll = l; ll <= (tall ? l + 1 : l); ll++) {
@@ -344,7 +347,7 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
           occupied.get(k)!.push([sx0, sx1]);
         }
         backD = false;
-        for (let i = ca; i <= cb; i++) if (!covered(i, j - 2, (openTop - baseY) / LEVEL)) backD = true;
+        for (let i = ca; i <= cb; i++) if (!covered(i, j - 2, lvTop)) backD = true;
       }
       const sideR = sx1 >= xB - 1e-3 && (rightOpen || (tall && !covered(i1, j, (openTop - baseY) / LEVEL)));
       const sideL = sx0 <= xA + 1e-3 && (leftOpen || (tall && !covered(i0 - 1, j, (openTop - baseY) / LEVEL)));

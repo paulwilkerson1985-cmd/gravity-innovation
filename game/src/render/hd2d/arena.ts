@@ -567,8 +567,8 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const clear = (x: number, z: number, r: number) => keepOut.every((c) => (x - c.x) ** 2 + (z - c.z) ** 2 > (c.r + r) ** 2);
   // Baked sky key for rock and stone: lit tops, mid fronts, dark undersides.
   const LBAKE = new THREE.Vector3(0, 1, 0.4);
-  // Geometry nearer than the floor front sinks into foreground shade.
-  const fore = (_x: number, _y: number, z: number) => 1 - 0.4 * THREE.MathUtils.smoothstep(z, floorFront, floorFront + 0.8);
+  // Geometry nearer than the floor front sinks into foreground shade (× ≈0.66).
+  const fore = (_x: number, _y: number, z: number) => 1 - 0.34 * THREE.MathUtils.smoothstep(z, floorFront, floorFront + 0.8);
 
   // ---- rock (one mesh)
   const rock = new VoxelBatch(voxel ? 32 : 64);
@@ -636,7 +636,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const metal = new VoxelBatch(16);
   const wood = new VoxelBatch(32);
   const props = new VoxelBatch(32);
-  const red = rampColor(RAMPS.rail, 3).multiplyScalar(1.7);
+  const red = rampColor(RAMPS.rail, 3).multiplyScalar(2.6); // painted red reads bright even in shade
   /**
    * A solid stone stair running along `axis` from `from` (floor, y = 0) to `to` (y = yTo), between
    * `c0`..`c1` across: bright treads, dark risers, and a solid sloped red stringer slab either
@@ -691,6 +691,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   rubble(-6.6, -1.0, 0.8); // on the first left ledge
   rubble(6.6, 0.6, 0.7); // on the first right ledge
   rubble(6.3, 5.0, 0.85); // on the right front corner ledge
+  rubble(-6.5, 5.4, 0.8); // on the left front ledge, beside the front stair
   // Scattered pebbles on the floor.
   pebbles(stone, [-floorHalfX, floorBack, floorHalfX, floorFront + 2], 46, rng, keepOut.map((c) => ({ ...c, r: c.r * 0.8 })));
 
@@ -779,7 +780,6 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
 
   stone.shade(fore);
   stone.bake = LBAKE;
-  metal.shade(fore);
   const stoneMat = track(surfaceMaterial(texStone, undefined, true, false));
   group.add(mesh(stone.build(), stoneMat));
   // Wood: a warm lift (the lodge glows in the window light).
