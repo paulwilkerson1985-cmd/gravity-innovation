@@ -198,10 +198,12 @@ export abstract class MetaScene extends BaseScene {
     const py = (p: THREE.Vector3) => (-p.project(this.camera).y * 0.5 + 0.5) * hgt;
     const zoom = uiZoom(w, hgt);
     const below = py(new THREE.Vector3(0, -0.2, 1.3)) + 8;
-    const captionH = 62 * zoom;
+    // HD-2D: the real caption height (name + badge), the default path keeps its old estimate.
+    const captionH = this.hd2d ? Math.max(62 * zoom, this.caption.getBoundingClientRect().height) : 62 * zoom;
     if (below + captionH <= hgt - 6) { st.top = `${below / zoom}px`; st.bottom = 'auto'; return; }
-    // No room under the stand (landscape phone): float the caption above the model instead.
-    const above = py(new THREE.Vector3(0, this.frameH + 0.25, 0)) - 6;
+    // No room under the stand (landscape phone): float the caption above the model instead
+    // (HD-2D: above the plinth top, clear of the sprite's outline and ears).
+    const above = py(new THREE.Vector3(0, this.hd2d ? this.frameH + 0.6 + PLINTH_TOP : this.frameH + 0.25, 0)) - 6;
     st.top = `${Math.max(4, (above - captionH) / zoom)}px`;
     st.bottom = 'auto';
   }
