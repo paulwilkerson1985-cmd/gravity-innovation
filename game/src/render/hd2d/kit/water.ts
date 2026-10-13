@@ -139,8 +139,11 @@ export function shoreDistance(rect: WaterOptions['rect'], land: (x: number, z: n
   for (let k = 0; k < out.length; k++) out[k] = d[k] === 0 ? 0 : Math.max(8, Math.round(Math.min(1, d[k]! / res / range) * 255));
   void q;
   const tex = new THREE.DataTexture(out, nx, nz, THREE.RedFormat, THREE.UnsignedByteType);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
+  // A data field, not a colour image (so not a pixelTexture): LINEAR, so the foam bands follow
+  // the shore smoothly at texel precision (the shader quantises to the texel grid anyway)
+  // instead of stair-stepping along the field's coarser cells.
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
   return tex;
 }

@@ -10,7 +10,7 @@ import { Rng } from '../../../engine/rng';
 import { CELL, TEXEL, type Heightmap, type VoxelBatch } from '../arena';
 import { PixelTile, cachedTexture, ditherIndex, fbm, pixelTexture, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
-import { bandIndex } from './outdoorKit';
+import { bandIndex, clusterFill } from './outdoorKit';
 import { boulder } from '../kit/rock';
 
 // ------------------------------------------------------------------ grade & small helpers
@@ -108,20 +108,24 @@ export function paintAsh(seed: number, size = 64): PixelTile {
   return t;
 }
 
-/** Beach sand: soft dunes of dither, ripple lines, shell and pebble specks. */
+/**
+ * Beach sand: grains in 2–4-texel CLUSTERS (4 flat shades), long broken wind ripples (a lit crest
+ * row over a shaded trough, periodic so the tile repeats), a few shell / pebble specks.
+ */
 export function paintSand(seed: number, size = 64, ramp: Ramp = RAMPS2.sand): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
-  bandField(t, fbm(size, rng, [[4, 0.55], [8, 0.3], [32, 0.15]]), 2.2, 4.6, 1.3);
-  // Wind ripples: wavy dark/lit pairs.
-  for (let r = 0; r < 7; r++) {
-    const y0 = rng.int(size), x0 = rng.int(size), len = 8 + rng.int(12);
-    for (let k = 0; k < len; k++) {
-      const y = y0 + Math.round(Math.sin((k + r) * 0.5) * 1.2);
-      t.nudge(x0 + k, y, -1); t.nudge(x0 + k, y - 1, 1);
-    }
-  }
-  for (let i = 0; i < size * 0.7; i++) t.nudge(rng.int(size), rng.int(size), rng.chance(0.5) ? -1 : 1);
+  const per = (f: number) => (Math.max(1, Math.round((size * f) / (Math.PI * 2))) * Math.PI * 2) / size;
+  const ky = per(0.62), kx = per(0.09), kb = per(0.05);
+  clusterFill(t, seed, {
+    cell: 3, aspect: 1.5, base: Math.min(3.4, ramp.length - 2.6), tones: 4, macro: 1.6, spread: 1.0, rimHi: 0.45, rimLo: 0.55, rimShare: 0.35,
+    add: (x, y) => {
+      // Ripples: crests every ~10 rows, wandering, broken where a slow field says so.
+      const r = Math.sin((y + Math.sin(x * kx) * 3) * ky);
+      const on = Math.sin(x * kb + y * kb * 0.5) > -0.3;
+      return on ? (r > 0.8 ? 0.85 : r > 0.45 && r < 0.62 ? -0.7 : 0) : 0;
+    },
+  });
   for (let i = 0; i < 6; i++) { const x = rng.int(size), y = rng.int(size); t.set(x, y, ramp.length - 1); t.set(x + 1, y, ramp.length - 2); t.set(x, y + 1, 1); }
   return t;
 }
@@ -144,12 +148,10 @@ export function paintRockOn(seed: number, ramp: Ramp, size = 32, strata = false)
   return t;
 }
 
-/** Short grass turf (cliff top): blades as dark/lit vertical pairs on mottled green. */
+/** Short grass turf (cliff top): wind-combed grass CLUMPS (taller than wide), 4 flat shades. */
 export function paintTurf(seed: number, size = 64): PixelTile {
-  const rng = new Rng(seed);
   const t = new PixelTile(size, size, RAMPS2.turf);
-  bandField(t, fbm(size, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]), 1.8, 4.6, 1.4);
-  for (let i = 0; i < size * 3; i++) { const x = rng.int(size), y = rng.int(size); t.nudge(x, y, 1); t.nudge(x, y + 1, -1); }
+  clusterFill(t, seed, { cell: 3, aspect: 2.0, base: 3.3, tones: 4, macro: 1.8, spread: 1.5, rimHi: 0.9, rimLo: 0.9, rimShare: 0.45 });
   return t;
 }
 
@@ -185,11 +187,15 @@ export function paintAlpha(w: number, h: number, ramp: Ramp, fn: (x: number, y: 
 }
 
 const persistentCanvas = new Map<string, THREE.CanvasTexture>();
-/** Like cachedTexture, for alpha canvases. */
-export function cachedCanvas(key: string, paint: () => HTMLCanvasElement): THREE.CanvasTexture {
+/**
+ * Like cachedTexture, for alpha canvases (decals, foliage cards), through `pixelTexture`. Alpha
+ * canvases default to NO mips (`mips: true` opts in): thin strokes and partial-alpha decals must
+ * not merge or vanish in a minified level.
+ */
+export function cachedCanvas(key: string, paint: () => HTMLCanvasElement, o: { mips?: boolean } = {}): THREE.CanvasTexture {
   let tex = persistentCanvas.get(key);
   if (!tex) {
-    tex = pixelTexture(paint());
+    tex = pixelTexture(paint(), { mips: o.mips === true });
     tex.userData.persistent = true;
     tex.dispose = () => {};
     persistentCanvas.set(key, tex);
@@ -327,6 +333,11 @@ float bayer4(vec2 p) {
   return (float(m[idx]) + 0.5) / 16.0;
 }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 void main() {
   vec2 cell = floor(vWorld.xz / uTexel);
   vec2 p = (cell + 0.5) * uTexel;
@@ -339,9 +350,10 @@ void main() {
   if (edge < -0.55 * uSwash - 0.02) discard;
   float b = bayer4(cell);
   if (edge < 0.0) {
-    // Wet sand band left by the retreating swash: dithered darkening, no water.
+    // Wet sand band left by the retreating swash: a solid darker band with a ragged (noise, not
+    // dither) upper edge — no water, no speckle.
     float a = 1.0 - clamp(-edge / (0.55 * uSwash + 0.02), 0.0, 1.0);
-    if (a * 0.85 < b) discard;
+    if (a < 0.35 + 0.3 * vnoise(p * 2.3)) discard;
     gl_FragColor = vec4(uWet, 1.0);
     #include <fog_fragment>
     return;
@@ -382,42 +394,53 @@ void main() {
     band = exp(-dx * dx) * uGlit.w * clamp(d / 1.2, 0.0, 1.0);
     v += band * 1.2;
   }
-  int i0 = int(clamp(floor(v + b - 0.5), 0.0, 5.0));
+  // Quantise with a CLUSTERED threshold (2-texel value noise), not a per-texel Bayer: the sea
+  // reads as wobbly bands of flat colour instead of a checkerboard carpet.
+  int i0 = int(clamp(floor(v + 0.5 + (vnoise(cell * 0.5 + 7.0) - 0.5) * 0.7), 0.0, 5.0));
   vec3 c = uRamp[0];
   for (int k = 1; k < 6; k++) if (k == i0) c = uRamp[k];
-  // Foam: a ragged line on the moving edge, crests near the shore, whitecaps offshore.
-  float n = hash(floor(cell / 2.0));
-  float edgeFoam = 1.0 - smoothstep(0.05, 0.28 + 0.1 * n, edge);
-  float crest = smoothstep(0.82, 0.97, wv) * (1.0 - smoothstep(1.0, 3.2, d)) * (0.6 + 0.4 * n);
+  // Foam as SHAPED BANDS that follow the shore (no per-texel noise, no dither):
+  //  * lace: a band hugging the waterline whose width breathes with the swash, holed by a
+  //    low-frequency noise so it reads as lacy foam, plus a thinner receding line just outside;
+  //  * crests: the travelling wave crests near the shore as 1–2-texel stripes broken into long
+  //    dashes; whitecaps offshore are rarer dashes along the crests, fading with distance.
+  float lw = 0.16 + 0.12 * vnoise(p * 1.1 + vec2(uTime * 0.25, 0.0));
+  float holes = vnoise(p * 2.6 + vec2(uTime * 0.12, -uTime * 0.05));
+  float lace = step(edge, lw) * step(0.3, holes);
+  float back = step(lw + 0.1, edge) * step(edge, lw + 0.16 + 0.05 * sin(p.x * 1.7 + uTime)) * step(0.55, holes);
+  float brk = vnoise(vec2(p.x * 0.8 + p.y * 0.3, d * 0.6) + uTime * 0.05);
+  float crest = step(0.94, wv) * (1.0 - smoothstep(0.9, 2.8, d)) * step(0.42, brk);
   float caps = 0.0;
   if (uCaps > 0.0) {
-    // Whitecaps cluster ALONG the travelling wave crests (not a field of specks), in clumps that
-    // drift with the swell, and fade out with distance toward the horizon.
-    float n3 = hash(floor((cell + vec2(floor(uTime * 0.6), 0.0)) / 3.0));
-    float along = smoothstep(0.9 - uCaps * 0.06, 0.99, wv) * step(0.62 - uCaps * 0.25, n3);
-    caps = along * smoothstep(1.5, 4.0, d) * (1.0 - far * 0.9);
+    float along = step(0.975 - uCaps * 0.02, wv) * step(0.78 - uCaps * 0.2, vnoise(p * vec2(0.35, 0.9) + vec2(uTime * 0.2, 0.0)));
+    caps = along * smoothstep(1.8, 4.0, d) * (1.0 - far * 0.9);
     // The shore field saturates at uRange: fade the crest-bound caps out before it, or they
     // trace one ruler line of foam round every island far out (seen by phone cameras).
     caps *= 1.0 - smoothstep(uRange * 0.7, uRange * 0.97, d);
   }
-  float foam = max(edgeFoam, max(crest, caps));
-  if (foam > b * 0.9 + 0.08) c = mix(uFoam, c, 0.12 * step(0.5, b));
-  // Sun glints: sparse pixels that blink (they bloom).
-  if (uGlints > 0.5) {
+  float foam = max(max(lace, back), max(crest, step(0.5, caps)));
+  // A soft shadow-blue rim just outside the lace (one texel band), so the foam sits ON the water.
+  float rim = step(lw, edge) * step(edge, lw + 0.06) * (1.0 - foam);
+  if (rim > 0.5) c = mix(c, uRamp[1], 0.35);
+  if (foam > 0.5) c = uFoam * (crest > 0.5 && lace < 0.5 ? 0.92 : 1.0);
+  // Sun glints: sparse pixels that blink (they bloom) — only where the sun actually lands (the
+  // sun-break pool, else near the shore), never a snowfall of specks over the whole sea.
+  float n = hash(floor(cell / 2.0));
+  float gl = uPool.z > 0.0 ? 1.0 - smoothstep(0.6, 1.0, length((p - uPool.xy) / uPool.zw)) : 1.0 - smoothstep(1.0, 3.0, d);
+  if (uGlints > 0.5 && gl > 0.0) {
     float g = hash(cell + floor(uTime * 3.0 + n * 7.0));
-    if (g > 0.9965 - far * 0.006 && d > 0.6) c = uGlint;
+    if (g > 1.0 - 0.004 * gl && d > 0.6 && foam < 0.5) c = uGlint;
   }
   if (band > 0.02) {
     float g2 = hash(cell * 1.7 + floor(uTime * 4.0 + n * 9.0));
-    if (g2 > 1.0 - band * (0.07 + far * 0.2)) c = uGlitCol;
-    else if (g2 > 1.0 - band * (0.22 + far * 0.25)) c = mix(c, uGlitCol, 0.45);
+    if (g2 > 1.0 - band * (0.04 + far * 0.12)) c = uGlitCol;
+    else if (g2 > 1.0 - band * (0.12 + far * 0.16)) c = mix(c, uGlitCol, 0.4);
   }
-  // Horizon haze: the far sea dissolves into the sky colour in posterised, dithered steps
-  // (no ruler-straight hard horizon line).
+  // Horizon haze: the far sea dissolves smoothly into the sky colour (no ruler-straight hard
+  // horizon line, no stepped bands; the grade's dither breaks the gradient into pixels).
   if (uHazeZ.y < uHazeZ.x) {
     float hk = clamp((uHazeZ.x - p.y) / (uHazeZ.x - uHazeZ.y), 0.0, 1.0);
-    hk = min(1.0, floor(hk * hk * 6.0 + b) / 6.0);
-    c = mix(c, uHaze, hk);
+    c = mix(c, uHaze, hk * hk);
   }
   gl_FragColor = vec4(c, 1.0);
   #include <fog_fragment>
@@ -919,7 +942,8 @@ export function disposeGroup(group: THREE.Group, extra: { dispose(): void }[]) {
 export function paintFlags(seed: number, size = 64, ramp: Ramp = RAMPS2.whitewash): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
-  bandField(t, fbm(size, rng, [[4, 0.5], [16, 0.5]]), 2.4, 4.4, 1.2);
+  // Stone grain in flat 3-texel clusters (3 shades), not per-texel speckle.
+  clusterFill(t, seed, { cell: 3, aspect: 1.6, base: 3.4, tones: 3, macro: 1.4, spread: 1.1, rimHi: 0.4, rimLo: 0.5, rimShare: 0.35 });
   // Rows of slabs with staggered joints.
   const rowH = 16;
   for (let r = 0; r < size / rowH; r++) {
@@ -1221,6 +1245,105 @@ export function rockStack(batch: VoxelBatch, base: THREE.Vector3, radius: number
     const a = rng.next() * Math.PI * 2, d = radius * (0.9 + rng.next() * 0.5), s = radius * (0.2 + rng.next() * 0.25);
     boulder(batch, [base.x + Math.cos(a) * d, base.y + s * 0.3, base.z + Math.sin(a) * d], [s * 1.4, s, s * 1.1], foot.clone().multiplyScalar(0.85 + rng.next() * 0.2), rng, { ry: rng.next() * 3, rx: (rng.next() - 0.5) * 0.4, aoBottom: 0.45 });
   }
+}
+
+/**
+ * A round TUBE from `a` to `b` (a lathe along any axis): `radius(t)` along it (t 0 → 1), `sides`
+ * facets, `rings` segments, seamless facets (no bevel seams), texture u around, v along, at the
+ * batch's texel density; `tint(t)` per ring. Logs, posts, buoys, floats. Ends are capped.
+ */
+export function tube(batch: VoxelBatch, a: THREE.Vector3, b: THREE.Vector3, radius: (t: number) => number, o: { sides?: number; rings?: number; tint?: (t: number) => THREE.Color; wobble?: number; seed?: number } = {}) {
+  const S = o.sides ?? 8, R = o.rings ?? 4;
+  const axis = b.clone().sub(a);
+  const len = axis.length();
+  axis.normalize();
+  const ref = Math.abs(axis.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const u = new THREE.Vector3().crossVectors(axis, ref).normalize(), v = new THREE.Vector3().crossVectors(axis, u).normalize();
+  const tt = 1 / (TEXEL * batch.tileTexels);
+  const flat: [number, number, number, number] = [0, 0, -1, 1];
+  const ring = (k: number) => {
+    const t = k / R;
+    const c = a.clone().addScaledVector(axis, t * len);
+    const pts: [number, number, number][] = [], nrm: THREE.Vector3[] = [];
+    for (let s = 0; s <= S; s++) {
+      const ang = (s / S) * Math.PI * 2;
+      const w = 1 + (o.wobble ?? 0) * Math.sin(ang * 3 + (o.seed ?? 0) + k * 1.7);
+      const d = u.clone().multiplyScalar(Math.cos(ang)).addScaledVector(v, Math.sin(ang));
+      const p = c.clone().addScaledVector(d, radius(t) * w);
+      pts.push([p.x, p.y, p.z]); nrm.push(d);
+    }
+    return { pts, nrm, t };
+  };
+  const rs = Array.from({ length: R + 1 }, (_, k) => ring(k));
+  const girth = Math.PI * 2 * Math.max(radius(0), radius(1), radius(0.5));
+  for (let k = 0; k < R; k++) {
+    const A = rs[k]!, B = rs[k + 1]!;
+    const cA = o.tint?.(A.t) ?? new THREE.Color(1, 1, 1), cB = o.tint?.(B.t) ?? new THREE.Color(1, 1, 1);
+    for (let s = 0; s < S; s++) {
+      const n = A.nrm[s]!.clone().add(A.nrm[s + 1]!).normalize();
+      const u0 = (s / S) * girth * tt, u1 = ((s + 1) / S) * girth * tt, v0 = A.t * len * tt, v1 = B.t * len * tt;
+      batch.tri([A.pts[s]!, A.pts[s + 1]!, B.pts[s + 1]!], [n.x, n.y, n.z], [[u0, v0], [u1, v0], [u1, v1]], [cA, cA, cB], [flat, flat, flat]);
+      batch.tri([A.pts[s]!, B.pts[s + 1]!, B.pts[s]!], [n.x, n.y, n.z], [[u0, v0], [u1, v1], [u0, v1]], [cA, cB, cB], [flat, flat, flat]);
+    }
+  }
+  // End caps (fans).
+  for (const [k, sgn] of [[0, -1], [R, 1]] as const) {
+    const r = rs[k]!;
+    const c = a.clone().addScaledVector(axis, (k / R) * len);
+    const n: [number, number, number] = [axis.x * sgn, axis.y * sgn, axis.z * sgn];
+    const col = (o.tint?.(r.t) ?? new THREE.Color(1, 1, 1)).clone().multiplyScalar(1.05);
+    for (let s = 0; s < S; s++) {
+      const p0 = r.pts[s]!, p1 = r.pts[s + 1]!;
+      const tri: [[number, number, number], [number, number, number], [number, number, number]] = sgn > 0 ? [[c.x, c.y, c.z], p0, p1] : [[c.x, c.y, c.z], p1, p0];
+      batch.tri(tri, n, [[0.5, 0.5], [0.5 + Math.cos((s / S) * 6.28) * 0.1, 0.5], [0.5, 0.5 + Math.sin((s / S) * 6.28) * 0.1]], [col, col, col], [flat, flat, flat]);
+    }
+  }
+}
+
+export interface SunlitRockOptions {
+  /** Direction the sun comes FROM (world). */
+  sun: THREE.Vector3;
+  /** Water level: the rock below it (and a little above) is wet and dark. */
+  waterY?: number;
+  /** Share of side texels-patches with moss / white bird-lime streaks (0..1). */
+  moss?: number; lime?: number;
+  /** Warm tint for the sunlit tops and the rim (multiplier). */
+  warm?: THREE.ColorRepresentation;
+}
+
+/**
+ * Bake sea-stack / headland light into a built rock geometry's vertex colours (no extra draw
+ * call): WARM SUNLIT TOPS (up-facing facets brighter and warmer), a RIM on the side facets that
+ * turn toward the sun at a grazing angle to the camera (+z), a dark WET FOOT at the waterline,
+ * and weathering — MOSS on some upper side facets, white BIRD-LIME streaks running down others.
+ */
+export function sunlitRock(g: THREE.BufferGeometry, o: SunlitRockOptions): THREE.BufferGeometry {
+  const sun = new THREE.Vector2(o.sun.x, o.sun.z).normalize();
+  const warm = new THREE.Color(o.warm ?? '#ffd8a0');
+  const wy = o.waterY ?? -1e9;
+  const h = (a: number, b: number, s: number) => { const v = Math.sin(a * 127.1 + b * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
+  return shadeVertices(g, (x, y, z, ny, nx, nz) => {
+    const top = THREE.MathUtils.smoothstep(ny, 0.25, 0.8);
+    const side = 1 - Math.min(1, Math.abs(ny) * 1.6);
+    const len = Math.hypot(nx, nz) || 1;
+    // Rim: the flanks turned toward the sun's SIDE of the screen (left or right) catch a hot edge
+    // of light — also the ones angled a little toward the camera, so the rim is actually seen.
+    const toSide = (nx / len) * Math.sign(sun.x || 1);
+    const facing = Math.max(0, (nx * sun.x + nz * sun.y) / len);
+    const rim = Math.max(THREE.MathUtils.smoothstep(toSide, 0.3, 0.85), THREE.MathUtils.smoothstep(facing, 0.2, 0.7)) * side;
+    let r = 1 + top * (warm.r * 0.7 - 0.05) + rim * warm.r * 0.75;
+    let gg = 1 + top * (warm.g * 0.55 - 0.06) + rim * warm.g * 0.58;
+    let b = 1 + top * (warm.b * 0.25 - 0.1) + rim * warm.b * 0.25;
+    // Weathering on the side facets above the waterline (patches of a few facets, never noise).
+    if (side > 0.4 && y > wy + 0.5) {
+      const cx = Math.round(x * 2.2), cz = Math.round(z * 2.2), cy = Math.round(y * 1.4);
+      if (h(cx, cz, 3) < (o.lime ?? 0) && h(cx, cy, 5) < 0.7) { r = r * 0.4 + 1.05; gg = gg * 0.4 + 1.04; b = b * 0.4 + 1.0; }
+      else if (h(cx + 7, cz, 9) < (o.moss ?? 0) && ny > -0.2) { r *= 0.7; gg *= 1.08; b *= 0.55; }
+    }
+    // Wet, dark foot (a hard tide line, not a gradient).
+    if (y < wy + 0.3) { const k = y < wy + 0.12 ? 0.6 : 0.78; r *= k; gg *= k; b *= k * 1.05; }
+    return [r, gg, b];
+  });
 }
 
 // ------------------------------------------------------------------ layered fog bands

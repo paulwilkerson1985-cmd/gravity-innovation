@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, LEVEL, TEXEL, VoxelBatch, type Face4, type Heightmap } from '../arena';
 import { boulder } from '../kit/rock';
-import { PixelTile, ditherIndex, fbm, type Ramp } from '../textures';
+import { PixelTile, ditherIndex, fbm, pixelTexture, type Ramp } from '../textures';
 import type { SpriteLight } from '../sprite';
 
 export type V3 = [number, number, number];
@@ -101,14 +101,15 @@ export function bandIndex(v: number, x: number, y: number, n: number, edge = 0.1
   return Math.max(0, Math.min(n - 1, i));
 }
 
-/** Crisp texture from a tile (nearest, no mips, sRGB). */
-export function crispTexture(c: HTMLCanvasElement, repeat = false): THREE.CanvasTexture {
-  const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.NearestFilter;
-  t.generateMipmaps = false;
-  t.wrapS = t.wrapT = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
+/**
+ * Crisp texture from a tile, through `textures.ts` `pixelTexture` (nearest magnification, sRGB,
+ * palette-preserving mip chain so minified floors and far planes keep flat ramp tones instead
+ * of speckle). `repeat` false clamps (unique painted floors, backdrops); `mips: false` for
+ * sprite atlases and alpha cards.
+ */
+export function crispTexture(c: HTMLCanvasElement, repeat = false, o: { mips?: boolean } = {}): THREE.CanvasTexture {
+  const t = pixelTexture(c, { mips: o.mips !== false });
+  if (!repeat) t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
 }
 
@@ -145,7 +146,7 @@ export class SpriteAtlas {
     if (!l?.length) throw new Error(`no sprite ${name}`);
     return rng ? rng.pick(l) : l[0]!;
   }
-  texture(): THREE.CanvasTexture { return crispTexture(this.tile.toCanvas()); }
+  texture(): THREE.CanvasTexture { return crispTexture(this.tile.toCanvas(), false, { mips: false }); }
 }
 
 /** Local view of an atlas slot. */
@@ -178,44 +179,77 @@ export class SpriteCanvas {
  */
 export function paintCanopy(p: SpriteCanvas, rng: Rng, ramp: Ramp, o: { clumps?: number; flat?: number; light?: [number, number] } = {}) {
   const { w, h } = p;
-  const n = o.clumps ?? 9;
-  const L = o.light ?? [-0.55, -0.65];
-  const clumps: [number, number, number][] = [];
-  for (let i = 0; i < n; i++) {
-    const t = i / Math.max(1, n - 1);
-    // Lower clumps first (back), the crown last.
-    const r = (Math.min(w, h) * (0.2 + rng.next() * 0.1)) * (o.flat ?? 1);
-    const cx = w * (0.22 + rng.next() * 0.56);
-    const cy = h * (0.72 - t * 0.42) + (rng.next() - 0.5) * h * 0.12;
-    clumps.push([cx, Math.min(cy, h - r - 1), Math.min(r, cx - 1, w - cx - 1)]);
-  }
-  const top = ramp.length - 1;
-  const leaf = fbm(32, rng, [[8, 0.6], [16, 0.4]]);
-  for (const [cx, cy, r] of clumps) {
-    for (let y = Math.floor(cy - r - 2); y <= cy + r + 1; y++) for (let x = Math.floor(cx - r - 2); x <= cx + r + 2; x++) {
-      const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cy) / r;
-      // Ragged edge made of little leaf cells (4×3 texels, staggered rows).
-      const row = Math.floor(y / 3), col = Math.floor((x + (row % 2) * 2) / 4);
-      const cellR = hash2(col, row, 9);
-      const d2 = dx * dx + dy * dy;
-      if (d2 > 1 + (cellR - 0.55) * 0.5 - 0.12 * leaf[((y & 31) * 32 + (x & 31))]!) continue;
-      const nz = Math.sqrt(Math.max(0, 1 - Math.min(1, d2)));
-      const lit = -(dx * L[0] + dy * L[1]) + nz * 0.5;
-      const rim = d2 > 0.7 && p.has(x, y) ? -1.6 : 0;
-      // Leaf cell shading: a lit top-left texel pair, a dark bottom-right corner.
-      const lx = (x + (row % 2) * 2) - col * 4, ly = y - row * 3;
-      const cell = ly === 0 && lx < 2 ? 0.45 : ly === 2 && lx === 3 ? -0.6 : 0;
-      const v = 2.1 + lit * 2.7 + cell + (cellR - 0.5) * 0.5 + rim + (0.45 - y / h) * 1.6;
-      p.shade(x, y, ramp, Math.max(0.6, Math.min(top - 0.1, v)));
+  const n = Math.max(2, o.clumps ?? 9);
+  const flat = o.flat ?? 1;
+  // Light comes FROM the sky, a little from one side (screen coords, y down).
+  const L0 = o.light ?? [-0.42, -0.9];
+  const ll = Math.hypot(L0[0], L0[1]);
+  const L: [number, number] = [L0[0] / ll, L0[1] / ll];
+  // ---- 1. Leaf masses as a dome of rounded clumps: a back/top row, a middle row and a front/
+  // bottom row (painted in that order, so each lower mass overlaps the one above it with its
+  // lit, scalloped top edge — the way hand-pixelled crowns are built).
+  const rows = n >= 6 ? 3 : 2;
+  const share = rows === 3 ? [0.25, 0.35, 0.4] : [0.4, 0.6];
+  const clumps: { x: number; y: number; r: number; m: number; ph: number }[] = [];
+  let left = n;
+  for (let r = 0; r < rows; r++) {
+    const t = r / (rows - 1);
+    const count = r === rows - 1 ? left : Math.max(1, Math.round(n * share[r]!));
+    left -= count;
+    const span = 0.16 + t * 0.2;
+    for (let i = 0; i < count; i++) {
+      const rad = Math.min(w * 0.3, h * 0.36) * (0.78 + rng.next() * 0.3) * (1 - t * 0.12) * flat;
+      const u = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;
+      let cx = w / 2 + u * span * w + (rng.next() - 0.5) * w * 0.06;
+      let cy = h * (0.3 + t * 0.36) * (rows === 2 ? 1.12 : 1) + (rng.next() - 0.5) * h * 0.06;
+      cx = Math.max(rad + 1.5, Math.min(w - rad - 1.5, cx));
+      cy = Math.max(rad * 0.9 + 1.5, Math.min(h - rad - 1.5, cy));
+      // Scallops: one round leaf bump every ~4–5 texels of rim.
+      clumps.push({ x: cx, y: cy, r: rad, m: Math.max(5, Math.round((Math.PI * 2 * rad) / 4.6)), ph: rng.next() * Math.PI * 2 });
     }
   }
-  // Leaf flecks: bright little 2-texel leaves on the lit side.
-  for (let i = 0; i < w * h * 0.02; i++) {
-    const x = rng.int(w), y = rng.int(Math.ceil(h * 0.6));
-    if (!p.has(x, y) || !p.has(x + 1, y) || x / w > 0.7) continue;
-    p.set(x, y, ramp[top]!); if (rng.chance(0.5)) p.set(x + 1, y, ramp[top - 1]!);
+  const inside = (c: typeof clumps[0], x: number, y: number) => {
+    const dx = x + 0.5 - c.x, dy = (y + 0.5 - c.y) / (flat < 1 ? flat : 1);
+    const d = Math.hypot(dx, dy);
+    const s = Math.abs(Math.sin((Math.atan2(dy, dx) * c.m + c.ph) / 2));
+    return d < c.r * (0.86 + 0.14 * Math.sqrt(s));
+  };
+  // Owner = the front-most (last) clump covering each texel.
+  const owner = new Int16Array(w * h).fill(-1);
+  clumps.forEach((c, ci) => {
+    for (let y = Math.max(0, Math.floor(c.y - c.r - 1)); y <= Math.min(h - 1, c.y + c.r + 1); y++) for (let x = Math.max(0, Math.floor(c.x - c.r - 1)); x <= Math.min(w - 1, c.x + c.r + 1); x++) if (inside(c, x, y)) owner[y * w + x] = ci;
+  });
+  // ---- 2. Leaf clusters inside the masses (3–4 texels): each catches the light on its top-left
+  // edge and shades its underside, so the mass reads as leaves, not a smooth ball.
+  const leaves = clusterMap(w, h, w > 60 ? 4.2 : 3.4, Math.floor(rng.next() * 1e6), { aspect: 0.8 });
+  const top = ramp.length - 1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ci = owner[y * w + x]!;
+    if (ci < 0) continue;
+    const c = clumps[ci]!;
+    const dx = (x + 0.5 - c.x) / c.r, dy = (y + 0.5 - c.y) / c.r;
+    const nz = Math.sqrt(Math.max(0, 1 - Math.min(1, dx * dx + dy * dy)));
+    // Sky-facing top lit, underside dark (sphere lit from above-side), whole crown darker low.
+    const lit = (dx * L[0] + dy * L[1]) * 0.75 + nz * 0.3;
+    let v = 2.9 + lit * 2.4 - Math.max(0, y / h - 0.5) * 1.7;
+    const k = y * w + x;
+    // Sparse leaf marks: only some clusters catch a lit top edge (lighter ones, on the lit side)
+    // or show a shaded underside (darker ones) — a full outline on every cluster reads as scales.
+    const lv = leaves.v[k]!;
+    if (leaves.hi[k] && lit > 0.05 && lv > 0.45) v += 0.8;
+    else if (leaves.lo[k] && lv < 0.45) v -= lit > 0 ? 0.6 : 0.45;
+    v += (lv - 0.5) * 0.6;
+    // A dark gap where this mass meets a mass in front of it (just below/beside this texel).
+    for (const [ax, ay] of [[0, 1], [0, 2], [1, 1], [-1, 1]] as const) {
+      const o2 = x + ax >= 0 && x + ax < w && y + ay < h ? owner[(y + ay) * w + x + ax]! : -1;
+      if (o2 > ci) { v -= ay === 1 ? 1.5 : 0.8; break; }
+    }
+    // Highlights: three lit tones, the top one only on the brightest leaf tips.
+    const cap = lit > 0.55 && leaves.hi[k] ? top : top - 1;
+    p.set(x, y, ramp[Math.max(1, Math.min(cap, Math.round(v)))]!);
   }
-  p.outline(ramp[0]!);
+  // ---- 3. Outline below and on the sides only (the lit top edge meets the sky directly).
+  p.outline(ramp[0]!, true);
 }
 
 /** A tuft of grass blades fanning up from the bottom centre (no outline, dark roots, light tips). */
@@ -306,18 +340,115 @@ export function hash2(x: number, y: number, seed = 0): number {
   return fract(Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453);
 }
 
+/**
+ * Texel CLUSTERS: a jittered-grid Voronoi over a w×h tile with cells of ~`cell` texels
+ * (`aspect` > 1 makes them taller than wide, like grass clumps). Every texel gets the id of its
+ * cluster, the cluster's value `v` (0..1) and an edge code: `lo` = the texel below/right is in
+ * another cluster (the clump's shaded underside), `hi` = the texel above/left is (its lit top).
+ * Painting tones per cluster (3–4 flat shades, a lit top row, a dark bottom row) gives floors
+ * that read as clean clumps at mid-distance instead of per-texel static. `wrap` makes the
+ * pattern tile seamlessly (repeat textures).
+ */
+export function clusterMap(w: number, h: number, cell: number, seed: number, o: { wrap?: boolean; aspect?: number } = {}): { id: Int32Array; v: Float32Array; lo: Uint8Array; hi: Uint8Array } {
+  const asp = o.aspect ?? 1;
+  const nx = Math.max(1, Math.round(w / cell)), ny = Math.max(1, Math.round(h / (cell * asp)));
+  const cw = w / nx, ch = h / ny;
+  const fx = new Float32Array(nx * ny), fy = new Float32Array(nx * ny), fv = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const k = j * nx + i;
+    fx[k] = (i + 0.2 + 0.6 * hash2(i, j, seed)) * cw;
+    fy[k] = (j + 0.2 + 0.6 * hash2(i, j, seed + 1)) * ch;
+    fv[k] = hash2(i, j, seed + 2);
+  }
+  const id = new Int32Array(w * h), v = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ci = Math.floor((x + 0.5) / cw), cj = Math.floor((y + 0.5) / ch);
+    let best = -1, bd = Infinity;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      let ii = ci + di, jj = cj + dj, ox = 0, oy = 0;
+      if (o.wrap) {
+        if (ii < 0) { ii += nx; ox = -w; } else if (ii >= nx) { ii -= nx; ox = w; }
+        if (jj < 0) { jj += ny; oy = -h; } else if (jj >= ny) { jj -= ny; oy = h; }
+      } else if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+      const k = jj * nx + ii;
+      const dx = x + 0.5 - (fx[k]! + ox), dy = (y + 0.5 - (fy[k]! + oy)) / asp;
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = k; }
+    }
+    id[y * w + x] = best;
+    v[y * w + x] = fv[best]!;
+  }
+  const lo = new Uint8Array(w * h), hi = new Uint8Array(w * h);
+  const at = (x: number, y: number) => {
+    if (o.wrap) return id[(((y % h) + h) % h) * w + (((x % w) + w) % w)]!;
+    return x < 0 || y < 0 || x >= w || y >= h ? -1 : id[y * w + x]!;
+  };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const c = id[y * w + x]!;
+    const b = at(x, y + 1), r = at(x + 1, y), t = at(x, y - 1), l = at(x - 1, y);
+    lo[y * w + x] = (b >= 0 && b !== c) || (r >= 0 && r !== c) ? 1 : 0;
+    hi[y * w + x] = !lo[y * w + x] && ((t >= 0 && t !== c) || (l >= 0 && l !== c)) ? 1 : 0;
+  }
+  return { id, v, lo, hi };
+}
+
 // ------------------------------------------------------------------ tile painters (single ramp)
 
-/** Earth bank side: strata bands, embedded pebbles, dark root threads. */
+export interface ClusterFill {
+  /** Cluster size (texels, ~2–4) and height/width ratio (> 1 = taller clumps, < 1 = flat clods). */
+  cell?: number; aspect?: number;
+  /** Centre shade (ramp index) and how many consecutive shades the tile may use (3–4). */
+  base: number; tones?: number;
+  /** Shade swing from the low-frequency macro field and from the per-cluster value. */
+  macro?: number; spread?: number;
+  /** Shades added on a clump's lit top edge / removed on its shaded underside (0 = none). */
+  rimHi?: number; rimLo?: number;
+  /**
+   * Share of the clumps that get a rim (default 0.5): the darker clumps get the shaded underside,
+   * the lighter ones the lit top — every clump outlined would read as paving, not soil or grass.
+   */
+  rimShare?: number;
+  /** Extra per-texel shade offset (strata, paths…), added before quantising. */
+  add?: (x: number, y: number) => number;
+}
+
+/**
+ * Fill a square tile with flat-shaded CLUSTERS (`clusterMap`, tiling): a low-frequency macro
+ * field plus one value per 2–4-texel clump, quantised (no dither) into `tones` consecutive
+ * shades, with a lit top edge and a shaded underside per clump. Reads as clean clumps of grass,
+ * soil or sand at mid-distance (and survives the palette-preserving mips), never as static.
+ */
+export function clusterFill(t: PixelTile, seed: number, o: ClusterFill): { macro: Float32Array; clusters: ReturnType<typeof clusterMap> } {
+  const size = t.w;
+  const rng = new Rng(seed);
+  const macro = fbm(size, rng, [[2, 0.55], [4, 0.45]]);
+  const cl = clusterMap(t.w, t.h, o.cell ?? 3, seed * 13 + 5, { wrap: true, aspect: o.aspect ?? 1 });
+  const tones = o.tones ?? 4;
+  const lo = Math.round(o.base - (tones - 1) / 2), hi = lo + tones - 1;
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
+    const k = y * t.w + x;
+    const cv = cl.v[k]!, share = o.rimShare ?? 0.5;
+    let v = o.base + (macro[k]! - 0.5) * (o.macro ?? 2.2) + (cv - 0.5) * (o.spread ?? 1.4) + (o.add?.(x, y) ?? 0);
+    if (cl.lo[k] && cv < share) v -= o.rimLo ?? 0.8;
+    else if (cl.hi[k] && cv > 1 - share) v += o.rimHi ?? 0.6;
+    t.idx[k] = Math.max(lo, Math.min(hi, Math.round(v)));
+  }
+  return { macro, clusters: cl };
+}
+
+/** Earth bank side: clods in strata bands, embedded pebbles, dark root threads. */
 export function paintEarth(seed: number, ramp: Ramp, size = 32, o: { roots?: number; pebbles?: number; strata?: number } = {}): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
-  const f = fbm(size, rng, [[2, 0.4], [4, 0.35], [16, 0.25]]);
   const top = ramp.length - 1;
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const band = Math.sin((y + Math.sin(x * 0.3) * 1.5) * (o.strata ?? 0.55)) * 0.45;
-    t.idx[y * size + x] = bandIndex(1.8 + f[y * size + x]! * 2.6 + band, x, y, ramp.length);
-  }
+  // Flat clods (wider than tall) stacked in strata: 4 shades, a lit top and dark underside each.
+  // Strata frequencies snap to whole cycles per tile so the repeat has no seam.
+  const per = (f: number) => (Math.max(1, Math.round((size * f) / (Math.PI * 2))) * Math.PI * 2) / size;
+  const ks = per(o.strata ?? 0.55), kw = per(0.3);
+  clusterFill(t, seed, {
+    cell: 3, aspect: 0.75, base: 3, tones: 4, macro: 1.6, spread: 1.2, rimHi: 0.7, rimLo: 0.8,
+    add: (x, y) => Math.sin((y + Math.sin(x * kw) * 1.5) * ks) * 0.5,
+  });
   for (let i = 0; i < (o.pebbles ?? 7); i++) {
     const x = rng.int(size), y = rng.int(size), r = rng.chance(0.4) ? 1 : 0;
     for (let j = -r; j <= r; j++) for (let k = -r - 1; k <= r; k++) t.set(x + k, y + j, top - 1 - (j > 0 ? 1 : 0));
@@ -330,19 +461,22 @@ export function paintEarth(seed: number, ramp: Ramp, size = 32, o: { roots?: num
   return t;
 }
 
-/** Turf / moss top: noisy ramp with blade flecks (light tip over a dark root texel). */
+/**
+ * Turf / moss top: grass CLUMPS (2–4 texels, a little taller than wide) in 4 flat shades between
+ * `lo` and `hi` — a lit tip row, a shaded underside — plus a few blade tips (light texel over a
+ * dark root) on the clumps' tops. Clean clusters at mid-distance, not per-texel static.
+ */
 export function paintTurf(seed: number, ramp: Ramp, size = 32, o: { lo?: number; hi?: number; flecks?: number } = {}): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
-  const f = fbm(size, rng, [[2, 0.5], [4, 0.3], [16, 0.2]]);
   const lo = o.lo ?? 1.6, hi = o.hi ?? 4.4;
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const v = Math.max(0, Math.min(1, 0.5 + (f[y * size + x]! - 0.5) * 1.4));
-    t.idx[y * size + x] = bandIndex(lo + v * (hi - lo), x, y, ramp.length);
-  }
-  for (let i = 0; i < size * size * (o.flecks ?? 0.12); i++) {
+  // Clumps taller than wide in texture space: tops are seen foreshortened, so they read round.
+  const { clusters: cl } = clusterFill(t, seed, { cell: 3, aspect: 1.9, base: (lo + hi) / 2, tones: 4, macro: 1.8, spread: 1.5, rimHi: 0.9, rimLo: 0.9, rimShare: 0.45 });
+  // Blade tips on some clump tops (a light texel over its dark root), never isolated texels.
+  for (let i = 0; i < size * size * (o.flecks ?? 0.12) * 0.5; i++) {
     const x = rng.int(size), y = rng.int(size);
-    t.nudge(x, y, 2); t.nudge(x, y + 1, -1);
+    if (!cl.hi[y * size + x]) continue;
+    t.set(x, y, Math.min(ramp.length - 1, Math.round(hi) + 1)); t.set(x, y + 1, Math.round(lo));
   }
   return t;
 }
@@ -361,6 +495,91 @@ export function paintBark(seed: number, ramp: Ramp, size = 32): PixelTile {
   }
   for (let i = 0; i < 3; i++) { const x = rng.int(size), y = rng.int(size); t.set(x, y, 0); t.set(x + 1, y, 0); t.set(x, y + 1, 1); t.set(x - 1, y - 1, 4); }
   return t;
+}
+
+// ------------------------------------------------------------------ tree trunks
+
+export interface TrunkOpts {
+  /** Horizontal drift of the top (world x, z) — a slight lean / bend. */
+  lean?: [number, number];
+  /** Root flare: how much wider the foot is (0 = none, default 0.9) and root buttresses (default 4). */
+  flare?: number; roots?: number;
+  /** Radius at the top as a share of the base radius (default 0.62). */
+  taper?: number;
+  /** Faces around (default 9) and rings up (default 6). */
+  sides?: number; rings?: number;
+  tint?: THREE.Color;
+  /** Branch stubs forking off the upper trunk into the crown (default 2). */
+  branches?: number;
+}
+
+/**
+ * A round, TAPERING tree trunk (a lathe, not a box): flared at the foot into root buttresses
+ * that spread over the ground, narrowing and bending slightly as it rises, with a couple of
+ * tapering branch stubs forking into the crown. Bark UVs wrap around (u = girth, v = height) at
+ * the batch's texel density, so the bark texture's vertical plates follow the trunk; the foot is
+ * darkened (baked AO). Seamless facets (no bevel seams). Returns the trunk top.
+ */
+export function trunk(batch: VoxelBatch, base: V3, height: number, r0: number, rng: Rng, o: TrunkOpts = {}): V3 {
+  const S = o.sides ?? 9, R = o.rings ?? 6;
+  const flare = o.flare ?? 0.9, taper = o.taper ?? 0.62;
+  const lean = o.lean ?? [(rng.next() - 0.5) * 0.3, (rng.next() - 0.5) * 0.2];
+  const nRoots = o.roots ?? 4;
+  const rootPh = rng.next() * Math.PI * 2;
+  const tint = o.tint ?? new THREE.Color(1, 1, 1);
+  const tt = 1 / (TEXEL * batch.tileTexels);
+  const ou = rng.int(batch.tileTexels) / batch.tileTexels;
+  const ring = (k: number) => {
+    const t = k / R;
+    const y = base[1] + t * height;
+    const cx = base[0] + lean[0] * t * t, cz = base[2] + lean[1] * t * t;
+    // Flare concentrated in the bottom ~20%: roots spread out and sink into the ground.
+    const fl = flare * Math.exp(-t * 9);
+    const pts: V3[] = [];
+    for (let s = 0; s <= S; s++) {
+      const a = (s / S) * Math.PI * 2;
+      const root = Math.pow(Math.max(0, Math.cos(a * nRoots / 2 + rootPh)), 6) * fl * 1.4;
+      const r = r0 * (1 - (1 - taper) * t) * (1 + fl * 0.35 + root) * (0.95 + 0.1 * hash2(s % S, k, 41));
+      pts.push([cx + Math.cos(a) * r, y - (k === 0 ? 0.04 : 0), cz + Math.sin(a) * r]);
+    }
+    return { pts, y, t };
+  };
+  const rings = Array.from({ length: R + 1 }, (_, k) => ring(k));
+  const flatF: Face4 = [0, 0, -1, 1];
+  const girth = Math.PI * 2 * r0;
+  for (let k = 0; k < R; k++) {
+    const A = rings[k]!, B = rings[k + 1]!;
+    const aoA = 0.55 + 0.45 * Math.min(1, A.t * 3), aoB = 0.55 + 0.45 * Math.min(1, B.t * 3);
+    const cA = tint.clone().multiplyScalar(aoA), cB = tint.clone().multiplyScalar(aoB);
+    for (let s = 0; s < S; s++) {
+      const a0 = A.pts[s]!, a1 = A.pts[s + 1]!, b0 = B.pts[s]!, b1 = B.pts[s + 1]!;
+      const e1 = new THREE.Vector3(a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]);
+      const e2 = new THREE.Vector3(b0[0] - a0[0], b0[1] - a0[1], b0[2] - a0[2]);
+      const nn = e2.clone().cross(e1).normalize();
+      const mid = new THREE.Vector3((a0[0] + a1[0]) / 2 - (base[0] + lean[0] * A.t * A.t), 0, (a0[2] + a1[2]) / 2 - (base[2] + lean[1] * A.t * A.t));
+      if (nn.dot(mid) < 0) nn.negate();
+      const n3: V3 = [nn.x, nn.y, nn.z];
+      const u0 = ou + (s / S) * girth * tt, u1 = ou + ((s + 1) / S) * girth * tt;
+      const v0 = (A.y - base[1]) * tt, v1 = (B.y - base[1]) * tt;
+      batch.tri([a0, a1, b1], n3, [[u0, v0], [u1, v0], [u1, v1]], [cA, cA, cB], [flatF, flatF, flatF]);
+      batch.tri([a0, b1, b0], n3, [[u0, v0], [u1, v1], [u0, v1]], [cA, cB, cB], [flatF, flatF, flatF]);
+    }
+  }
+  const top: V3 = [base[0] + lean[0], base[1] + height, base[2] + lean[1]];
+  // Branch stubs: short tapering boxes forking upward-outward from the upper trunk.
+  for (let b = 0; b < (o.branches ?? 2); b++) {
+    const t = 0.62 + b * 0.16 + rng.next() * 0.08;
+    const a = rootPh + b * 2.4 + rng.next() * 0.8;
+    const len = height * (0.22 + rng.next() * 0.12);
+    const y = base[1] + height * t;
+    const r = r0 * (1 - (1 - taper) * t) * 0.42;
+    const dir = new THREE.Vector3(Math.cos(a) * 0.8, 0.6, Math.sin(a) * 0.5).normalize();
+    const c: V3 = [base[0] + lean[0] * t * t + dir.x * len * 0.5, y + dir.y * len * 0.5, base[2] + lean[1] * t * t + dir.z * len * 0.5];
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+    batch.rotBox(c, [r * 2, len, r * 2], e.y, tint.clone().multiplyScalar(0.9), rng, e.x, e.z);
+  }
+  return top;
 }
 
 // ------------------------------------------------------------------ foliage billboard batch
@@ -522,6 +741,46 @@ export class Foliage {
     mesh.frustumCulled = false;
     mesh.userData.disposeExtra = depth;
     return mesh;
+  }
+}
+
+export interface ForegroundSpec {
+  /** Sprite names to draw from, picked per PATCH (each patch is one kind: a drift, not confetti). */
+  sprites: string[];
+  /** Near-ground rectangle [x0, z0, x1, z1] (the band a portrait camera sees under the stage). */
+  area: [number, number, number, number];
+  y: (x: number, z: number) => number;
+  patches: number; perPatch: [number, number];
+  rng: Rng;
+  keep?: (x: number, z: number) => boolean;
+  /** Darken toward the camera: full tint at z0, × `k` at z1 (a shaded foreground lip). */
+  k?: number;
+  sway?: number;
+  scale?: [number, number];
+}
+
+/**
+ * Dress the near ground under a portrait (phone) camera: patches of one sprite kind each (tall
+ * grass, ferns, flower drifts, bushes) at the floor's texel density, shading toward the camera
+ * so the foreground reads as a darker, designed lip rather than an empty magnified floor. Goes
+ * into the arena's one Foliage mesh (no extra draw call); below the desktop frame it costs nothing.
+ */
+export function foreground(fol: Foliage, s: ForegroundSpec) {
+  const [x0, z0, x1, z1] = s.area;
+  for (let p = 0; p < s.patches; p++) {
+    const cx = x0 + s.rng.next() * (x1 - x0), cz = z0 + s.rng.next() * (z1 - z0);
+    const name = s.sprites[s.rng.int(s.sprites.length)]!;
+    const n = s.perPatch[0] + s.rng.int(s.perPatch[1] - s.perPatch[0] + 1);
+    const rad = 0.5 + s.rng.next() * 0.9;
+    for (let i = 0; i < n; i++) {
+      const a = s.rng.next() * Math.PI * 2, r = Math.sqrt(s.rng.next()) * rad;
+      const x = cx + Math.cos(a) * r * 1.3, z = cz + Math.sin(a) * r;
+      if (s.keep && !s.keep(x, z)) continue;
+      const t = Math.max(0, Math.min(1, (z - z0) / Math.max(0.01, z1 - z0)));
+      const k = (1 - t * (1 - (s.k ?? 0.6))) * (0.88 + s.rng.next() * 0.2);
+      const sc = s.scale ? s.scale[0] + s.rng.next() * (s.scale[1] - s.scale[0]) : 1;
+      fol.add(fol.atlas.get(name, s.rng), [x, s.y(x, z), z], 'billboard', { scale: TEXEL * sc, sway: s.sway ?? 0.05, flip: s.rng.chance(0.5), tint: new THREE.Color(k, k, k * 1.02) });
+    }
   }
 }
 
@@ -886,23 +1145,165 @@ export function backdrop(paint: (t: RgbaTile) => void, w: number, h: number, siz
   return { mesh, update: (time) => { m.uniforms.uTime!.value = time; } };
 }
 
-/**
- * Sky: flat horizontal bands of the ramp (top → bottom), with only 1–2 rows of sparse dither at
- * each band boundary (a row of every-other texel, then every fourth) — no full-field checkerboard.
- */
-export function paintSky(t: RgbaTile, ramp: Ramp, y0: number, y1: number) {
+/** sRGB lerp along a ramp at a continuous position (0 … ramp.length − 1). */
+export function rampRgb(ramp: Ramp, v: number): [number, number, number] {
   const n = ramp.length;
-  const bandH = Math.max(1, (y1 - y0) / n);
-  for (let y = y0; y < y1; y++) {
-    const pos = (y - y0) / bandH;
-    const b = Math.min(n - 1, Math.floor(pos));
-    const into = (pos - b) * bandH; // rows into this band
+  const p = Math.max(0, Math.min(n - 1, v)), i = Math.min(n - 2, Math.floor(p)), f = p - i;
+  const a = rgb(ramp[i]!), b = rgb(ramp[Math.min(n - 1, i + 1)]!);
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** Write an RGB colour with a fine 4×4 ordered dither (± `amp` / 2 levels): smooth, never banded. */
+export function putRgb(t: RgbaTile, x: number, y: number, c: readonly [number, number, number], amp = 6) {
+  if (!t.inside(x, y)) return;
+  const d = ((BAYER4[(y & 3) * 4 + (x & 3)]! + 0.5) / 16 - 0.5) * amp;
+  const i = (y * t.w + x) * 4;
+  t.data[i] = c[0] + d; t.data[i + 1] = c[1] + d; t.data[i + 2] = c[2] + d; t.data[i + 3] = 255;
+}
+
+/** Read a texel's RGB (alpha ignored). */
+export function getRgb(t: RgbaTile, x: number, y: number): [number, number, number] {
+  const i = (Math.max(0, Math.min(t.h - 1, y)) * t.w + Math.max(0, Math.min(t.w - 1, x))) * 4;
+  return [t.data[i]!, t.data[i + 1]!, t.data[i + 2]!];
+}
+
+/**
+ * Sky: a SMOOTH gradient through the ramp (top → bottom, eased toward the horizon), finely
+ * ordered-dithered so it never steps into bands; optionally a few hand-shaped clouds
+ * (`paintClouds`). `glow` adds a warm halo round a sun at (x, y) texels.
+ */
+export function paintSky(t: RgbaTile, ramp: Ramp, y0: number, y1: number, o: { clouds?: CloudSpec; glow?: { x: number; y: number; r: number; color: string; k?: number } } = {}) {
+  const n = ramp.length;
+  const g = o.glow ? rgb(o.glow.color) : null;
+  for (let y = Math.max(0, Math.floor(y0)); y < Math.min(t.h, y1); y++) {
+    const f = Math.max(0, Math.min(1, (y - y0) / Math.max(1, y1 - y0)));
+    const base = rampRgb(ramp, Math.pow(f, 1.25) * (n - 1));
     for (let x = 0; x < t.w; x++) {
-      let i = b;
-      // The first rows of a band keep a few texels of the band above (stepped transition).
-      if (b > 0 && into < 1 && (x + y) % 2 === 0) i = b - 1;
-      else if (b > 0 && into < 2 && bandH > 6 && (x + 2 * y) % 4 === 0) i = b - 1;
-      t.set(x, y, ramp[i]!);
+      let c = base;
+      if (o.glow && g) {
+        const d = Math.hypot(x - o.glow.x, (y - o.glow.y) * 1.4) / o.glow.r;
+        const k = Math.max(0, 1 - d) ** 2 * (o.glow.k ?? 0.85);
+        if (k > 0) c = [c[0] + (g[0] - c[0]) * k, c[1] + (g[1] - c[1]) * k, c[2] + (g[2] - c[2]) * k];
+      }
+      putRgb(t, x, y, c, 5);
+    }
+  }
+  if (o.clouds) paintClouds(t, o.clouds);
+}
+
+export interface CloudSpec {
+  seed: number;
+  /** How many clouds, and their size range (texels, half-width). */
+  count: number; size: [number, number];
+  /** Band of rows the clouds float in, [top, bottom]. */
+  rows: [number, number];
+  /** Cloud ramp, dark (shaded base) → light (sunlit top): 4–5 shades. */
+  ramp: Ramp;
+  /** Screen direction the light comes FROM (x, y; y down), default from above-left. */
+  light?: [number, number];
+  /** Flatness: height / width of a cloud (default 0.42). */
+  flat?: number;
+  /** Keep clouds off these columns (e.g. the sun). */
+  avoid?: (x: number) => boolean;
+  /** Shading toward the flat base (default 1.3 shades darker; negative = an underlit base, sunset). */
+  baseShade?: number;
+  /** Horizontal stretch of every puff (default 1; 2.5+ = long stratus streaks). */
+  stretch?: number;
+}
+
+/**
+ * A few HAND-SHAPED pixel clouds: each a cumulus of overlapping round puffs on a flat base (a
+ * big crown puff, smaller shoulders), shaded per puff (sunlit tops, cool shaded bases, 4–5
+ * flat tones), with a soft 1–2-texel edge that dithers into the sky behind it. Not bands.
+ */
+export function paintClouds(t: RgbaTile, s: CloudSpec) {
+  const rng = new Rng(s.seed);
+  const n = s.ramp.length;
+  const L0 = s.light ?? [-0.5, -0.85];
+  const ll = Math.hypot(L0[0], L0[1]);
+  const L: [number, number] = [L0[0] / ll, L0[1] / ll];
+  const placed: [number, number, number][] = [];
+  for (let c = 0, tries = 0; c < s.count && tries < s.count * 20; tries++) {
+    const hw = s.size[0] + rng.next() * (s.size[1] - s.size[0]);
+    const cx = rng.next() * t.w;
+    const base = s.rows[0] + rng.next() * (s.rows[1] - s.rows[0]);
+    if (s.avoid?.(cx) || placed.some(([px, pb, ph]) => Math.abs(px - cx) < (ph + hw) * 0.9 && Math.abs(pb - base) < 14)) continue;
+    placed.push([cx, base, hw]);
+    c++;
+    const flat = s.flat ?? 0.42;
+    // Puffs: an off-centre crown with side masses, a CAULIFLOWER top (many small bumps along the
+    // upper contour) and fillers along the flat base — an irregular cumulus, not a row of balls.
+    const puffs: { x: number; y: number; r: number }[] = [];
+    const st = s.stretch ?? 1;
+    const H = (hw / st) * flat * 2;
+    const crown = { x: cx + (rng.next() - 0.5) * hw * 0.4, y: base - H * 0.55, r: H * (0.52 + rng.next() * 0.1) };
+    puffs.push(crown);
+    const masses = [crown];
+    for (const sgn of [-1, 1]) {
+      if (rng.chance(0.15)) continue;
+      const r = H * (0.32 + rng.next() * 0.14);
+      const m = { x: cx + sgn * hw * (0.42 + rng.next() * 0.18), y: base - r * (0.9 + rng.next() * 0.2), r };
+      puffs.push(m); masses.push(m);
+    }
+    // Bumps on the top arcs of the masses (each a smaller dome breaking the outline).
+    for (const m of masses) {
+      const k = m === crown ? 4 + rng.int(3) : 2 + rng.int(2);
+      for (let i = 0; i < k; i++) {
+        const ang = -Math.PI * (0.18 + 0.64 * ((i + 0.5 + (rng.next() - 0.5) * 0.6) / k));
+        const r = m.r * (0.3 + rng.next() * 0.16);
+        puffs.push({ x: m.x + Math.cos(ang) * m.r * 0.8 * st, y: m.y + Math.sin(ang) * m.r * 0.8, r });
+      }
+    }
+    for (let k = 0; k < 3; k++) {
+      const r = H * (0.2 + rng.next() * 0.12);
+      puffs.push({ x: cx + (k - 1) * hw * 0.62 + (rng.next() - 0.5) * hw * 0.2, y: base - r * 0.55, r });
+    }
+    const x0 = Math.floor(cx - hw - H * st), x1 = Math.ceil(cx + hw + H * st);
+    const yTop = Math.floor(base - H * 1.35);
+    const nearest = (x: number, y: number): [number, number] => {
+      let best = -1, bp = -1;
+      puffs.forEach((p, i) => {
+        const d = Math.hypot((x + 0.5 - p.x) / st, (y + 0.5 - p.y) * 1.1) / p.r;
+        if (1 - d > best) { best = 1 - d; bp = i; }
+      });
+      return [best, bp];
+    };
+    for (let y = yTop; y <= Math.ceil(base) + 1; y++) for (let x = x0; x <= x1; x++) {
+      if (!t.inside(x, y)) continue;
+      const [best, bp] = nearest(x, y);
+      // Flat base: cut the puffs below the base line (a 1-row soft fringe under it).
+      const below = y + 0.5 - base;
+      if (best < -0.08 || below > 1) continue;
+      const p = puffs[bp]!;
+      const dx = (x + 0.5 - p.x) / (p.r * st), dy = (y + 0.5 - p.y) / p.r;
+      const nz = Math.sqrt(Math.max(0, 1 - Math.min(1, dx * dx + dy * dy)));
+      // One light for the whole cloud (height above the base + the sun side), the puffs only
+      // modulate it a little — a volume, not separate balls.
+      const up = Math.max(0, Math.min(1, (base - y) / (H * 1.25)));
+      const side = ((x - cx) / hw) * L[0];
+      const local = (dx * L[0] + dy * L[1]) * 0.7 + nz * 0.3;
+      let v = (n - 1) * Math.max(0, Math.min(1, 0.2 + (L[1] < 0 ? up : 1 - up) * 0.55 + local * 0.14 + side * 0.18));
+      v -= Math.max(0, 1 - (base - y) / (H * 0.3)) * Math.max(0, s.baseShade ?? 1.3) * 0.6;
+      // Billows: where a lower (front) puff starts under a higher one, its top edge catches the
+      // light and the back puff just above it falls into a thin shadow — inner contours.
+      // Only the bigger masses get contours (small bumps and base fillers stay smooth).
+      if (p.r > H * 0.26 && base - y > H * 0.3) {
+        const [, above] = nearest(x, y - 1), [, under] = nearest(x, y + 1);
+        if (above >= 0 && above !== bp && puffs[above]!.y < p.y - 0.5 && puffs[above]!.r > H * 0.26) v += 0.7;
+        else if (under >= 0 && under !== bp && puffs[under]!.y > p.y + 0.5 && puffs[under]!.r > H * 0.26) v -= 0.7;
+      }
+      v = Math.max(0, Math.min(n - 1, Math.round(v)));
+      const c = rgb(s.ramp[v]!);
+      // Soft edge: the outer rim (and the fringe under the base) mixes into the sky behind it,
+      // ordered so it reads as a 1–2-texel feathered edge.
+      const edge = best < 0.06 || below > 0;
+      if (edge) {
+        const keep = BAYER4[(y & 3) * 4 + (x & 3)]! / 16 < (best < 0 || below > 0 ? 0.3 : 0.6);
+        if (!keep) continue;
+        const bg = getRgb(t, x, y);
+        putRgb(t, x, y, [(c[0] + bg[0]) / 2, (c[1] + bg[1]) / 2, (c[2] + bg[2]) / 2], 0);
+      } else putRgb(t, x, y, c, 0);
     }
   }
 }
@@ -915,7 +1316,7 @@ export function paintSky(t: RgbaTile, ramp: Ramp, y0: number, y1: number) {
  * `haze` (0..1) lifts the whole row toward the ramp's top shade (aerial perspective); the
  * bottom rows fade further into it.
  */
-export function paintSilhouette(t: RgbaTile, rng: Rng, ramp: Ramp, base: number, amp: number, bump: number, bottom: number, o: { flatTop?: boolean; lightLeft?: boolean; haze?: number } = {}) {
+export function paintSilhouette(t: RgbaTile, rng: Rng, ramp: Ramp, base: number, amp: number, bump: number, bottom: number, o: { flatTop?: boolean; lightLeft?: boolean; haze?: number; hazeCol?: string } = {}) {
   const n = ramp.length;
   const heights = new Float32Array(t.w);
   const lit = new Int8Array(t.w); // 1 = lit (left) face, -1 = shadow (right) face, 0 = cap/top
@@ -953,19 +1354,23 @@ export function paintSilhouette(t: RgbaTile, rng: Rng, ramp: Ramp, base: number,
       x += r * 1.1;
     }
   }
+  // Two or three flat VALUES per layer (body, sunlit face/rim, shadow face) — a silhouette, not
+  // a texture — then a smooth aerial fade toward `hazeCol` (more at the foot: rising haze).
   const haze = o.haze ?? 0;
+  const hz = rgb(o.hazeCol ?? ramp[n - 1]!);
+  const body = Math.max(1, Math.round(n * 0.45));
+  const leftLit = o.lightLeft ?? true;
   for (let i = 0; i < t.w; i++) {
     const top = Math.round(base - heights[i]!);
-    for (let y = top; y < bottom; y++) {
+    const face = lit[i] === 0 ? 0 : (lit[i] === 1) === leftLit ? 1 : -1;
+    for (let y = Math.max(0, top); y < bottom; y++) {
       const depth = (y - top) / Math.max(1, bottom - top);
-      let v = n - 2.4 - depth * 2.0;
-      if (y - top < 1) v += 1.4;                                       // bright rim
-      else if (y - top < 3 && lit[i] === 0) v += 0.7;                   // lit cap
-      if (lit[i] === 1 && (o.lightLeft ?? true)) v += 0.9;             // lit left face
-      if (lit[i] === -1) v -= 0.6;                                     // shadowed right face
-      if (o.flatTop && ((y + (i >> 3)) % 7 === 0) && y - top > 3) v -= 0.7; // strata
-      v += haze * (n - 1 - v) * (0.55 + depth * 0.45);
-      t.set(i, y, ramp[bandIndex(Math.min(n - 1, Math.max(0, v)), i, y, n, 0.18)]!);
+      let v = body + (face === 1 ? 1 : face === -1 ? -1 : 0);
+      if (y - top < (face === -1 ? 1 : 2)) v = Math.min(n - 1, body + (face === -1 ? 1 : 2)); // lit rim
+      if (o.flatTop && y - top > 3 && ((y + (i >> 4)) % 6 === 0)) v -= 1;                     // strata
+      const c = rgb(ramp[Math.max(0, Math.min(n - 1, v))]!);
+      const k = Math.min(1, haze + (1 - haze) * depth * depth * 0.55);
+      putRgb(t, i, y, [c[0] + (hz[0] - c[0]) * k, c[1] + (hz[1] - c[1]) * k, c[2] + (hz[2] - c[2]) * k], 4);
     }
   }
 }
@@ -1013,11 +1418,10 @@ export function paintTreeLine(t: RgbaTile, rng: Rng, ramp: Ramp, o: { base: numb
       if (prev >= 0 && dx * dx + dy * dy > 0.72) v -= 1.4;           // dark gap where it overlaps
       if (cell > 0.93 && lit > 0.3) v += 1.2;                          // bright leaf fleck
       v = Math.max(0, Math.min(n - 1, v));
-      const c = rgb(ramp[bandIndex(v, xx, y, n, 0.16)]!);
-      const k0 = Math.min(1, haze + Math.max(0, (y - o.base) / Math.max(4, bottom - o.base)) * 0.35);
-      const k = Math.min(1, bandIndex(k0 * 5, xx, y, 6, 0.1) / 5);
-      const i = (y * t.w + xx) * 4;
-      t.data[i] = c[0] + (hz[0] - c[0]) * k; t.data[i + 1] = c[1] + (hz[1] - c[1]) * k; t.data[i + 2] = c[2] + (hz[2] - c[2]) * k; t.data[i + 3] = 255;
+      const c = rgb(ramp[Math.round(v)]!);
+      // Aerial perspective: a smooth fade toward the haze colour, stronger toward the foot.
+      const k = Math.min(1, haze + Math.max(0, (y - o.base) / Math.max(4, bottom - o.base)) * 0.35);
+      putRgb(t, xx, y, [c[0] + (hz[0] - c[0]) * k, c[1] + (hz[1] - c[1]) * k, c[2] + (hz[2] - c[2]) * k], 3);
     }
   });
   // Fill below the crowns down to `bottom` (trunks lost in the undergrowth's shade).
@@ -1063,6 +1467,8 @@ export interface MesaOpts {
   cliff?: number;
   /** Tilted caps: the top drops by up to this share of the height across the cap (headlands). */
   tilt?: number;
+  /** Rounded (domed) caps falling off toward the cliff edges: grassy headlands, not flat mesas. */
+  dome?: number;
 }
 
 /**
@@ -1076,88 +1482,102 @@ export function paintMesas(t: RgbaTile, rng: Rng, o: MesaOpts) {
   const H = new Float32Array(W).fill(-1);
   const own = new Int16Array(W).fill(-1);
   const kind = new Uint8Array(W); // 0 cap face, 1 cliff flank, 2 talus, 3 shoulder ledge face
-  const side = new Int8Array(W);
-  const mesas: { cx: number; w: number; h: number }[] = [];
+  const mesas: { cx: number; w: number; h: number; corner: number }[] = [];
   let x = rng.next() * o.w[1];
   while (x < W + o.w[1]) {
     const w = o.w[0] + rng.next() * (o.w[1] - o.w[0]);
-    const h = o.h[0] + rng.next() * (o.h[1] - o.h[0]);
-    if (!o.allow || o.allow(x)) mesas.push({ cx: x, w, h });
-    x += w * (1.3 + rng.next() * (o.ridge ? 1.2 : 2.6)) + (o.ridge ? 0 : o.w[0]);
+    // Heights vary a lot: low buttes between a few tall mesas.
+    const h = o.ridge ? o.h[0] + rng.next() * (o.h[1] - o.h[0]) : o.h[0] * (0.55 + rng.next() * 0.3) + (rng.chance(0.55) ? rng.next() * (o.h[1] - o.h[0] * 0.6) : 0);
+    // The corner where the lit face turns into the shadow face (seen at an angle).
+    if (!o.allow || o.allow(x)) mesas.push({ cx: x, w, h, corner: x + (rng.next() - 0.5) * w * 0.5 });
+    // Open sky between the buttes (their talus skirts may touch, their caps not).
+    x += w * (1.3 + rng.next() * (o.ridge ? 1.2 : 2.2)) + (o.ridge ? 0 : o.w[0] + h * 0.9);
   }
   void o.count;
   mesas.forEach((m, mi) => {
-    const reach = m.w + m.h * 2.4;
+    const reach = m.w + m.h * 2.8;
     for (let i = Math.floor(m.cx - reach); i <= m.cx + reach; i++) {
       if (i < 0 || i >= W) continue;
       const d = Math.abs(i - m.cx);
-      // Ragged cap: a slow wander of 1–2 texels (value noise over ~8 columns), the odd notch
-      // or fallen block — never a regular crenellation.
+      // Ragged cap: a slow wander of 1–2 texels (value noise over ~8 columns), the odd notch.
       const f = i / 8 + mi * 3.7, f0 = Math.floor(f), ft = f - f0;
       const wander = hash2(f0, mi, 3) * (1 - ft) + hash2(f0 + 1, mi, 3) * ft;
       const rag = Math.round((wander - 0.5) * 3.2) - (hash2(i >> 2, mi, 4) < 0.05 ? 1 + Math.round(hash2(i, mi, 5) * 2) : 0);
       const cliff = (o.cliff ?? (o.ridge ? 1.4 : 5.5)) + hash2(i >> 1, mi, 6) * 2;
-      // Tilted cap: one end high (the seaward cliff), sloping down toward the other.
       const tdir = hash2(mi, 7, 15) < 0.5 ? -1 : 1;
       const th = o.tilt ? m.h * o.tilt * (0.5 + 0.5 * tdir * Math.max(-1, Math.min(1, (i - m.cx) / m.w))) : 0;
-      const cap = d <= m.w ? m.h - th + rag : m.h - th - (d - m.w) * cliff + rag;
-      // A stepped shoulder: a lower ledge reaching out past the cap on each side (asymmetric).
-      const sw = m.w * (o.ridge ? 1.1 : 1.35 + hash2(mi, i < m.cx ? 1 : 2, 11) * 0.6);
-      const sh = m.h * (0.55 + hash2(mi, i < m.cx ? 3 : 4, 12) * 0.15);
+      // Caprock: a steep cliff band from the cap down to ~half height…
+      const dome = o.dome ? m.h * o.dome * Math.min(1, d / m.w) ** 2 : 0;
+      const cap = d <= m.w ? m.h - th - dome + rag : m.h - th - dome - (d - m.w) * cliff + rag;
+      const sw = m.w * (o.ridge ? 1.1 : 1.3 + hash2(mi, i < m.cx ? 1 : 2, 11) * 0.5);
+      const sh = m.h * (0.55 + hash2(mi, i < m.cx ? 3 : 4, 12) * 0.12);
       const shoulder = d <= sw ? sh + rag * 0.5 : sh - (d - sw) * cliff * 0.8 + rag;
-      const talusTop = m.h * (o.ridge ? 0.75 : 0.42);
-      const talus = talusTop - Math.max(0, d - sw * 0.85) * (o.ridge ? 0.55 : 0.75) + (hash2(i >> 2, mi, 7) - 0.5) * 2;
+      // …then a long CONCAVE talus skirt fanning out to the canyon floor (the mesa silhouette).
+      const talusTop = m.h * (o.ridge ? 0.75 : 0.5);
+      const td = Math.max(0, d - sw * 0.8) / (m.h * (o.ridge ? 1.4 : 1.25));
+      const talus = talusTop * Math.max(0, 1 - td) ** 1.6 + (hash2(i >> 2, mi, 7) - 0.5) * 1.5;
       const v = Math.max(cap, shoulder, talus);
-      if (v > H[i]!) { H[i] = v; own[i] = mi; kind[i] = d <= m.w ? 0 : Math.max(cap, shoulder) >= talus ? (d <= sw && cap < shoulder ? 3 : 1) : 2; side[i] = i < m.cx ? -1 : 1; }
+      if (v > H[i]!) { H[i] = v; own[i] = mi; kind[i] = d <= m.w ? 0 : Math.max(cap, shoulder) >= talus ? (d <= sw && cap < shoulder ? 3 : 1) : 2; }
     }
   });
   const hz = rgb(o.hazeCol);
-  const sunSide = (i: number) => (o.sunX < mesas[own[i]!]!.cx ? -1 : 1);
   for (let i = 0; i < W; i++) {
-    if (H[i]! <= 0) continue;
+    if (H[i]! <= 0) {
+      // Between the buttes: the hazy canyon floor from the foot line down (no see-through slits).
+      const c = rgb(o.ramp[1]!);
+      for (let y = Math.max(0, Math.round(o.foot)); y < t.h; y++) {
+        const k = Math.min(1, o.haze + 0.55 + (y - o.foot) * 0.02);
+        putRgb(t, i, y, [c[0] + (hz[0] - c[0]) * k, c[1] + (hz[1] - c[1]) * k, c[2] + (hz[2] - c[2]) * k], 4);
+      }
+      continue;
+    }
     const m = mesas[own[i]!]!;
     const top = Math.round(o.foot - H[i]!);
-    const lit = kind[i] === 1 && side[i] === sunSide(i);
-    const away = kind[i] === 1 && !lit;
+    // Two faces meet at the mesa's corner: the face toward the sun LIT, the other in SHADOW.
+    const sunLeft = o.sunX < m.cx;
+    const leftOfCorner = i < m.corner;
+    const litFace = leftOfCorner === sunLeft;
+    const flank = kind[i] === 1;
     const gully = hash2(i, own[i]!, 8) < 0.07 * o.gullies ? 6 + hash2(i, own[i]!, 9) * m.h * 0.7 : 0;
     const glow = Math.max(0, 1 - Math.abs(i - o.sunX) / (W * 0.35));
+    const capTop = o.foot - m.h;
+    const ridge = Math.abs(i - m.corner) < 1;
     for (let y = Math.max(0, top); y < t.h; y++) {
       const depth = y - top;
-      const capTop = o.foot - m.h;
-      // Strata: continuous bands across the mesa (absolute rows, a gentle wobble).
       const sy = y - capTop + Math.sin(i * 0.05 + own[i]!) * 1.4;
       const band = Math.floor(sy / 3);
       const strata = [0, -0.6, 0.35, -0.25, -0.85, 0.2, 0.5, -0.4][((band % 8) + 8) % 8]!;
-      // Backlit: the faces toward us sit in soft shade (low on the ramp), the strata read as
-      // alternating bands; only the sun-side flank and the top edges catch the light.
-      let v = 1.7 + strata * (kind[i] === 2 ? 0.35 : 1);
-      if ((kind[i] === 0 || kind[i] === 3) && depth < 3) v += 0.8;          // cap rock / ledge lip
-      if (lit) v += 1.9 + glow * 0.8;                                        // sun-side flank
-      if (away) v -= 0.4;
-      if (kind[i] === 2) v += 0.5 + (hash2(i, y, 10) - 0.5) * 1.2;           // talus scree
-      if (gully && depth > 2 && depth < gully && kind[i] !== 2) v -= 0.9;   // erosion gully
-      if (depth === 0) v += 2.4 + glow * 1.8;                                // hot rim on every top edge
-      else if (depth === 1 && (lit || kind[i] === 0)) v += 1.1 + glow * 0.8;
-      v = Math.max(0, Math.min(n - 1, v));
-      let c = rgb(o.ramp[bandIndex(v, i, y, n, 0.16)]!);
+      // Three clear values: LIT face (+ the sun-side flank), MID, SHADOW face; horizontal strata
+      // (alternating bands and thin dark ledges) across the faces, vertical gullies, a lit rim
+      // on every cap edge, scree on the talus. Flat tones, no dither.
+      const mid = 2.2;
+      let v = litFace ? mid + 1.3 + glow * 0.7 : mid - 1.0;
+      if (flank) v += litFace ? 0.5 : -0.3;
+      if (kind[i] === 2) v = mid - 0.2 + (litFace ? 0.6 : -0.4) + (hash2(i >> 1, y >> 1, 10) - 0.5) * 1.0;   // talus scree
+      else {
+        v += strata * 0.8 + (((Math.floor(sy) % 6) + 6) % 6 === 0 ? -0.8 : 0);
+        v += (hash2(i >> 2, own[i]!, 16) - 0.5) * 0.45;                                        // vertical striations
+        if (gully && depth > 2 && depth < gully) v -= 0.9;                                     // erosion gully
+        if (ridge && depth > 1) v += litFace ? 0.6 : 0.9;                                      // lit corner edge
+      }
+      if ((kind[i] === 0 || kind[i] === 3) && depth < 3) v += 0.9;                             // caprock lip
+      if (depth === 0) v = n - 1 - (glow > 0.3 || litFace ? 0 : 0.8);                          // hot rim on every top edge
+      else if (depth === 1 && (litFace || kind[i] === 0)) v += 1.2 + glow * 0.8;
+      v = Math.max(0, Math.min(n - 1, Math.round(v)));
+      let c = rgb(o.ramp[v]!);
       const capRows = o.capRows ?? 3;
       if (o.capRamp && depth < capRows + (hash2(i, 1, 13) < 0.4 ? 1 : 0) && kind[i] !== 2) {
         // Turf cap: lit on top, a dark fringe row hanging over the cliff.
         const cn = o.capRamp.length;
-        const cv = depth === 0 ? cn - 1.2 + glow : depth >= capRows ? 0.8 : cn - 2.4 - depth * 0.6 + (lit ? 0.8 : 0);
-        c = rgb(o.capRamp[bandIndex(Math.max(0, Math.min(cn - 1, cv)), i, y, cn, 0.16)]!);
+        const cv = depth === 0 ? cn - 1.2 + glow : depth >= capRows ? 0.8 : cn - 2.4 - depth * 0.6 + (litFace ? 0.8 : 0);
+        c = rgb(o.capRamp[Math.round(Math.max(0, Math.min(cn - 1, cv)))]!);
       }
       if (o.foam && y >= o.foot - 1 && y <= o.foot && hash2(i >> 1, y, 14) < 0.55) c = rgb(o.foam);
-      // Haze: more toward the canyon floor (rising haze), posterised into 5 flat steps (dither
-      // only at step edges, so it never turns into a checker carpet).
+      // Haze: more toward the canyon floor (rising haze) — a SMOOTH, finely dithered fade, so
+      // the feet dissolve into the air instead of stepping through bands.
       const below = Math.max(0, Math.min(1, (y - top) / Math.max(8, o.foot - top + 6)));
-      const k = Math.min(1, o.haze + below * 0.3 + (y > o.foot ? 0.15 + (y - o.foot) * 0.02 : 0));
-      const kq = Math.min(1, bandIndex(k * 5, i, y, 6, 0.1) / 5);
-      const idx = (y * W + i) * 4;
-      t.data[idx] = c[0] + (hz[0] - c[0]) * kq;
-      t.data[idx + 1] = c[1] + (hz[1] - c[1]) * kq;
-      t.data[idx + 2] = c[2] + (hz[2] - c[2]) * kq;
-      t.data[idx + 3] = 255;
+      const k = Math.min(1, o.haze + below * below * 0.4 + (y > o.foot ? 0.15 + (y - o.foot) * 0.02 : 0));
+      putRgb(t, i, y, [c[0] + (hz[0] - c[0]) * k, c[1] + (hz[1] - c[1]) * k, c[2] + (hz[2] - c[2]) * k], 4);
     }
   }
   // Dead snags on a low ridge (silhouettes against the haze).
@@ -1293,7 +1713,7 @@ export function glints(at: V3[], size: number, color: THREE.ColorRepresentation,
     ctx.fillStyle = `rgba(255,255,255,${a})`;
     ctx.beginPath(); ctx.arc(8, 8, r, 0, Math.PI * 2); ctx.fill();
   }
-  const tex = crispTexture(c);
+  const tex = crispTexture(c, false, { mips: false });
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(at.flat(), 3));
   const m = new THREE.PointsMaterial({ size, map: tex, color: new THREE.Color(color).multiplyScalar(hdr), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true, fog: false });

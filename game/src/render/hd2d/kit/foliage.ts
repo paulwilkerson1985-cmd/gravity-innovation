@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import type { V3, VoxelBatch } from '../arena';
-import { RAMPS, type Ramp } from '../textures';
+import { RAMPS, pixelTexture, type Ramp } from '../textures';
 import { TEXEL } from './units';
 
 export type FoliageKind = 'canopy' | 'canopy2' | 'bush' | 'tallgrass' | 'tuft' | 'flowerRed' | 'flowerYellow' | 'flowerBlue' | 'flowerWhite';
@@ -129,10 +129,10 @@ export function foliageAtlas(): THREE.CanvasTexture {
   const img = ctx.createImageData(ATLAS_W, ATLAS_H);
   img.data.set(t.d);
   ctx.putImageData(img, 0, 0);
-  atlas = new THREE.CanvasTexture(c);
-  atlas.magFilter = atlas.minFilter = THREE.NearestFilter;
-  atlas.generateMipmaps = false;
-  atlas.colorSpace = THREE.SRGBColorSpace;
+  // Through textures.ts pixelTexture (nearest, sRGB), without mips: thin blades and 1-texel
+  // petals of an alpha atlas must not merge with neighbouring sprites in a minified level.
+  atlas = pixelTexture(c, { mips: false });
+  atlas.wrapS = atlas.wrapT = THREE.ClampToEdgeWrapping;
   atlas.userData.persistent = true;
   atlas.dispose = () => {};
   return atlas;
