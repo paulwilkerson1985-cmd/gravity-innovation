@@ -147,3 +147,12 @@ Full method and numbers are in `docs/BALANCE.md`. The tools are `tools/campaign.
 - **Anti-mash**: a freshly shown battle menu ignores Enter/Space for 250 ms, so mashing through text never commits Fight → first move.
 - **Online names**: a guest who keeps the default name joins as "Player 2"; the server also renames a duplicate name with its seat number.
 - **Play time** reads "< 1m" under a minute everywhere (`formatPlayTime`).
+
+## HD-2D prototype (`?gfx=hd2d`)
+Full rationale and numbers in `docs/HD2D.md`. In short:
+- **Sprites, not in-scene toon models**: live 3D models are baked each frame (banded toon, 1-texel selective outline, depth contour lines) onto pixel-snapped billboards; in-scene toon (`post=mesh`) melted into the rock, 2 px texels lost faces. Animations are untouched because the live mesh is what gets baked.
+- **Baked AO over GTAO**: GTAO cost 2.4× the frame and +35 draw calls; per-vertex AO + a texel-quantised bevel give the crevices.
+- **One cookie spot as key**, the second window faked with a light-pool decal (the second spot was ~20% of the frame).
+- **Crispness over DOF**: bloom threshold above 1.0 linear, tilt-shift ≤ 1 px at the very top; all passes at the low internal res, nearest upscale by CSS.
+- **Tiers**: `high` 480 px, PCFSoft live shadows, half-res bloom; `low` (coarse pointer / short side < 500 / ≤ 4 cores) 400 px, PCF shadow map rendered once (blob contacts for kin/people), quarter-res bloom, no point lights. `?q=` overrides.
+- **Trainers stay on the field** in HD-2D: they step back to a post behind their kin instead of walking off, and step forward again for the defeat line.

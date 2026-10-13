@@ -1,5 +1,9 @@
 # Progress
 
+## 2026-10-13 — HD-2D prototype (`?gfx=hd2d`, Ember Ridge + cave battles)
+- New art-direction pipeline behind a flag: pixel-art cave arena (terraced boulder walls with a texel bevel, lodge, stairs with rails, rubble, window), cookie-spot key light with soft shadows, light shafts + dust, bloom/ACES/warm grade/tilt-shift/vignette/dither at a low internal res, kin/player/trainer as live sprite bakes with outlines. Default rendering untouched. Design, API, numbers, gaps and rollout: `docs/HD2D.md`.
+- Evidence: `e2e/hd2d.spec.ts` (trainer + wild cave turn, desktop + phone, no console errors, non-blank, < 100 calls: 44–52 measured), all unit tests ✓, full Playwright suite ✓; sheets in `docs/screenshots/hd2d/`.
+
 ## 2026-10-12 — Final polish before the owner playtest
 - Art-direction re-audit (24 items) and human-style playtest (A–J) fixed: missed attacks whiff, champion speech fits (growing/paged text box), phone panels/menus/hotspots never clip, pinned party bar, starter/evolution/HoF/meta framing, hotseat per-player perspective + hand-over curtain, distinct online names, title rejoin, anti-mash, wild coin rewards, lava channel. Decisions in `docs/DECISIONS.md` ("Final polish").
 - Evidence: `e2e/layout.spec.ts` "text & labels never clip" (4 viewports) and "every species as foe stays on screen" (phone/small/landscape); unit tests for `wildVictory`, hotseat curtains, server name de-dupe; before/after sheets in `docs/screenshots/final/`.
