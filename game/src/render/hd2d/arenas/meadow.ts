@@ -1,0 +1,480 @@
+// Mossy Meadow outdoor arenas: the forest CLEARING (tall grass, default meadow, Scout Pim) and,
+// from the same set with a different dressing, the FLOWER FIELD (flowers.ts).
+//
+// Composition (camera from +z, elevated 3/4): a trodden dirt clearing ringed by grassy earth
+// terraces that rise toward the back; trees stand on the terraces with big painted leaf
+// canopies closing the top of the frame; the sun comes from the back-left through a gap in the
+// leaves — a dapple-cookie spot with soft shadows, light shafts with pollen motes — and pools on
+// the clearing. Tall grass tufts sway at the edges; a stump, a log, a fence and a signpost dress
+// the corners. Everything original and procedural.
+import * as THREE from 'three';
+import { Rng } from '../../../engine/rng';
+import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, dustMotes, lightBeams, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
+import { cachedTexture, ditherIndex, type Ramp } from '../textures';
+import type { Grade } from '../pipeline';
+import type { ArenaBuildOptions, ArenaDef } from './index';
+import {
+  Foliage, SpriteAtlas, backdrop, dappleCookie, disposeGroup, glints, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  paintBark, paintButterfly, paintCanopy, paintEarth, paintFlower, paintSilhouette, paintSky, paintTuft, paintTurf, rampColor, sunRig, terraces,
+  type RgbaTile, type V3,
+} from './outdoorKit';
+
+/** Meadow ramps (dark → light, hue-shifted: shadows toward blue/teal, lights toward yellow). */
+export const MEADOW_RAMPS = {
+  turf: ['#1c3527', '#26502e', '#356a33', '#4c8538', '#6a9e3e', '#8fb84c', '#b7d062', '#dbe58a'],
+  grass: ['#173027', '#20452b', '#2d5d31', '#3f7535', '#5a903c', '#7aaa45', '#a3c459', '#cddd78'],
+  leaf: ['#10261f', '#173826', '#1f4c2b', '#2c6331', '#3f7a35', '#5a943b', '#7fae46', '#acc95c'],
+  leafWarm: ['#1b2a1a', '#29401f', '#3a5724', '#517029', '#6c892f', '#8ea33a', '#b5bd50', '#d9d67a'],
+  dirt: ['#3f3024', '#5a4433', '#785c43', '#957554', '#ae8e68', '#c4a77f', '#d8c39d'],
+  earth: ['#24170f', '#352217', '#4a301f', '#5f3f28', '#755234', '#8b6643', '#a27d55'],
+  bark: ['#1f140e', '#2e1e14', '#41291b', '#553723', '#6b472d', '#82593a', '#9a6e4b'],
+  wood: ['#2c1a10', '#432817', '#5c3820', '#764b2b', '#8f6037', '#a87645', '#c08f58'],
+  stone: ['#2a2c31', '#3e4148', '#555960', '#6e7279', '#888c91', '#a3a6a8', '#c0c1bf'],
+  chalk: ['#a69f8c', '#cfc8b3', '#ece6d3', '#fbf7ea'],
+  sky: ['#6fa7d8', '#86b8e0', '#9dc8e6', '#b5d6e9', '#cde3ea', '#e2eee6'],
+  far: ['#4f7a73', '#5d8a7c', '#6d9984', '#7fa78d', '#93b598', '#a9c3a6'],
+} as const satisfies Record<string, Ramp>;
+
+export const PETALS = {
+  red: ['#5a1424', '#8c1f2e', '#c2343a', '#e5584c', '#f78a6a'],
+  pink: ['#6a2448', '#9a3a6a', '#c95a8e', '#e889b0', '#fbb8cf'],
+  yellow: ['#6a4a10', '#a07418', '#d4a822', '#f2cf3e', '#fdec7a'],
+  white: ['#6d6a78', '#a3a2ad', '#cfd0d6', '#ececef', '#ffffff'],
+  violet: ['#2e1e5a', '#46308a', '#6a4cb8', '#8f74d8', '#b9a6ef'],
+  orange: ['#6a2a10', '#a8451a', '#dc6a24', '#f6973a', '#ffc46a'],
+  blue: ['#1c2c6a', '#2a4296', '#3f63c4', '#6a92e2', '#a6c4f6'],
+} as const satisfies Record<string, Ramp>;
+
+export type MeadowVariant = 'clearing' | 'flowers';
+
+export function meadowGrade(warm = false): Grade {
+  return {
+    lift: new THREE.Vector3(0.012, 0.014, 0.004), gamma: new THREE.Vector3(1.0, 1.0, 1.0),
+    gain: warm ? new THREE.Vector3(1.05, 1.0, 0.9) : new THREE.Vector3(1.02, 1.02, 0.95),
+    saturation: warm ? 1.02 : 0.98, contrast: 1.06,
+    shadowTint: new THREE.Color(warm ? '#3a2a3e' : '#1d3436'), highTint: new THREE.Color(warm ? '#ffdca0' : '#fff0c0'), splitAmount: 0.13,
+    vignette: 0.38, vignetteSoft: 0.55,
+    tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
+    dither: 2.0,
+    exposure: warm ? 1.02 : 1.0,
+  };
+}
+
+/** Kin and people spots (shared convention, docs/HD2D.md). */
+const SPOTS: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-1.3, 0, 1.0), new THREE.Vector3(1.5, 0, -1.0)];
+const PEOPLE: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-2.5, 0, 1.9), new THREE.Vector3(2.75, 0, -1.95)];
+
+/** Keep props off the battle floor: true when (x, z) is within `r` of a kin/person spot or the line between the kin. */
+export function nearStage(x: number, z: number, r = 1.6): boolean {
+  for (const p of [...SPOTS, ...PEOPLE]) if (Math.hypot(x - p.x, z - p.z) < r) return true;
+  // Segment between the kin (FX fly along it).
+  const a = SPOTS[0], b = SPOTS[1];
+  const abx = b.x - a.x, abz = b.z - a.z;
+  const t = Math.max(0, Math.min(1, ((x - a.x) * abx + (z - a.z) * abz) / (abx * abx + abz * abz)));
+  return Math.hypot(x - (a.x + abx * t), z - (a.z + abz * t)) < r * 0.8;
+}
+
+/** Paint the battle-ground marking for trainer battles: a worn chalk ring, centre line and start marks. */
+export function paintChalkRing(t: RgbaTile, wx: (x: number) => number, wz: (y: number) => number, ramp: Ramp = MEADOW_RAMPS.chalk) {
+  const cx = (SPOTS[0].x + SPOTS[1].x) / 2, cz = (SPOTS[0].z + SPOTS[1].z) / 2;
+  const ang = Math.atan2(SPOTS[1].z - SPOTS[0].z, SPOTS[1].x - SPOTS[0].x);
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
+    const X = wx(x) - cx, Z = wz(y) - cz;
+    const u = X * ca + Z * sa, v = -X * sa + Z * ca; // u along the kin line
+    const ring = Math.hypot(u / 3.3, v / 2.1);
+    const onRing = Math.abs(ring - 1) * 2.1 < TEXEL * 1.6;
+    const onLine = Math.abs(u) < TEXEL * 0.9 && Math.abs(v) < 2.1;
+    const s0 = Math.hypot(wx(x) - SPOTS[0].x, wz(y) - SPOTS[0].z), s1 = Math.hypot(wx(x) - SPOTS[1].x, wz(y) - SPOTS[1].z);
+    const onMark = Math.abs(s0 - 0.75) < TEXEL * 0.9 || Math.abs(s1 - 0.75) < TEXEL * 0.9;
+    if (!(onRing || onLine || onMark)) continue;
+    const wear = hash2(x, y, 5);
+    if (wear < 0.18) continue; // scuffed gaps
+    t.set(x, y, ramp[wear > 0.8 ? 3 : wear > 0.4 ? 2 : 1]!);
+  }
+}
+
+/** Build the meadow set (clearing or flower field). */
+export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant): ArenaRig {
+  const R = MEADOW_RAMPS;
+  const flowers = variant === 'flowers';
+  const q = opts.quality;
+  const rng = new Rng(opts.seed ?? (flowers ? 41 : 23));
+  const group = new THREE.Group();
+  group.name = `hd2d-meadow-${variant}`;
+  const extra: { dispose(): void }[] = [];
+  const updates: ((t: number) => void)[] = [];
+
+  // ---- heightmap: clearing (0) ringed by grassy terraces that rise toward the back
+  const X0 = -15.3, Z0 = -14.4;
+  const hm = new Heightmap(34, 24, X0, Z0);
+  const frontGap = { x0: -6.2, x1: -3.6 }; // a path out of the clearing toward the camera
+  for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
+    const x = hm.cx(i), z = hm.cz(j);
+    const wob = Math.sin(x * 1.1 + z * 0.7) * 0.35 + Math.sin(z * 1.9 - x * 0.5) * 0.25;
+    const e = Math.hypot(x / 7.0, (z - 0.2) / 4.5);
+    const d = (e - 1) * 5.2 + wob;
+    let lv = 0;
+    if (d > 0) lv = 1 + Math.floor(d / 1.7);
+    if (z < -4.5) lv += Math.floor((-4.5 - z) / 3.4); // the back rises gently
+    if (z > 3.8) {
+      lv = Math.min(lv, z > 6 ? 2 : 1); // low front ledge lets the camera in
+      if (x > frontGap.x0 && x < frontGap.x1) lv = 0;
+    }
+    if (flowers && z < -4.6 && x > 1.5 && x < 9) lv = Math.min(lv, 2); // a low shelf for the windmill
+    const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
+    const n = cl - Math.floor(cl);
+    if (lv > 0) lv = Math.max(1, lv + (n > 0.88 ? 1 : n < 0.08 ? -1 : 0));
+    hm.set(i, j, Math.min(lv, 4));
+  }
+  const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
+
+  // ---- sprite atlas
+  const atlas = new SpriteAtlas(512);
+  const leafRamp = flowers ? R.leafWarm : R.leaf;
+  for (let k = 0; k < 3; k++) atlas.add('canopy', 88, 74, (p) => paintCanopy(p, new Rng(100 + k), leafRamp, { clumps: 8 }));
+  for (let k = 0; k < 2; k++) atlas.add('canopyWide', 104, 60, (p) => paintCanopy(p, new Rng(140 + k), leafRamp, { clumps: 9, flat: 0.95 }));
+  for (let k = 0; k < 3; k++) atlas.add('bush', 46, 32, (p) => paintCanopy(p, new Rng(200 + k), R.leaf, { clumps: 6 }));
+  for (let k = 0; k < 4; k++) atlas.add('tuft', 16, 13, (p) => paintTuft(p, new Rng(300 + k), R.grass, 9));
+  for (let k = 0; k < 3; k++) atlas.add('tall', 20, 26, (p) => paintTuft(p, new Rng(320 + k), R.grass, 14, 1.3));
+  // Grass lip hanging over terrace edges.
+  for (let k = 0; k < 4; k++) atlas.add('fringe', 15, 9, (p) => {
+    const r = new Rng(400 + k);
+    for (let x = 0; x < 15; x++) {
+      const len = 2 + r.int(3) + (r.chance(0.3) ? 3 + r.int(2) : 0);
+      for (let y = 0; y < len; y++) p.shade(x, y, R.grass, 4.4 - y * 0.9 - (y === len - 1 ? 0.6 : 0));
+    }
+  }, [7.5, 0]);
+  // Flowers: clumps in several colours (more and bigger in the flower field).
+  const petalKeys = Object.keys(PETALS) as (keyof typeof PETALS)[];
+  for (const key of petalKeys) {
+    atlas.add(`flowers-${key}`, 22, 18, (p) => {
+      const r = new Rng(500 + key.length * 7 + key.charCodeAt(0));
+      paintTuft(p, r, R.grass, 5, 0.8);
+      for (let f = 0; f < 4; f++) paintFlower(p, r, R.grass, PETALS[key], key === 'yellow' ? '#7a4a12' : '#f6d64a', 3 + r.int(16), 17, 6 + r.int(9), r.chance(0.6) ? 2 : 1);
+    });
+  }
+  for (const key of ['yellow', 'white', 'blue', 'orange'] as const) atlas.add(`fly-${key}`, 7, 5, (p) => paintButterfly(p, PETALS[key], 1));
+  for (const key of ['pink', 'white', 'yellow'] as const) atlas.add(`petal-${key}`, 3, 3, (p) => { p.set(1, 0, PETALS[key][4]); p.set(0, 1, PETALS[key][3]); p.set(1, 1, PETALS[key][4]); p.set(2, 1, PETALS[key][2]); p.set(1, 2, PETALS[key][2]); }, [1.5, 1.5]);
+  const atlasTex = atlas.texture();
+  extra.push(atlasTex);
+  const fol = new Foliage(atlas);
+
+  // ---- terraces: earth sides + turf tops + grass lip
+  const texEarth = cachedTexture('od-earth-meadow', () => paintEarth(31, R.earth));
+  const texTurf = cachedTexture('od-turf-meadow', () => paintTurf(32, R.turf, 32, { lo: 2.2, hi: 4.6, flecks: 0.06 }));
+  const sides = new VoxelBatch(32);
+  const tops = new VoxelBatch(32);
+  terraces(hm, sides, tops, rng, { topK: 1.0, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(7), chance: 1 } });
+  group.add(mkMesh(sides.build(), extra[extra.push(surfaceMaterial(texEarth, undefined, true)) - 1] as THREE.Material));
+  group.add(mkMesh(tops.build(), extra[extra.push(surfaceMaterial(texTurf, undefined, false)) - 1] as THREE.Material));
+
+  // ---- ground: one painted texture (clearing dirt, grass, path, flowers, chalk ring)
+  const ground = groundMesh({
+    x0: X0, x1: X0 + hm.nx * CELL, z0: Z0, z1: Z0 + hm.nz * CELL, hm, aoK: 0.09,
+    paint: (t, wx, wz) => paintMeadowFloor(t, wx, wz, variant, opts.trainerBattle),
+  });
+  extra.push(ground.texture);
+  group.add(ground.mesh);
+
+  // ---- wood: tree trunks, stump, log, fence, signpost (one bark mesh, one plank mesh)
+  const bark = new VoxelBatch(32);
+  const wood = new VoxelBatch(32);
+  const stone = new VoxelBatch(32);
+  const trunk = (x: number, z: number, h: number, w = 0.62) => {
+    const y = topAt(x, z) - 0.05;
+    const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2);
+    bark.box([x - w / 2, y, z - w / 2], [x + w / 2, y + h, z + w / 2], tint, rng, { aoBottom: 0.45 });
+    // Root flare and a branch stub.
+    for (const [dx, dz] of [[-1, 0], [1, 0], [0, 1], [0, -1]] as const) if (rng.chance(0.75)) bark.box([x + dx * w * 0.45 - 0.14, y, z + dz * w * 0.45 - 0.14], [x + dx * w * 0.45 + 0.14, y + 0.18 + rng.next() * 0.15, z + dz * w * 0.45 + 0.14], tint.clone().multiplyScalar(0.9), rng, { aoBottom: 0.5 });
+    const side = rng.chance(0.5) ? 1 : -1;
+    bark.rotBox([x + side * w * 0.8, y + h * 0.62, z], [0.9, 0.18, 0.18], 0, tint, rng, side * 0.0);
+    return y + h;
+  };
+  /** A tree: trunk + 2–3 canopy billboards. `scale` grows the whole tree. */
+  const tree = (x: number, z: number, scale = 1, wide = false) => {
+    const top = trunk(x, z, 2.1 * scale, 0.5 + 0.18 * scale);
+    const sprite = wide ? 'canopyWide' : 'canopy';
+    const k = TEXEL * scale;
+    fol.add(atlas.get(sprite, rng), [x + (rng.next() - 0.5) * 0.4, top - 1.0 * scale, z + 0.2], 'billboard', { scale: k, sway: 0.03, flip: rng.chance(0.5) });
+    fol.add(atlas.get('canopy', rng), [x + (rng.chance(0.5) ? 1 : -1) * 1.1 * scale, top - 0.2 * scale, z - 0.3], 'billboard', { scale: k * 0.8, sway: 0.035, flip: rng.chance(0.5), tint: new THREE.Color(0.88, 0.9, 0.9) });
+    if (scale > 1.05) fol.add(atlas.get('canopy', rng), [x, top + 1.2 * scale, z - 0.6], 'billboard', { scale: k * 0.75, sway: 0.04, flip: rng.chance(0.5), tint: new THREE.Color(0.94, 0.96, 0.94) });
+  };
+  // Back row on the high terraces, sides, and two framing trees at the front corners.
+  const backTrees: [number, number, number, boolean][] = flowers
+    ? [[-10.8, -5.6, 1.2, false], [-6.8, -6.8, 1.3, true], [-2.8, -7.2, 1.1, false], [10.8, -5.0, 1.25, true], [-11.8, -0.8, 1.15, false], [12.0, -0.6, 1.1, false]]
+    : [[-10.8, -5.4, 1.2, false], [-7.0, -6.6, 1.3, true], [-2.6, -6.9, 1.15, false], [1.6, -7.2, 1.25, true], [5.6, -6.6, 1.15, false], [9.6, -5.6, 1.3, true], [-11.8, -1.0, 1.2, false], [11.8, -1.6, 1.25, true]];
+  for (const [x, z, s, w] of backTrees) tree(x, z, s, w);
+  // A continuous canopy wall behind the trees closes the top of the frame (and reads as the forest).
+  for (let x = -16; x <= 16; x += 2.6) {
+    if (flowers && x > -1 && x < 9.5) continue; // open sky behind the windmill
+    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: new THREE.Color(0.42, 0.5, 0.52) });
+  }
+  // Bushes on the terraces, tall grass and tufts around the clearing edge.
+  for (let i = 0; i < 14; i++) {
+    const a = rng.next() * Math.PI * 2;
+    const r = 1.08 + rng.next() * 0.5;
+    const x = Math.cos(a) * 7.0 * r, z = 0.2 + Math.sin(a) * 4.5 * r;
+    if (z > 3.2 || Math.abs(x) > 14) continue;
+    fol.add(atlas.get('bush', rng), [x, topAt(x, z), z], 'billboard', { scale: TEXEL * (0.9 + rng.next() * 0.4), sway: 0.02, flip: rng.chance(0.5) });
+  }
+  for (let i = 0; i < (q === 'high' ? 150 : 110); i++) {
+    const a = rng.next() * Math.PI * 2;
+    const r = 0.8 + Math.pow(rng.next(), 1.6) * 0.55;
+    const x = Math.cos(a) * 7.0 * r, z = 0.2 + Math.sin(a) * 4.5 * r;
+    if (nearStage(x, z, 1.9) || z > 6.5) continue;
+    if (topAt(x, z) > LEVEL * 1.5 && rng.chance(0.6)) continue; // keep the bank faces readable
+    const tall = rng.chance(flowers ? 0.25 : 0.45);
+    fol.add(atlas.get(tall ? 'tall' : 'tuft', rng), [x, topAt(x, z), z], 'billboard', { sway: tall ? 0.09 : 0.05, flip: rng.chance(0.5), tint: new THREE.Color(1, 1, 1).multiplyScalar(0.85 + rng.next() * 0.25) });
+  }
+  // Flower clumps: a few in the clearing's grass ring, dense beds in the flower field.
+  const flowerCount = flowers ? (q === 'high' ? 260 : 190) : 26;
+  for (let i = 0; i < flowerCount; i++) {
+    let x: number, z: number;
+    if (flowers) {
+      // Beds: rows of one colour fanning around the clearing (like planted strips).
+      const bed = rng.int(7);
+      const a = -Math.PI * 1.05 + (bed / 7) * Math.PI * 1.1 + (rng.next() - 0.5) * 0.4;
+      const r = 1.0 + rng.next() * 0.55;
+      x = Math.cos(a) * 6.6 * r; z = 0.2 + Math.sin(a) * 4.4 * r;
+      if (rng.chance(0.35)) { x = (rng.next() - 0.5) * 22; z = 3.8 + rng.next() * 2.6; }
+      if (nearStage(x, z, 1.9)) continue;
+      const key = petalKeys[(bed + (rng.chance(0.15) ? 1 : 0)) % petalKeys.length]!;
+      fol.add(atlas.get(`flowers-${key}`), [x, topAt(x, z), z], 'billboard', { sway: 0.05, flip: rng.chance(0.5), scale: TEXEL * (0.85 + rng.next() * 0.3) });
+    } else {
+      const a = rng.next() * Math.PI * 2, r = 0.95 + rng.next() * 0.5;
+      x = Math.cos(a) * 7.0 * r; z = 0.2 + Math.sin(a) * 4.5 * r;
+      if (nearStage(x, z, 1.9) || z > 6) continue;
+      fol.add(atlas.get(`flowers-${rng.pick(['white', 'yellow', 'violet'] as const)}`), [x, topAt(x, z), z], 'billboard', { sway: 0.05, flip: rng.chance(0.5) });
+    }
+  }
+  // Butterflies (and in the flower field, drifting petals).
+  const flies = flowers ? 6 : 3;
+  for (let i = 0; i < flies; i++) {
+    const a = (i / flies) * Math.PI * 2 + 0.4;
+    fol.add(atlas.get(`fly-${(['yellow', 'white', 'blue', 'orange'] as const)[i % 4]}`), [Math.cos(a) * 6.2, 1.0 + rng.next() * 0.8, 0.2 + Math.sin(a) * 3.9], 'flutter', { range: 1.4 + rng.next() * 0.8 });
+  }
+  if (flowers) for (let i = 0; i < (q === 'high' ? 40 : 24); i++) {
+    fol.add(atlas.get(`petal-${(['pink', 'white', 'yellow'] as const)[i % 3]}`), [-9 + rng.next() * 16, 5.5 + rng.next() * 2, -6 + rng.next() * 9], 'fall', { range: 6 });
+  }
+
+  // Props: stump, log, fence, signpost (bark/wood) and a few stones.
+  const sx = flowers ? 5.6 : -5.9, sz = flowers ? 2.6 : -1.9;
+  bark.box([sx - 0.42, 0, sz - 0.42], [sx + 0.42, 0.55, sz + 0.42], new THREE.Color(1, 1, 1), rng, { aoBottom: 0.5 });
+  wood.box([sx - 0.36, 0.55, sz - 0.36], [sx + 0.36, 0.58, sz + 0.36], new THREE.Color(1.15, 1.1, 1.0), rng); // cut face
+  if (!flowers) {
+    // Fallen log at the right, with a stub branch.
+    bark.rotBox([5.4, 0.3, 2.6], [2.6, 0.56, 0.56], -0.35, new THREE.Color(0.95, 0.95, 0.95), rng);
+    bark.rotBox([5.0, 0.62, 2.85], [0.18, 0.5, 0.18], -0.35, new THREE.Color(0.9, 0.9, 0.9), rng, 0.4);
+  }
+  // Fence along the front-right ledge and a signpost by the front path.
+  const fenceZ = flowers ? 4.9 : 4.7;
+  for (let x = 1.5; x <= 7.5; x += 1.2) {
+    const y = topAt(x, fenceZ) - 0.02;
+    wood.box([x - 0.08, y, fenceZ - 0.08], [x + 0.08, y + 0.95, fenceZ + 0.08], new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2), rng);
+    wood.box([x - 0.12, y + 0.95, fenceZ - 0.1], [x + 0.12, y + 1.02, fenceZ + 0.1], new THREE.Color(1.05, 1.05, 1.05), rng);
+  }
+  for (const yy of [0.42, 0.78]) {
+    const y = topAt(4.5, fenceZ) + yy;
+    wood.box([1.45, y, fenceZ - 0.05], [7.6, y + 0.12, fenceZ + 0.05], new THREE.Color(1.05, 1.05, 1.05), rng);
+  }
+  const signX = flowers ? -4.6 : -6.6, signZ = flowers ? 4.4 : 3.6;
+  wood.box([signX - 0.07, 0, signZ - 0.07], [signX + 0.07, 1.35, signZ + 0.07], new THREE.Color(0.9, 0.9, 0.9), rng);
+  wood.rotBox([signX + 0.15, 1.15, signZ], [0.95, 0.32, 0.06], -0.25, new THREE.Color(1.1, 1.08, 1.0), rng);
+  wood.rotBox([signX - 0.05, 0.75, signZ + 0.05], [0.7, 0.24, 0.06], 0.35, new THREE.Color(1.0, 0.98, 0.95), rng);
+  for (const [x, z, s] of [[-6.4, 1.2, 0.35], [6.6, -1.6, 0.42], [-4.6, -3.4, 0.3], [3.6, 3.6, 0.28], [7.1, 0.6, 0.25]] as const) {
+    stone.rotBox([x, s * 0.35, z], [s * 1.4, s * 0.8, s * 1.1], rng.next() * 3, new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2), rng);
+    stone.rotBox([x + s * 0.8, s * 0.2, z + s * 0.4], [s * 0.7, s * 0.45, s * 0.6], rng.next() * 3, new THREE.Color(0.95, 0.95, 0.95), rng);
+  }
+
+  // Flower field: a windmill on the low back shelf (tower + cap; sails turn as their own mesh).
+  let sails: THREE.Mesh | null = null;
+  if (flowers) {
+    const mx = 5.0, mz = -7.2, my = topAt(mx, mz);
+    const plaster = new THREE.Color('#efe6d2');
+    for (let k = 0; k < 5; k++) {
+      const w = 1.5 - k * 0.12, y0 = my + k * 0.9;
+      wood.box([mx - w / 2, y0, mz - w / 2], [mx + w / 2, y0 + 0.9, mz + w / 2], plaster.clone().multiplyScalar(0.95 + (k % 2) * 0.05), rng, { aoBottom: 0.8 });
+    }
+    const capY = my + 4.5;
+    for (let k = 0; k < 4; k++) {
+      const w = 1.5 - k * 0.32;
+      wood.box([mx - w / 2 - 0.1, capY + k * 0.28, mz - w / 2 - 0.1], [mx + w / 2 + 0.1, capY + (k + 1) * 0.28, mz + w / 2 + 0.1], rampColor(PETALS.red, 2).multiplyScalar(1.6), rng);
+    }
+    wood.box([mx - 0.3, my, mz + 0.62], [mx + 0.3, my + 1.0, mz + 0.8], new THREE.Color(0.55, 0.45, 0.4), rng); // door
+    wood.box([mx - 0.22, my + 2.4, mz + 0.62], [mx + 0.22, my + 2.85, mz + 0.72], new THREE.Color(0.4, 0.42, 0.55), rng); // window
+    // Sails are built in the local YZ plane (rotBox can tilt about X), spun about local X, and the
+    // hub is turned to face the camera.
+    const sb = new VoxelBatch(32);
+    for (let a = 0; a < 4; a++) {
+      const ang = (a / 4) * Math.PI * 2 + 0.3;
+      const c = Math.cos(ang), s2 = Math.sin(ang);
+      sb.rotBox([0, s2 * 1.3, c * 1.3], [0.08, 0.12, 2.5], 0, new THREE.Color(0.75, 0.68, 0.62), rng, -ang);
+      sb.rotBox([0.03, s2 * 1.5 + c * 0.3, c * 1.5 - s2 * 0.3], [0.03, 0.5, 2.0], 0, new THREE.Color(1.2, 1.17, 1.1), rng, -ang);
+    }
+    sb.box([-0.12, -0.18, -0.18], [0.12, 0.18, 0.18], new THREE.Color(0.6, 0.55, 0.5), rng);
+    sails = mkMesh(sb.build(), extra[extra.push(surfaceMaterial(cachedTexture('od-wood', () => paintEarth(52, R.wood, 32, { roots: 0, pebbles: 0, strata: 2.2 })), undefined, true)) - 1] as THREE.Material);
+    const hub = new THREE.Group();
+    hub.position.set(mx, capY - 0.35, mz + 0.95);
+    hub.rotation.y = -Math.PI / 2;
+    hub.add(sails);
+    group.add(hub);
+  }
+
+  const texBark = cachedTexture('od-bark', () => paintBark(51, R.bark));
+  const texWood = cachedTexture('od-wood', () => paintEarth(52, R.wood, 32, { roots: 0, pebbles: 0, strata: 2.2 }));
+  const texStone = cachedTexture('od-stone', () => paintEarth(53, R.stone, 32, { roots: 2, pebbles: 2, strata: 0.2 }));
+  for (const [b, tex] of [[bark, texBark], [wood, texWood], [stone, texStone]] as const) {
+    const m = surfaceMaterial(tex, undefined, true);
+    extra.push(m);
+    group.add(mkMesh(b.build(), m));
+  }
+
+  // Foliage (all sprites): one mesh.
+  const folMesh = fol.build(atlasTex, { upNormal: 0.55 });
+  group.add(folMesh);
+  updates.push((t) => { fol.uTime.value = t; });
+
+  // ---- far backdrop: sky and the distant tree line (rarely more than a sliver in view)
+  const back = backdrop((t) => {
+    paintSky(t, R.sky, 0, Math.round(t.h * 0.7));
+    const r = new Rng(77);
+    paintSilhouette(t, r, R.far.map((c, i) => R.far[Math.min(R.far.length - 1, i + 2)]!) as unknown as Ramp, t.h * 0.62, 18, 10, t.h);
+    paintSilhouette(t, r, R.far, t.h * 0.76, 22, 9, t.h);
+    paintSilhouette(t, r, R.leaf, t.h * 0.9, 20, 8, t.h);
+  }, 320, 120, [80, 30], [0, 8, -24]);
+  extra.push(back.mesh.material as THREE.Material);
+  group.add(back.mesh);
+
+  // ---- sun: back-left, through the leaves (dapple cookie), warm; sky-blue/green fill
+  const target = new THREE.Vector3(0, 0, 0.3);
+  const cookie = dappleCookie(flowers ? 9 : 4, { holes: flowers ? 0.34 : 0.44, edge: flowers ? 0.6 : 0.42 });
+  extra.push(cookie);
+  const sunFrom = flowers ? new THREE.Vector3(0.75, 0.62, -0.6) : new THREE.Vector3(-0.55, 1.0, -0.7);
+  const { key, spriteLight } = sunRig(group, {
+    target, from: sunFrom, distance: 34, angle: 0.4,
+    color: flowers ? '#ffcf8a' : '#fff0c4', intensity: flowers ? 6.0 : 6.2, cookie,
+    sky: flowers ? '#ffd9b0' : '#cfe6ff', ground: flowers ? '#5a5a2a' : '#3e5a2a', hemi: flowers ? 1.6 : 1.75,
+    fill: flowers ? '#ffc890' : '#fff6e0', fillIntensity: 0.55, quality: q,
+  });
+
+  // ---- light shafts through the canopy gaps + pollen motes
+  const dir = sunFrom.clone().normalize().negate();
+  const beams: BeamSpec[] = [];
+  const gaps: V3[] = flowers
+    ? [[9.0, 4.9, -5.0], [7.2, 5.3, -5.4], [10.8, 4.6, -3.2], [5.8, 5.0, -6.2]]
+    : [[-6.2, 4.9, -5.4], [-4.0, 5.3, -6.0], [-8.3, 4.6, -3.8], [-2.2, 5.0, -5.8], [-5.4, 4.8, -3.6]];
+  for (const [x, y, z] of gaps) {
+    const s = new THREE.Vector3(x, y, z);
+    const len = (y / -dir.y) * (0.94 + rng.next() * 0.06);
+    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [0.35 + rng.next() * 0.2, 1.0 + rng.next() * 0.5] });
+  }
+  const sun = glints(gaps.map(([x, y, z]) => [x - dir.x * 0.6, y - dir.y * 0.6, z - dir.z * 0.6] as V3), 1.6, flowers ? '#ffd890' : '#fff4d0', 2.4);
+  extra.push(sun.points.geometry, sun.points.material as THREE.Material);
+  group.add(sun.points);
+  updates.push(sun.update);
+  const rays = lightBeams(beams, flowers ? '#ffd8a0' : '#fff2c4', flowers ? 0.2 : 0.22);
+  extra.push(rays.mesh.geometry, rays.mesh.material as THREE.Material);
+  group.add(rays.mesh);
+  updates.push(rays.update);
+  // Pollen: in the shafts, plus slow drifting volumes across the clearing.
+  const drift: BeamSpec[] = [
+    { start: new THREE.Vector3(-7, 1.4, -2), end: new THREE.Vector3(7, 2.0, -1.5), width: [3.5, 3.5] },
+    { start: new THREE.Vector3(7, 1.0, 2.5), end: new THREE.Vector3(-7, 1.6, 2.0), width: [3, 3] },
+  ];
+  const motes = dustMotes([...beams, ...drift], q === 'high' ? 34 : 18, rng, flowers ? '#ffe2a8' : '#fff4b0');
+  extra.push(motes.points.geometry, motes.points.material as THREE.Material);
+  group.add(motes.points);
+  updates.push(motes.update);
+  // Soft light pools where the shafts land.
+  const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 2.4, 1.8] as [number, number, number, number]), flowers ? '#8a6a40' : '#6a6a40');
+  group.add(pools);
+  if (sails) { const s = sails; updates.push((t) => { s.rotation.x = t * 0.35; }); }
+
+  return {
+    group,
+    spots: [SPOTS[0].clone(), SPOTS[1].clone()],
+    people: [PEOPLE[0].clone(), PEOPLE[1].clone()],
+    trainerExit: new THREE.Vector3(6, 0, -6),
+    spriteLight,
+    key,
+    update(t) { for (const u of updates) u(t); },
+    setPixelSize(px) { motes.setPixelSize(px); },
+    dispose() { disposeGroup(group, extra); },
+  };
+}
+
+/** The meadow floor: trodden dirt clearing, grass ring with blade flecks, a path, litter, flowers, chalk. */
+function paintMeadowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number) => number, variant: MeadowVariant, trainer: boolean) {
+  const R = MEADOW_RAMPS;
+  const rng = new Rng(variant === 'flowers' ? 91 : 90);
+  const nA = noiseField(64, 64, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]);
+  const nB = noiseField(64, 64, rng, [[2, 0.6], [16, 0.4]]);
+  const mac = macro(variant === 'flowers' ? 13 : 12);
+  const flowers = variant === 'flowers';
+  // Dirt clearing ellipse (smaller in the flower field: more grass), and a path toward the camera.
+  const rx = flowers ? 4.6 : 5.4, rz = flowers ? 3.0 : 3.4;
+  const pathD = (x: number, z: number) => {
+    const segs: [number, number, number, number][] = [[-3.4, 2.4, -4.9, 6.6], [3.6, -2.2, 6.2, -6.0]];
+    let d = 99;
+    for (const [ax, az, bx, bz] of segs) {
+      const abx = bx - ax, abz = bz - az;
+      const tt = Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / (abx * abx + abz * abz)));
+      d = Math.min(d, Math.hypot(x - ax - abx * tt, z - az - abz * tt));
+    }
+    return d;
+  };
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
+    const X = wx(x), Z = wz(y);
+    const n = nA(x, y), m = mac(X, Z);
+    const e = Math.hypot(X / rx, (Z - 0.1) / rz) + (m - 0.5) * 0.35 + (nB(x, y) - 0.5) * 0.22;
+    const p = pathD(X, Z) / 0.75 + (n - 0.5) * 0.5;
+    const dirtK = Math.max(1.12 - e, 1.0 - p) * 4; // >0 inside
+    const edge = dirtK > -0.6 && dirtK < 0.6;
+    const isDirt = dirtK > 0 && !(edge && hash2(x, y, 2) < 0.5 - dirtK * 0.8);
+    if (isDirt) {
+      // Trodden dirt: lighter in the worn centre, blotchy, with grit.
+      let v = 2.2 + (n - 0.5) * 2.4 + Math.min(1, dirtK * 0.25) * 0.9 + (m - 0.5) * 0.6;
+      if (hash2(x, y, 3) < 0.06) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
+      t.set(x, y, R.dirt[ditherIndex(v, x, y, R.dirt.length)]!);
+    } else {
+      // Grass: two-tone mottling + blade flecks (light tip over a dark root texel).
+      let v = 2.0 + (n - 0.5) * 2.6 + (m - 0.5) * 1.4 - (edge ? 0.6 : 0);
+      const h = hash2(x, y, 1);
+      if (h < 0.11) v += 1.6;
+      else if (hash2(x, y - 1, 1) < 0.11) v -= 1.1;
+      t.set(x, y, R.grass[ditherIndex(v, x, y, R.grass.length)]!);
+    }
+  }
+  // Pebbles on the dirt, clover and tiny flowers in the grass, fallen leaves.
+  for (let i = 0; i < 900; i++) {
+    const x = rng.int(t.w), y = rng.int(t.h);
+    const X = wx(x), Z = wz(y);
+    const inClearing = Math.hypot(X / rx, (Z - 0.1) / rz) < 1.0;
+    if (inClearing) {
+      if (i % 3) continue;
+      const s = R.stone;
+      t.set(x, y, s[4]!); t.set(x + 1, y, s[3]!); t.set(x, y + 1, s[2]!); t.set(x + 1, y + 1, s[1]!);
+      if (rng.chance(0.4)) t.set(x - 1, y, s[5]!);
+    } else if (rng.chance(flowers ? 0.7 : 0.35)) {
+      const pet = (Object.values(PETALS) as Ramp[])[rng.int(7)]!;
+      t.set(x, y, pet[4]!); t.set(x - 1, y, pet[3]!); t.set(x + 1, y, pet[3]!); t.set(x, y - 1, pet[4]!); t.set(x, y + 1, pet[2]!);
+      t.set(x, y, flowers ? '#f6d64a' : pet[4]!);
+    } else {
+      const leaf = rng.chance(0.5) ? R.leafWarm : R.grass;
+      t.set(x, y, leaf[6]!); t.set(x + 1, y, leaf[5]!); t.set(x + 1, y + 1, leaf[4]!);
+    }
+  }
+  if (trainer) paintChalkRing(t, wx, wz);
+}
+
+export const ARENA: ArenaDef = {
+  id: 'meadow',
+  label: 'Meadow clearing',
+  match: [{ route: 'meadow' }, { route: 'meadow', hotspot: 'tall-grass' }, { route: 'meadow', kind: 'trainer' }],
+  build: (o) => buildMeadowSet(o, 'clearing'),
+  grade: () => meadowGrade(false),
+  background: '#9dc8e6',
+  fog: '#a9c8b8',
+  fogRange: [10, 40],
+};
