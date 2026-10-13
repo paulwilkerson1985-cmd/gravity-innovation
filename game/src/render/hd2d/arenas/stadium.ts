@@ -601,7 +601,7 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
       col.needsUpdate = true;
       fans.material.uniforms.uGain!.value = 0.85 * crowdK;
       const from = new THREE.Vector3(at.x + 0.6, rigY, at.z - 1.2);
-      const sp = new THREE.SpotLight(new THREE.Color('#fff0d8'), 190, 0, 0.32, 0.55, 1.5);
+      const sp = new THREE.SpotLight(new THREE.Color('#fff0d8'), 120, 0, 0.32, 0.55, 1.5);
       sp.position.copy(from);
       sp.target.position.copy(at);
       group.add(sp, sp.target);
@@ -609,7 +609,7 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
       track(beam.mesh.geometry); track(beam.mesh.material as THREE.Material);
       group.add(beam.mesh);
       updates.push(beam.update);
-      const pool = lightPools([{ x: at.x, z: at.z + 0.3, sx: 7.0, sz: 5.0, y: 0.014, color: new THREE.Color('#ffe6c0').multiplyScalar(0.6) }], radialTexture('255,255,255'));
+      const pool = lightPools([{ x: at.x, z: at.z + 0.3, sx: 7.0, sz: 5.0, y: 0.014, color: new THREE.Color('#ffe6c0').multiplyScalar(0.5) }], radialTexture('255,255,255'));
       track(pool.mesh.geometry); track(pool.material);
       group.add(pool.mesh);
     },

@@ -137,11 +137,11 @@ export const KIN_SPRITE: Record<string, SpriteOptions> = {
     minValue: 0.34, facet: 0.4, plates: { size: 0.5, width: 0.024, crack: '#ff8a30', crackGain: 1.4 },
     glow: { color: '#ff6a24', radius: 1.25, intensity: 1.1 },
   },
-  pyrelord: { emissive: [FLAME.outer, FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.2, glow: { color: '#ff8a3a', radius: 1.0, intensity: 0.8 } },
+  pyrelord: { emissive: [FLAME.outer, FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.1, glow: { color: '#ff8a3a', radius: 1.0, intensity: 0.55 } },
   // Cindertail's body red sits next to the outer flame colour: only the hotter flame glows.
-  cindertail: { emissive: [FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.2, glow: { color: '#ff8a3a', radius: 0.9, intensity: 0.65 } },
+  cindertail: { emissive: [FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.1, glow: { color: '#ff8a3a', radius: 0.9, intensity: 0.5 } },
   // Rock kin: faceted light, stone plates with dark creases.
-  pebblet: { facet: 0.45, plates: { size: 0.4, width: 0.018 } },
+  pebblet: { facet: 0.45, plates: { size: 0.6, width: 0.016 } },
   cragmaul: { facet: 0.45, plates: { size: 0.42, width: 0.026 } },
 };
 

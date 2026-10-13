@@ -360,8 +360,8 @@ vec3 tameGreen(vec3 s) {
   vec3 h = rgb2hsv(s);
   float g = smoothstep(0.16, 0.23, h.x) * (1.0 - smoothstep(0.43, 0.49, h.x));
   if (g <= 0.0) return s;
-  h.y = min(h.y, mix(1.0, 0.42 + 0.34 * (1.0 - h.z), g));
-  h.z = min(h.z, mix(1.0, 0.74, g));
+  h.y = min(h.y, mix(1.0, 0.46 + 0.34 * (1.0 - h.z), g));
+  h.z = min(h.z, mix(1.0, 0.76, g));
   h.x -= g * 0.018 * smoothstep(0.45, 0.85, h.z);
   return hsv2rgb(h);
 }
@@ -471,7 +471,8 @@ void main() {
   c += rim * uRim * rc * 0.6;
   // Emissive (flames, magma): unlit and over-bright, hottest where it faces the key.
   // The key-facing part takes a hotter, yellower tone (a glowing core), the rest the base hue.
-  if (em > 0.5 && em < 1.5) c = toLin(rampStep(toSrgb(base), L > 0.55 ? 1.0 : 0.0)) * uEmGain;
+  // (Only the most key-facing bits take the hotter tone: flames keep their saturated colours.)
+  if (em > 0.5 && em < 1.5) c = toLin(rampStep(toSrgb(base), L > 0.8 ? 1.0 : 0.0)) * uEmGain;
   if (crack > 0.5) c = uPlates.z > 0.5 ? uCrackCol * (0.85 + 0.3 * L) : toLin(rampStep(rampStep(s, -2.0), -1.0)) * (lit + uLift);
   gl_FragColor = vec4(c + uEmissive, 1.0);
 }`;
