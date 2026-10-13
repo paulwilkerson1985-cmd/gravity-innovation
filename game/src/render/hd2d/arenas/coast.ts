@@ -20,7 +20,7 @@ import { BATTLE_POOL } from './meadow';
 import { paintPlanks } from '../textures';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  cachedCanvas, grey, hdr, levelAt, makeGrade, orientedBox, paintAlpha, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater, rockStack, sunlitRock,
+  cachedCanvas, grey, hdr, levelAt, makeGrade, orientedBox, paintAlpha, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater, rockStack, sunlitRock, tube,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -176,9 +176,13 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   }
   // Driftwood logs (with a stub branch) along the edges of the beach.
   for (const [x, z, a, l] of [[-5.6, 1.2, 0.4, 1.9], [3.9, 3.2, -0.3, 1.6], [6.0, 0.4, 1.3, 1.3], [-2.8, 4.0, 0.1, 1.2]] as const) {
+    // Round, bleached, tapering logs with a flared root end and a broken branch stub.
     const dir = V(Math.cos(a), 0.04, Math.sin(a));
-    orientedBox(drift, V(x, 0.12 + sandY(x, z), z), V(0.24, l, 0.24), dir, grey(0.95 + rng.next() * 0.15), rng, rng.next());
-    orientedBox(drift, V(x + dir.x * l * 0.2, 0.3 + sandY(x, z), z + dir.z * l * 0.2 + 0.1), V(0.08, 0.5, 0.08), V(0.4, 1, 0.3), grey(0.9), rng);
+    const c = V(x, 0.12 + sandY(x, z), z), half = dir.clone().multiplyScalar(l / 2);
+    const tint = grey(0.95 + rng.next() * 0.15);
+    tube(drift, c.clone().sub(half), c.clone().add(half), (t) => (0.13 - t * 0.04) * (1 + 0.8 * Math.exp(-t * 10)), { sides: 7, rings: 3, wobble: 0.06, seed: x, tint: () => tint });
+    const b0 = c.clone().addScaledVector(dir, l * 0.2);
+    tube(drift, b0, b0.clone().add(V(0.15, 0.42, 0.12)), (t) => 0.05 - t * 0.025, { sides: 5, rings: 1, tint: () => grey(0.9) });
   }
   // Wet rock outcrops at the water line (spray goes here).
   const outcrops: [number, number, number][] = [[-6.2, -3.4, 0.9], [6.9, -2.7, 0.8], [-2.6, -5.6, 0.6], [2.2, -6.4, 0.5]];

@@ -295,7 +295,8 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     track(sky.mesh.material as THREE.Material);
     group.add(sky.mesh);
     const lands: { z: number; x: [number, number]; y: [number, number]; d: number; o: Omit<MesaOpts, 'foot'> }[] = [
-      { z: -60, x: [-64, 64], y: [-15, -4], d: 5, o: { ramp: LAND, capRamp: RAMPS2.turf, capRows: 2, count: 0, w: [30, 70], h: [10, 24], haze: 0.5, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.4, ridge: true, cliff: 2.2, allow: (x) => Math.abs(x / 5 - 64 - SUN.x * 0.86) > 10 } },
+      // Far: low domed islands and headlands in deep haze, open horizon between them.
+      { z: -60, x: [-64, 64], y: [-15, -4], d: 5, o: { ramp: LAND, capRamp: RAMPS2.turf, capRows: 2, count: 0, w: [16, 40], h: [12, 30], haze: 0.52, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.4, dome: 0.55, tilt: 0.25, cliff: 2.4, foam: '#dfe6e4', allow: (x) => Math.abs(x / 5 - 64 - SUN.x * 0.86) > 12 } },
       { z: -47, x: [-50, 50], y: [-15, -2], d: 7, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [16, 44], h: [24, 50], haze: 0.32, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.8, foam: '#e6ece8', tilt: 0.45, dome: 0.3, cliff: 3.5, allow: (x) => { const wx = x / 7 - 50; return wx < -12 || wx > 34; } } },
       { z: -34, x: [-40, 40], y: [-15, 1], d: 10, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [22, 52], h: [40, 84], haze: 0.14, hazeCol: HAZE_LAND, sunX: 9999, gullies: 1, foam: '#eef2ee', tilt: 0.6, dome: 0.35, cliff: 2.2, allow: (x) => { const wx = x / 10 - 40; return wx < -22 || wx > 30; } } },
     ];

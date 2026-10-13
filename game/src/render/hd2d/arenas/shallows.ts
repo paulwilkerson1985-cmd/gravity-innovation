@@ -41,8 +41,8 @@ export function shallowsGrade(): Grade {
 export interface ShallowsOptions { seed?: number; quality?: 'high' | 'low'; trainer?: boolean }
 
 const WATER_Y = -0.14;
-/** The low storm-break sun (≈ 25°) from the back-left. */
-const SUN_FROM = new THREE.Vector3(-0.62, 0.45, -0.64);
+/** The low storm-break sun (≈ 25°) from the left, a little behind: the stacks show a lit flank. */
+const SUN_FROM = new THREE.Vector3(-0.82, 0.45, -0.36);
 
 export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   const rng = new Rng(opts.seed ?? 37);
@@ -141,10 +141,10 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     for (let k = 0; k < 3; k++) orientedBox(drift, c.clone().addScaledVector(side, 0.55 + k * 0.04).addScaledVector(fwd, -0.3 + k * 0.2).add(V(0, 0.25 + k * 0.28, 0)), V(0.08, 0.26, 2.6 - k * 0.5), V(0.5, 1, 0).applyAxisAngle(V(0, 1, 0), yaw), grey(0.62 + k * 0.08), rng, yaw + Math.PI / 2);
     orientedBox(drift, c.clone().addScaledVector(fwd, 1.8).add(V(0, 0.7, 0)), V(0.16, 1.5, 0.16), V(0.5, 1, 0).applyAxisAngle(V(0, 1, 0), yaw), grey(0.75), rng); // stem post
   }
-  // A weathered mooring float tied to a driftwood stake at the front left (the colour accent):
-  // a round, faded-red buoy with a white band, half afloat, a rope down to the stake.
+  // A weathered mooring float tied to a driftwood stake just off the bar's sunlit front edge
+  // (the colour accent): a round, faded-red buoy with a white band, half afloat, a rope down.
   {
-    const p = V(-4.4, WATER_Y, 2.7);
+    const p = V(2.1, WATER_Y, 3.0);
     tube(drift, p.clone().add(V(0, -0.3, 0)), p.clone().add(V(0.12, 1.25, 0.05)), (t) => 0.13 - t * 0.04, { sides: 7, rings: 3, wobble: 0.08, seed: 3, tint: (t) => grey(0.82 + t * 0.2) });
     const bp = p.clone().add(V(0.62, -0.06, 0.38));
     tube(paint, bp.clone().add(V(0, -0.2, 0)), bp.clone().add(V(0, 0.42, 0)), (t) => Math.sin(Math.PI * (0.08 + t * 0.84)) * 0.27, {
@@ -153,9 +153,11 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     tube(paint, bp.clone().add(V(0, 0.4, 0)), bp.clone().add(V(0, 0.56, 0)), () => 0.05, { sides: 6, rings: 1, tint: () => new THREE.Color('#3a3634') });
     orientedBox(drift, p.clone().add(V(0.33, 0.12, 0.2)), V(0.035, 0.75, 0.035), V(0.82, 0.12, 0.5), grey(0.7), rng); // rope
   }
-  // Driftwood on the bar ends.
-  for (const [x, z, a, l] of [[-3.7, 2.7, 0.8, 1.5], [3.8, -2.9, -0.2, 1.7], [0.9, 2.0, 2.4, 0.9]] as const) {
-    orientedBox(drift, V(x, sandY(x, z) + 0.1, z), V(0.22, l, 0.22), V(Math.cos(a), 0.03, Math.sin(a)), grey(0.95), rng, rng.next());
+  // Bleached driftwood on the bar ends: round, tapering logs, one with a flared root end.
+  for (const [x, z, a, l, root] of [[-3.7, 2.7, 0.8, 1.5, 1], [3.8, -2.9, -0.2, 1.7, 0], [0.9, 2.0, 2.4, 0.9, 0]] as const) {
+    const d = V(Math.cos(a), 0, Math.sin(a)).multiplyScalar(l / 2);
+    const y = sandY(x, z) + 0.08;
+    tube(drift, V(x, y, z).sub(d), V(x, y + 0.03, z).add(d), (t) => (0.12 - t * 0.04) * (1 + (root ? 0.9 * Math.exp(-t * 10) : 0)), { sides: 7, rings: 3, wobble: 0.06, seed: x, tint: () => grey(0.95) });
   }
   // Wet rocks on the bar's ends (off the kin spots) + pebbles and shells.
   const clear = (x: number, z: number) => Math.hypot(x + 1.3, z - 1.0) < 1.3 || Math.hypot(x - 1.5, z + 1.0) < 1.3 || Math.hypot(x + 2.5, z - 1.9) < 0.75 || Math.hypot(x - 2.75, z + 1.95) < 0.75;
@@ -176,10 +178,10 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     const dir = V(Math.cos(a), 0, Math.sin(a));
     const side = V(-dir.z, 0, dir.x).multiplyScalar(0.34);
     // A flat card on the surface, root at (x, z), slightly raised at the tip.
-    leaves.card(V(x, WATER_Y + 0.03, z), side, dir.clone().multiplyScalar(l).add(V(0, 0.05, 0)), kelp, new THREE.Color(0.42, 0.5, 0.36).multiplyScalar(0.8 + rng.next() * 0.3), 0.2, 1, V(0, 1, 0));
+    leaves.card(V(x, WATER_Y + 0.03, z), side, dir.clone().multiplyScalar(l).add(V(0, 0.05, 0)), kelp, new THREE.Color(0.62, 0.72, 0.42).multiplyScalar(0.85 + rng.next() * 0.3), 0.2, 1, V(0, 1, 0));
   };
   for (const [sx, sz, r] of stacks.slice(0, 7)) for (let k = 0; k < 3; k++) { const a = rng.next() * Math.PI * 2; kelpAt(sx + Math.cos(a) * (r + 0.1 + rng.next() * 0.3), sz + Math.sin(a) * (r + 0.1 + rng.next() * 0.3)); }
-  for (let k = 0; k < 10; k++) {
+  for (let k = 0; k < 6; k++) {
     const d = new THREE.Vector2((rng.next() - 0.5) * 13, (rng.chance(0.5) ? 1 : -1) * (3.0 + rng.next() * 1.4));
     kelpAt(centre.x + ax.x * d.x + ac.x * d.y, centre.y + ax.y * d.x + ac.y * d.y);
   }
