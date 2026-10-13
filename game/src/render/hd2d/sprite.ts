@@ -632,7 +632,7 @@ export class SpriteSubject {
     const rtOpts = { type: THREE.HalfFloatType, magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter, generateMipmaps: false } as const;
     this.rt = new THREE.WebGLRenderTarget(32, 32, rtOpts);
     this.rt.depthTexture = new THREE.DepthTexture(32, 32);
-    this.small = new THREE.WebGLRenderTarget(32, 32, rtOpts);
+    this.small = new THREE.WebGLRenderTarget(32, 32, { ...rtOpts, depthBuffer: false });
     this.billMat = new THREE.ShaderMaterial({
       vertexShader: BILL_VERT,
       fragmentShader: BILL_FRAG,
