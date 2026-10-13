@@ -18,6 +18,10 @@ import { getTrainer } from '../engine';
 import { healParty, isRouteUnlocked } from '../game/state';
 import { CHAMPION_ID, isTrainerDefeated, routeBlockers } from '../game/progress';
 import type { HotspotData, RouteData } from '../engine/types';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import { heroFigure, trainerFigure } from '../render/hd2d/characters';
+import { buildIslandSet, type IslandSet, type IslandSpot, type IslandTheme } from '../render/hd2d/screens/island';
+import { Hd2dScreenStage } from './hd2dScreen';
 
 type Theme = RouteData['theme'];
 
@@ -26,6 +30,18 @@ const TRAINER_SPOTS: Record<number, [number, number][]> = {
   1: [[1.35, -0.85]],
   2: [[1.4, -0.95], [-1.45, -1.05]],
 };
+
+/** Where the wild hotspots go: caves take the back slot so they never hide a trainer or a patch. */
+function placeWild(wild: HotspotData[]): Map<string, [number, number]> {
+  const free = [...WILD_SPOTS];
+  const slotFor = (spot: HotspotData): [number, number] => {
+    const i = spot.kind === 'cave' ? free.length - 1 : 0;
+    return free.splice(Math.max(0, i), 1)[0] ?? WILD_SPOTS[0]!;
+  };
+  const placed = new Map(wild.map((s) => [s.id, s.kind === 'cave' ? slotFor(s) : null] as const));
+  for (const s of wild) if (!placed.get(s.id)) placed.set(s.id, slotFor(s));
+  return placed as Map<string, [number, number]>;
+}
 
 /** Wild level range of a route, derived from its hotspot tables (what you will actually meet). */
 export function wildRange(route: RouteData): [number, number] | null {
@@ -152,6 +168,8 @@ export class RouteScene extends BaseScene {
   private ambientUpdate: ((t: number) => void) | null = null;
   private sky: THREE.Texture | null = null;
   private you!: THREE.Object3D;
+  /** HD-2D staging (`?gfx=hd2d`): the floating-island diorama, else null. */
+  private hd2d: Hd2dScreenStage | null = null;
 
   enter(params: Record<string, unknown>) {
     const g = this.game;
@@ -159,8 +177,17 @@ export class RouteScene extends BaseScene {
     const want = String(params.route ?? g.player.lastRoute ?? 'meadow');
     const id = g.dex().routes.has(want) && isRouteUnlocked(g.player, want) ? want : 'meadow';
     this.route = g.dex().routes.get(id)!;
-    const theme = this.route.theme;
     audio.music('route');
+    if (hd2dRequested()) this.enterHd2d();
+    else this.enterDefault(id);
+    this.onPick((o) => void this.explore((o.userData.pick as { hotspot: string }).hotspot));
+    this.buildUi();
+  }
+
+  /** The default (low-poly) route diorama. */
+  private enterDefault(id: string) {
+    const g = this.game;
+    const theme = this.route.theme;
     this.sky = skyGradient(theme);
     this.scene.background = this.sky;
     addLights(this.scene, theme);
@@ -183,13 +210,7 @@ export class RouteScene extends BaseScene {
     const trainers = this.route.hotspots.filter((s) => s.kind === 'trainer');
     const tSpots = theme === 'summit' ? [[0, -1.3] as [number, number]] : TRAINER_SPOTS[trainers.length] ?? TRAINER_SPOTS[2]!;
     // Caves are big: they take the back slot so they never hide a trainer or a patch.
-    const free = [...WILD_SPOTS];
-    const slotFor = (spot: HotspotData): [number, number] => {
-      const i = spot.kind === 'cave' ? free.length - 1 : 0;
-      return free.splice(Math.max(0, i), 1)[0] ?? WILD_SPOTS[0]!;
-    };
-    const placed = new Map(wild.map((s) => [s.id, s.kind === 'cave' ? slotFor(s) : null] as const));
-    for (const s of wild) if (!placed.get(s.id)) placed.set(s.id, slotFor(s));
+    const placed = placeWild(wild);
     wild.forEach((spot, i) => {
       const [x, z] = placed.get(spot.id)!;
       const grp = new THREE.Group();
@@ -235,8 +256,49 @@ export class RouteScene extends BaseScene {
     if (theme === 'summit') { you.position.set(0.85, 0, 2.55); you.rotation.y = -0.35; } else you.position.set(0, 0, 1.15);
     this.scene.add(you);
     this.you = you;
-    this.onPick((o) => void this.explore((o.userData.pick as { hotspot: string }).hotspot));
+  }
 
+  /**
+   * HD-2D: the route as a floating-island diorama (render/hd2d/screens/island.ts) through the
+   * HD-2D pipeline; trainers and the player are the battle's pixel sprites. Hotspot positions,
+   * picking and the explore wiggle are the same as the default map.
+   */
+  private enterHd2d() {
+    const g = this.game;
+    const theme = this.route.theme;
+    const wild = this.route.hotspots.filter((s) => s.kind !== 'trainer');
+    const trainers = this.route.hotspots.filter((s) => s.kind === 'trainer');
+    const tSpots = theme === 'summit' ? [[0, -1.3] as [number, number]] : TRAINER_SPOTS[trainers.length] ?? TRAINER_SPOTS[2]!;
+    const placed = placeWild(wild);
+    const spots: IslandSpot[] = [
+      ...wild.map((s) => { const [x, z] = placed.get(s.id)!; return { id: s.id, kind: s.kind, x, z }; }),
+      ...trainers.map((s, i) => { const [x, z] = tSpots[i % tSpots.length]!; return { id: s.id, kind: 'trainer', x, z, beaten: !!s.trainer && isTrainerDefeated(g.player, s.trainer) }; }),
+    ];
+    const player: [number, number] = theme === 'summit' ? [0.85, 2.55] : [0, 1.15];
+    let island: IslandSet | null = null;
+    this.hd2d = new Hd2dScreenStage(g, this.scene, this.camera, (q) => (island = buildIslandSet(q, theme as IslandTheme, spots, { player })));
+    const set = island as unknown as IslandSet;
+    for (const [hid, grp] of set.hotspots) this.hotspots.set(hid, grp);
+    trainers.forEach((spot, i) => {
+      const [x, z] = tSpots[i % tSpots.length]!;
+      const fig = trainerFigure(spot.trainer ?? '');
+      fig.mesh.scale.setScalar(theme === 'summit' ? 1.2 : 1.1);
+      fig.mesh.position.set(0, 0.085, 0);
+      fig.mesh.rotation.y = Math.atan2(-x, 6 - z) * 0.6; // toward the path and the camera
+      set.hotspots.get(spot.id)!.add(fig.mesh);
+      this.hd2d!.addFigure(fig);
+    });
+    const you = heroFigure();
+    you.mesh.scale.setScalar(1.1);
+    you.mesh.position.set(player[0], set.topAt(player[0], player[1]), player[1]);
+    you.mesh.rotation.y = theme === 'summit' ? -0.35 : 0.3;
+    this.scene.add(you.mesh);
+    this.hd2d.addFigure(you);
+    this.you = you.mesh;
+  }
+
+  private buildUi() {
+    const g = this.game;
     // ---- UI
     const lead = g.player.party.find((c) => c.hp > 0) ?? g.player.party[0];
     this.status = h('div', { class: 'route-status', 'data-testid': 'route-status' });
@@ -362,9 +424,20 @@ export class RouteScene extends BaseScene {
     // left of the sheet on a landscape phone.
     const land = layoutMode(w, hgt) === 'land';
     const area = freeArea(w, hgt, land ? { top: [this.top], right: [this.sheet] } : { top: [this.top], bottom: [this.sheet] }, 4);
+    if (this.hd2d) {
+      // The island top, its trees and a slice of the rock underneath.
+      const target = new THREE.Vector3(0, 0.3, 0);
+      const pts2 = corners(new THREE.Vector3(-5.1, -1.6, -5.0), new THREE.Vector3(5.1, 2.4, 5.2));
+      fitPoints(this.camera, w, hgt, pts2, area, { dir: new THREE.Vector3(0, 0.66, 0.8), target, fill: 1 });
+      this.hd2d.framed(target);
+      return;
+    }
     const pts = corners(new THREE.Vector3(-4.6, -0.5, -4.4), new THREE.Vector3(4.6, 2.55, 4.6));
     fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.62, 0.82), target: new THREE.Vector3(0, 0.6, 0), fill: 1 });
   }
+
+  /** HD-2D render stats (debug hook), null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
 
   /** Layout checks (debug hook): the player and the trainers on the map. */
   subjects() {
@@ -374,11 +447,14 @@ export class RouteScene extends BaseScene {
   }
 
   override exit() {
+    this.hd2d?.dispose();
+    this.hd2d = null;
     this.sky?.dispose();
     super.exit();
   }
 
   override update(_dt: number, t: number) {
+    this.hd2d?.update(t);
     this.ambientUpdate?.(t);
     this.markers.forEach((m, i) => {
       m.position.y = (m.userData.baseY as number) + Math.sin(t * 3 + i) * 0.12;
