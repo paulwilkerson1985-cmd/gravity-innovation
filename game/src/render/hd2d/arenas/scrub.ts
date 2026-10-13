@@ -7,12 +7,12 @@ import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { Heightmap, LEVEL, TEXEL, VoxelBatch, dustMotes, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
 import { boulder, boulderColumns, organicTerraces, rubblePile } from '../kit/rock';
-import { cachedTexture, ditherIndex, paintBoulder, type Ramp } from '../textures';
+import { cachedTexture, paintBoulder, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
-import { nearStage, paintChalkRing } from './meadow';
+import { nearStage, paintTrodden } from './meadow';
 import {
-  Foliage, SpriteAtlas, backdrop, disposeGroup, glints, groundMesh, hash2, macro, mkMesh, noiseField,
+  Foliage, SpriteAtlas, backdrop, bandIndex, disposeGroup, glints, groundMesh, hash2, macro, mkMesh, noiseField,
   paintBark, paintTuft, paintTwigs, paintSilhouette, sunRig, type RgbaTile, type V3,
 } from './outdoorKit';
 
@@ -30,12 +30,12 @@ export const SCRUB_RAMPS = {
 
 export function sunsetGrade(): Grade {
   return {
-    lift: new THREE.Vector3(0.018, 0.006, 0.016), gamma: new THREE.Vector3(1.0, 1.0, 1.0), gain: new THREE.Vector3(1.06, 0.99, 0.9),
-    saturation: 1.0, contrast: 1.08,
-    shadowTint: new THREE.Color('#3a1f44'), highTint: new THREE.Color('#ffd08e'), splitAmount: 0.16,
-    vignette: 0.42, vignetteSoft: 0.55,
+    lift: new THREE.Vector3(0.018, 0.006, 0.016), gamma: new THREE.Vector3(1.06, 1.06, 1.06), gain: new THREE.Vector3(1.06, 0.99, 0.9),
+    saturation: 0.76, contrast: 1.05,
+    shadowTint: new THREE.Color('#3a1f44'), highTint: new THREE.Color('#ffd08e'), splitAmount: 0.13,
+    vignette: 0.2, vignetteSoft: 0.7,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
-    dither: 2.0, exposure: 1.04,
+    dither: 2.0, exposure: 1.68,
   };
 }
 
@@ -157,15 +157,16 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   // ---- the canyon: sunset sky, low sun, distant mesas (heat haze), near ridge silhouettes
   // The canyon is seen BELOW the shelf edge line (the camera looks down), so the painted
   // horizon sits low: plane PW×PH centred at y = PY on z = PZ (visible band ≈ y −9…−1).
-  const BW = 640, BH = 180, PW = 52, PH = 15, PY = -5.2, PZ = -26;
+  const BW = 640, BH = 180, PW = 52, PH = 15, PY = -4.4, PZ = -26;
   const sunPx = [262, 64] as const;
   const back = backdrop((t) => {
     for (let y = 0; y < t.h; y++) {
-      const v = Math.min(1, Math.pow(y / (t.h * 0.66), 1.1)) * (S.sky.length - 1);
+      const v = Math.min(1, Math.pow(y / (t.h * 0.52), 1.05)) * (S.sky.length - 1);
       for (let x = 0; x < t.w; x++) {
         const d = Math.hypot(x - sunPx[0], (y - sunPx[1]) * 1.3);
-        // Coarse 2×2 dither so the bands read at this distance.
-        t.set(x, y, S.sky[ditherIndex(Math.min(S.sky.length - 1, v + Math.max(0, 1 - d / 90) * 1.6), x >> 1, y >> 1, S.sky.length)]!);
+        // Flat bands (horizontal, bending into arcs round the sun), 1–2 rows of clustered
+        // dither at each boundary — no full-field checkerboard.
+        t.set(x, y, S.sky[bandIndex(Math.min(S.sky.length - 1, v + Math.max(0, 1 - d / 90) * 1.6), x, y, S.sky.length, 0.06)]!);
       }
     }
     // Sun disc and thin cloud streaks.
@@ -175,9 +176,10 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
       const cy = 10 + r.int(70), cx = r.int(t.w), len = 40 + r.int(100);
       for (let i = 0; i < len; i++) { t.set(cx + i, cy, S.sky[3 + (cy > 45 ? 2 : 0)]!); t.set(cx + i + 1, cy + 1, S.sky[3 + (cy > 45 ? 2 : 0)]!); if (i > 6 && i < len - 8) { t.set(cx + i + 4, cy + 2, S.sky[2]!); t.set(cx + i + 4, cy + 3, S.sky[2]!); } }
     }
-    paintSilhouette(t, r, S.mesaFar, t.h * 0.6, 42, 46, t.h, { flatTop: true, lightLeft: true });
-    paintSilhouette(t, r, S.mesaNear, t.h * 0.76, 30, 30, t.h, { flatTop: true });
-    paintSilhouette(t, r, S.mesaNear.slice(0, 3) as unknown as Ramp, t.h * 0.9, 14, 16, t.h);
+    // Stepped buttes of varied width (lit left faces, strata, a bright cap rim), hazier far away.
+    paintSilhouette(t, r, S.mesaFar, t.h * 0.6, 42, 30, t.h, { flatTop: true, haze: 0.25 });
+    paintSilhouette(t, r, S.mesaNear, t.h * 0.76, 30, 22, t.h, { flatTop: true, haze: 0.08 });
+    paintSilhouette(t, r, S.mesaNear.slice(0, 4) as unknown as Ramp, t.h * 0.9, 14, 16, t.h);
   }, BW, BH, [PW, PH], [0, PY, PZ], { haze: 1 });
   extra.push(back.mesh.material as THREE.Material);
   group.add(back.mesh);
@@ -192,8 +194,8 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   const sunFrom = new THREE.Vector3(-0.55, 0.5, -0.8);
   const { key, spriteLight } = sunRig(group, {
     target: new THREE.Vector3(0, 0, 0), from: sunFrom, distance: 34, angle: 0.42,
-    color: '#ffb070', intensity: 7.0, cookie: null,
-    sky: '#d898a8', ground: '#5a2e24', hemi: 1.55,
+    color: '#ffb878', intensity: 8.6, cookie: null,
+    sky: '#e8b0b0', ground: '#6a3a2a', hemi: 2.1,
     fill: '#a890d0', fillIntensity: 0.5, quality: q,
   });
 
@@ -248,18 +250,18 @@ function paintScrubFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number)
     if (d2 - d1 < TEXEL * 1.8) v += 0.6;
     // Dry grass creeping in toward the tiers.
     if (e > 1.0 && hash2(x, y, 5) < Math.min(0.6, (e - 1.0) * 1.2) * (0.6 + n)) {
-      t.set(x, y, S.dry[ditherIndex(2.5 + (n - 0.5) * 3 + (hash2(x, y, 6) < 0.15 ? 1.5 : 0), x, y, S.dry.length)]!);
+      t.band(x, y, S.dry, 2.5 + (n - 0.5) * 3 + (hash2(x, y, 6) < 0.15 ? 1.5 : 0));
       continue;
     }
     if (hash2(x, y, 3) < 0.05) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
-    t.set(x, y, S.earth[ditherIndex(v, x, y, S.earth.length)]!);
+    t.band(x, y, S.earth, v);
   }
   // Pebbles.
   for (let k = 0; k < 300; k++) {
     const x = rng.int(t.w), y = rng.int(t.h);
     t.set(x, y, S.sandstone[5]!); t.set(x + 1, y, S.sandstone[4]!); t.set(x, y + 1, S.sandstone[2]!); t.set(x + 1, y + 1, S.sandstone[1]!);
   }
-  if (trainer) paintChalkRing(t, wx, wz, ['#8a6a58', '#a88a72', '#c6aa8e', '#dcc4a6']);
+  if (trainer) paintTrodden(t, wx, wz, [S.sandstone[6], S.sandstone[4], S.sandstone[1]], 1.1);
 }
 
 export const ARENA: ArenaDef = {

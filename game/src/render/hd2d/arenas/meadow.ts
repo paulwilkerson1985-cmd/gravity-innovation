@@ -10,13 +10,14 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, dustMotes, lightBeams, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
-import { cachedTexture, ditherIndex, type Ramp } from '../textures';
+import { cachedTexture, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
+import { particleSystem } from '../kit/particles';
 import {
-  Foliage, SpriteAtlas, backdrop, dappleCookie, disposeGroup, glints, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  Foliage, SpriteAtlas, backdrop, dappleCookie, disposeGroup, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
   paintBark, paintButterfly, paintCanopy, paintEarth, paintFlower, paintSilhouette, paintSky, paintTuft, paintTurf, rampColor, sunRig, terraces,
-  type RgbaTile, type V3,
+  type RgbaTile,
 } from './outdoorKit';
 
 /** Meadow ramps (dark → light, hue-shifted: shadows toward blue/teal, lights toward yellow). */
@@ -51,12 +52,13 @@ export function meadowGrade(warm = false): Grade {
   return {
     lift: new THREE.Vector3(0.012, 0.014, 0.004), gamma: new THREE.Vector3(1.0, 1.0, 1.0),
     gain: warm ? new THREE.Vector3(1.05, 1.0, 0.9) : new THREE.Vector3(1.02, 1.02, 0.95),
-    saturation: warm ? 1.02 : 0.98, contrast: 1.06,
-    shadowTint: new THREE.Color(warm ? '#3a2a3e' : '#1d3436'), highTint: new THREE.Color(warm ? '#ffdca0' : '#fff0c0'), splitAmount: 0.13,
-    vignette: 0.38, vignetteSoft: 0.55,
+    saturation: 0.8, contrast: 1.05,
+    shadowTint: new THREE.Color(warm ? '#3a2a3e' : '#1d3436'), highTint: new THREE.Color(warm ? '#ffdca0' : '#fff0c0'), splitAmount: 0.12,
+    // Dusty and open: light vignette; depth from local darkening (foreground, wall-foot AO).
+    vignette: 0.18, vignetteSoft: 0.7,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
     dither: 2.0,
-    exposure: warm ? 1.02 : 1.0,
+    exposure: warm ? 1.52 : 1.36,
   };
 }
 
@@ -74,23 +76,49 @@ export function nearStage(x: number, z: number, r = 1.6): boolean {
   return Math.hypot(x - (a.x + abx * t), z - (a.z + abz * t)) < r * 0.8;
 }
 
-/** Paint the battle-ground marking for trainer battles: a worn chalk ring, centre line and start marks. */
-export function paintChalkRing(t: RgbaTile, wx: (x: number) => number, wz: (y: number) => number, ramp: Ramp = MEADOW_RAMPS.chalk) {
+/**
+ * The battle ground of a trainer duel, worn into the floor instead of chalked on it: a trodden
+ * oval of compacted earth (slightly darker, smoother clumps in a band where feet circle, a
+ * polished lighter middle), scuffs dug in around both kin spots, and pebbles kicked out to the
+ * rim. Natural, subtle, original — it only modulates the floor already painted in `t`.
+ */
+export function paintTrodden(t: RgbaTile, wx: (x: number) => number, wz: (y: number) => number, pebble: readonly [string, string, string] = ['#c0c1bf', '#888c91', '#555960'], k = 1) {
   const cx = (SPOTS[0].x + SPOTS[1].x) / 2, cz = (SPOTS[0].z + SPOTS[1].z) / 2;
   const ang = Math.atan2(SPOTS[1].z - SPOTS[0].z, SPOTS[1].x - SPOTS[0].x);
   const ca = Math.cos(ang), sa = Math.sin(ang);
+  const RU = 3.2, RV = 2.0;
   for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
     const X = wx(x) - cx, Z = wz(y) - cz;
-    const u = X * ca + Z * sa, v = -X * sa + Z * ca; // u along the kin line
-    const ring = Math.hypot(u / 3.3, v / 2.1);
-    const onRing = Math.abs(ring - 1) * 2.1 < TEXEL * 1.6;
-    const onLine = Math.abs(u) < TEXEL * 0.9 && Math.abs(v) < 2.1;
-    const s0 = Math.hypot(wx(x) - SPOTS[0].x, wz(y) - SPOTS[0].z), s1 = Math.hypot(wx(x) - SPOTS[1].x, wz(y) - SPOTS[1].z);
-    const onMark = Math.abs(s0 - 0.75) < TEXEL * 0.9 || Math.abs(s1 - 0.75) < TEXEL * 0.9;
-    if (!(onRing || onLine || onMark)) continue;
-    const wear = hash2(x, y, 5);
-    if (wear < 0.18) continue; // scuffed gaps
-    t.set(x, y, ramp[wear > 0.8 ? 3 : wear > 0.4 ? 2 : 1]!);
+    const u = X * ca + Z * sa, v = -X * sa + Z * ca;
+    const wob = Math.sin(u * 2.1 + v * 1.3) * 0.05 + (hash2(x >> 2, y >> 2, 31) - 0.5) * 0.08;
+    const r = Math.hypot(u / RU, v / RV) + wob;
+    if (r > 1.12) continue;
+    const clump = hash2(x >> 1, y >> 1, 33);
+    // Compacted band where the feet circle (0.62..1.05): darker, in clumps; polished middle.
+    const band = Math.max(0, 1 - Math.abs(r - 0.84) / 0.24);
+    if (band > 0 && clump < band * 0.7) t.scale(x, y, 1 - 0.1 * k * (0.6 + band * 0.4));
+    else if (r < 0.6 && clump < 0.45) t.scale(x, y, 1 + 0.05 * k);
+  }
+  // Scuffs dug in around each kin spot: short dark arcs with a lit lip on the far side.
+  const rng = new Rng(611);
+  const tx = (X: number) => Math.round((X - wx(0)) / TEXEL), tz = (Z: number) => Math.round((Z - wz(0)) / TEXEL);
+  for (const s of SPOTS) for (let n = 0; n < 9; n++) {
+    const a = rng.next() * Math.PI * 2, d = 0.35 + rng.next() * 0.55;
+    const len = 4 + rng.int(6), dir = ang + (rng.next() - 0.5) * 1.2;
+    let px = tx(s.x + Math.cos(a) * d), py = tz(s.z + Math.sin(a) * d * 0.8);
+    for (let i = 0; i < len; i++) {
+      t.scale(px, py, 1 - 0.2 * k); t.scale(px, py - 1, 1 + 0.08 * k);
+      px += Math.cos(dir); py += Math.sin(dir) * 0.6 + (rng.next() - 0.5) * 0.6;
+    }
+  }
+  // Pebbles kicked out to the rim of the oval.
+  for (let n = 0; n < 34; n++) {
+    const a = rng.next() * Math.PI * 2, r = 0.95 + rng.next() * 0.3;
+    const u = Math.cos(a) * RU * r, v = Math.sin(a) * RV * r;
+    const px = tx(cx + u * ca - v * sa), py = tz(cz + u * sa + v * ca);
+    if (!t.inside(px, py)) continue;
+    t.set(px, py, pebble[0]); if (rng.chance(0.6)) t.set(px + 1, py, pebble[1]);
+    t.set(px, py + 1, pebble[2]); if (rng.chance(0.3)) t.set(px + 1, py + 1, pebble[2]);
   }
 }
 
@@ -114,9 +142,11 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     const wob = Math.sin(x * 1.1 + z * 0.7) * 0.35 + Math.sin(z * 1.9 - x * 0.5) * 0.25;
     const e = Math.hypot(x / 7.0, (z - 0.2) / 4.5);
     const d = (e - 1) * 5.2 + wob;
+    // Half-LEVEL steps (a full bank at the clearing, then half and full ledges by noise): the
+    // banks read as organic rounded terraces rather than a lattice of equal cubes.
     let lv = 0;
-    if (d > 0) lv = 1 + Math.floor(d / 1.7);
-    if (z < -4.5) lv += Math.floor((-4.5 - z) / 3.4); // the back rises gently
+    if (d > 0) lv = 1 + 0.5 * Math.floor(d / 0.85);
+    if (z < -4.5) lv += 0.5 * Math.floor((-4.5 - z) / 1.7); // the back rises gently
     if (z > 3.8) {
       lv = Math.min(lv, z > 6 ? 2 : 1); // low front ledge lets the camera in
       if (x > frontGap.x0 && x < frontGap.x1) lv = 0;
@@ -124,7 +154,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     if (flowers && z < -4.6 && x > 1.5 && x < 9) lv = Math.min(lv, 2); // a low shelf for the gazebo
     const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
     const n = cl - Math.floor(cl);
-    if (lv > 0) lv = Math.max(1, lv + (n > 0.88 ? 1 : n < 0.08 ? -1 : 0));
+    if (lv > 0) lv = Math.max(1, lv + (n > 0.86 ? 0.5 : n < 0.1 ? -0.5 : 0));
     hm.set(i, j, Math.min(lv, 4));
   }
   const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
@@ -138,11 +168,12 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   for (let k = 0; k < 4; k++) atlas.add('tuft', 16, 13, (p) => paintTuft(p, new Rng(300 + k), R.grass, 9));
   for (let k = 0; k < 3; k++) atlas.add('tall', 20, 26, (p) => paintTuft(p, new Rng(320 + k), R.grass, 14, 1.3));
   // Grass lip hanging over terrace edges.
-  for (let k = 0; k < 4; k++) atlas.add('fringe', 15, 9, (p) => {
+  // Long grass hanging over the rounded terrace lips (ragged tips, a few long strands).
+  for (let k = 0; k < 4; k++) atlas.add('fringe', 15, 14, (p) => {
     const r = new Rng(400 + k);
     for (let x = 0; x < 15; x++) {
-      const len = 2 + r.int(3) + (r.chance(0.3) ? 3 + r.int(2) : 0);
-      for (let y = 0; y < len; y++) p.shade(x, y, R.grass, 4.4 - y * 0.9 - (y === len - 1 ? 0.6 : 0));
+      const len = 3 + r.int(4) + (r.chance(0.35) ? 3 + r.int(5) : 0);
+      for (let y = 0; y < len; y++) p.band(x, y, R.grass, 5.0 - y * 0.55 - (y === len - 1 ? 0.8 : 0));
     }
   }, [7.5, 0]);
   // Flowers: clumps in several colours (more and bigger in the flower field).
@@ -165,7 +196,11 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   const texTurf = cachedTexture('od-turf-meadow', () => paintTurf(32, R.turf, 32, { lo: 2.2, hi: 4.6, flecks: 0.06 }));
   const sides = new VoxelBatch(32);
   const tops = new VoxelBatch(32);
-  terraces(hm, sides, tops, rng, { topK: 1.0, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(7), chance: 1 } });
+  const stone = new VoxelBatch(32);
+  terraces(hm, sides, tops, rng, { topK: 1.0, lip: 0.15, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(7), chance: 1, long: 1.1 }, rocks: { batch: stone, chance: 0.12 } });
+  // Foreground occluders (the near ledges) sit a little darker: depth from local shade, not vignette.
+  const nearShade = (x: number, y: number, z: number) => 1 - 0.16 * THREE.MathUtils.smoothstep(z, 3.6, 7.5);
+  tops.shade(nearShade); sides.shade(nearShade);
   group.add(mkMesh(sides.build(), extra[extra.push(surfaceMaterial(texEarth, undefined, true)) - 1] as THREE.Material));
   group.add(mkMesh(tops.build(), extra[extra.push(surfaceMaterial(texTurf, undefined, false)) - 1] as THREE.Material));
 
@@ -180,7 +215,6 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   // ---- wood: tree trunks, stump, log, fence, signpost (one bark mesh, one plank mesh)
   const bark = new VoxelBatch(32);
   const wood = new VoxelBatch(32);
-  const stone = new VoxelBatch(32);
   const trunk = (x: number, z: number, h: number, w = 0.62) => {
     const y = topAt(x, z) - 0.05;
     const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2);
@@ -206,9 +240,11 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     : [[-10.8, -5.4, 1.2, false], [-7.0, -6.6, 1.3, true], [-2.6, -6.9, 1.15, false], [1.6, -7.2, 1.25, true], [5.6, -6.6, 1.15, false], [9.6, -5.6, 1.3, true], [-11.8, -1.0, 1.2, false], [11.8, -1.6, 1.25, true]];
   for (const [x, z, s, w] of backTrees) tree(x, z, s, w);
   // A continuous canopy wall behind the trees closes the top of the frame (and reads as the forest).
+  // (Continuous in both variants: no flat patch of sky at the top of the frame. Over the flower
+  // field the far canopy is lower and sunnier, so the gazebo still reads against it.)
   for (let x = -16; x <= 16; x += 2.6) {
-    if (flowers && x > -1 && x < 9.5) continue; // open sky over the field
-    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: new THREE.Color(0.42, 0.5, 0.52) });
+    const open = flowers && x > -1 && x < 9.5;
+    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), (open ? 3.4 : 4.2) + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: open ? new THREE.Color(0.6, 0.66, 0.6) : new THREE.Color(0.48, 0.56, 0.56) });
   }
   // Bushes on the terraces, tall grass and tufts around the clearing edge.
   for (let i = 0; i < 14; i++) {
@@ -328,21 +364,22 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   const back = backdrop((t) => {
     paintSky(t, R.sky, 0, Math.round(t.h * 0.7));
     const r = new Rng(77);
-    paintSilhouette(t, r, R.far.map((c, i) => R.far[Math.min(R.far.length - 1, i + 2)]!) as unknown as Ramp, t.h * 0.62, 18, 10, t.h);
-    paintSilhouette(t, r, R.far, t.h * 0.76, 22, 9, t.h);
-    paintSilhouette(t, r, R.leaf, t.h * 0.9, 20, 8, t.h);
+    // Three rows of tree line, hazier with distance (aerial perspective).
+    paintSilhouette(t, r, R.far, t.h * 0.62, 18, 10, t.h, { haze: 0.6 });
+    paintSilhouette(t, r, R.far, t.h * 0.76, 22, 9, t.h, { haze: 0.3 });
+    paintSilhouette(t, r, R.leaf, t.h * 0.9, 20, 8, t.h, { haze: 0.08 });
   }, 320, 120, [80, 30], [0, 8, -24]);
   extra.push(back.mesh.material as THREE.Material);
   group.add(back.mesh);
 
   // ---- sun: back-left, through the leaves (dapple cookie), warm; sky-blue/green fill
   const target = new THREE.Vector3(0, 0, 0.3);
-  const cookie = dappleCookie(flowers ? 9 : 4, { holes: flowers ? 0.3 : 0.44, edge: flowers ? 0.6 : 0.42 });
+  const cookie = dappleCookie(flowers ? 9 : 4, { holes: flowers ? 0.26 : 0.36, edge: flowers ? 0.62 : 0.5 });
   extra.push(cookie);
   const sunFrom = flowers ? new THREE.Vector3(0.7, 0.85, -0.6) : new THREE.Vector3(-0.55, 1.0, -0.7);
   const { key, spriteLight } = sunRig(group, {
     target, from: sunFrom, distance: 34, angle: 0.4,
-    color: flowers ? '#ffcf8a' : '#fff0c4', intensity: flowers ? 6.0 : 6.2, cookie,
+    color: flowers ? '#ffd49a' : '#fff2cc', intensity: flowers ? 7.2 : 7.6, cookie,
     sky: flowers ? '#ffd9b0' : '#cfe6ff', ground: flowers ? '#5a5a2a' : '#3e5a2a', hemi: flowers ? 1.6 : 1.75,
     fill: flowers ? '#ffc890' : '#fff6e0', fillIntensity: 0.55, quality: q,
   });
@@ -350,33 +387,31 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   // ---- light shafts through the canopy gaps + pollen motes
   const dir = sunFrom.clone().normalize().negate();
   const beams: BeamSpec[] = [];
-  const gaps: V3[] = flowers
-    ? [[9.0, 4.9, -5.0], [7.2, 5.3, -5.4], [10.8, 4.6, -3.2], [5.8, 5.0, -6.2]]
-    : [[-6.2, 4.9, -5.4], [-4.0, 5.3, -6.0], [-8.3, 4.6, -3.8], [-2.2, 5.0, -5.8], [-5.4, 4.8, -3.6]];
-  for (const [x, y, z] of gaps) {
+  // Three shafts through the canopy gaps, of UNEQUAL width and spacing (a broad main shaft, a
+  // thin one close beside it, a medium one further off) — never a comb of identical beams.
+  const gaps: [number, number, number, number, number][] = flowers
+    ? [[9.6, 4.9, -4.8, 0.5, 1.7], [8.1, 5.3, -5.6, 0.2, 0.65], [5.0, 5.0, -6.2, 0.35, 1.1]]
+    : [[-7.0, 4.9, -5.2, 0.5, 1.8], [-5.5, 5.2, -5.9, 0.2, 0.7], [-2.2, 5.0, -5.6, 0.35, 1.2]];
+  for (const [x, y, z, w0, w1] of gaps) {
     const s = new THREE.Vector3(x, y, z);
     const len = (y / -dir.y) * (0.94 + rng.next() * 0.06);
-    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [0.35 + rng.next() * 0.2, 1.0 + rng.next() * 0.5] });
+    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w0, w1] });
   }
-  const sun = glints(gaps.map(([x, y, z]) => [x - dir.x * 0.6, y - dir.y * 0.6, z - dir.z * 0.6] as V3), 1.6, flowers ? '#ffd890' : '#fff4d0', 2.4);
-  extra.push(sun.points.geometry, sun.points.material as THREE.Material);
-  group.add(sun.points);
-  updates.push(sun.update);
-  const rays = lightBeams(beams, flowers ? '#ffd8a0' : '#fff2c4', flowers ? 0.2 : 0.22);
+  const rays = lightBeams(beams, flowers ? '#ffd8a0' : '#fff2c4', flowers ? 0.22 : 0.24);
   extra.push(rays.mesh.geometry, rays.mesh.material as THREE.Material);
   group.add(rays.mesh);
   updates.push(rays.update);
-  // Pollen: in the shafts, plus slow drifting volumes across the clearing.
-  const drift: BeamSpec[] = [
-    { start: new THREE.Vector3(-7, 1.4, -2), end: new THREE.Vector3(7, 2.0, -1.5), width: [3.5, 3.5] },
-    { start: new THREE.Vector3(7, 1.0, 2.5), end: new THREE.Vector3(-7, 1.6, 2.0), width: [3, 3] },
-  ];
-  const motes = dustMotes([...beams, ...drift], q === 'high' ? 34 : 18, rng, flowers ? '#ffe2a8' : '#fff4b0');
+  // Motes inside the shafts, and a sparse pollen drift (kit preset) across the clearing.
+  const motes = dustMotes(beams, q === 'high' ? 26 : 14, rng, flowers ? '#ffe2a8' : '#fff4b0');
   extra.push(motes.points.geometry, motes.points.material as THREE.Material);
   group.add(motes.points);
   updates.push(motes.update);
-  // Soft light pools where the shafts land.
-  const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 2.4, 1.8] as [number, number, number, number]), flowers ? '#8a6a40' : '#6a6a40');
+  const pollen = particleSystem('pollen', { min: [-7, 0.4, -3.5], max: [7, 2.6, 3.5], count: q === 'high' ? 25 : 16 }, rng);
+  extra.push(pollen);
+  group.add(pollen.points);
+  updates.push(pollen.update);
+  // Soft-rect light pools where the shafts land (sized by the shaft).
+  const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 1.2 + b.width[1] * 1.1, 0.9 + b.width[1] * 0.75] as [number, number, number, number]), flowers ? '#8a6a40' : '#6a6a40');
   group.add(pools);
 
   return {
@@ -387,7 +422,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     spriteLight,
     key,
     update(t) { for (const u of updates) u(t); },
-    setPixelSize(px) { motes.setPixelSize(px); },
+    setPixelSize(px) { motes.setPixelSize(px); pollen.setPixelSize(px); },
     dispose() { disposeGroup(group, extra); },
   };
 }
@@ -422,16 +457,16 @@ function paintMeadowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
     const isDirt = dirtK > 0 && !(edge && hash2(x, y, 2) < 0.5 - dirtK * 0.8);
     if (isDirt) {
       // Trodden dirt: lighter in the worn centre, blotchy, with grit.
-      let v = 2.2 + (n - 0.5) * 2.4 + Math.min(1, dirtK * 0.25) * 0.9 + (m - 0.5) * 0.6;
+      let v = 2.4 + (n - 0.5) * 2.4 + Math.min(1, dirtK * 0.25) * 0.9 + (m - 0.5) * 0.6;
       if (hash2(x, y, 3) < 0.06) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
-      t.set(x, y, R.dirt[ditherIndex(v, x, y, R.dirt.length)]!);
+      t.band(x, y, R.dirt, v);
     } else {
       // Grass: two-tone mottling + blade flecks (light tip over a dark root texel).
-      let v = 2.0 + (n - 0.5) * 2.6 + (m - 0.5) * 1.4 - (edge ? 0.6 : 0);
+      let v = 2.2 + (n - 0.5) * 2.6 + (m - 0.5) * 1.4 - (edge ? 0.6 : 0);
       const h = hash2(x, y, 1);
       if (h < 0.11) v += 1.6;
       else if (hash2(x, y - 1, 1) < 0.11) v -= 1.1;
-      t.set(x, y, R.grass[ditherIndex(v, x, y, R.grass.length)]!);
+      t.band(x, y, R.grass, v);
     }
   }
   // Pebbles on the dirt, clover and tiny flowers in the grass, fallen leaves.
@@ -453,7 +488,7 @@ function paintMeadowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
       t.set(x, y, leaf[6]!); t.set(x + 1, y, leaf[5]!); t.set(x + 1, y + 1, leaf[4]!);
     }
   }
-  if (trainer) paintChalkRing(t, wx, wz);
+  if (trainer) paintTrodden(t, wx, wz);
 }
 
 export const ARENA: ArenaDef = {

@@ -6,31 +6,31 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, dustMotes, lightBeams, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
-import { cachedTexture, ditherIndex, type Ramp } from '../textures';
+import { cachedTexture, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
-import { MEADOW_RAMPS, nearStage, paintChalkRing } from './meadow';
+import { MEADOW_RAMPS, nearStage, paintTrodden } from './meadow';
 import {
   Foliage, SpriteAtlas, backdrop, disposeGroup, glints, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
   paintCanopy, paintEarth, paintSilhouette, paintSky, paintTuft, paintTurf, paintVine, sunRig, terraces, type RgbaTile, type V3,
 } from './outdoorKit';
 
 export const HOLLOW_RAMPS = {
-  rock: ['#262826', '#363a35', '#484d45', '#5c6257', '#727869', '#8b907e', '#a6a893'],
-  moss: ['#132519', '#1b351e', '#264a24', '#345f2a', '#467631', '#5d8e39', '#7ba746'],
-  floor: ['#2e2c27', '#403d35', '#535045', '#686355', '#7d7866', '#948d79', '#aba38d'],
+  rock: ['#2c2e2a', '#3e423b', '#52574d', '#686e60', '#7f8573', '#989c86', '#b2b49c'],
+  moss: ['#182b1c', '#213d22', '#2e5229', '#3e6830', '#517f37', '#6a9840', '#88b04c'],
+  floor: ['#3a3730', '#4d493f', '#625d50', '#787262', '#8e8774', '#a59e88', '#bdb59d'],
   water: ['#0d1f26', '#123039', '#17434c', '#1e5960', '#2b7273', '#4c9590', '#8ac3b4', '#d6f0dc'],
   shroom: ['#1a2c3a', '#2a5a6a', '#46a2a8', '#8ee8de', '#e6fff6'],
 } as const satisfies Record<string, Ramp>;
 
 export function hollowGrade(): Grade {
   return {
-    lift: new THREE.Vector3(0.006, 0.012, 0.012), gamma: new THREE.Vector3(1.0, 1.0, 1.0), gain: new THREE.Vector3(1.03, 1.02, 0.95),
-    saturation: 0.95, contrast: 1.08,
-    shadowTint: new THREE.Color('#1a2c34'), highTint: new THREE.Color('#fff0bc'), splitAmount: 0.16,
-    vignette: 0.46, vignetteSoft: 0.55,
+    lift: new THREE.Vector3(0.006, 0.012, 0.012), gamma: new THREE.Vector3(1.1, 1.1, 1.1), gain: new THREE.Vector3(1.03, 1.02, 0.95),
+    saturation: 0.8, contrast: 1.05,
+    shadowTint: new THREE.Color('#1a2c34'), highTint: new THREE.Color('#fff0bc'), splitAmount: 0.12,
+    vignette: 0.22, vignetteSoft: 0.7,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
-    dither: 2.0, exposure: 1.06,
+    dither: 2.0, exposure: 1.5,
   };
 }
 
@@ -54,22 +54,20 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   const hm = new Heightmap(32, 24, X0, Z0);
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
-    const wob = Math.sin(x * 1.3 + z * 0.7) * 0.35 + Math.sin(z * 2.1 - x * 0.4) * 0.25;
-    const dx = Math.max(0, Math.abs(x) - 5.8 - wob);
-    const dzB = Math.max(0, -3.4 - z - wob * 0.6);
-    const dzF = Math.max(0, z - 3.8 - wob * 0.5);
+    const wob = Math.sin(x * 1.3 + z * 0.7) * 0.35 + Math.sin(z * 2.1 - x * 0.4) * 0.25 + Math.sin(x * 0.45 - z * 0.8 + 1.7) * 0.3;
+    // Organic clearing: an ellipse SDF with a wobbling rim (no rectangle), rising in half and
+    // full steps; the front stays low so the camera sees in.
+    const e = Math.hypot(x / 6.3, (z - 0.2) / 4.0);
+    const d = (e - 1) * 5.2 + wob;
     let lv = 0;
-    if (dzF > 0 && dx <= 0) lv = Math.min(2, 1 + Math.floor(dzF / 2.4));
-    else {
-      const d = Math.max(dx, dzB, dzF * 0.6);
-      if (d > 0) lv = 1 + Math.floor(d / 1.3) + (d > 2.6 ? Math.floor((d - 2.6) / 0.9) : 0);
-    }
+    if (d > 0) lv = 1 + 0.5 * Math.floor(d / 0.7) + (d > 2.6 ? Math.floor((d - 2.6) / 0.9) : 0);
+    if (z > 3.4) lv = Math.min(lv, z > 5.6 ? 2 : 1);
     // The passage: low ground climbing gently out toward the meadow behind the arch.
     if (x > GAP.x0 && x < GAP.x1 && z < -2.6) lv = Math.min(lv, z > GAP.z - 1.4 ? 0 : 1 + Math.floor((GAP.z - 1.4 - z) / 2.4));
     if (lv > 0 && lv < 8) {
       const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
       const n = cl - Math.floor(cl);
-      lv = Math.max(1, lv + (n > 0.8 ? 1 : n < 0.1 ? -1 : 0));
+      lv = Math.max(1, lv + (n > 0.8 ? 0.5 : n < 0.1 ? -0.5 : 0));
     }
     hm.set(i, j, Math.min(lv, 9));
   }
@@ -78,11 +76,11 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   // ---- atlas: vines, moss fringe, ferns, tufts, bushes for the meadow outside
   const atlas = new SpriteAtlas(256);
   for (let k = 0; k < 4; k++) atlas.add('vine', 7, 28 + k * 8, (p) => paintVine(p, new Rng(600 + k), H.moss), [3.5, 0]);
-  for (let k = 0; k < 4; k++) atlas.add('fringe', 15, 10, (p) => {
+  for (let k = 0; k < 4; k++) atlas.add('fringe', 15, 14, (p) => {
     const r = new Rng(620 + k);
     for (let x = 0; x < 15; x++) {
-      const len = 2 + r.int(3) + (r.chance(0.3) ? 3 + r.int(4) : 0);
-      for (let y = 0; y < len; y++) p.shade(x, y, H.moss, 4.6 - y * 0.8 - (y === len - 1 ? 0.6 : 0));
+      const len = 3 + r.int(4) + (r.chance(0.35) ? 3 + r.int(5) : 0);
+      for (let y = 0; y < len; y++) p.band(x, y, H.moss, 5.0 - y * 0.55 - (y === len - 1 ? 0.7 : 0));
     }
   }, [7.5, 0]);
   for (let k = 0; k < 3; k++) atlas.add('fern', 22, 16, (p) => paintTuft(p, new Rng(640 + k), H.moss, 10, 2.2));
@@ -98,7 +96,13 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   const texMoss = cachedTexture('od-moss-hollow', () => paintTurf(72, H.moss, 32, { lo: 1.8, hi: 4.6, flecks: 0.1 }));
   const sides = new VoxelBatch(32);
   const tops = new VoxelBatch(32);
-  terraces(hm, sides, tops, rng, { topK: 1.0, jitter: 0.3, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(9), chance: 0.7 } });
+  const stone = new VoxelBatch(32);
+  terraces(hm, sides, tops, rng, { topK: 1.0, jitter: 0.26, lip: 0.15, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(9), chance: 1, long: 1.1 }, rocks: { batch: stone, chance: 0.1 } });
+  const nearShade = (x: number, y: number, z: number) => 1 - 0.14 * THREE.MathUtils.smoothstep(z, 3.4, 7.0);
+  tops.shade(nearShade); sides.shade(nearShade);
+  // Upper walls catch the sky from the open meadow above: lighter toward the rim.
+  sides.shade((x, y) => 1 + 0.5 * Math.min(1, Math.max(0, y) / 4));
+  tops.shade((x, y) => 1 + 0.12 * Math.min(1, Math.max(0, y) / 4));
   // The arch over the passage: a lintel of blocks spanning the wall, with a ragged underside.
   for (let x = GAP.x0 - 0.45; x < GAP.x1 + 0.45; x += CELL) {
     const sag = (hash2(Math.round(x * 3), 1, 3) < 0.5 ? 1 : 0) * 0.35;
@@ -128,7 +132,6 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   updates.push(water.update);
 
   // ---- stones: pool rim, rubble at the wall feet
-  const stone = new VoxelBatch(32);
   for (let k = 0; k < 22; k++) {
     const a = (k / 22) * Math.PI * 2 + rng.next() * 0.2;
     const x = POOL.x + Math.cos(a) * (POOL.rx + 0.1), z = POOL.z + Math.sin(a) * (POOL.rz + 0.08);
@@ -198,8 +201,8 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   const back = backdrop((t) => {
     paintSky(t, MEADOW_RAMPS.sky, 0, Math.round(t.h * 0.75));
     const r = new Rng(81);
-    paintSilhouette(t, r, MEADOW_RAMPS.far, t.h * 0.7, 16, 9, t.h);
-    paintSilhouette(t, r, MEADOW_RAMPS.leaf.slice(2) as unknown as Ramp, t.h * 0.88, 18, 8, t.h);
+    paintSilhouette(t, r, MEADOW_RAMPS.far, t.h * 0.7, 16, 9, t.h, { haze: 0.5 });
+    paintSilhouette(t, r, MEADOW_RAMPS.leaf.slice(2) as unknown as Ramp, t.h * 0.88, 18, 8, t.h, { haze: 0.15 });
   }, 200, 90, [40, 18], [-4, 6, -18]);
   extra.push(back.mesh.material as THREE.Material);
   group.add(back.mesh);
@@ -211,7 +214,7 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   const { key, spriteLight } = sunRig(group, {
     target: new THREE.Vector3(-1.2, 0, 0.4), from: sunFrom, distance: 30, angle: 0.26,
     color: '#fff0c8', intensity: 8.0, cookie,
-    sky: '#b8d6c8', ground: '#3a3628', hemi: 2.1,
+    sky: '#c8e0d0', ground: '#4a4434', hemi: 2.7,
     fill: '#d8e4d8', fillIntensity: 0.7, quality: q,
   });
   if (q === 'high') {
@@ -221,10 +224,11 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   }
   const dir = sunFrom.clone().normalize().negate();
   const beams: BeamSpec[] = [];
-  for (const [ox, oy] of [[-0.8, 0.2], [-0.35, -0.3], [0.1, 0.25], [0.55, -0.15], [0.9, 0.3]] as const) {
+  // Three shafts of unequal width and spacing through the passage (broad, thin, medium).
+  for (const [ox, oy, w0, w1] of [[-0.75, 0.2, 0.55, 1.9], [-0.3, -0.25, 0.2, 0.7], [0.75, 0.1, 0.38, 1.25]] as const) {
     const s = new THREE.Vector3((GAP.x0 + GAP.x1) / 2 + 0.6 + ox * (GAP.x1 - GAP.x0) * 0.5, ARCH_Y + 0.6 + oy * 0.6, GAP.z - 0.4);
     const len = (s.y / -dir.y) * (0.93 + rng.next() * 0.07);
-    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [0.45, 1.0 + rng.next() * 0.5] });
+    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w0, w1] });
   }
   const rays = lightBeams(beams, '#fff0c4', 0.24);
   extra.push(rays.mesh.geometry, rays.mesh.material as THREE.Material);
@@ -238,7 +242,7 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   extra.push(sparkle.points.geometry, sparkle.points.material as THREE.Material);
   group.add(sparkle.points);
   updates.push(sparkle.update);
-  const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 2.0, 1.6] as [number, number, number, number]), '#706a48');
+  const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 1.1 + b.width[1] * 1.1, 0.9 + b.width[1] * 0.7] as [number, number, number, number]), '#706a48');
   group.add(pools);
 
   return {
@@ -284,13 +288,13 @@ function paintHollowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
     // Moss creeps in from the walls; wet dark rim around the pool; worn light centre.
     const moss = (e - 0.95) * 3 + (n - 0.5) * 1.6 + (m - 0.5);
     if (moss > 0.4 && hash2(x, y, 6) < Math.min(1, moss - 0.2)) {
-      t.set(x, y, H.moss[ditherIndex(2.4 + (n - 0.5) * 2.6, x, y, H.moss.length)]!);
+      t.band(x, y, H.moss, 2.6 + (n - 0.5) * 2.6);
       continue;
     }
-    let v = 2.6 + (n - 0.5) * 2.6 + (m - 0.5) * 0.8 + Math.max(0, 0.9 - e) * 0.9;
+    let v = 2.2 + (n - 0.5) * 3.2 + (m - 0.5) * 1.0 + Math.max(0, 0.9 - e) * 0.7;
     if (pd < 1.45) v -= (1.45 - pd) * 3.2;
     if (hash2(x, y, 3) < 0.05) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
-    t.set(x, y, H.floor[ditherIndex(v, x, y, H.floor.length)]!);
+    t.band(x, y, H.floor, v);
   }
   // Flat stones set into the floor (flagstone hints) and pebbles.
   for (let k = 0; k < 60; k++) {
@@ -303,7 +307,7 @@ function paintHollowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
       t.set(cx + i, cy + j, H.floor[edge ? (j > 0 ? 1 : 5) : 4]!);
     }
   }
-  if (trainer) paintChalkRing(t, wx, wz);
+  if (trainer) paintTrodden(t, wx, wz, [HOLLOW_RAMPS.floor[6], HOLLOW_RAMPS.floor[4], HOLLOW_RAMPS.floor[1]]);
 }
 
 /** Pixel water: a flat ellipse whose colour comes from quantised moving ripples (unlit). */
