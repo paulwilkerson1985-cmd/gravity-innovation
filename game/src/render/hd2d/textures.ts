@@ -20,7 +20,8 @@ export type Ramp = readonly string[];
  * neon); keep that when adding one.
  */
 export const RAMPS = {
-  dirt: ['#45372d', '#605043', '#806a52', '#9a8366', '#b19a7b', '#c6b090', '#d9c6a6'],
+  /** Warm packed earth (cave floor): orange-brown, not beige. */
+  dirt: ['#392d26', '#544237', '#7d583c', '#9a7049', '#b58a5b', '#cfa36f', '#e6bf8a'],
   rock: ['#271b17', '#3d2b23', '#5b3b2a', '#744d36', '#8c6143', '#a37752', '#b98e64'],
   rockTop: ['#433025', '#604634', '#865836', '#a26d42', '#bb8350', '#d29d64'],
   stone: ['#2e2c30', '#454249', '#5d5862', '#77717a', '#928b92', '#aea6aa', '#cbc3c2'],
@@ -35,8 +36,11 @@ export const RAMPS = {
   ember: ['#401712', '#772c1f', '#d2400f', '#ff7a1e', '#ffb444', '#fff0a0'],
   /** Cool light-grey rubble (cave piles, stairs): reads against the warm brown walls. */
   rubble: ['#3b393f', '#57545b', '#716d75', '#8d8890', '#a9a4a9', '#c3bdbc', '#d8d2cc'],
-  /** Earthy yellow-brown boulder rock (kit/rock.ts walls; less red than `rock`). */
-  boulder: ['#271e18', '#3e3024', '#5d452c', '#77593a', '#906d48', '#a88358', '#bf9a6c'],
+  /**
+   * Warm red-brown boulder rock (cave walls, kit/rock.ts): saturated deep mids, highlights that
+   * cool to a desaturated tan (lit tops read pale, not orange, under the hue-preserving tone map).
+   */
+  boulder: ['#281a16', '#402920', '#663822', '#83502f', '#9b6a48', '#b38b6c', '#cbab8e'],
   // ---- outdoor kit ramps (kit/*): grounds, foliage, water, sky
   sand: ['#66523e', '#846e53', '#ad8c5c', '#c6a670', '#d9be88', '#e8d4a2', '#f4e6c0'],
   grass: ['#223621', '#2f4b2b', '#386a2c', '#4b8434', '#649e3e', '#84b74c', '#a9cc62'],
@@ -251,43 +255,39 @@ function boulderBase(rng: Rng, size: number, ramp: Ramp): PixelTile {
   const half = size / 2;
   const f = fbm(half, rng, [[Math.max(2, half / 8), 0.35], [Math.max(4, half / 4), 0.4], [Math.max(8, half / 2), 0.25]]);
   const n = ramp.length;
+  // Mottling on 2×2 clusters, posterised into flat shades (sparse blue-noise dither at the band
+  // edges only — no Bayer checkers on stone).
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const v = f[(y >> 1) * half + (x >> 1)]!;
-    t.idx[y * size + x] = ditherIndex(2.0 + Math.max(0, Math.min(1, 0.5 + (v - 0.5) * 1.1)) * (n - 3.2), x >> 1, y >> 1, n);
+    const v = Math.max(0, Math.min(1, 0.5 + (f[(y >> 1) * half + (x >> 1)]! - 0.5) * 1.1));
+    const pos = 2.0 + v * (n - 3.2);
+    const e = pos - (Math.floor(pos) + 0.5);
+    t.idx[y * size + x] = Math.abs(e) < 0.12 ? Math.floor(pos) + ((e + 0.12) / 0.24 > clusterNoise(x, y) ? 1 : 0) : Math.round(pos);
   }
-  facets(t, rng, Math.round((size * size) / 120));
+  lumps(t, rng, Math.round((size * size) / 70));
+  // Sparse dark specks (relative, 2 shades into the stone).
+  for (let i = 0; i < size * 0.2; i++) { const x = rng.int(size), y = rng.int(size); t.nudge(x, y, -2); if (rng.chance(0.5)) t.nudge(x + 1, y, -1); }
   return t;
 }
 
 /**
- * Chipped facets (tileable Voronoi): each facet a shade up, down or level, with a lit texel on
- * its upper-left rim and a dark one on its lower-right — the hand-shaded lumps of pixel rock.
+ * Rough lumps (tileable Voronoi): each lump a shade up, down or level, lit on its upper part and
+ * shaded on its lower part (light from above) — the knobbly surface of hand-pixelled rock.
  */
-function facets(t: PixelTile, rng: Rng, count: number) {
+function lumps(t: PixelTile, rng: Rng, count: number) {
   const { w, h } = t;
-  const seeds = Array.from({ length: count }, () => [rng.next() * w, rng.next() * h, rng.chance(0.18) ? -1 : rng.chance(0.25) ? 1 : 0, rng.chance(0.6) ? 1 : 0] as const);
-  const owner = new Int16Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let best = 1e9, bi = 0;
-    seeds.forEach(([sx, sy], i) => {
-      let dx = Math.abs(x + 0.5 - sx), dy = Math.abs(y + 0.5 - sy);
-      dx = Math.min(dx, w - dx); dy = Math.min(dy, h - dy);
-      const d = dx * dx * 0.7 + dy * dy; // a little wider than tall
-      if (d < best) { best = d; bi = i; }
-    });
-    owner[y * w + x] = bi;
-  }
-  const own = (x: number, y: number) => owner[((y + h) % h) * w + ((x + w) % w)]!;
+  const seeds = Array.from({ length: count }, () => [rng.next() * w, rng.next() * h, rng.chance(0.2) ? -1 : rng.chance(0.2) ? 1 : 0, 1.5 + rng.next() * 1.5] as const);
   const d = new Int8Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const o = own(x, y);
-    let k: number = seeds[o]![2];
-    // Rims on some facets only: a dark lower edge, a lit upper edge.
-    if (seeds[o]![3]) {
-      if (own(x, y + 1) !== o) k -= 1;
-      else if (own(x, y - 1) !== o) k += 1;
-    }
-    d[y * w + x] = k;
+    let best = 1e9, by = 0, bi = 0;
+    seeds.forEach(([sx, sy], i) => {
+      let dx = x + 0.5 - sx, dy = y + 0.5 - sy;
+      if (dx > w / 2) dx -= w; else if (dx < -w / 2) dx += w;
+      if (dy > h / 2) dy -= h; else if (dy < -h / 2) dy += h;
+      const q = dx * dx * 0.6 + dy * dy; // wider than tall
+      if (q < best) { best = q; by = dy; bi = i; }
+    });
+    const [, , off, band] = seeds[bi]!;
+    d[y * w + x] = off + (by < -band ? 1 : by > band ? -1 : 0);
   }
   for (let i = 0; i < d.length; i++) if (d[i]) t.idx[i] = Math.max(0, Math.min(t.ramp.length - 1, t.idx[i]! + d[i]!));
 }
