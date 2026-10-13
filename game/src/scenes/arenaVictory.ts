@@ -13,6 +13,10 @@ import { abtn, seatTag } from './arenaUi';
 import { ERROR_TEXT, type RoomView, type ServerMessage } from '../net/protocol';
 import { endOnline, existingClient } from '../net/session';
 import type { ArenaClient } from '../net/client';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import { stadiumPodium } from '../render/hd2d/arenas/stadium';
+import { Figure } from '../render/hd2d/characters';
+import { Hd2dArenaStage, seatLook } from './hd2dArena';
 
 export interface ArenaVictoryParams {
   summary: MatchSummary;
@@ -38,6 +42,9 @@ export class ArenaVictoryScene extends BaseScene {
   private requested = false;
   private exited = false;
   private spin = 0;
+  /** HD-2D stadium staging (`?gfx=hd2d`). */
+  private hd2d: Hd2dArenaStage | null = null;
+  private winnerFig: Figure | null = null;
 
   enter(params: Record<string, unknown>) {
     const p = params as unknown as ArenaVictoryParams;
@@ -46,15 +53,32 @@ export class ArenaVictoryScene extends BaseScene {
     const s = this.summary;
     const near = p.near ?? 0;
     audio.music('victory');
-    this.set = buildArena(this.scene, {
-      nearColor: SEAT_COLORS[near], farColor: SEAT_COLORS[near === 0 ? 1 : 0], nearDark: SEAT_DARK[near], farDark: SEAT_DARK[near === 0 ? 1 : 0],
-      spots: [new THREE.Vector3(-1.7, 0, 1.3), new THREE.Vector3(1.75, 0, -1.9)],
-    });
+    const color = s.winner === null ? '#ffcf3f' : SEAT_COLORS[s.winner];
+    let pod: { mesh: THREE.Object3D; tops: [THREE.Vector3, THREE.Vector3, THREE.Vector3] };
+    if (hd2dRequested()) {
+      // HD-2D: the podium stands on the stadium turf under the floodlights; the winner beside it.
+      this.hd2d = new Hd2dArenaStage(this.game, this.scene, this.camera, { near, colors: SEAT_COLORS, darks: SEAT_DARK, players: false });
+      this.set = this.hd2d.set;
+      const sp = stadiumPodium(color);
+      pod = { mesh: sp.group, tops: sp.tops };
+      if (s.winner !== null) {
+        const f = new Figure(seatLook(s.winner, SEAT_COLORS[s.winner], SEAT_DARK[s.winner]), 3);
+        f.mesh.scale.setScalar(1.55);
+        f.mesh.position.set(3.05, 0, -0.1);
+        f.mesh.rotation.y = -0.45;
+        this.scene.add(f.mesh);
+        this.hd2d.addFigure(f);
+        this.winnerFig = f;
+      }
+    } else {
+      this.set = buildArena(this.scene, {
+        nearColor: SEAT_COLORS[near], farColor: SEAT_COLORS[near === 0 ? 1 : 0], nearDark: SEAT_DARK[near], farDark: SEAT_DARK[near === 0 ? 1 : 0],
+        spots: [new THREE.Vector3(-1.7, 0, 1.3), new THREE.Vector3(1.75, 0, -1.9)],
+      });
+      pod = podium(color);
+    }
     for (const pl of this.set.platforms) pl.visible = false;
     this.set.cheer(6);
-
-    const color = s.winner === null ? '#ffcf3f' : SEAT_COLORS[s.winner];
-    const pod = podium(color);
     pod.mesh.position.set(0, 0, -0.6);
     this.scene.add(pod.mesh);
     const stand = (speciesId: string, at: THREE.Vector3, i: number, fainted: boolean) => {
@@ -67,6 +91,7 @@ export class ArenaVictoryScene extends BaseScene {
       if (v.hovering) v.root.position.y -= 0.35 * v.baseScale;
       this.scene.add(v.root);
       this.views.push(v);
+      this.hd2d?.attachKin(v, true);
       void v.appear();
     };
     if (s.winner !== null) {
@@ -102,6 +127,7 @@ export class ArenaVictoryScene extends BaseScene {
   override exit() {
     this.exited = true;
     for (const u of this.unsub) u();
+    this.hd2d?.dispose();
     super.exit();
   }
 
@@ -115,13 +141,26 @@ export class ArenaVictoryScene extends BaseScene {
     const land = layoutMode(w, hgt) === 'land';
     const area = freeArea(w, hgt, land ? { top: [q('.arena-win-top')], right: [q('.arena-vcard')] } : { top: [q('.arena-win-top')], bottom: [q('.arena-vcard')] }, 12);
     // Top at 3.5: a tall winner (Pyrelord's crown) on the top step stays clear of the title.
+    if (this.hd2d) {
+      // HD-2D: a higher 3/4 view (the bowl and crowd behind), the winner included on the right.
+      cam.clearViewOffset();
+      const pts = corners(new THREE.Vector3(-2.65, 0, -1.5), new THREE.Vector3(this.winnerFig ? 3.6 : 2.65, 3.5, 0.6));
+      const dist = fitPoints(cam, w, hgt, pts, area, { dir: new THREE.Vector3(-0.08, 0.5, 1), target: new THREE.Vector3(0.3, 1.2, -0.6), fill: 0.9 });
+      this.hd2d.afterFrame(dist);
+      return;
+    }
     const pts = corners(new THREE.Vector3(-2.65, 0, -1.5), new THREE.Vector3(2.65, 3.5, 0.4));
     fitPoints(cam, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.3, 1), target: new THREE.Vector3(0, 1.2, -0.6), fill: 0.92 });
   }
 
+  /** HD-2D pipeline stats (debug hook), or null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
+
   /** Layout checks (debug hook). */
   subjects() {
-    return this.views.map((v, i) => ({ name: `kin${i}`, obj: v.inner }));
+    const out: { name: string; obj: THREE.Object3D }[] = this.views.map((v, i) => ({ name: `kin${i}`, obj: v.inner }));
+    if (this.winnerFig) out.push({ name: 'winner', obj: this.winnerFig.mesh });
+    return out;
   }
 
   override update(_dt: number, t: number) {

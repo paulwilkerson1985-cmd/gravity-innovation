@@ -15,6 +15,10 @@ import { audio } from '../audio/audio';
 import { species } from '../engine';
 import { formatPlayTime } from '../game/state';
 import { corners, fitPoints, freeArea, layoutMode } from './framing';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import { summitPodiums } from '../render/hd2d/arenas/summit';
+import { heroFigure } from '../render/hd2d/characters';
+import { Hd2dHallStage } from './hd2dHall';
 
 const CREDITS = [
   'ORBKIN', '',
@@ -39,14 +43,19 @@ export class VictoryScene extends BaseScene {
   private span: [number, number] = [-2, 2];
   /** Tall screens: two rows of podiums instead of one long line. */
   private narrow = innerWidth / innerHeight < 0.8;
+  /** HD-2D staging (`?gfx=hd2d`): the champion hall, else null. */
+  private hd2d: Hd2dHallStage | null = null;
 
   enter(params: Record<string, unknown>) {
     const g = this.game;
     if (g.player.party.length === 0) g.debugParty();
     this.routeId = String(params.route ?? 'plateau');
-    this.scene.add(makeSky('summit'));
-    addLights(this.scene, 'summit');
-    this.scene.fog = new THREE.Fog('#c7d4ff', 16, 40);
+    if (hd2dRequested()) this.hd2d = new Hd2dHallStage(g, this.scene, this.camera);
+    else {
+      this.scene.add(makeSky('summit'));
+      addLights(this.scene, 'summit');
+      this.scene.fog = new THREE.Fog('#c7d4ff', 16, 40);
+    }
 
     // Stage: a round dais, one podium per kin (tallest in the middle), pillars and banners.
     const party = g.player.party.slice(0, 6);
@@ -74,12 +83,24 @@ export class VictoryScene extends BaseScene {
     for (const x of [-5.6, 5.6]) pillar(b, x, -1.6, 3.2);
     banner(b, -4.4, -2.6, '#5b3fbf');
     banner(b, 3.9, -2.6, '#ff5d73');
-    this.scene.add(new THREE.Mesh(b.build(), flatMaterial()));
-
+    const built = b.build();
     this.rays = lightRays(18, 16, '#fff6cc');
-    this.rays.mesh.position.set(0, 2.2, -5);
-    this.rays.mat.opacity = 0.07;
-    this.scene.add(this.rays.mesh);
+    if (this.hd2d) {
+      // HD-2D: the champion hall is the stage; marble/gold podiums stand in the moonbeam on the crest.
+      built.dispose();
+      this.rays.mesh.geometry.dispose();
+      this.rays.mat.dispose();
+      this.scene.add(summitPodiums(party.map((_, i) => {
+        const rank = order.indexOf(i);
+        const { x, z } = this.slot(i, n);
+        return { x, z, h: (heights[rank] ?? 0.4) + (this.narrow && rank >= 3 ? 0.55 : 0), rank };
+      })));
+    } else {
+      this.scene.add(new THREE.Mesh(built, flatMaterial()));
+      this.rays.mesh.position.set(0, 2.2, -5);
+      this.rays.mat.opacity = 0.07;
+      this.scene.add(this.rays.mesh);
+    }
 
     party.forEach((c, i) => {
       const rank = order.indexOf(i);
@@ -89,13 +110,22 @@ export class VictoryScene extends BaseScene {
       v.root.rotation.y = -x * 0.08;
       this.scene.add(v.root);
       this.views.push(v);
+      this.hd2d?.addKin(v);
       void v.appear();
     });
     // You stand at the open end of the line-up (never in front of a podium), facing your team.
     const xs = party.map((_, i) => this.slot(i, n).x);
     const right = Math.max(0, ...xs);
-    const you = personMesh(PLAYER_LOOK);
-    you.scale.setScalar(1.25);
+    let you: THREE.Object3D;
+    if (this.hd2d) {
+      const fig = heroFigure();
+      fig.mesh.scale.setScalar(1.45);
+      this.hd2d.addFigure(fig);
+      you = fig.mesh;
+    } else {
+      you = personMesh(PLAYER_LOOK);
+      you.scale.setScalar(1.25);
+    }
     if (this.narrow) you.position.set(2.95, 0, -1.45);
     else you.position.set(right + 1.55, 0, 0.35);
     you.rotation.y = -0.6;
@@ -166,9 +196,22 @@ export class VictoryScene extends BaseScene {
     // landscape phone and on wide screens, where the sheet is a side column).
     const side = layoutMode(w, hgt) !== 'portrait';
     const area = freeArea(w, hgt, side ? { top: [this.top], right: [this.sheet] } : { top: [this.top], bottom: [this.sheet] }, 6);
-    const pts = corners(new THREE.Vector3(this.span[0], 0, this.narrow ? -2.6 : -2.0), new THREE.Vector3(this.span[1], this.narrow ? 3.1 : 2.5, 0.9));
-    const dist = fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.22, 1), target: new THREE.Vector3((this.span[0] + this.span[1]) / 2, 1.1, -0.5), fill: 0.98 });
+    // HD-2D: never frame tighter than the crest (the hall is part of the picture).
+    const sx0 = this.hd2d ? Math.min(this.span[0], -3.6) : this.span[0], sx1 = this.hd2d ? Math.max(this.span[1], 3.6) : this.span[1];
+    const pts = corners(new THREE.Vector3(sx0, 0, this.narrow ? -2.6 : -2.0), new THREE.Vector3(sx1, this.narrow ? 3.1 : 2.5, 0.9));
+    this.camera.clearViewOffset();
+    const dir = this.hd2d ? new THREE.Vector3(0, 0.42, 1) : new THREE.Vector3(0, 0.22, 1);
+    const dist = fitPoints(this.camera, w, hgt, pts, area, { dir, target: new THREE.Vector3((this.span[0] + this.span[1]) / 2, 1.1, -0.5), fill: this.hd2d ? 0.9 : 0.98 });
+    if (this.hd2d) { this.hd2d.afterFrame(dist); return; }
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 6; this.scene.fog.far = dist + 40; }
+  }
+
+  /** HD-2D pipeline stats (debug hook), or null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
+
+  override exit() {
+    this.hd2d?.dispose();
+    super.exit();
   }
 
   /** Layout checks (debug hook). */
@@ -179,6 +222,7 @@ export class VictoryScene extends BaseScene {
   override update(_dt: number, t: number) {
     this.conf.update(t);
     this.rays.mesh.rotation.z = t * 0.12;
+    this.hd2d?.update(t);
     this.views.forEach((v) => v.update(t));
   }
 }

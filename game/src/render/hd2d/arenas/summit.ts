@@ -470,3 +470,22 @@ export const ARENA: ArenaDef = {
   // Portrait: a lower camera so the dais and Vale clear the foe panel.
   camera: { portrait: { elev: 0.62, foe: [0.64, 0.38], mine: [0.38, 0.555] } },
 };
+
+/**
+ * Hall of Fame podiums for the champion hall: octagonal marble drums with gilt caps (the top
+ * rank wears a full gold cap). Two meshes. `list`: centre x/z, height, rank (0 = champion).
+ */
+export function summitPodiums(list: { x: number; z: number; h: number; rank: number }[], seed = 9): THREE.Group {
+  const rng = new Rng(seed);
+  const marble = new Pieces(32), gold = new Pieces(16);
+  for (const p of list) {
+    marble.aabb([p.x - 0.62, 0, p.z - 0.62], [p.x + 0.62, 0.14, p.z + 0.62], shade(0.92), rng, { aoBottom: 0.5 });
+    marble.column(p.x, p.z, 0.14, p.h - 0.08, 0.5, shade(p.rank === 0 ? 1.1 : 1.0), rng);
+    gold.aabb([p.x - 0.56, p.h - 0.08, p.z - 0.56], [p.x + 0.56, p.h, p.z + 0.56], shade(p.rank === 0 ? 1.15 : 0.8), rng);
+    if (p.rank === 0) gold.aabb([p.x - 0.4, p.h * 0.45, p.z + 0.49], [p.x + 0.4, p.h * 0.6, p.z + 0.53], shade(1.1), rng);
+  }
+  const g = new THREE.Group();
+  g.add(litMesh(marble.build(), surfaceMaterial(cachedTexture('summit-marble', () => paintMarble(47, NIGHT.marble, 32)), undefined, true)));
+  g.add(litMesh(gold.build(), surfaceMaterial(cachedTexture('summit-gilt', () => paintBlock(57, NIGHT.gold, 16)), '#3a2408', true)));
+  return g;
+}

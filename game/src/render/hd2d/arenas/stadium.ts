@@ -470,3 +470,27 @@ export const ARENA: ArenaDef = {
   fog: '#241a40',
   fogRange: [12, 45],
 };
+
+/**
+ * The victory podium for the stadium: three cut-stone steps (centre highest) with gilt rims and
+ * the winner's colour on the risers. Two meshes (stone, paint). Returns the step tops.
+ */
+export function stadiumPodium(color: string, seed = 5): { group: THREE.Group; tops: [THREE.Vector3, THREE.Vector3, THREE.Vector3]; dispose(): void } {
+  const rng = new Rng(seed);
+  const stone = new Pieces(32), paint = new Pieces(16);
+  const steps: [number, number][] = [[0, 1.05], [-1.75, 0.7], [1.75, 0.48]];
+  const tops: THREE.Vector3[] = [];
+  for (const [x, h] of steps) {
+    stone.aabb([x - 0.82, 0, -0.75], [x + 0.82, h, 0.75], shade(x === 0 ? 1.15 : 1.0), rng, { aoBottom: 0.55, topK: 1.2 });
+    paint.aabb([x - 0.86, h, -0.79], [x + 0.86, h + 0.07, 0.79], new THREE.Color('#ffcf3f'), rng);
+    paint.aabb([x - 0.6, h * 0.2, 0.75], [x + 0.6, h * 0.8, 0.79], new THREE.Color(color).multiplyScalar(1.1), rng);
+    tops.push(new THREE.Vector3(x, h + 0.07, 0));
+  }
+  // Rank pips on the risers: 1 / 2 / 3 gold studs.
+  steps.forEach(([x, h], i) => { for (let k = 0; k <= i; k++) paint.aabb([x - 0.1 * i + k * 0.2 - 0.06, h * 0.5 - 0.06, 0.79], [x - 0.1 * i + k * 0.2 + 0.06, h * 0.5 + 0.06, 0.82], new THREE.Color('#fff6e0'), rng); });
+  paint.aabb([-2.8, 0, -1.0], [2.8, 0.04, 1.05], new THREE.Color('#2a2250'), rng);
+  const group = new THREE.Group();
+  const mats = [surfaceMaterial(cachedTexture('stadium-marble', () => paintBlock(83, NIGHT.marble, 32)), undefined, true), surfaceMaterial(cachedTexture('stadium-paint', () => paintIron(73, NIGHT.neutral, 16)), undefined, true)];
+  group.add(litMesh(stone.build(), mats[0]!), litMesh(paint.build(), mats[1]!));
+  return { group, tops: tops as [THREE.Vector3, THREE.Vector3, THREE.Vector3], dispose: () => mats.forEach((m) => m.dispose()) };
+}
