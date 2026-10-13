@@ -6,10 +6,11 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { TEXEL, VoxelBatch, dustMotes, lightBeams, surfaceMaterial, windowCookie, type BeamSpec } from '../arena';
-import { PixelTile, RAMPS, cachedTexture, paintPlanks, paintStone, paintSteel, pixelTexture, type Ramp } from '../textures';
+import { PixelTile, RAMPS, cachedTexture, paintPlanks, paintRock, paintStone, paintSteel, pixelTexture, type Ramp } from '../textures';
 import { warmCaveGrade, type Quality } from '../pipeline';
 import type { SpriteLight } from '../sprite';
 import { disposeGroup, mkMesh } from '../arenas/outdoorKit';
+import { RAMPS2 } from '../arenas/localKit';
 import { lightRig } from '../kit/lights';
 import { octSlab, type ScreenSet } from './common';
 
@@ -40,7 +41,11 @@ function paintRoomRug(size = 48): PixelTile {
   return t;
 }
 
-export function buildRoomSet(quality: Quality): RoomSet {
+/**
+ * `dim` (evolution): the same room at dusk — a weaker, cooler window light and a deeper violet
+ * vignette, so the evolution rays and sparkles carry the frame.
+ */
+export function buildRoomSet(quality: Quality, o: { dim?: boolean } = {}): RoomSet {
   const q = quality;
   const rng = new Rng(61);
   const group = new THREE.Group();
@@ -127,11 +132,11 @@ export function buildRoomSet(quality: Quality): RoomSet {
 
   // ---- the plinth: three cut octagonal tiers and a lit top (stone, texel bevel), on a rug
   const plinthB = new VoxelBatch(32);
-  octSlab(plinthB, 0, 0.14, 1.12, W(0.74), 1.08, 0.5);
-  octSlab(plinthB, 0.14, 0.24, 0.98, W(0.86), 1.12, 0.6);
-  octSlab(plinthB, 0.24, 0.5, 0.8, W(0.9), 1.1, 0.62);
-  octSlab(plinthB, 0.5, PLINTH_TOP, 0.92, W(1.02), 1.24, 0.75);
-  const texStone = cachedTexture('scr-room-stone', () => paintStone(17, 32));
+  octSlab(plinthB, 0, 0.14, 1.12, W(0.8), 1.1, 0.5);
+  octSlab(plinthB, 0.14, 0.24, 0.98, W(0.92), 1.14, 0.6);
+  octSlab(plinthB, 0.24, 0.5, 0.8, W(0.95), 1.1, 0.62);
+  octSlab(plinthB, 0.5, PLINTH_TOP, 0.92, W(1.08), 1.26, 0.75);
+  const texStone = cachedTexture('scr-room-plinth', () => paintRock(17, 32, RAMPS2.sandstone));
   const plinthMat = surfaceMaterial(texStone, undefined, true);
   extra.push(plinthMat);
   const plinth = mkMesh(plinthB.build(), plinthMat);
@@ -166,7 +171,10 @@ export function buildRoomSet(quality: Quality): RoomSet {
   const target = new THREE.Vector3(0.2, 0, 0.4);
   const toWin = winC.clone().sub(target).normalize();
   const elev = Math.asin(toWin.y), azim = Math.atan2(toWin.x, -toWin.z);
-  const rig = lightRig(group, 'cave', { quality: q, target: [target.x, target.y, target.z], extent: 3.2, elev, azim, keyK: 2.2, hemiK: 0.62, cookie, sky: '#ffcf9a', ground: '#3a2016' });
+  const rig = lightRig(group, 'cave', {
+    quality: q, target: [target.x, target.y, target.z], extent: 3.2, elev, azim, cookie,
+    keyK: o.dim ? 1.1 : 2.2, hemiK: o.dim ? 0.45 : 0.62, sky: o.dim ? '#b8a8ff' : '#ffcf9a', ground: o.dim ? '#1c1430' : '#3a2016', keyColor: o.dim ? '#d8c8ff' : undefined,
+  });
   extra.push(rig);
   if (q === 'high') {
     for (const x of [-5.9, 5.9]) {
@@ -177,20 +185,21 @@ export function buildRoomSet(quality: Quality): RoomSet {
   }
   // The shaft from the window to the plinth, and motes in it.
   const beam: BeamSpec = { start: winC.clone().add(new THREE.Vector3(0, 0, 0.3)), end: new THREE.Vector3(0.35, 0, 0.6), width: [1.3, 2.4], fade: 0.25 };
-  const rays = lightBeams([beam], '#ffd9a0', 0.36);
+  const rays = lightBeams([beam], o.dim ? '#d8c8ff' : '#ffd9a0', o.dim ? 0.22 : 0.36);
   const motes = dustMotes([beam], q === 'high' ? 40 : 20, rng, '#fff0c8');
   group.add(rays.mesh, motes.points);
   updates.push(rays.update, motes.update);
 
   const spriteLight: SpriteLight = { ...rig.spriteLight, front: 0.6 };
   const grade = warmCaveGrade();
-  grade.vignette = 0.62; grade.vignetteSoft = 0.5;
-  grade.exposure = 1.12;
+  grade.vignette = o.dim ? 0.72 : 0.62; grade.vignetteSoft = 0.5;
+  grade.exposure = o.dim ? 1.0 : 1.12;
+  if (o.dim) { grade.shadowTint = new THREE.Color('#2a1e50'); grade.splitAmount = 0.2; grade.gain.set(0.98, 0.97, 1.04); }
   grade.tiltTop = 1.4; grade.focusTop = 0.7;
   grade.bottomShade = -0.2;
 
   return {
-    group, spriteLight, grade, background: '#120a07', fog: null, plinth,
+    group, spriteLight, grade, background: o.dim ? '#0c0816' : '#120a07', fog: null, plinth,
     update(t) { for (const u of updates) u(t); },
     setPixelSize(px) { motes.setPixelSize(px); },
     dispose() { disposeGroup(group, extra); },
