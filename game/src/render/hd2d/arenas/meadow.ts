@@ -412,12 +412,12 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     foreground(fol, {
       sprites: keys, area: [-15, 4.4, 6, zf + 7], patches: q === 'high' ? 40 : 28, perPatch: [3, 7], rng,
       // The middle of the near bank stays low (the desktop camera looks over it at the stage).
-      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1 && !(x > -4.6 && x < 4.2 && z < 6.4), k: 0.55, scale: [0.95, 1.25],
+      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1 && !(x > -4.6 && x < 4.2 && z < 6.4), k: 0.55,
     });
     // …and only LOW tufts and flower drifts there (dressed for phones, open for desktops).
     foreground(fol, {
       sprites: flowers ? ['flowers-yellow', 'flowers-white', 'flowers-violet', 'tuft'] : ['tuft', 'tuft', 'flowers-white', 'flowers-violet'], area: [-4.6, 4.4, 4.2, 6.4], patches: q === 'high' ? 10 : 7, perPatch: [3, 6], rng,
-      y: (x, z) => topAt(x, z), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1, k: 0.8, scale: [0.85, 1.05],
+      y: (x, z) => topAt(x, z), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1, k: 0.8,
     });
   }
   // Foliage (all sprites): one mesh.
