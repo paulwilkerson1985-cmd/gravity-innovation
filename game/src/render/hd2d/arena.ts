@@ -15,6 +15,7 @@ import { Rng } from '../../engine/rng';
 import { RAMPS, cachedTexture, paintBoulder, paintBoards, paintDirt, paintPlanks, paintPlaster, paintRock, paintRug, paintSteel, paintStone } from './textures';
 import type { SpriteLight } from './sprite';
 import { boulderColumns, pebbles, rubblePile } from './kit/rock';
+import { banner, barrel, bookcase, brazier, crate, table, type PropBatches } from './kit/props';
 
 import { CELL, LEVEL, TEXEL } from './kit/units';
 export { CELL, LEVEL, TEXEL };
@@ -568,35 +569,49 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   }
   metal.box([lodge.x0, ly + 3.0, lodge.z0], [lodge.x1, ly + 3.4, lodge.z0 + 0.35], steelC, rng);
   metal.box([lodge.x0 - 0.05, ly, lodge.z1 - 0.2], [lodge.x0 + 0.25, ly + 3.4, lodge.z1 + 0.1], steelC, rng);
-  // Shelving units with jars, ore and boxes (flat-coloured props).
-  const shelfC = new THREE.Color(1, 1, 1).multiplyScalar(0.9);
-  const itemColors = ['#3f8a58', '#2f5f8f', '#c8452f', '#e0a83a', '#efe2c4', '#7a4fa0', '#4fb8c8'];
-  for (let u = 0; u < 3; u++) {
-    const sx = lodge.x0 + 1.1 + u * 1.5, sz = lodge.z0 + 0.35;
-    wood.box([sx, ly, sz], [sx + 1.25, ly + 1.7, sz + 0.45], shelfC, rng, { skip: [false, false, false, true, true, false] });
-    for (let s = 0; s < 3; s++) {
-      const y = ly + 0.25 + s * 0.52;
-      wood.box([sx + 0.04, y - 0.04, sz + 0.05], [sx + 1.21, y, sz + 0.5], shelfC, rng);
-      let x = sx + 0.1;
-      while (x < sx + 1.12) {
-        const w = 0.08 + rng.next() * 0.14, hh = 0.18 + rng.next() * 0.22;
-        if (x + w > sx + 1.18) break;
-        props.box([x, y, sz + 0.12], [x + w, y + hh, sz + 0.42], new THREE.Color(rng.pick(itemColors)), rng);
-        x += w + 0.02 + (rng.chance(0.25) ? 0.08 : 0);
+  // Fewer, bigger, readable props (kit/props.ts): bookcases with same-hue runs of books,
+  // framed crates, a table, banners on the wall, braziers on the floor.
+  const glowProps = new VoxelBatch(16);
+  const pb: PropBatches = { wood, paint: props, glow: glowProps, stone };
+  const legacyProps = flags.has('oldprops');
+  if (legacyProps) {
+    const shelfC = new THREE.Color(1, 1, 1).multiplyScalar(0.9);
+    const itemColors = ['#3f8a58', '#2f5f8f', '#c8452f', '#e0a83a', '#efe2c4', '#7a4fa0', '#4fb8c8'];
+    for (let u = 0; u < 3; u++) {
+      const sx = lodge.x0 + 1.1 + u * 1.5, sz = lodge.z0 + 0.35;
+      wood.box([sx, ly, sz], [sx + 1.25, ly + 1.7, sz + 0.45], shelfC, rng, { skip: [false, false, false, true, true, false] });
+      for (let s2 = 0; s2 < 3; s2++) {
+        const y = ly + 0.25 + s2 * 0.52;
+        wood.box([sx + 0.04, y - 0.04, sz + 0.05], [sx + 1.21, y, sz + 0.5], shelfC, rng);
+        let x = sx + 0.1;
+        while (x < sx + 1.12) {
+          const w = 0.08 + rng.next() * 0.14, hh = 0.18 + rng.next() * 0.22;
+          if (x + w > sx + 1.18) break;
+          props.box([x, y, sz + 0.12], [x + w, y + hh, sz + 0.42], new THREE.Color(rng.pick(itemColors)), rng);
+          x += w + 0.02 + (rng.chance(0.25) ? 0.08 : 0);
+        }
       }
     }
+  } else {
+    for (let u = 0; u < 3; u++) bookcase(pb, [lodge.x0 + 1.3 + u * 1.55, ly, lodge.z0 + 0.8], rng, { w: 1.4, h: 1.95, d: 0.5 });
   }
-  // Crates, workbench with a lamp, barrel, mine cart, a map board — all props.
-  const crate = (x: number, z: number, s: number, ry: number, y = ly) => wood.rotBox([x, y + s / 2, z], [s, s, s], ry, new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.15), rng);
-  crate(lodge.x0 + 1.0, lodge.z1 - 0.9, 0.5, 0.2);
-  crate(lodge.x0 + 1.55, lodge.z1 - 0.75, 0.42, -0.15);
-  crate(lodge.x0 + 1.25, lodge.z1 - 0.85, 0.36, 0.5, ly + 0.5);
-  crate(-5.2, -2.6, 0.5, 0.3, 0);
-  crate(5.7, 0.4, 0.46, -0.4, 0);
+  // Crates (stacked), a table on the rug, banners, braziers.
+  crate(pb, [lodge.x0 + 1.0, ly, lodge.z1 - 0.9], 0.55, rng, { ry: 0.2 });
+  crate(pb, [lodge.x0 + 1.65, ly, lodge.z1 - 0.75], 0.45, rng, { ry: -0.15 });
+  crate(pb, [lodge.x0 + 1.1, ly + 0.55, lodge.z1 - 0.9], 0.4, rng, { ry: 0.45 });
+  crate(pb, [-5.3, 0, -2.75], 0.55, rng, { ry: 0.3 });
+  crate(pb, [-5.75, 0, -2.4], 0.42, rng, { ry: -0.2 });
+  crate(pb, [5.8, 0, 0.5], 0.5, rng, { ry: -0.4 });
+  barrel(pb, [6.0, 0, -0.35], 0.24, 0.62, rng);
+  if (!legacyProps) {
+    table(pb, [lodge.x0 + 4.4, ly, lodge.z1 - 1.5], [1.5, 0.75, 0.5], rng);
+    banner(pb, [lodge.x0 + 6.1, ly + 2.8, lodge.z0 + 0.02], rng, { w: 0.75, h: 1.5, cloth: '#2f5a8a', trim: '#e0b048' });
+    banner(pb, [lodge.x0 + 7.1, ly + 2.8, lodge.z0 + 0.02], rng, { w: 0.75, h: 1.5, cloth: '#9a3328', trim: '#e0b048' });
+  }
+  const brazierLights = legacyProps ? [] : [brazier(pb, [-5.1, 0, -0.4], rng), brazier(pb, [4.0, 0, -3.0], rng, { r: 0.28, h: 0.7 })];
   // Workbench.
   const benchX = lodge.x1 - 2.6, benchZ = lodge.z0 + 1.5;
-  wood.box([benchX, ly + 0.62, benchZ], [benchX + 1.6, ly + 0.72, benchZ + 0.7], new THREE.Color(1, 1, 1), rng);
-  for (const [a, b] of [[0.05, 0.05], [1.45, 0.05], [0.05, 0.55], [1.45, 0.55]] as const) wood.box([benchX + a, ly, benchZ + b], [benchX + a + 0.1, ly + 0.62, benchZ + b + 0.1], new THREE.Color(0.8, 0.8, 0.8), rng);
+  table(pb, [benchX + 0.8, ly, benchZ + 0.35], [1.6, 0.7, 0.72], rng);
   props.box([benchX + 0.2, ly + 0.72, benchZ + 0.15], [benchX + 0.7, ly + 0.76, benchZ + 0.5], new THREE.Color('#efe2c4'), rng); // papers
   props.box([benchX + 1.1, ly + 0.72, benchZ + 0.2], [benchX + 1.3, ly + 0.95, benchZ + 0.4], new THREE.Color('#2f5f8f'), rng);
   // Mine cart on a short rail by the lodge edge.
@@ -605,9 +620,9 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   props.box([cartX - 0.42, ly + 0.7, cartZ - 0.28], [cartX + 0.42, ly + 0.86, cartZ + 0.28], new THREE.Color('#ff8a3a'), rng); // ember ore
   for (const sx of [-0.32, 0.32]) for (const sz of [-0.36, 0.36]) metal.box([cartX + sx - 0.1, ly, cartZ + sz - 0.03], [cartX + sx + 0.1, ly + 0.2, cartZ + sz + 0.03], rampColor(RAMPS.steel, 0), rng);
   for (const sz of [-0.36, 0.36]) metal.box([lodge.x1 - 2.6, ly, cartZ + sz - 0.03], [lodge.x1 - 0.1, ly + 0.04, cartZ + sz + 0.03], rampColor(RAMPS.steel, 4), rng);
-  // Map board on the wall.
-  wood.box([lodge.x0 + 5.6, ly + 1.2, lodge.z0 - 0.02], [lodge.x0 + 6.8, ly + 2.1, lodge.z0 + 0.06], new THREE.Color(0.75, 0.75, 0.75), rng);
-  for (let i = 0; i < 5; i++) {
+  // Map board on the wall (legacy dressing only: banners replace it).
+  if (legacyProps) wood.box([lodge.x0 + 5.6, ly + 1.2, lodge.z0 - 0.02], [lodge.x0 + 6.8, ly + 2.1, lodge.z0 + 0.06], new THREE.Color(0.75, 0.75, 0.75), rng);
+  if (legacyProps) for (let i = 0; i < 5; i++) {
     const px = lodge.x0 + 5.7 + rng.next() * 0.9, py = ly + 1.3 + rng.next() * 0.55;
     props.box([px, py, lodge.z0 + 0.06], [px + 0.18, py + 0.22, lodge.z0 + 0.08], new THREE.Color(rng.pick(['#efe2c4', '#ffd23f', '#9ad0ff'])), rng);
   }
@@ -637,6 +652,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const win = { x: -2.7, y: 4.0, z: cliffZ - 0.08, w: 2.8, h: 1.8 };
   const win2 = { x: -6.6, y: 4.3, z: cliffZ - 0.08, w: 1.6, h: 1.5 };
   const glow = new VoxelBatch(16);
+  glow.append(glowProps);
   const frame = new VoxelBatch(32);
   const pane = new THREE.Color('#fff2cc').multiplyScalar(3.2);
   const addWindow = (cx: number, cy: number, cz: number, w: number, hh: number, normalX: boolean) => {
@@ -693,7 +709,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     lantern.position.set(lodge.x0 + 4.2, ly + 2.2, lodge.z1 - 1.6);
     group.add(lantern);
     const ember = new THREE.PointLight(new THREE.Color('#ff7a2e'), 3, 4.5, 1.6);
-    ember.position.set(-7.0, 1.2, -4.0);
+    ember.position.copy(brazierLights[0] ?? new THREE.Vector3(-7.0, 1.2, -4.0));
     group.add(ember);
   }
 

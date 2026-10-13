@@ -187,6 +187,24 @@ group.add(new THREE.Mesh(rock.build(), surfaceMaterial(cachedTexture('boulder', 
 - A/B: `?post=nosnap` (no palette snap), `?post=ss1` (no supersampling).
 - People are ≈ 4.7 heads (body remapped: longer legs; head + hat built in their own Kit and
   shrunk 14%), with hair tufts, eye shines, brows, collar, cuffs, knee bands and boot soles.
+### Props — `kit/props.ts`
+Few, big, readable pieces (≥ 0.12 units per detail; colours grouped, not confetti). All take
+`PropBatches = { wood, paint, glow?, stone? }` — your existing batches (`paint` = the neutral
+`paintSteel(…, RAMPS.paint)` texture tinted by vertex colour; `glow` = `MeshBasicMaterial`
+vertex colours, HDR tints bloom).
+
+```ts
+const pb: PropBatches = { wood, paint: props, glow, stone };
+bookcase(pb, [x, floorY, wallZ + 0.8], rng, { w: 1.4, h: 1.95, shelves: 3 }); // runs of same-hue books
+crate(pb, [x, 0, z], 0.55, rng, { ry: 0.3 }); crate(pb, [x, 0.55, z], 0.4, rng); // framed, stackable
+barrel(pb, [x, 0, z], 0.24, 0.62, rng);
+table(pb, [x, 0, z], [1.5, 0.75, 0.5], rng);
+banner(pb, [x, 2.8, wallZ], rng, { cloth: '#2f5a8a', trim: '#e0b048' }); // pole, trim, ring emblem, V tail
+const lightAt = brazier(pb, [x, 0, z], rng);   // returns where a warm PointLight goes (high tier)
+fence(pb, [[-4, 0, 3], [0, 0, 3.5], [4, 0, 3]], rng, { h: 0.7, step: 0.9 });
+lanternPost(pb, [x, 0, z], rng);
+```
+The cave lodge now uses them (`?post=oldprops` = the old dressing for A/B).
 <!-- kit:end -->
 
 ## Conventions for new arenas

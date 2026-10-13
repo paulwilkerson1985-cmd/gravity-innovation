@@ -97,3 +97,24 @@ describe('hd2d kit: sprites', () => {
     expect(bb.max.y).toBeLessThan(1.2);
   });
 });
+
+describe('hd2d kit: props', () => {
+  it('prop builders append finite geometry into the given batches', async () => {
+    const { bookcase, crate, barrel, table, banner, brazier, fence, lanternPost } = await import('../src/render/hd2d/kit/props');
+    const b = { wood: new VoxelBatch(32), paint: new VoxelBatch(16), glow: new VoxelBatch(16), stone: new VoxelBatch(32) };
+    const rng = new Rng(3);
+    bookcase(b, [0, 0, 0], rng);
+    crate(b, [2, 0, 0], 0.5, rng, { ry: 0.3 });
+    barrel(b, [3, 0, 0], 0.25, 0.6, rng);
+    table(b, [4, 0, 0], [1.2, 0.7, 0.6], rng);
+    banner(b, [5, 2, 0], rng);
+    const light = brazier(b, [6, 0, 0], rng);
+    fence(b, [[0, 0, 3], [3, 0, 3], [3, 0, 5]], rng);
+    lanternPost(b, [7, 0, 0], rng);
+    expect(light.y).toBeGreaterThan(0.7);
+    for (const k of ['wood', 'paint', 'glow', 'stone'] as const) {
+      expect(b[k].count).toBeGreaterThan(0);
+      checkGeometry(b[k].build());
+    }
+  });
+});
