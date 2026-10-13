@@ -19,9 +19,16 @@
 //  * DRAW ORDER. Billboards are transparent + alpha-tested at renderOrder 7: after the light
 //    beams (5), dust (6) and normal-blend FX (≤ 6), before additive sparks (≥ 8); they still
 //    depth-test (and write depth) against the set.
-//  * TOON RAMP. Fixed value bands (highlight ×1.22 warm, base, shade ×0.68 cool, core ×0.45),
-//    a per-species palette snap, a 1-texel 8-neighbour selective outline, inner contour lines and
-//    a 1-texel key-side rim. Hit flashes keep a full dark outline.
+//  * FORM + RAMP. The form is lit from the arena's key (blended toward a classic sprite light)
+//    over crease-angle smooth normals (`facet` mixes in flat facets for rock), and quantised to
+//    a FIVE-tone hand-pixeled ramp per palette colour: core shadow, shadow (darker, cooler, more
+//    saturated), base, light and highlight (brighter, warmer, less saturated) — `rampStep`.
+//    Bright greens are chroma-capped (`tameGreen`). Per-species palette snap; emissive palette
+//    entries (flames, magma) are unlit and over-bright, with an optional floor glow; optional
+//    cellular plates with creases or glowing cracks (rock / magma crust).
+//  * OUTLINES. Selective: the outer silhouette is a 1-texel 8-neighbour near-black line; interior
+//    depth edges take the local colour's own deep tone (coloured inner contours); a 1-texel rim
+//    of the local light tone on the key side. Hit flashes keep a full dark outline.
 //  * CONTACT. Every sprite stands on a pixel contact shadow (a dithered-edge ellipse sized from
 //    its feet) plus a short skewed drop shadow of its own silhouette (≤ 0.6 × its height, away
 //    from the key light), both at renderOrder 3 on the ground. The 3D mesh no longer casts a
@@ -55,7 +62,7 @@ export interface SpriteLight {
   contact?: THREE.ColorRepresentation;
   /**
    * How far the sprite key swings toward a classic sprite light (above, a little in front, on
-   * the key's side; 0 = the physical key; default 0.75), so a back-lit set still shows lit faces
+   * the key's side; 0 = the physical key; default 0.6), so a back-lit set still shows lit faces
    * on the sprites (the rim keeps the real back light).
    */
   front?: number;
@@ -103,10 +110,42 @@ export interface SpriteOptions {
   live?: () => boolean;
   /** Opacity blink (hit): while this returns true the sprite is not drawn. */
   hidden?: () => boolean;
+  /**
+   * Emissive colours (sRGB): palette entries within ~0.08 of one of them are drawn unlit and
+   * over-bright (HDR, they bloom a little): flames, magma cracks, lava.
+   */
+  emissive?: THREE.ColorRepresentation[];
+  /** HDR gain of the emissive pixels (default 1.9). */
+  emissiveGain?: number;
+  /**
+   * Faceting (0 = smooth form shading over each part, 1 = flat facets). Default 0.22: round
+   * bodies read as volumes with banded light; rocky kin use ~0.85 so they read as plates.
+   */
+  facet?: number;
+  /**
+   * Light contrast of the form ramp (1 = full key; people use ~0.7 so faces stay mostly in the
+   * base and light tones, with a soft shadow side instead of a dark split).
+   */
+  contrast?: number;
+  /**
+   * Cellular plates over the body colours (palette entries covering ≥ 10% of the model, or
+   * lifted by `minValue`): `size` = plate size in model units, `width` = border width; borders
+   * are dark creases (rock) or, with `crack`, glowing emissive cracks (magma crust).
+   */
+  plates?: { size: number; width?: number; crack?: THREE.ColorRepresentation; crackGain?: number };
+  /** Plate creases: a darker texel where a facet steps ≥ 2 ramp tones (rocky kin); 0 = off. */
+  crease?: number;
+  /**
+   * Minimum sRGB value of the body colours (palette entries covering ≥ 4% of the model; eyes and
+   * small dark details keep theirs): a near-black kin reads as dark crust, not a hole.
+   */
+  minValue?: number;
+  /** A warm pool of light on the floor around the subject (emissive kin), additive. */
+  glow?: { color: THREE.ColorRepresentation; radius?: number; intensity?: number };
 }
 
 /** Max palette entries per sprite (uniform array size). */
-export const SPRITE_PALETTE_MAX = 16;
+export const SPRITE_PALETTE_MAX = 24;
 
 /** Sprite render order (beams 5, dust 6, normal FX ≤ 6 below; additive FX ≥ 8 above). */
 export const SPRITE_ORDER = 7;
@@ -122,6 +161,11 @@ const srgbOf = (c: THREE.Color) => { const o = c.clone(); o.convertLinearToSRGB(
  * merging is by distance, not frequency. Linear colours out, most frequent first.
  */
 export function extractPalette(geo: THREE.BufferGeometry, max = SPRITE_PALETTE_MAX, tol = 0.09): THREE.Color[] {
+  return extractPaletteShares(geo, max, tol).map((e) => e.c);
+}
+
+/** `extractPalette` with each entry's share of the vertices (0..1). */
+function extractPaletteShares(geo: THREE.BufferGeometry, max = SPRITE_PALETTE_MAX, tol = 0.09): { c: THREE.Color; share: number }[] {
   const col = geo.getAttribute('color');
   if (!col) return [];
   const counts = new Map<string, { c: THREE.Color; n: number }>();
@@ -155,14 +199,62 @@ export function extractPalette(geo: THREE.BufferGeometry, max = SPRITE_PALETTE_M
     a.n += b.n;
     pal.splice(bj, 1);
   }
-  return pal.sort((a, b) => b.n - a.n).map((p) => { const c = p.c.clone(); c.convertSRGBToLinear(); return c; });
+  const total = Math.max(1, col.count);
+  return pal.sort((a, b) => b.n - a.n).map((p) => { const c = p.c.clone(); c.convertSRGBToLinear(); return { c, share: p.n / total }; });
 }
 
-const paletteCache = new WeakMap<THREE.BufferGeometry, THREE.Color[]>();
-function paletteFor(geo: THREE.BufferGeometry): THREE.Color[] {
+const paletteCache = new WeakMap<THREE.BufferGeometry, { c: THREE.Color; share: number }[]>();
+function paletteFor(geo: THREE.BufferGeometry): { c: THREE.Color; share: number }[] {
   let p = paletteCache.get(geo);
-  if (!p) { p = extractPalette(geo); paletteCache.set(geo, p); }
+  if (!p) { p = extractPaletteShares(geo); paletteCache.set(geo, p); }
   return p;
+}
+
+/**
+ * Crease-angle smooth normals (`sNormal` attribute): each corner averages the (area-weighted)
+ * normals of the faces sharing its position within ~66° of its own face, so balls, limbs and
+ * cylinders shade as round volumes while boxes, cones and brims keep hard edges. Cached on the
+ * geometry (added once).
+ */
+export function ensureSmoothNormals(geo: THREE.BufferGeometry): void {
+  if (geo.getAttribute('sNormal')) return;
+  const pos = geo.getAttribute('position');
+  const index = geo.index;
+  const triCount = index ? index.count / 3 : pos.count / 3;
+  const vid = (t: number, k: number) => (index ? index.getX(t * 3 + k) : t * 3 + k);
+  const fn = new Float32Array(triCount * 3);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const groups = new Map<string, number[]>();
+  const keyOf = (i: number) => `${Math.round(pos.getX(i) * 2000)},${Math.round(pos.getY(i) * 2000)},${Math.round(pos.getZ(i) * 2000)}`;
+  for (let t = 0; t < triCount; t++) {
+    a.fromBufferAttribute(pos, vid(t, 0)); b.fromBufferAttribute(pos, vid(t, 1)); c.fromBufferAttribute(pos, vid(t, 2));
+    c.sub(b); b.sub(a); b.cross(c); // area-weighted face normal
+    fn[t * 3] = b.x; fn[t * 3 + 1] = b.y; fn[t * 3 + 2] = b.z;
+    for (let k = 0; k < 3; k++) {
+      const key = keyOf(vid(t, k));
+      const g = groups.get(key);
+      if (g) g.push(t); else groups.set(key, [t]);
+    }
+  }
+  const out = new Float32Array(pos.count * 3);
+  const own = new THREE.Vector3(), other = new THREE.Vector3(), sum = new THREE.Vector3();
+  for (let t = 0; t < triCount; t++) {
+    own.set(fn[t * 3]!, fn[t * 3 + 1]!, fn[t * 3 + 2]!);
+    const ol = own.length() || 1;
+    for (let k = 0; k < 3; k++) {
+      const v = vid(t, k);
+      sum.set(0, 0, 0);
+      for (const u of groups.get(keyOf(v)) ?? [t]) {
+        other.set(fn[u * 3]!, fn[u * 3 + 1]!, fn[u * 3 + 2]!);
+        const l = other.length() || 1;
+        if (other.dot(own) / (l * ol) > 0.4) sum.add(other);
+      }
+      if (sum.lengthSq() < 1e-20) sum.copy(own);
+      sum.normalize();
+      out[v * 3] = sum.x; out[v * 3 + 1] = sum.y; out[v * 3 + 2] = sum.z;
+    }
+  }
+  geo.setAttribute('sNormal', new THREE.BufferAttribute(out, 3));
 }
 
 /** Where a model touches the ground: the extent of its lowest 14% (feet, paws, belly). */
@@ -190,17 +282,30 @@ function footprintOf(geo: THREE.BufferGeometry): Footprint {
 const TOON_VERT = /* glsl */ `
 #ifdef USE_RIG
 ${VERT_HEAD}
+vec3 rigged(vec3 p) {
+  vec3 transformed = p;
+${VERT_BODY.replace('#include <begin_vertex>', '')}
+  return transformed;
+}
 #endif
+attribute vec3 sNormal;
 varying vec3 vCol;
 varying vec3 vViewPos;
+varying vec3 vN;
+varying vec3 vObj;
 void main() {
 #ifdef USE_RIG
-${VERT_BODY.replace('#include <begin_vertex>', 'vec3 transformed = vec3(position);')}
+  vec3 transformed = rigged(position);
+  // The smooth normal follows the rig: rig a point a little along it and take the difference.
+  vec3 tn = rigged(position + sNormal * 0.02) - transformed;
 #else
   vec3 transformed = vec3(position);
+  vec3 tn = sNormal;
 #endif
   vec4 mv = modelViewMatrix * vec4(transformed, 1.0);
   vViewPos = mv.xyz;
+  vN = normalMatrix * tn;
+  vObj = transformed;
 #ifdef USE_COLOR
   vCol = color;
 #else
@@ -208,6 +313,62 @@ ${VERT_BODY.replace('#include <begin_vertex>', 'vec3 transformed = vec3(position
 #endif
   gl_Position = projectionMatrix * mv;
 }`;
+
+/**
+ * Colour helpers shared by the bake and the billboard: HSV, and ONE step of a hand-picked
+ * pixel-art ramp from a base colour (sRGB): shadows darker, cooler (hue toward blue-violet) and
+ * more saturated; lights brighter, warmer (hue toward yellow) and less saturated. Greys take the
+ * ramp's hue (violet-grey shadows, warm-grey lights).
+ */
+const RAMP_GLSL = /* glsl */ `
+vec3 rgb2hsv(vec3 c) {
+  vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y);
+  return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+  vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+  return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}
+float hueToward(float h, float t, float amt) {
+  float d = t - h;
+  d -= floor(d + 0.5);
+  return fract(h + sign(d) * min(abs(d), amt));
+}
+// b: -2 core shadow, -1 shadow, 0 base, 1 light, 2 highlight (sRGB in and out).
+vec3 rampStep(vec3 s, float b) {
+  if (abs(b) < 0.5) return s;
+  vec3 h = rgb2hsv(s);
+  float grey = 1.0 - smoothstep(0.06, 0.22, h.y);
+  if (b < 0.0) {
+    float t = -b;
+    h.x = hueToward(mix(h.x, 0.71, grey), 0.71, 0.03 * t);
+    h.y = clamp(h.y + (0.07 + grey * 0.05) * t, 0.0, 1.0);
+    h.z *= t > 1.5 ? 0.5 : 0.72;
+  } else {
+    h.x = hueToward(mix(h.x, 0.12, grey), 0.12, 0.022 * b);
+    h.y = max(0.0, h.y - 0.06 * b * b);
+    h.z = min(1.0, h.z * (1.0 + 0.11 * b) + 0.035 * b);
+  }
+  return hsv2rgb(h);
+}
+// Bright, saturated greens read as flat neon at sprite scale: cap their chroma (darker greens
+// may stay richer), cap their value a little and lean the brightest toward olive.
+vec3 tameGreen(vec3 s) {
+  vec3 h = rgb2hsv(s);
+  float g = smoothstep(0.16, 0.23, h.x) * (1.0 - smoothstep(0.43, 0.49, h.x));
+  if (g <= 0.0) return s;
+  h.y = min(h.y, mix(1.0, 0.42 + 0.34 * (1.0 - h.z), g));
+  h.z = min(h.z, mix(1.0, 0.74, g));
+  h.x -= g * 0.018 * smoothstep(0.45, 0.85, h.z);
+  return hsv2rgb(h);
+}
+vec3 toSrgb(vec3 c) { return pow(max(c, vec3(0.0)), vec3(1.0 / 2.2)); }
+vec3 toLin(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
+float lumaL(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+`;
 
 const TOON_FRAG = /* glsl */ `
 uniform vec3 uKeyDir;
@@ -221,14 +382,43 @@ uniform float uLitGain;
 uniform mat3 uViewToWorld;
 uniform vec3 uEmissive;
 uniform float uLift;
+uniform float uFacet;
+uniform float uEmGain;
+uniform float uContrast;
+uniform vec4 uPlates;    // x: cell size (object units, 0 = off), y: crack width, z: emissive cracks (1) or creases (0), w: tone jitter
+uniform vec3 uCrackCol;  // emissive crack colour (linear, HDR)
 uniform vec3 uPal[${SPRITE_PALETTE_MAX}];
+uniform vec3 uPalOut[${SPRITE_PALETTE_MAX}];
+uniform float uPalEm[${SPRITE_PALETTE_MAX}];
 uniform int uPalN;
 varying vec3 vCol;
 varying vec3 vViewPos;
+varying vec3 vN;
+varying vec3 vObj;
+${RAMP_GLSL}
+vec3 hash3(vec3 p) {
+  p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
+  return fract(sin(p) * 43758.5453);
+}
+// Cellular plates: (distance to the nearest cell border, the cell's id hash).
+vec2 plates(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  float d1 = 8.0, d2 = 8.0, id = 0.0;
+  for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec3 g = vec3(float(x), float(y), float(z));
+    vec3 h = hash3(i + g);
+    vec3 r = g + h * 0.85 - f;
+    float d = dot(r, r);
+    if (d < d1) { d2 = d1; d1 = d; id = h.x; } else if (d < d2) d2 = d;
+  }
+  return vec2(sqrt(d2) - sqrt(d1), id);
+}
 void main() {
   // Per-species palette: snap the (jittered, countershaded) vertex colour to the mesh's own
-  // limited palette, compared in a roughly perceptual (sqrt) space.
+  // limited palette (compared in a roughly perceptual sqrt space), then use that entry's
+  // OUTPUT colour (lifted dark crust, etc.) and its emissive flag.
   vec3 base = vCol;
+  float em = 0.0;
   if (uPalN > 0) {
     vec3 sv = sqrt(max(vCol, vec3(0.0)));
     float bd = 1e9;
@@ -236,33 +426,53 @@ void main() {
       if (i >= uPalN) break;
       vec3 d = sqrt(uPal[i]) - sv;
       float dd = dot(d, d);
-      if (dd < bd) { bd = dd; base = uPal[i]; }
+      if (dd < bd) { bd = dd; base = uPalOut[i]; em = uPalEm[i]; }
     }
   }
-  // Flat faces from screen derivatives (the rig bends parts, so stored normals would lie).
-  vec3 n = normalize(cross(dFdx(vViewPos), dFdy(vViewPos)));
+  // Form normal: crease-angle smooth normals (rigged) blended with the flat facet normal from
+  // screen derivatives; uFacet picks round volumes (organic kin, people) or plates (rock).
+  vec3 nf = normalize(cross(dFdx(vViewPos), dFdy(vViewPos)));
+  vec3 ns = normalize(vN + vec3(1e-6));
+  if (dot(ns, nf) < -0.2) ns = nf;
+  vec3 n = normalize(mix(ns, nf, uFacet));
   vec3 nw = normalize(uViewToWorld * n);
-  float ndl = dot(n, uKeyDir);
-  // A FIXED value ramp, the hand-pixeled way: highlight (warm), base, shade (cool), core.
-  float k = ndl > 0.75 ? 1.22 : ndl > 0.2 ? 1.0 : ndl > -0.3 ? 0.68 : 0.45;
-  // Undersides never take the highlight or the base: they face the dim ground.
-  if (nw.y < -0.55) k = min(k, 0.68);
-  vec3 tint = k > 1.1 ? uHiTint : k > 0.9 ? vec3(1.0) : k > 0.5 ? uShadeTint : uShadeTint * uShadeTint;
-  // The set's light, mostly neutralised (a sprite keeps its own palette, the set only tints it):
-  // warm cave light no longer turns blue jeans grey.
+  // Light from the key (half-Lambert) plus a little sky from above, quantised to a FIVE-tone
+  // ramp the hand-pixeled way: core shadow, shadow, base, light, highlight.
+  float L = (dot(n, uKeyDir) * 0.5) * uContrast + 0.5 + nw.y * 0.07;
+  // Undersides never take a light tone: they face the dim ground.
+  if (nw.y < -0.55) L = min(L, 0.46);
+  float b = L < 0.27 ? -2.0 : L < 0.48 ? -1.0 : L < 0.75 ? 0.0 : L < 0.91 ? 1.0 : 2.0;
+  // Plates (rocky / crusted kin, palette entries flagged 2): cellular plates over the body with
+  // a crease (or a glowing magma crack) along their borders, each plate a touch lighter or darker.
+  float crack = 0.0;
+  if (uPlates.x > 0.0 && em > 1.5) {
+    vec2 pl = plates(vObj / uPlates.x);
+    if (pl.x * uPlates.x < uPlates.y) crack = 1.0;
+    // Rock: a few plates sit a tone lighter and each plate's rim just inside the border catches
+    // the key. (Magma crust keeps flat plates: the glowing cracks carry it.)
+    else if (uPlates.z < 0.5 && (pl.y > 0.8 || pl.x * uPlates.x < uPlates.y * 1.8) && L > 0.45 && b < 2.0) b += 1.0;
+  }
+  vec3 s = tameGreen(toSrgb(base));
+  vec3 rc = toLin(rampStep(s, b));
+  // Optional per-set lean of the shadow / light tones (SpriteLight.shade / .highlight).
+  rc *= b < 0.0 ? uShadeTint : b > 0.0 ? uHiTint : vec3(1.0);
+  // The set's light, mostly neutralised (a sprite keeps its own palette, the set only tints it).
   vec3 lit = uSky * 0.55 + uKeyCol * 1.35;
-  lit = mix(vec3(dot(lit, vec3(0.2126, 0.7152, 0.0722))), lit, 0.35) * uLitGain * 0.92;
-  vec3 c = base * (lit * k * tint + uLift);
-  // A touch of ground bounce in the shadow bands (warm floors warm the undersides).
-  if (k < 0.9) c += base * uGround * 0.18;
-  // Extra chroma, like a hand-picked sprite ramp: the sprites pop off the (graded, hazy) set
-  // the way hand-drawn sprites do (the post grade and bloom take some of it back).
-  float cl = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = max(vec3(0.0), mix(vec3(cl), c, 1.35));
+  lit = mix(vec3(lumaL(lit)), lit, 0.35) * uLitGain * 0.92;
+  vec3 c = rc * (lit + uLift);
+  // A touch of ground bounce in the shadow tones (warm floors warm the undersides).
+  if (b < 0.0) c += rc * uGround * 0.16;
+  // A little extra chroma so sprites pop off the graded set (greens are capped above).
+  float cl = lumaL(c);
+  c = max(vec3(0.0), mix(vec3(cl), c, 1.12));
   // Rim: silhouette faces turned toward the key light get a thin bright edge.
   vec2 kd = normalize(uKeyDir.xy + vec2(1e-4));
-  float rim = step(0.55, 1.0 - n.z) * step(0.35, dot(normalize(n.xy + vec2(1e-4)), kd));
-  c += rim * uRim * base * 0.8;
+  float rim = step(0.6, 1.0 - n.z) * step(0.4, dot(normalize(n.xy + vec2(1e-4)), kd));
+  c += rim * uRim * rc * 0.6;
+  // Emissive (flames, magma): unlit and over-bright, hottest where it faces the key.
+  // The key-facing part takes a hotter, yellower tone (a glowing core), the rest the base hue.
+  if (em > 0.5 && em < 1.5) c = toLin(rampStep(toSrgb(base), L > 0.55 ? 1.0 : 0.0)) * uEmGain;
+  if (crack > 0.5) c = uPlates.z > 0.5 ? uCrackCol * (0.85 + 0.3 * L) : toLin(rampStep(rampStep(s, -2.0), -1.0)) * (lit + uLift);
   gl_FragColor = vec4(c + uEmissive, 1.0);
 }`;
 
@@ -366,8 +576,9 @@ uniform float uOpacity;
 uniform float uFlash;    // hit flash: keep the full dark outline
 uniform float uLightRim; // dark kin: a light rim inside the outline (reads on dark floors)
 uniform vec2 uRimDir;    // screen direction toward the key light
-uniform vec3 uRimK;      // rim multiplier
-float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+uniform vec3 uRimK;      // rim colour (linear; the key light's colour, normalised)
+uniform float uCrease;   // plate creases (rocky kin)
+${RAMP_GLSL}
 vec4 cell(vec2 c) {
   vec4 v = texture2D(tSprite, (c + 0.5) / uN);
   return vec4(v.rgb, step(0.25, v.a));
@@ -376,6 +587,8 @@ float cellDepth(vec2 c) {
   float a = texture2D(tSprite, (c + 0.5) / uN).a;
   return a > 0.25 ? a * 2.0 - 1.0 : 1.0;
 }
+// The local colour pushed n ramp steps (linear in and out; emissive HDR is clamped first).
+vec3 stepLin(vec3 c, float n) { return toLin(rampStep(toSrgb(min(c, vec3(1.0))), n)); }
 void main() {
   if (uOpacity < 0.5) discard;
   // The texel under this internal pixel: exact, whatever the billboard's perspective.
@@ -383,9 +596,11 @@ void main() {
   if (c0.x < 0.0 || c0.y < 0.0 || c0.x > uN - 1.0 || c0.y > uN - 1.0) discard;
   vec4 c = cell(c0);
   vec4 r = cell(c0 + vec2(1.0, 0.0)), l = cell(c0 + vec2(-1.0, 0.0)), u = cell(c0 + vec2(0.0, 1.0)), d = cell(c0 + vec2(0.0, -1.0));
+  vec2 rd = uRimDir;
+  vec2 ks = vec2(rd.x > 0.38 ? 1.0 : rd.x < -0.38 ? -1.0 : 0.0, rd.y > 0.38 ? 1.0 : rd.y < -0.38 ? -1.0 : 0.0);
   if (c.a < 0.5) {
-    // Outside: a 1-texel 8-neighbour outline (diagonal corners filled), in a deep, slightly
-    // more saturated shade of the neighbour's colour (selective outline) pulled toward uOutline.
+    // Outside: a 1-texel 8-neighbour SILHOUETTE outline, near-black with just a hint of the
+    // neighbour's deepest hue-shifted tone (selective outlining keeps the colour inside).
     float a = r.a + l.a + u.a + d.a;
     vec3 nb;
     if (a > 0.5) nb = (r.rgb * r.a + l.rgb * l.a + u.rgb * u.a + d.rgb * d.a) / a;
@@ -395,26 +610,30 @@ void main() {
       if (a < 0.5) discard;
       nb = (ur.rgb * ur.a + ul.rgb * ul.a + dr.rgb * dr.a + dl.rgb * dl.a) / a;
     }
-    float m = luma(nb);
-    vec3 deep = max(vec3(0.0), mix(vec3(m), nb, 1.35)) * 0.26;
-    vec3 o = mix(deep, uOutline, 0.62);
+    vec3 deep = stepLin(stepLin(nb, -2.0), -2.0);
+    vec3 o = mix(deep, uOutline, 0.8);
     gl_FragColor = vec4(mix(o, uOutline, step(0.2, uFlash)), 1.0);
     return;
   }
   vec3 col = c.rgb;
   // Inner contour: this texel lies well behind a neighbour (an ear over the head, a leg over the
-  // belly) → a darker shade of the local colour, not black (keeps small faces readable).
+  // belly) → the local colour's own deep, cooler tone (coloured interior line, never black).
   float z = cellDepth(c0);
   float zn = min(min(cellDepth(c0 + vec2(1.0, 0.0)), cellDepth(c0 + vec2(-1.0, 0.0))), min(cellDepth(c0 + vec2(0.0, 1.0)), cellDepth(c0 + vec2(0.0, -1.0))));
   bool edge = r.a < 0.5 || l.a < 0.5 || u.a < 0.5 || d.a < 0.5;
-  if (z - zn > uDepthEdge) col *= 0.52;
-  else {
-    // 1-texel rim on the silhouette edge that faces the key light.
-    vec2 rd = uRimDir;
-    vec4 toward = cell(c0 + vec2(rd.x > 0.38 ? 1.0 : rd.x < -0.38 ? -1.0 : 0.0, rd.y > 0.38 ? 1.0 : rd.y < -0.38 ? -1.0 : 0.0));
-    if (toward.a < 0.5) col = col * uRimK + vec3(0.03);
-    // Dark kin: every silhouette texel lifts a little, so the shape reads on a dark floor.
-    else if (edge && uLightRim > 0.0) col = col + vec3(uLightRim) * (vec3(0.1) + col);
+  vec4 toward = cell(c0 + ks);
+  // (A rim needs open space toward the key: a 1-texel gap between the legs is not open.)
+  if (z - zn > uDepthEdge) col = stepLin(col, -2.0);
+  else if (toward.a < 0.5 && cell(c0 + ks * 2.0).a < 0.5) {
+    // 1-texel rim on the silhouette edge that faces the key light: the local light tone,
+    // tinted by the key (dark kin get a stronger one so they read on dark floors).
+    col = mix(stepLin(col, 1.0 + uLightRim * 2.0), uRimK * lumaL(stepLin(col, 1.0)) * 1.2, 0.2 + uLightRim * 0.3) + vec3(uLightRim * 0.08);
+  } else {
+    // Dark kin: every other silhouette texel lifts a little, so the shape reads on a dark floor.
+    if (edge && uLightRim > 0.0) col = col + vec3(uLightRim) * (vec3(0.08) + col);
+    // Plates (rocky kin): where the surface toward the key is much brighter (a facet turns
+    // away by two tones), this texel takes the crease tone.
+    if (uCrease > 0.0 && toward.a > 0.5 && abs(cellDepth(c0 + ks) - z) < uDepthEdge && lumaL(col) < lumaL(toward.rgb) * 0.5) col = stepLin(col, -1.0 * uCrease);
   }
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -455,6 +674,35 @@ void main() {
   gl_FragColor = vec4(uColor, uOpacity * a);
 }`;
 
+/**
+ * Emissive floor glow (additive, on the ground in the sprite's texel grid): a warm elliptical
+ * pool in three posterised steps with Bayer-dithered edges, flickering a little.
+ */
+const GLOW_FRAG = /* glsl */ `
+uniform vec2 uOrigin;
+uniform float uPx;
+uniform vec2 uCenter;
+uniform vec2 uRadius;
+uniform vec3 uColor;
+uniform float uTime;
+float bayer4(vec2 p) {
+  vec2 i = mod(p, 4.0);
+  int idx = int(i.y) * 4 + int(i.x);
+  int m[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+  return (float(m[idx]) + 0.5) / 16.0;
+}
+void main() {
+  vec2 t = floor((gl_FragCoord.xy - uOrigin) / uPx);
+  vec2 e = (t + 0.5 - uCenter) / uRadius;
+  float r = length(e);
+  if (r > 1.0) discard;
+  float f = 1.0 - r;
+  f = f * f * (1.0 + 0.08 * sin(uTime * 9.0) + 0.05 * sin(uTime * 23.0));
+  float q = floor(f * 3.0 + bayer4(t)) / 3.0;
+  if (q <= 0.0) discard;
+  gl_FragColor = vec4(uColor * q, 1.0);
+}`;
+
 let toonId = 0;
 
 /** The banded toon material used to bake sprites (or, with inScene, to draw the mesh directly). */
@@ -470,13 +718,20 @@ export function toonMaterial(rig?: CreatureUniforms): THREE.ShaderMaterial {
       uSky: { value: new THREE.Color(0.5, 0.5, 0.5) },
       uGround: { value: new THREE.Color(0.2, 0.2, 0.2) },
       uRim: { value: new THREE.Color(0, 0, 0) },
-      uShadeTint: { value: new THREE.Vector3(0.9, 0.9, 1.12) },
-      uHiTint: { value: new THREE.Vector3(1.08, 1.03, 0.9) },
+      uShadeTint: { value: new THREE.Vector3(1, 1, 1) },
+      uHiTint: { value: new THREE.Vector3(1, 1, 1) },
       uLitGain: { value: 1 },
       uViewToWorld: { value: new THREE.Matrix3() },
       uEmissive: { value: new THREE.Color(0, 0, 0) },
       uLift: { value: 0 },
+      uFacet: { value: 0.22 },
+      uContrast: { value: 1 },
+      uPlates: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uCrackCol: { value: new THREE.Color(0, 0, 0) },
+      uEmGain: { value: 1.9 },
       uPal: { value: Array.from({ length: SPRITE_PALETTE_MAX }, () => new THREE.Color()) },
+      uPalOut: { value: Array.from({ length: SPRITE_PALETTE_MAX }, () => new THREE.Color()) },
+      uPalEm: { value: Array.from({ length: SPRITE_PALETTE_MAX }, () => 0) },
       uPalN: { value: 0 },
       ...(rig ? { uTime: rig.uTime, uBlink: rig.uBlink, uAct: rig.uAct } : {}),
     },
@@ -507,8 +762,9 @@ const bakeFwd = new THREE.Vector3();
 const bakeUp = new THREE.Vector3();
 const anchor = new THREE.Vector3();
 const snapped = new THREE.Vector3();
-const DEFAULT_SHADE = new THREE.Vector3(0.9, 0.9, 1.12);
-const DEFAULT_HI = new THREE.Vector3(1.08, 1.03, 0.9);
+// The ramp itself is hue-shifted (rampStep); a set may still lean its tones (SpriteLight.shade/highlight).
+const DEFAULT_SHADE = new THREE.Vector3(1, 1, 1);
+const DEFAULT_HI = new THREE.Vector3(1, 1, 1);
 const DEFAULT_OUTLINE = '#1a0d08';
 const DEFAULT_CONTACT = '#2a1409';
 
@@ -578,6 +834,9 @@ export class SpriteSubject {
   readonly billboard: THREE.Mesh;
   /** Contact + drop shadow on the ground (null with `shadow: false`). */
   readonly shadow: THREE.Mesh | null;
+  /** Emissive floor glow (null unless `glow` is set). */
+  readonly glow: THREE.Mesh | null = null;
+  private glowMat: THREE.ShaderMaterial | null = null;
   readonly toon: THREE.ShaderMaterial;
   private rt: THREE.WebGLRenderTarget;
   /** The downsampled sprite (n × n texels; alpha packs coverage + depth). */
@@ -611,10 +870,38 @@ export class SpriteSubject {
     this.fps = postFlags().has('bakeall') ? 0 : low ? 8 : 10;
     this.lift = opts.lift ?? 0;
     this.toon = toonMaterial(opts.rig);
+    ensureSmoothNormals(mesh.geometry);
+    {
+      const u = this.toon.uniforms;
+      u.uFacet!.value = opts.facet ?? 0.22;
+      u.uEmGain!.value = opts.emissiveGain ?? 1.9;
+      u.uContrast!.value = opts.contrast ?? 1;
+      if (opts.plates) {
+        (u.uPlates!.value as THREE.Vector4).set(opts.plates.size, opts.plates.width ?? opts.plates.size * 0.12, opts.plates.crack ? 1 : 0, 0);
+        if (opts.plates.crack) (u.uCrackCol!.value as THREE.Color).set(opts.plates.crack).multiplyScalar(opts.plates.crackGain ?? 1.6);
+      }
+    }
     if (opts.palette ?? !postFlags().has('nosnap')) {
       const pal = paletteFor(mesh.geometry);
       const u = this.toon.uniforms;
-      pal.forEach((c, i) => (u.uPal!.value as THREE.Color[])[i]!.copy(c));
+      const em = (opts.emissive ?? []).map((c) => srgbOf(new THREE.Color(c)));
+      pal.forEach(({ c, share }, i) => {
+        (u.uPal!.value as THREE.Color[])[i]!.copy(c);
+        const out = (u.uPalOut!.value as THREE.Color[])[i]!.copy(c);
+        const s = srgbOf(c);
+        const hot = em.some((e) => Math.hypot(e.r - s.r, e.g - s.g, e.b - s.b) < 0.085);
+        // Flags: 1 = emissive, 2 = body colour that takes plates, 0 = plain.
+        (u.uPalEm!.value as number[])[i] = hot ? 1 : opts.plates && share >= 0.1 ? 2 : 0;
+        // Dark body colours (not small details) lift to the minimum value: dark crust, not a hole.
+        const mv = opts.minValue ?? 0;
+        const v = Math.max(s.r, s.g, s.b);
+        if (!hot && mv > 0 && share >= 0.04 && v < mv) {
+          if (opts.plates) (u.uPalEm!.value as number[])[i] = 2;
+          // Keep the order of the dark tones (crust plates stay lighter than the crust).
+          s.multiplyScalar((mv * 0.78 + v * 0.5) / Math.max(v, 0.02));
+          out.copy(s).convertSRGBToLinear();
+        }
+      });
       u.uPalN!.value = pal.length;
     }
     if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
@@ -645,12 +932,13 @@ export class SpriteSubject {
         uOrigin: { value: new THREE.Vector2() },
         uPx: { value: 1 },
         uRimDir: { value: new THREE.Vector2(0, 1) },
-        uRimK: { value: new THREE.Vector3(1.22, 1.18, 1.08) },
+        uRimK: { value: new THREE.Color(1, 0.96, 0.88) },
         uOutline: { value: new THREE.Color(opts.outline ?? DEFAULT_OUTLINE) },
         uDepthEdge: { value: 0.08 },
         uOpacity: { value: 1 },
         uFlash: { value: 0 },
         uLightRim: { value: 0 },
+        uCrease: { value: opts.crease ?? 0 },
       },
     });
     this.billMat.name = 'hd2d-sprite';
@@ -688,12 +976,37 @@ export class SpriteSubject {
       this.shadow.name = 'hd2d-sprite-shadow';
       this.shadow.visible = false;
     }
+    if (opts.glow && !opts.inScene) {
+      this.glowMat = new THREE.ShaderMaterial({
+        vertexShader: BILL_VERT,
+        fragmentShader: GLOW_FRAG,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+        uniforms: {
+          uOrigin: { value: new THREE.Vector2() },
+          uPx: { value: 1 },
+          uCenter: { value: new THREE.Vector2() },
+          uRadius: { value: new THREE.Vector2(8, 3) },
+          uColor: { value: new THREE.Color(opts.glow.color).multiplyScalar(opts.glow.intensity ?? 0.7) },
+          uTime: { value: 0 },
+        },
+      });
+      this.glowMat.name = 'hd2d-sprite-glow';
+      this.glow = new THREE.Mesh(dynamicQuad(), this.glowMat);
+      this.glow.frustumCulled = false;
+      this.glow.renderOrder = SPRITE_SHADOW_ORDER - 1;
+      this.glow.name = 'hd2d-sprite-glow';
+      this.glow.visible = false;
+    }
     if (opts.inScene) this.billboard.visible = false;
   }
 
   private hide() {
     this.billboard.visible = false;
     if (this.shadow) this.shadow.visible = false;
+    if (this.glow) this.glow.visible = false;
   }
 
   /**
@@ -724,7 +1037,7 @@ export class SpriteSubject {
     // on (left by default) — one lit side and one shaded side on every sprite.
     const side = kr > 0.15 ? 1 : -1;
     const frontal = new THREE.Vector3().addScaledVector(rightCam, side * 0.62).addScaledVector(UP, 0.72).addScaledVector(towardCam, 0.42).normalize();
-    (u.uKeyDir!.value as THREE.Vector3).copy(L).lerp(frontal, light.front ?? 0.75).normalize().applyQuaternion(tmpQ);
+    (u.uKeyDir!.value as THREE.Vector3).copy(L).lerp(frontal, light.front ?? 0.6).normalize().applyQuaternion(tmpQ);
     (u.uKeyCol!.value as THREE.Color).copy(light.keyColor);
     (u.uSky!.value as THREE.Color).copy(light.sky);
     (u.uGround!.value as THREE.Color).copy(light.ground);
@@ -845,6 +1158,8 @@ export class SpriteSubject {
       // Rim side: the (real) key light direction in the bake's screen space.
       const kv = tmpV.copy(light.keyDir).applyQuaternion(tmpQ.copy(cam.quaternion).invert());
       (this.billMat.uniforms.uRimDir!.value as THREE.Vector2).set(kv.x, kv.y).normalize();
+      const kc = light.keyColor, km = Math.max(kc.r, kc.g, kc.b, 1e-3);
+      (this.billMat.uniforms.uRimK!.value as THREE.Color).setRGB(kc.r / km, kc.g / km, kc.b / km).multiplyScalar(0.92);
       // Bake, with the rig clock on the sprite frame (hand-drawn frames, not a smooth tween).
       const prevTarget = renderer.getRenderTarget();
       const prevClear = renderer.getClearColor(new THREE.Color());
@@ -900,6 +1215,7 @@ export class SpriteSubject {
     b.updateMatrixWorld();
     b.visible = true;
     this.placeShadow(camera, light, buffer, { ax, ay, ox, oy, n, px, mb, tw, beta, liftAbove, nominal });
+    this.placeGlow(camera, buffer, { ox, oy, px, nominal });
   }
 
   /** Contact ellipse under the feet + skewed drop shadow, on the ground, in the sprite's grid. */
@@ -980,6 +1296,44 @@ export class SpriteSubject {
     sh.visible = true;
   }
 
+  /** Emissive floor glow: an additive pool around the feet, sized in world units, in the sprite's grid. */
+  private placeGlow(camera: THREE.PerspectiveCamera, buffer: THREE.Vector2, s: { ox: number; oy: number; px: number; nominal: number }) {
+    const g = this.glow;
+    if (!g) return;
+    const u = this.glowMat!.uniforms;
+    const fp = this.foot;
+    const c = new THREE.Vector3();
+    for (let i = 0; i < 4; i++) {
+      tmpV.set(i & 1 ? fp.x1 : fp.x0, fp.minY, i & 2 ? fp.z1 : fp.z0).applyMatrix4(this.mesh.matrixWorld);
+      tmpV.y = anchor.y;
+      c.add(tmpV);
+    }
+    c.multiplyScalar(0.25);
+    const R = (this.opts.glow?.radius ?? 1) * Math.max(0.6, s.nominal);
+    const p0 = c.clone().project(camera), pr = c.clone().addScaledVector(right, R).project(camera), pt = c.clone().addScaledVector(toward, R).project(camera);
+    const cx = (p0.x * 0.5 + 0.5) * buffer.x, cy = (p0.y * 0.5 + 0.5) * buffer.y;
+    const rx = Math.max(3, Math.abs(pr.x - p0.x) * 0.5 * buffer.x / s.px), ry = Math.max(2, Math.abs(pt.y - p0.y) * 0.5 * buffer.y / s.px);
+    (u.uCenter!.value as THREE.Vector2).set((cx - s.ox) / s.px, (cy - s.oy) / s.px);
+    (u.uRadius!.value as THREE.Vector2).set(rx, ry);
+    (u.uOrigin!.value as THREE.Vector2).set(s.ox, s.oy);
+    u.uPx!.value = s.px;
+    u.uTime!.value = this.opts.rig?.uTime.value ?? 0;
+    const ground = new THREE.Vector3(anchor.x, anchor.y + 0.012, anchor.z);
+    g.position.copy(ground);
+    const gpos = g.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const corner = new THREE.Vector3();
+    for (let i = 0; i < 4; i++) {
+      const x = cx + (i & 1 ? 1 : -1) * s.px * (rx + 1), y = cy + (i & 2 ? 1 : -1) * s.px * (ry + 1);
+      if (!rayPlane(camera, buffer, x, y, ground, UP, corner)) { g.visible = false; return; }
+      corner.sub(ground);
+      gpos.setXYZ(i, corner.x, corner.y, corner.z);
+    }
+    gpos.needsUpdate = true;
+    g.geometry.computeBoundingSphere();
+    g.updateMatrixWorld();
+    g.visible = true;
+  }
+
   /** Light rim inside the outline (dark kin on dark floors), 0 = off. */
   setLightRim(k: number) { this.billMat.uniforms.uLightRim!.value = k; }
 
@@ -989,6 +1343,7 @@ export class SpriteSubject {
     this.mesh.castShadow = this.castShadow;
     this.billboard.removeFromParent();
     this.shadow?.removeFromParent();
+    this.glow?.removeFromParent();
   }
 
   dispose() {
@@ -1001,6 +1356,8 @@ export class SpriteSubject {
     this.billboard.geometry.dispose();
     this.shadowMat?.dispose();
     this.shadow?.geometry.dispose();
+    this.glowMat?.dispose();
+    this.glow?.geometry.dispose();
   }
 }
 
@@ -1023,6 +1380,7 @@ export class SpriteBaker {
     const s = new SpriteSubject(mesh, opts);
     this.scene.add(s.billboard);
     if (s.shadow) this.scene.add(s.shadow);
+    if (s.glow) this.scene.add(s.glow);
     this.subjects.add(s);
     return s;
   }

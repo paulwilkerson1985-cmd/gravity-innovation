@@ -18,6 +18,7 @@ import type { ArenaRig } from '../render/hd2d/arena';
 import { arenaById, resolveArena, type ArenaContext, type ArenaDef, type CameraPreset, type LayoutName } from '../render/hd2d/arenas';
 import { Figure, heroFigure, trainerFigure } from '../render/hd2d/characters';
 import { layoutMode } from './framing';
+import { FLAME } from '../render/creatures/parts';
 
 /** The arena chosen for a battle and the context it was chosen from. */
 export interface Hd2dTerrain { def: ArenaDef; ctx: ArenaContext }
@@ -124,6 +125,26 @@ function kinRadius(view: CreatureView): number {
   return 0.5 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * view.baseScale * view.root.scale.x;
 }
 
+/**
+ * Per-species sprite treatment: emissive parts (flames, magma cracks, lava) drawn unlit and
+ * over-bright with a warm pool of light on the floor, rocky kin shaded as faceted plates with
+ * creases, near-black crust lifted to a readable dark tone.
+ */
+export const KIN_SPRITE: Record<string, SpriteOptions> = {
+  // Lighter basalt crust in plates, glowing magma cracks between them, a warm pool on the floor.
+  vulcrag: {
+    emissive: ['#ff6a1a', '#ffd84a', FLAME.outer, FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.25,
+    minValue: 0.34, facet: 0.4, plates: { size: 0.5, width: 0.024, crack: '#ff8a30', crackGain: 1.4 },
+    glow: { color: '#ff6a24', radius: 1.25, intensity: 1.1 },
+  },
+  pyrelord: { emissive: [FLAME.outer, FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.2, glow: { color: '#ff8a3a', radius: 1.0, intensity: 0.8 } },
+  // Cindertail's body red sits next to the outer flame colour: only the hotter flame glows.
+  cindertail: { emissive: [FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.2, glow: { color: '#ff8a3a', radius: 0.9, intensity: 0.65 } },
+  // Rock kin: faceted light, stone plates with dark creases.
+  pebblet: { facet: 0.45, plates: { size: 0.4, width: 0.018 } },
+  cragmaul: { facet: 0.45, plates: { size: 0.42, width: 0.026 } },
+};
+
 /** Sprite options for a kin (shared by the battle, Arena and Hall stages). */
 export function kinSpriteOptions(view: CreatureView, extra: SpriteOptions = {}): SpriteOptions {
   const pose = view.speciesId ? FLAT_POSES[view.speciesId] : undefined;
@@ -136,13 +157,15 @@ export function kinSpriteOptions(view: CreatureView, extra: SpriteOptions = {}):
     bakePitch: pose?.bakePitch,
     live: () => view.animating,
     hidden: () => view.blinkOff,
+    ...(view.speciesId ? KIN_SPRITE[view.speciesId] : undefined),
     ...extra,
   };
 }
 
 /** Sprite options for a person figure. */
 export function figureSpriteOptions(f: Figure, extra: SpriteOptions = {}): SpriteOptions {
-  return { rig: f.uniforms, texelHeight: TEXELS.person, nominalHeight: () => f.height * f.mesh.scale.x, live: () => f.walking, ...extra };
+  // Softer light contrast on people: faces stay in the base / light tones with a soft shadow side.
+  return { rig: f.uniforms, texelHeight: TEXELS.person, nominalHeight: () => f.height * f.mesh.scale.x, live: () => f.walking, contrast: 0.68, ...extra };
 }
 
 /** Pitch a flat kin toward the camera (on its inner group, so lunges/hits keep working). */
