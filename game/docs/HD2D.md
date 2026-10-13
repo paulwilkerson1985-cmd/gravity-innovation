@@ -36,9 +36,9 @@ Screens: `docs/screenshots/hd2d/`.
 
 | Decision | Chosen | Alternatives tried | Why |
 |---|---|---|---|
-| Internal resolution | 480 px tall (high), 400 (low); short side ≥ 300/280 px | default 420 | 480 keeps sprite faces readable at the wider arena framing; the canvas is upscaled by CSS `image-rendering: pixelated`, so every pass below happens at low res and the final image is pixel-crisp. |
+| Internal resolution | Integer pixel grid targeting 360 px tall (high: 640×360 at 720p, 2 device px per internal px) and 300 (low; short side ≥ 300/270 px, e.g. 271×586 on a Pixel 7) | 480/400 px at a fractional scale; default 420 | Whole device pixels per internal pixel keep every texel the same size on screen; the canvas is upscaled by CSS `image-rendering: pixelated`, so every pass below happens at low res and the final image is pixel-crisp. |
 | Pass order | Render → (GTAO) → UnrealBloom → OutputPass (ACES, sRGB) → GradePass (tilt-shift, CDL grade, split-tone, vignette, 4×4 Bayer dither) | grade before tone map | Grading after tone mapping behaves like a LUT on display values; the dither breaks beam/bloom gradients into pixel-art dither instead of banding. |
-| Bloom | threshold 1.05 (linear HDR), strength 0.5, radius 0.5; low tier from a quarter-res mip chain | threshold 0.82 | Lower thresholds made lit rock bloom and the whole top of the frame went soft. Now only the window panes, shafts, ember crystals and FX glows bloom. |
+| Bloom | threshold 1.0 (linear HDR) with a quadratic soft knee (0.22), strength 0.4, contribution capped at 1.1 over the threshold, tighter radius; low tier from a quarter-res mip chain | threshold 0.82; 1.05 hard threshold, strength 0.5 | Lower thresholds made lit rock bloom and the whole top of the frame went soft; a hard threshold left windows and lava falls hazing half the frame. Only the excess over 1.0 blooms now, so emitters (panes, lava, flames, FX) keep a defined core. |
 | Tilt-shift | ≤ 1 px blur above 80% of the height, ≤ 0.6 px under 8% | 1.4 px from 62% | The stronger band blurred the rock texture into mush — crispness beats DOF. |
 | Ambient occlusion | **Baked**: per-vertex AO in the voxel batch (side faces darken toward their base, top corners next to taller neighbours, floor near walls) + texel bevel seams | GTAOPass (`post=gtao`) | GTAO cost 2.4× the frame (512 vs 215 ms on SwiftShader) and pushed draw calls from 51 to 86 (it re-renders the scene for normals); visually the baked AO + bevel already gives the dark crevices. |
 | Key light | One SpotLight through the window with a window-pane **cookie** (`light.map`), PCFSoft shadows on high, PCF on low | DirectionalLight; a second cookie spot for the small window | The cookie gives the reference's bright pane-shaped patches and real rock shadows on the floor. The second spot cost ~20% of the frame; a soft additive "light pool" decal fakes its patch. |
@@ -425,6 +425,63 @@ LOD'd; water is unlit (match `light` by hand) and has no reflections; arenas sti
 local kits (`arenas/localKit.ts`, `outdoorKit.ts`, `nightKit.ts`) that could migrate to `kit/`.
 <!-- kit:end -->
 
+## Reference pass 2: rock, outdoor light, sprites, night sets
+
+Additions from the second pass against the reference (all optional fields / new helpers; old
+call sites are unchanged).
+
+- **Rock kit** (`kit/rock.ts`, `textures.ts`): `boulder()` bevels are 10–15% of the
+  half-extent (a crisp 1-texel lit top edge, not a pillow), with per-corner chamfers, 0–2
+  chipped corners, faceted tops, side creases and a baked lit-top-left / dark-bottom-right
+  vertex gradient per stone (low tier keeps the cheap 26-triangle top-bevel path).
+  `boulderColumns()` stones are 0.6–1.4 cells wide with staggered feet/tops (±0.35 course),
+  ~35% split in two, ±20° yaw, ±10% value / ±5% hue each, ~1-texel gaps: rows never line up.
+  `rubblePile({ blocky })` builds a voxel-like grey heap; rubble and `pebbles()` default to a
+  cool-grey ramp. Textures: boulder faces are a mosaic of mixed chunks (`TintedTile`: per-chunk
+  value/hue jitter, lit top edge, dark crevice + mortar line); `paintDirt()` has no cell grid
+  (clods, dust, scuffs, branching cracks); `paintPlanks(…, knots)`. `bookcase({ frame: 'paint' })`
+  builds a painted metal shelving unit. `lightBeams` specs take a per-beam `fade`.
+- **Cave / volcanic / hollow**: cave camera pulled back and up (open floor ≈ 35–40% of the
+  frame), tall craggy left wall, two capped windows right of the foe HUD with three diagonal
+  shafts onto bright floor pools, a bigger furnished lodge. Volcanic back wall = three rows of
+  basalt columns/masses with glowing lava joints and orange lava-facing rims (wall ≤ 40% of the
+  frame); fine embers only. Hollow: one key with a leaf-dapple gobo aimed at the kin.
+- **Outdoor light** (`arenas/outdoorKit.ts`): every outdoor/sea arena has one strong warm key
+  and a weak cool fill. `gobo(key, spec)` paints the key's cookie in WORLD space via
+  `cookieGround(key, size)` (the ground point under each cookie texel), so the lit focal pool
+  round the kin, leaf dapple (`kind: 'leaves'`) or drifting cloud shadows keep their world size
+  at any sun elevation; `update(t)` drifts clouds in whole cookie texels. Sun ≈ 34° in meadow /
+  flowers (canopies no longer block the key: the gobo paints their dapple), ≈ 19° golden hour on
+  the coast, storm light with one sun break in the shallows, low back-light sunset in the scrub.
+- **Phone world edge**: `apron(spec)` = one draw call of the set's own floor texture (same world
+  UVs) running far past the near frustum, so portrait phones never see the clear colour or the
+  island underside. `?leak=1` clears every arena to magenta for captures; a leak check samples
+  the bottom 35% of phone frames (0.000% in all six outdoor/sea arenas).
+- **Backdrops**: `paintMesas()` (stepped, strata, lit rims, haze by distance), `paintTreeLine()`
+  (textured leaf crowns), the cliff's painted late-afternoon sky (the old sky plane sat beyond the
+  90-unit far plane and never rendered; now z = −70), layered headlands, a glitter path on the
+  sea; `fogBands()` (`arenas/localKit.ts`, one draw call of layered horizontal haze) replaces mist
+  discs; `rockStack()` builds sea stacks as tapering, leaning clumps of rock-kit boulders.
+- **Kin sprites** (`sprite.ts` + `KIN_SPRITE` in `scenes/hd2dBattle.ts`): five-tone ramp per
+  palette colour lit from the arena key (shadows cooler and more saturated, highlights warmer,
+  greys get violet shadows), bright greens capped, near-black silhouette outline with
+  darker-local inner edges and a 1-texel key-side rim. New `SpriteOptions`: `emissive` (palette
+  colours drawn unlit and over-bright, `emissiveGain`), `glow` (dithered floor light pool),
+  `plates` / `facet` / `crease` (faceted stone kin, magma cracks), `contrast` (people stay soft),
+  `minValue`. Texel density is unchanged on purpose: the reference measures about the same
+  (people ≈ 44–50 texels, kin ≈ 30); the gap was shading.
+- **People** (`characters.ts`): 3-tone clothes with fold lines, pockets, belt buckle, a pack
+  with bedroll, hair highlights, clean faces; biome-balanced trainer colours.
+- **Night sets**: stadium court is hardwood with worn chalk rings, dark tiered stands where only
+  the front rows are coloured, an overhead truss with three floodlight cones and pools; victory
+  turns them off for one podium spotlight. HoF statues in two rows (desktop) or a 1-2-3 pyramid
+  (phone), 1.5–1.7× larger, under a moon shaft; summit dais steps are marble with flush gold
+  edges.
+- **FX** (`fx.ts`): `impactGlow()` (flame: 300 ms warm ground pool, hot core, scorch, embers) and
+  `groundDecal()` (tide: wet patch + spreading ring over ~1.2 s, with a foam crown and droplets).
+- Draw calls after the pass (whole frame, SwiftShader): cave 52 desk / 46 phone, volcanic 52 / 49,
+  hollow 43 / 39, outdoor/sea 37–65, night sets 45–78 (HoF desktop 78), screens 27–58.
+
 ## Conventions for new arenas
 
 - **Scale**: 1 unit ≈ a kin; people 1.55× scale of the ~1.05 unit figure (≈ 1.6 units);
@@ -479,17 +536,20 @@ but **this has not been measured on a real phone yet** (first rollout task).
 
 ## Gaps vs the reference (honest)
 
-- Rock walls still read a little "voxel" — the reference's boulders are rounder and more
-  irregular in size. Next: merge 2×1/2×2 blocks, random chamfered corners, more height noise.
-- The lodge is less detailed (no computer/terminal-type props by design; fewer readable
-  objects). Our shelves read as colour noise at 480 px; fewer, bigger props would read better.
-- Sprites are toon-shaded 3D, not hand-drawn: no anti-aliasing tricks, limited sub-shapes.
-  A per-species palette quantisation (snap to 6–8 colours) and 1-texel highlight pass would
-  get closer to hand-pixeled sprites.
-- Light patches on the floor are fixed (no animated sun motion); dust and shafts are.
-- Portrait shows less of the set (narrow FOV); the composition is rotated onto the diagonal.
-- FX were not retuned for the new scale beyond what bloom gives them; they read well
-  (flame pillar + bloom) but projectile trails are small at arena scale.
+After reference pass 2 (most of the original list is addressed: craggy irregular rock,
+painted shelving, five-tone hue-shifted sprites, world-space sun gobos, flame/tide FX):
+- Cave wall stone faces are a bit busier than the reference's softer, rounder-lit chunks; the
+  front-left stair treads are very light against the dark floor edge.
+- Volcanic side ledges (still `boulderColumns`) show some cube-like silhouettes; Vulcrag's magma
+  cracks read as glowing patches and tone-map to cream under the bright volcanic grade.
+- The hollow's leaf gobo mostly reads as one large pool; meadow back terraces still read a bit
+  "grass voxel"; scrub mesas have fairly vertical sides; the cliff's front wall stones look like
+  grey pillows; backlit stacks in the coast/shallows sit quite dark.
+- Cliff on phones: the top ~10% shows the clear colour (sea beyond the 90-unit far plane); the
+  clear colour is the horizon haze, so it reads as haze.
+- Stadium: the second crowd row is dim colour rather than silhouette; the floodlight cones read
+  mostly as shafts at the top of the frame.
+- Light patches are fixed except the drifting cloud gobos; portrait shows less of the set.
 
 ## Rollout plan
 
