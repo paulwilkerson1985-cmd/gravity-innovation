@@ -34,6 +34,8 @@ export class VoxelBatch {
   private nor: number[] = [];
   private uv: number[] = [];
   private col: number[] = [];
+  /** Face-local coords for the pixel bevel: (u, v, width, ±height); negative height = side face. */
+  private face: number[] = [];
   constructor(readonly tileTexels = 32) {}
 
   get count() { return this.pos.length / 3; }
@@ -41,6 +43,9 @@ export class VoxelBatch {
   /** One quad (two triangles). `ao` per corner [a, b, c, d]; corners in CCW order seen from the normal side. */
   quad(a: V3, b: V3, c: V3, d: V3, n: V3, uv: [number, number][], tint: THREE.Color, ao: [number, number, number, number] = [1, 1, 1, 1]) {
     const corners = [a, b, c, d];
+    const W = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), H = Math.hypot(d[0] - a[0], d[1] - a[1], d[2] - a[2]);
+    const fl: [number, number][] = [[0, 0], [W, 0], [W, H], [0, H]];
+    const sideSign = Math.abs(n[1]) < 0.5 ? -1 : 1;
     const idx = [0, 1, 2, 0, 2, 3];
     // Flip the diagonal when AO is anisotropic, so the darkening interpolates the right way.
     if (ao[0] + ao[2] < ao[1] + ao[3]) idx.splice(0, 6, 1, 2, 3, 1, 3, 0);
@@ -49,6 +54,7 @@ export class VoxelBatch {
       this.pos.push(p[0], p[1], p[2]);
       this.nor.push(n[0], n[1], n[2]);
       this.uv.push(uv[i]![0], uv[i]![1]);
+      this.face.push(fl[i]![0], fl[i]![1], W, H * sideSign);
       this.col.push(tint.r * ao[i]!, tint.g * ao[i]!, tint.b * ao[i]!);
     }
   }
@@ -99,6 +105,7 @@ export class VoxelBatch {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    g.setAttribute('aFace', new THREE.Float32BufferAttribute(this.face, 4));
     g.computeBoundingSphere();
     g.computeBoundingBox();
     return g;
@@ -106,10 +113,38 @@ export class VoxelBatch {
 }
 
 /** A lit, pixel-textured surface material (shadows on). Vertex colour carries tint × AO. */
-export function surfaceMaterial(map: THREE.Texture | null, emissive?: THREE.ColorRepresentation): THREE.MeshLambertMaterial {
+export function surfaceMaterial(map: THREE.Texture | null, emissive?: THREE.ColorRepresentation, bevel = false): THREE.MeshLambertMaterial {
   const m = new THREE.MeshLambertMaterial({ map, vertexColors: true });
+  if (bevel) addBevel(m);
   if (emissive !== undefined) { m.emissive = new THREE.Color(emissive); m.emissiveMap = map; }
   return m;
+}
+
+/**
+ * Pixel bevel for VoxelBatch geometry: a 1-texel dark seam around every face and a 1–2 texel
+ * lit lip along the top of side faces, quantised to the texel grid. Turns flat cubes into
+ * chunky hand-shaded boulders (the reference's "each rock is drawn" look) at no geometry cost.
+ */
+export function addBevel(m: THREE.MeshLambertMaterial) {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = 'attribute vec4 aFace;\nvarying vec4 vFace;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFace = aFace;');
+    sh.fragmentShader = 'varying vec4 vFace;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      {
+        float tx = ${TEXEL.toFixed(5)};
+        vec2 p = floor(vFace.xy / tx);
+        vec2 n = max(vec2(1.0), floor(abs(vFace.zw) / tx));
+        float e = min(min(p.x, n.x - 1.0 - p.x), min(p.y, n.y - 1.0 - p.y));
+        float k = e < 0.5 ? 0.58 : e < 1.5 ? 0.84 : 1.0;
+        if (vFace.w < 0.0) {
+          float top = n.y - 1.0 - p.y;
+          if (top < 1.5 && min(p.x, n.x - 1.0 - p.x) > 0.5) k = top < 0.5 ? 1.32 : 1.16;
+        } else if (e > 0.5 && e < 2.5 && p.y > n.y - 3.5) {
+          k = 1.12; // a lit rim on the far half of top faces catches the window light
+        }
+        diffuseColor.rgb *= k;
+      }`);
+  };
+  m.customProgramCacheKey = () => 'hd2d-bevel';
 }
 
 function mesh(g: THREE.BufferGeometry, m: THREE.Material, cast = true, receive = true): THREE.Mesh {
@@ -211,7 +246,7 @@ uniform float uIntensity;
 varying vec2 vSide;
 varying float vSeed;
 void main() {
-  float across = 1.0 - smoothstep(0.35, 1.0, abs(vSide.x));
+  float across = 1.0 - smoothstep(0.55, 0.95, abs(vSide.x));
   float along = smoothstep(0.0, 0.35, vSide.y) * (1.0 - smoothstep(0.75, 1.0, vSide.y));
   // Slow shimmer: dust drifting through the shaft.
   float flick = 0.82 + 0.18 * sin(vSide.y * 9.0 - uTime * 0.7 + vSeed * 6.0) * sin(vSide.x * 3.0 + uTime * 0.4 + vSeed);
@@ -300,7 +335,7 @@ export function dustMotes(beams: BeamSpec[], perBeam: number, rng: Rng, color: T
   g.setAttribute('aRnd', new THREE.Float32BufferAttribute(rnd, 4));
   const m = new THREE.ShaderMaterial({
     vertexShader: DUST_VERT, fragmentShader: DUST_FRAG,
-    uniforms: { uTime: { value: 0 }, uSize: { value: 1 }, uColor: { value: new THREE.Color(color).multiplyScalar(2.2) } },
+    uniforms: { uTime: { value: 0 }, uSize: { value: 1 }, uColor: { value: new THREE.Color(color).multiplyScalar(1.1) } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const points = new THREE.Points(g, m);
@@ -355,6 +390,7 @@ export interface CaveArenaOptions { seed?: number; quality?: 'high' | 'low' }
  * grey rubble piles, a front ledge with its own stair. All original.
  */
 export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
+  const flags = new Set((new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('post') ?? '').split(','));
   const rng = new Rng(opts.seed ?? 11);
   const q = opts.quality ?? 'high';
   const group = new THREE.Group();
@@ -395,7 +431,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
       // Terraces: each tier is a ledge about two blocks deep, one or two blocks high.
       if (d > 0) lv = 1 + Math.floor(d / 1.75) + (d > 3.5 ? Math.floor((d - 3.5) / 1.2) : 0);
       // The left wall rises higher than the right.
-      if (x < -1 && d > 0) lv += Math.floor((-1 - x) / 6);
+      if (x < -1 && d > 0) lv += Math.floor((-1 - x) / 8);
       if (dzB > 0 && dx <= 0) lv = Math.min(lv, 1 + Math.floor(dzB / 0.8));
     }
     // The lodge sits on a level shelf; the ledge in front of it rises to the platform height.
@@ -420,7 +456,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // ---- rock (one mesh)
   const rock = new VoxelBatch(32);
   rockColumns(hm, rock, rng, RAMPS.rock);
-  const rockMat = track(surfaceMaterial(texRock));
+  const rockMat = track(surfaceMaterial(texRock, undefined, true));
   group.add(mesh(rock.build(), rockMat));
 
   // ---- floor: one textured grid with baked AO toward the walls
@@ -479,10 +515,10 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const rubble = (cx: number, cz: number, r: number, n: number) => {
     for (let i = 0; i < n; i++) {
       const a = rng.next() * Math.PI * 2, d = Math.sqrt(rng.next()) * r;
-      const s = 0.14 + rng.next() * 0.3 * (1 - d / r * 0.6);
+      const s = 0.2 + rng.next() * 0.42 * (1 - d / r * 0.6);
       const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d * 0.8;
       const yb = Math.max(0, (1 - d / r) * r * 0.45 - s * 0.3);
-      stone.rotBox([x, yb + s * 0.42, z], [s * (0.9 + rng.next() * 0.5), s * 0.85, s * (0.9 + rng.next() * 0.4)], rng.next() * Math.PI, new THREE.Color(1, 1, 1).multiplyScalar(0.85 + rng.next() * 0.25), rng, (rng.next() - 0.5) * 0.4);
+      stone.rotBox([x, yb + s * 0.42, z], [s * (0.9 + rng.next() * 0.5), s * 0.85, s * (0.9 + rng.next() * 0.4)], rng.next() * Math.PI, new THREE.Color(1, 1, 1).multiplyScalar(1.0 + rng.next() * 0.3), rng, (rng.next() - 0.5) * 0.4);
     }
   };
   rubble(-4.7, -2.1, 1.0, 22);
@@ -573,10 +609,10 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     group.add(rug);
   }
 
-  const stoneMat = track(surfaceMaterial(texStone));
+  const stoneMat = track(surfaceMaterial(texStone, undefined, true));
   group.add(mesh(stone.build(), stoneMat));
-  group.add(mesh(wood.build(), track(surfaceMaterial(texPlank))));
-  group.add(mesh(metal.build(), track(surfaceMaterial(texSteel))));
+  group.add(mesh(wood.build(), track(surfaceMaterial(texPlank, undefined, true))));
+  group.add(mesh(metal.build(), track(surfaceMaterial(texSteel, undefined, true))));
   group.add(mesh(plaster.build(), track(surfaceMaterial(texPlaster)), false, true));
   group.add(mesh(props.build(), track(surfaceMaterial(texSteel))));
 
@@ -617,7 +653,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   key.position.set(win.x + 0.3, win.y + 0.6, win.z - 0.6);
   key.target.position.set(-0.6, 0, 0.6);
   key.map = track(windowCookie(3, 2));
-  key.castShadow = true;
+  key.castShadow = !flags.has('noshadow');
   key.shadow.mapSize.set(q === 'high' ? 2048 : 1024, q === 'high' ? 2048 : 1024);
   key.shadow.bias = -0.0006;
   key.shadow.normalBias = 0.02;
@@ -625,11 +661,9 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   key.shadow.camera.near = 2;
   key.shadow.camera.far = 22;
   group.add(key, key.target);
-  const key2 = new THREE.SpotLight(new THREE.Color('#ffcf98'), 34, 0, 0.36, 0.6, 1.2);
-  key2.position.set(win2.x + 0.2, win2.y + 0.5, win2.z - 0.6);
-  key2.target.position.set(-3.2, 0, 1.2);
-  key2.map = key.map;
-  group.add(key2, key2.target);
+  // The small window gets beams and a light-pool decal but no light of its own: a second
+  // cookie spot cost ~20% of the frame for a patch the decal fakes well (docs/HD2D.md).
+  const key2 = { position: new THREE.Vector3(win2.x + 0.2, win2.y + 0.5, win2.z - 0.6), target: { position: new THREE.Vector3(-3.2, 0, 1.2) } };
   const hemi = new THREE.HemisphereLight(new THREE.Color('#ffd9b0'), new THREE.Color('#3a2116'), 1.7);
   group.add(hemi);
   // Soft front fill so camera-facing rock never drops to black (no shadows).
@@ -637,7 +671,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   fill.position.set(3, 6, 10);
   group.add(fill, fill.target);
   // Lodge lantern + ember glows (warm point accents) on the high tier only.
-  if (q === 'high') {
+  if (q === 'high' && !flags.has('nopoints')) {
     const lantern = new THREE.PointLight(new THREE.Color('#ffa24a'), 6, 6, 1.6);
     lantern.position.set(lodge.x0 + 4.2, ly + 2.2, lodge.z1 - 1.6);
     group.add(lantern);
@@ -650,20 +684,20 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const beamColor = new THREE.Color('#ffd49a');
   const beams: BeamSpec[] = [];
   const dir = key.target.position.clone().sub(key.position).normalize();
-  const shafts = [[-0.9, -0.3], [-0.3, 0.2], [0.35, -0.2], [0.9, 0.25]] as const;
+  const shafts = [[-0.95, -0.35], [-0.55, 0.3], [-0.15, -0.1], [0.25, 0.35], [0.6, -0.3], [0.95, 0.15]] as const;
   for (const [ox, oy] of shafts) {
     const s = new THREE.Vector3(win.x + ox * win.w * 0.4, win.y + oy * win.h * 0.4, win.z + 0.2);
     const len = (s.y / -dir.y) * (0.92 + rng.next() * 0.08);
-    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [0.55, 1.5 + rng.next() * 0.5] });
+    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [0.32, 0.8 + rng.next() * 0.45] });
   }
   const dir2 = key2.target.position.clone().sub(key2.position).normalize();
   for (const ox of [-0.3, 0.3]) {
     const s = new THREE.Vector3(win2.x + ox * win2.w, win2.y, win2.z + 0.2);
     beams.push({ start: s, end: s.clone().addScaledVector(dir2, (s.y / -dir2.y) * 0.9), width: [0.45, 1.1] });
   }
-  const rays = lightBeams(beams, beamColor, 0.22);
+  const rays = lightBeams(beams, beamColor, 0.26);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
-  group.add(rays.mesh);
+  if (!flags.has('norays')) group.add(rays.mesh);
   const dust = dustMotes(beams, q === 'high' ? 50 : 26, rng);
   track(dust.points.geometry); track(dust.points.material as THREE.Material);
   group.add(dust.points);
@@ -680,12 +714,14 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     const g = new THREE.PlaneGeometry(1, 1);
     g.rotateX(-Math.PI / 2);
     const m = track(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(0.55, 0.42, 0.28) }));
-    const pool = new THREE.Mesh(g, m);
-    const land = key.target.position.clone();
-    pool.position.set(land.x, 0.02, land.z);
-    pool.scale.set(5.5, 1, 3.8);
-    pool.renderOrder = 2;
-    group.add(pool);
+    for (const [land, sx, sz, k] of [[key.target.position, 5.5, 3.8, 1], [key2.target.position, 3.2, 2.4, 1.4]] as const) {
+      const pool = new THREE.Mesh(g, k === 1 ? m : track(m.clone()));
+      if (k !== 1) (pool.material as THREE.MeshBasicMaterial).color.multiplyScalar(k);
+      pool.position.set(land.x, 0.02, land.z);
+      pool.scale.set(sx, 1, sz);
+      pool.renderOrder = 2;
+      group.add(pool);
+    }
   }
 
   // Shadow camera: the spot's frustum is already tight around the floor.
