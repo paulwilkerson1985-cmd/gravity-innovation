@@ -6,14 +6,16 @@
 // spot), sun glints on the sea, warm sand bounce.
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
-import { CELL, Heightmap, LEVEL, VoxelBatch, rockColumns, surfaceMaterial, type ArenaRig } from '../arena';
+import { CELL, Heightmap, LEVEL, VoxelBatch, surfaceMaterial, type ArenaRig } from '../arena';
+import { boulderColumns, rubblePile } from '../kit/rock';
+import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 import { paintPlanks } from '../textures';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, battleMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, makeGrade, orientedBox, paintBark, paintDrift, paintRockOn, paintSand, palmTree, particles, pixelWater, terraceCaps,
+  grey, hdr, levelAt, makeGrade, orientedBox, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -51,8 +53,8 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   const pixelers: ((px: number) => void)[] = [];
 
   const texSand = cachedTexture('sand', () => paintSand(21, 64));
-  const texStone = cachedTexture('sandstone', () => paintRockOn(23, RAMPS2.sandstone, 32, true));
-  const texWet = cachedTexture('wet-rock', () => paintRockOn(29, RAMPS2.wetRock, 32));
+  const texStone = cachedTexture('sandstone-boulder', () => paintBoulder(23, 32, RAMPS2.sandstone));
+  const texWet = cachedTexture('wet-boulder', () => paintBoulder(29, 32, RAMPS2.wetRock));
   const texDrift = cachedTexture('drift', () => paintDrift(25, 32));
   const texBark = cachedTexture('palm-bark', () => paintBark(27, 16));
   const texPlank = cachedTexture('pier-plank', () => paintPlanks(33, 64, 64, 8, RAMPS2.drift));
@@ -83,7 +85,7 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
       lv = Math.max(lv, h);
     }
     // Sea stacks.
-    for (const [sx, sz, r, h] of [[-4.8, -9.0, 0.9, 4], [5.2, -10.2, 1.1, 5], [-1.0, -12.0, 0.7, 3]] as const) if (Math.hypot(x - sx, z - sz) < r) lv = Math.max(lv, h);
+    for (const [sx, sz, r, h] of [[-4.8, -9.0, 1.3, 3], [5.6, -10.6, 1.5, 4], [-0.6, -12.4, 1.0, 2]] as const) if (Math.hypot(x - sx, z - sz) < r) lv = Math.max(lv, h);
     if (lv > 0) {
       const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
       const n = cl - Math.floor(cl);
@@ -94,10 +96,8 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
 
   // ---- sandstone terraces with sand mats on top (rock reaches under water)
   const rock = new VoxelBatch(32);
-  rockColumns(hm, rock, rng, RAMPS2.sandstone, { baseY: -0.7 });
+  boulderColumns(hm, rock, rng, { baseY: -0.7, tints: ['#ffffff', '#fff4e8', '#f4ece4'] });
   group.add(mk(rock.build(), track(surfaceMaterial(texStone, undefined, true))));
-  const caps = new VoxelBatch(64);
-  terraceCaps(hm, caps, rng, { baseY: -0.7, thick: 0.12, skip: (x, z) => z < -5.5 || rng.chance(0.15) });
   // ---- sand floor (dry → wet toward the water) + caps share the sand texture
   {
     const g = floorGrid(hm, texSand, 64, {
@@ -105,13 +105,12 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
       tintAt: (x, z) => { const s = z - shoreZ(x); const wet = 1 - THREE.MathUtils.smoothstep(s, 0.6, 1.6); return [1 - wet * 0.32, 1 - wet * 0.3, 1 - wet * 0.24]; },
     });
     group.add(mk(g, track(surfaceMaterial(texSand)), false, true));
-    group.add(mk(caps.build(), track(surfaceMaterial(texSand, undefined, true))));
   }
 
   // ---- sea
   const water = pixelWater({
     rect: { x0: -50, z0: -100, w: 100, d: 108 }, y: WATER_Y, fieldRes: 256, range: 7,
-    land: (x, z) => sandY(x, z) > WATER_Y || hm.get(...hm.cell(x, z)) > 0,
+    land: (x, z) => sandY(x, z) > WATER_Y || levelAt(hm, x, z) > 0,
     ramp: ['#14466e', '#1c6390', '#2a84aa', '#3aa2bc', '#5ec2c8', '#9adcd2'],
     foam: '#f6fbf6', wet: '#8a7154', swash: 0.55, deep: 6, waveK: 1.5, waveSpeed: 1.6, caps: 0.25, far: -10,
   });
@@ -155,13 +154,7 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   }
   // Wet rock outcrops at the water line (spray goes here).
   const outcrops: [number, number, number][] = [[-6.2, -3.4, 0.9], [6.9, -2.7, 0.8], [-2.6, -5.6, 0.6], [2.2, -6.4, 0.5]];
-  for (const [cx, cz, r] of outcrops) {
-    for (let i = 0; i < 8 + r * 8; i++) {
-      const a = rng.next() * Math.PI * 2, d = Math.sqrt(rng.next()) * r;
-      const s = 0.3 + rng.next() * 0.45 * (1 - (d / r) * 0.5);
-      orientedBox(wet, V(cx + Math.cos(a) * d, WATER_Y - 0.15 + s * 0.45 + (1 - d / r) * 0.25, cz + Math.sin(a) * d * 0.8), V(s * 1.2, s, s * (0.9 + rng.next() * 0.4)), V((rng.next() - 0.5) * 0.4, 1, (rng.next() - 0.5) * 0.4), grey(0.9 + rng.next() * 0.3), rng, rng.next() * 3);
-    }
-  }
+  for (const [cx, cz, r] of outcrops) rubblePile(wet, [cx, WATER_Y - 0.2, cz], rng, { radius: r * 1.2, heap: 0.7, big: Math.min(0.75, r * 0.8) });
   // Shells, a starfish, pebbles (off the kin spots).
   const clear = (x: number, z: number) => Math.hypot(x + 1.3, z - 1.0) < 1.3 || Math.hypot(x - 1.5, z + 1.0) < 1.3 || Math.hypot(x + 2.5, z - 1.9) < 0.7 || Math.hypot(x - 2.75, z + 1.95) < 0.7;
   for (let i = 0; i < 26; i++) {

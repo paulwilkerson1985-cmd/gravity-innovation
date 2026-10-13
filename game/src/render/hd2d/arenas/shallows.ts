@@ -5,13 +5,15 @@
 // sandbar (cloud cookie) while the sea around stays cool, with sun glints on the water.
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
-import { Heightmap, LEVEL, VoxelBatch, rockColumns, surfaceMaterial, type ArenaRig } from '../arena';
+import { Heightmap, LEVEL, VoxelBatch, surfaceMaterial, type ArenaRig } from '../arena';
+import { boulderColumns, rubblePile } from '../kit/rock';
+import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, battleMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, makeGrade, orientedBox, paintDrift, paintRockOn, paintSand, paintTurf, particles, pixelWater, terraceCaps,
+  grey, hdr, levelAt, makeGrade, orientedBox, paintDrift, paintSand, paintTurf, particles, pixelWater, terraceCaps,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -49,7 +51,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   const pixelers: ((px: number) => void)[] = [];
 
   const texSand = cachedTexture('wet-sand', () => paintSand(43, 64, RAMPS2.wetSand));
-  const texRock = cachedTexture('wet-rock', () => paintRockOn(29, RAMPS2.wetRock, 32));
+  const texRock = cachedTexture('wet-boulder', () => paintBoulder(29, 32, RAMPS2.wetRock));
   const texWeed = cachedTexture('weed', () => paintTurf(47, 64));
   const texDrift = cachedTexture('drift', () => paintDrift(25, 32));
 
@@ -85,7 +87,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     hm.set(i, j, lv);
   }
   const rock = new VoxelBatch(32);
-  rockColumns(hm, rock, rng, RAMPS2.wetRock, { baseY: -0.9 });
+  boulderColumns(hm, rock, rng, { baseY: -0.9, tints: ['#ffffff', '#eef4f4', '#f4f0e8'] });
   group.add(mk(rock.build(), track(surfaceMaterial(texRock, undefined, true))));
   const caps = new VoxelBatch(64);
   terraceCaps(hm, caps, rng, { baseY: -0.9, thick: 0.1, skip: () => rng.chance(0.45) });
@@ -105,7 +107,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   // ---- the water around everything
   const water = pixelWater({
     rect: { x0: -40, z0: -80, w: 80, d: 92 }, y: WATER_Y, fieldRes: 224, range: 6,
-    land: (x, z) => sandY(x, z) > WATER_Y || hm.get(...hm.cell(x, z)) > 0,
+    land: (x, z) => sandY(x, z) > WATER_Y || levelAt(hm, x, z) > 0,
     ramp: ['#173e5c', '#205a78', '#2c7590', '#3f8fa2', '#62acb4', '#94cac6'],
     foam: '#f4faf6', wet: '#6e5a48', swash: 0.4, deep: 4, waveK: 1.9, waveSpeed: 1.9, caps: 0.45, far: -9,
   });
@@ -130,6 +132,8 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
         orientedBox(drift, p.clone().addScaledVector(side, s * 0.45).add(V(0, h * 0.4, 0)), V(0.12, h, 0.12), V(s * 0.45, 1, 0).applyAxisAngle(V(0, 1, 0), yaw), grey(0.8 + rng.next() * 0.2), rng);
       }
     }
+    // Hull planking still on the near side: long strakes slanting down into the water.
+    for (let k = 0; k < 3; k++) orientedBox(drift, c.clone().addScaledVector(side, 0.55 + k * 0.04).addScaledVector(fwd, -0.3 + k * 0.2).add(V(0, 0.25 + k * 0.28, 0)), V(0.08, 0.26, 2.6 - k * 0.5), V(0.5, 1, 0).applyAxisAngle(V(0, 1, 0), yaw), grey(0.62 + k * 0.08), rng, yaw + Math.PI / 2);
     orientedBox(drift, c.clone().addScaledVector(fwd, 1.8).add(V(0, 0.7, 0)), V(0.16, 1.5, 0.16), V(0.5, 1, 0).applyAxisAngle(V(0, 1, 0), yaw), grey(0.75), rng); // stem post
   }
   // Mooring post with red/white bands and a buoy (a colour accent at the front left).
@@ -145,14 +149,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   // Wet rocks on the bar's ends (off the kin spots) + pebbles and shells.
   const clear = (x: number, z: number) => Math.hypot(x + 1.3, z - 1.0) < 1.3 || Math.hypot(x - 1.5, z + 1.0) < 1.3 || Math.hypot(x + 2.5, z - 1.9) < 0.75 || Math.hypot(x - 2.75, z + 1.95) < 0.75;
   const outcrops: [number, number, number][] = [[-4.4, 0.6, 0.7], [4.5, -1.3, 0.8], [0.0, -2.6, 0.5], [-1.0, 3.4, 0.5]];
-  for (const [cx, cz, r] of outcrops) {
-    for (let i = 0; i < 6 + r * 8; i++) {
-      const a = rng.next() * Math.PI * 2, d = Math.sqrt(rng.next()) * r;
-      const s = 0.25 + rng.next() * 0.4 * (1 - (d / r) * 0.5);
-      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d * 0.8;
-      orientedBox(wetBits, V(x, Math.max(WATER_Y, sandY(x, z)) - 0.05 + s * 0.4 + (1 - d / r) * 0.15, z), V(s * 1.2, s, s * (0.9 + rng.next() * 0.4)), V((rng.next() - 0.5) * 0.4, 1, (rng.next() - 0.5) * 0.4), grey(0.95 + rng.next() * 0.3), rng, rng.next() * 3);
-    }
-  }
+  for (const [cx, cz, r] of outcrops) rubblePile(wetBits, [cx, Math.max(WATER_Y, sandY(cx, cz)) - 0.1, cz], rng, { radius: r * 1.1, heap: 0.6, big: Math.min(0.7, r * 0.8) });
   for (let i = 0; i < 30; i++) {
     const d = new THREE.Vector2((rng.next() - 0.5) * 10, (rng.next() - 0.5) * 4);
     const x = centre.x + ax.x * d.x + ac.x * d.y, z = centre.y + ax.y * d.x + ac.y * d.y;

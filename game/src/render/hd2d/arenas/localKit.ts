@@ -999,3 +999,22 @@ export function sweepBeam(len: number, width: [number, number], color: THREE.Col
   mesh.renderOrder = 5;
   return mesh;
 }
+
+/** Rock level at a world point, 0 outside the grid (Heightmap.get returns 99 there). */
+export function levelAt(hm: Heightmap, x: number, z: number): number {
+  const [i, j] = hm.cell(x, z);
+  const v = hm.get(i, j);
+  return v >= 90 ? 0 : v;
+}
+
+/** Multiply a geometry's vertex colours by `f(x, y, z)` → [r, g, b] (baked light falloff). */
+export function shadeVertices(g: THREE.BufferGeometry, f: (x: number, y: number, z: number) => [number, number, number]): THREE.BufferGeometry {
+  const pos = g.attributes.position!, col = g.attributes.color;
+  if (!col) return g;
+  for (let k = 0; k < pos.count; k++) {
+    const [r, gg, b] = f(pos.getX(k), pos.getY(k), pos.getZ(k));
+    col.setXYZ(k, col.getX(k) * r, col.getY(k) * gg, col.getZ(k) * b);
+  }
+  col.needsUpdate = true;
+  return g;
+}

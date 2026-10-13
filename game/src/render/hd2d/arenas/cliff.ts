@@ -6,12 +6,14 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, Heightmap, LEVEL, VoxelBatch, rockColumns, surfaceMaterial, type ArenaRig } from '../arena';
+import { boulderColumns } from '../kit/rock';
+import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, battleMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, makeGrade, orientedBox, paintFlags, paintRockOn, paintTurf, particles, pixelWater, sweepBeam, terraceCaps, windsweptTree,
+  grey, hdr, levelAt, makeGrade, orientedBox, paintFlags, paintRockOn, paintTurf, particles, pixelWater, sweepBeam, terraceCaps, windsweptTree,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -38,7 +40,7 @@ export interface CliffOptions { seed?: number; quality?: 'high' | 'low'; trainer
 
 const SEA_Y = -13;
 const DROP = 13 - 0.12; // land columns reach from the sea up to just under the turf
-const LH = { x: -7.2, z: -5.3 }; // lighthouse site
+const LH = { x: -6.5, z: -4.7 }; // lighthouse site
 
 export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   const rng = new Rng(opts.seed ?? 53);
@@ -50,7 +52,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   const updates: ((t: number) => void)[] = [];
   const pixelers: ((px: number) => void)[] = [];
 
-  const texSlate = cachedTexture('slate', () => paintRockOn(57, RAMPS2.slate, 32, true));
+  const texSlate = cachedTexture('slate-boulder', () => paintBoulder(57, 32, RAMPS2.slate));
   const texTurf = cachedTexture('turf', () => paintTurf(59, 64));
   const texFlags = cachedTexture('flags', () => paintFlags(61, 64));
   const texWhite = cachedTexture('whitewash', () => paintRockOn(63, RAMPS2.whitewash, 32));
@@ -64,7 +66,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
     const wob = Math.sin(x * 1.4 + z * 0.9) * 0.35 + Math.sin(z * 2.2 - x * 0.5) * 0.25;
-    const onLand = z > edgeZ(x) + wob * 0.4;
+    const onLand = z > edgeZ(x) + wob * 0.4 || Math.hypot(x - LH.x, z - LH.z) < 1.4;
     land[hm.idx(i, j)] = onLand ? 1 : 0;
     if (!onLand) continue;
     let lv = 0;
@@ -73,7 +75,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     if (dr > 0) lv = Math.max(lv, 1 + Math.floor(dr / 1.5) + (dr > 2.8 ? 1 : 0));
     if (z > 4.3 + wob * 0.5) lv = Math.max(lv, 1 + (z > 5.6 ? 1 : 0));
     // A lower shelf for the lighthouse, so the tower stays in frame.
-    if (Math.hypot(x - LH.x, z - LH.z) < 1.6) lv = Math.min(lv, 2);
+    if (Math.hypot(x - LH.x, z - LH.z) < 1.4) lv = Math.min(lv, 1);
     if (lv > 0) {
       const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
       const n = cl - Math.floor(cl);
@@ -84,15 +86,22 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   const isLand = (x: number, z: number) => { const [i, j] = hm.cell(x, z); return i >= 0 && j >= 0 && i < hm.nx && j < hm.nz ? land[hm.idx(i, j)] === 1 : z > 0; };
 
   // ---- slate: every land column runs from the sea to its tier top (one mesh), sea stacks too
-  const deep = new Heightmap(hm.nx, hm.nz, X0, Z0);
-  for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) if (land[hm.idx(i, j)]) deep.set(i, j, hm.get(i, j) + DROP / LEVEL);
+  // Rounded boulders for the top two levels below the turf (what the camera reads), plain
+  // bevelled blocks for the long drop below (seen small and through mist: a third of the tris).
+  const UPPER = 2;
+  const upper = new Heightmap(hm.nx, hm.nz, X0, Z0), lower = new Heightmap(hm.nx, hm.nz, X0, Z0);
+  for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) if (land[hm.idx(i, j)]) {
+    upper.set(i, j, hm.get(i, j) + UPPER);
+    lower.set(i, j, (DROP - UPPER * LEVEL) / LEVEL);
+  }
   const rock = new VoxelBatch(32);
-  rockColumns(deep, rock, rng, RAMPS2.slate, { baseY: SEA_Y });
+  boulderColumns(upper, rock, rng, { baseY: -0.12 - UPPER * LEVEL, tints: ['#ffffff', '#eef2f6', '#f2f0ea'] });
+  rockColumns(lower, rock, rng, RAMPS2.slate, { baseY: SEA_Y });
   const stacks = new Heightmap(hm.nx, hm.nz, X0, Z0);
   for (const [sx, sz, r, top] of [[-2.6, -9.6, 1.0, -7.5], [1.6, -11.6, 1.3, -6.2], [4.4, -8.8, 0.7, -9.6]] as const) {
     for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) if (Math.hypot(hm.cx(i) - sx, hm.cz(j) - sz) < r) stacks.set(i, j, (top - SEA_Y + 0.6) / LEVEL - (Math.hypot(hm.cx(i) - sx, hm.cz(j) - sz) / r) * 2);
   }
-  rockColumns(stacks, rock, rng, RAMPS2.slate, { baseY: SEA_Y - 0.6 });
+  boulderColumns(stacks, rock, rng, { baseY: SEA_Y - 0.6 });
   group.add(mk(rock.build(), track(surfaceMaterial(texSlate, undefined, true))));
 
   // ---- turf: tier caps + the clifftop floor (clipped at the edge)
@@ -126,7 +135,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   const lh = V(LH.x, 0, LH.z);
   lh.y = topAt(lh.x, lh.z) + 0.02;
   {
-    const segs = 6, segH = 0.85;
+    const segs = 5, segH = 0.78;
     for (let k = 0; k < segs; k++) {
       const r = 0.95 - k * 0.08;
       const c = lh.clone().add(V(0, segH * (k + 0.5), 0));
@@ -143,7 +152,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     // Door + a little keeper's hut against the tower.
     orientedBox(metal, lh.clone().add(V(0.35, 0.4, 0.62)), V(0.36, 0.7, 0.06), V(0, 1, 0), new THREE.Color('#5a3a2a'), rng, 0.4);
   }
-  const lampY = lh.y + 6 * 0.85 + 0.5;
+  const lampY = lh.y + 5 * 0.78 + 0.5;
   // Ruined arch: two piers, one broken, a lintel stump, fallen blocks.
   {
     const base = V(7.7, 0, -3.6);
@@ -172,7 +181,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   for (let i = 0; i < 150; i++) {
     const x = (rng.next() - 0.5) * 22, z = -8 + rng.next() * 14;
     if (!isLand(x, z) || clear(x, z)) continue;
-    leaves.tuft(V(x, topAt(x, z) + (hm.get(...hm.cell(x, z)) > 0 ? 0.0 : 0.1) - 0.04, z), 0.42, 0.32 + rng.next() * 0.35, rng.chance(0.15) ? pinks : rng.chance(0.5) ? dune : grass, grey(0.8 + rng.next() * 0.35), rng, 2);
+    leaves.tuft(V(x, topAt(x, z) + (levelAt(hm, x, z) > 0 ? 0.0 : 0.1) - 0.04, z), 0.42, 0.32 + rng.next() * 0.35, rng.chance(0.15) ? pinks : rng.chance(0.5) ? dune : grass, grey(0.8 + rng.next() * 0.35), rng, 2);
   }
   const fol = foliageMaterial(foliageAtlas(), { strength: 0.2, speed: 2.4, dir: new THREE.Vector2(1, 0.25).normalize() });
   track(fol.material); track(fol.depth);
@@ -196,7 +205,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   // ---- the sea below
   const water = pixelWater({
     rect: { x0: -60, z0: -90, w: 120, d: 96 }, y: SEA_Y, fieldRes: 192, range: 5,
-    land: (x, z) => isLand(x, z) || stacks.get(...stacks.cell(x, z)) > 0,
+    land: (x, z) => isLand(x, z) || levelAt(stacks, x, z) > 0,
     ramp: ['#16283a', '#1e3a4e', '#2a4e60', '#3a6470', '#58808a', '#86a4a8'],
     foam: '#eef4f4', swash: 0, deep: 7, waveK: 1.3, waveSpeed: 1.8, caps: 0.7, glints: false, far: -16,
   });

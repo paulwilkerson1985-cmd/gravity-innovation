@@ -5,11 +5,13 @@
 // (the light motif: everything is lit from below and behind by the molten river).
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
-import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, lightBeams, rockColumns, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
+import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, lightBeams, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
+import { boulderColumns, rubblePile } from '../kit/rock';
+import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
-import { RAMPS2, V, battleMarking, cachedCanvas, cachedTexture, decal, disposeGroup, floorGrid, glowTexture, grey, hdr, makeGrade, paintAlpha, paintAsh, paintBasalt, paintRockOn, particles } from './localKit';
+import { RAMPS2, V, battleMarking, cachedCanvas, cachedTexture, decal, disposeGroup, floorGrid, glowTexture, grey, hdr, makeGrade, shadeVertices, paintAlpha, paintAsh, paintRockOn, particles } from './localKit';
 
 export interface TerrainArenaOptions { seed?: number; quality?: 'high' | 'low'; trainer?: boolean }
 
@@ -164,7 +166,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   const updates: ((t: number) => void)[] = [];
   const pixelers: ((px: number) => void)[] = [];
 
-  const texBasalt = cachedTexture('basalt', () => paintBasalt(13, 32));
+  const texBasalt = cachedTexture('basalt-boulder', () => paintBoulder(13, 32, RAMPS2.basalt));
   const texAsh = cachedTexture('ash', () => paintAsh(17, 64));
   const texSlag = cachedTexture('slag', () => paintRockOn(19, RAMPS2.slag, 32));
 
@@ -205,8 +207,18 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
 
   // ---- basalt walls (one mesh)
   const rock = new VoxelBatch(32);
-  rockColumns(hm, rock, rng, RAMPS2.basalt);
-  group.add(mk(rock.build(), track(surfaceMaterial(texBasalt, undefined, true))));
+  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#f0e8f4', '#fff0ec'] });
+  // Baked falloff: the lava glow fades with height and distance from the river/pool, so the
+  // upper walls sink into cool purple shadow and the eye goes to the molten floor of the cave.
+  const fx = (fall.x0 + fall.x1) / 2;
+  const lavaGlow = (x: number, y: number, z: number) => {
+    const dr = Math.abs(z - river.z), dp = Math.hypot(x - pool.x, z - pool.z), df = Math.hypot(x - fx, z - fall.z) * 0.8;
+    return Math.exp(-Math.max(0, y) / 2.2) * Math.max(Math.exp(-dr * 0.35), Math.exp(-dp * 0.5), Math.exp(-df * 0.4));
+  };
+  group.add(mk(shadeVertices(rock.build(), (x, y, z) => {
+    const k = lavaGlow(x, y, z), up = 0.62 + 0.38 * Math.exp(-Math.max(0, y - 0.5) / 3.5);
+    return [up * (0.85 + k * 0.5), up * (0.8 + k * 0.18), up * (0.92 - k * 0.1)];
+  }), track(surfaceMaterial(texBasalt, undefined, true))));
 
   // ---- ash floor: sinks into the river channel and the pool; scorched + lava-lit near them
   const inRiver = (x: number, z: number) => Math.abs(z - river.z) < river.half && Math.abs(x) < 9.6;
@@ -235,7 +247,6 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   for (let x = -9.8; x <= 9.81; x += 0.6) rpts.push(V(x, ly, river.z + Math.sin(x * 0.7) * 0.12));
   lava.strip(rpts, river.half * 2 + 0.25, 4);
   // The fall: a vertical sheet down the notch in the back wall, then a short run into the river.
-  const fx = (fall.x0 + fall.x1) / 2;
   const mouthY = 5 * LEVEL;
   lava.strip([V(fx, mouthY, fall.z + 0.02), V(fx, mouthY * 0.5, fall.z + 0.12), V(fx, ly + 0.05, fall.z + 0.2)], fall.x1 - fall.x0 - 0.5, 3, true);
   lava.strip([V(fx, ly + 0.02, fall.z + 0.2), V(fx, ly + 0.01, river.z)], fall.x1 - fall.x0 - 0.3, 3);
@@ -263,11 +274,10 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
       chunk(cx + Math.cos(a) * d, cz + Math.sin(a) * d * 0.8, s, y + Math.max(0, (1 - d / r) * r * 0.4 - s * 0.3), rng.chance(0.3));
     }
   };
-  rubble(-4.9, -2.2, 1.0, 20);
-  rubble(-5.1, 1.7, 0.9, 16);
-  rubble(4.6, -2.2, 0.9, 16);
-  rubble(3.8, 3.4, 0.7, 10);
-  rubble(-1.8, 3.6, 0.6, 8);
+  for (const [x, z, r] of [[-4.9, -2.2, 1.2], [-5.1, 1.7, 1.0], [4.6, -2.2, 1.0], [3.8, 3.4, 0.8], [-1.8, 3.6, 0.6]] as const) {
+    rubblePile(slag, [x, 0, z], rng, { radius: r, heap: 0.55 });
+    rubble(x, z, r * 0.8, 3);
+  }
   // River banks: a broken lip of chunks along both sides.
   for (let x = -9; x <= 9; x += 0.55 + rng.next() * 0.5) {
     if (x > fall.x0 - 0.2 && x < fall.x1 + 0.2) continue;
@@ -294,12 +304,20 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     glow.box([v.x - 0.12, v.y + 0.3, v.z - 0.12], [v.x + 0.12, v.y + 0.36, v.z + 0.12], hdr('#ff8a2a', 2.6), rng);
   }
   // Crystals: violet clusters on the walls (cool counterpoint) + a few ember ones.
-  const crystals: [number, number, number, string][] = [[-7.2, 1.6, -3.6, '#c47bff'], [7.5, 2.0, 0.2, '#c47bff'], [-6.8, 1.0, 3.4, '#ff8a2a'], [-8.4, 2.6, -0.8, '#c47bff'], [5.6, 2.2, -3.9, '#ff8a2a'], [8.2, 2.9, 3.0, '#c47bff']];
-  for (const [x, y, z, c] of crystals) {
-    for (let i = 0; i < 4; i++) glow.rotBox([x + (rng.next() - 0.5) * 0.4, y + rng.next() * 0.15, z + (rng.next() - 0.5) * 0.35], [0.1, 0.3 + rng.next() * 0.28, 0.1], rng.next() * 3, hdr(c, 1.9 + rng.next() * 0.6), rng, (rng.next() - 0.5) * 0.9);
+  // Crystal clusters seated on terrace tops: a fan of shards with a lit base (bloom accents).
+  const topY = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v >= 90 ? 0 : v * LEVEL; };
+  const crystals: [number, number, string][] = [[-6.9, -2.6, '#c47bff'], [-7.6, 1.2, '#c47bff'], [7.0, -0.6, '#c47bff'], [-6.4, 3.6, '#ff9a3a'], [6.6, -3.8, '#ff9a3a'], [8.0, 2.8, '#c47bff'], [-2.4, -6.6, '#c47bff']];
+  for (const [x, z, c] of crystals) {
+    const y = topY(x, z);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + rng.next(), lean = 0.25 + rng.next() * 0.35;
+      const h = 0.35 + rng.next() * 0.45;
+      glow.rotBox([x + Math.cos(a) * 0.12, y + h * 0.4, z + Math.sin(a) * 0.12], [0.14, h, 0.14], a, hdr(c, 1.6 + rng.next() * 0.9), rng, lean * (i % 2 ? 1 : -1));
+    }
+    glow.box([x - 0.22, y, z - 0.22], [x + 0.22, y + 0.06, z + 0.22], hdr(c, 0.9), rng);
   }
   // The fall's mouth: a glowing slot in the wall with a dark lintel of slag above it.
-  glow.box([fall.x0 + 0.2, mouthY - 0.05, fall.z - 0.02], [fall.x1 - 0.2, mouthY + 0.35, fall.z + 0.03], hdr('#ffb040', 2.4), rng);
+  glow.box([fall.x0 + 0.35, mouthY - 0.05, fall.z - 0.02], [fall.x1 - 0.35, mouthY + 0.22, fall.z + 0.03], hdr('#ff7a22', 1.5), rng);
   slag.box([fall.x0 - 0.1, mouthY + 0.35, fall.z - 0.1], [fall.x1 + 0.1, mouthY + 0.7, fall.z + 0.3], grey(0.8), rng, { aoBottom: 0.5 });
   // Glowing seams in the back wall over the river (lit from the river) and around the fall.
   for (let i = 0; i < 16; i++) {
@@ -367,9 +385,9 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
 
   // ---- heat shafts rising from the lava (the light motif) + steam + embers
   const beams: BeamSpec[] = [];
-  for (const x of [-6.8, -1.2, 3.6, 7.6]) beams.push({ start: V(x, ly, river.z + (rng.next() - 0.5) * 0.4), end: V(x + (rng.next() - 0.5) * 1.2, 3.6 + rng.next() * 1.0, river.z - 0.6 - rng.next() * 0.6), width: [1.2, 2.2 + rng.next() * 0.6] });
+  for (const x of [-6.8, 0.4, 7.2]) beams.push({ start: V(x, ly, river.z + (rng.next() - 0.5) * 0.4), end: V(x + (rng.next() - 0.5) * 1.2, 3.6 + rng.next() * 1.0, river.z - 0.6 - rng.next() * 0.6), width: [1.2, 2.2 + rng.next() * 0.6] });
   beams.push({ start: V(pool.x, ly, pool.z), end: V(pool.x + 0.4, 3.2, pool.z - 0.5), width: [1.6, 2.4] });
-  const rays = lightBeams(beams, new THREE.Color('#ff7a3a'), 0.11);
+  const rays = lightBeams(beams, new THREE.Color('#ff7a3a'), 0.07);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
   group.add(rays.mesh);
   updates.push(rays.update);
