@@ -555,7 +555,8 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // from the front-left corner to the back (the terraces climb away from it), its back edge
   // sits under the window wall, the lodge shelf takes the back right. The polygon runs on past
   // the portrait (phone) camera's bottom edge.
-  const FLOOR: Path2 = [[-10.2, 11], [-3.0, -4.0], [2.2, -4.0], [2.2, -3.1], [8.7, -3.1], [8.7, 11]];
+  // (The front edge lies past the build bounds: no riser ever runs across the near foreground.)
+  const FLOOR: Path2 = [[-14.5, 20], [-3.0, -4.0], [2.2, -4.0], [2.2, -3.1], [8.7, -3.1], [8.7, 20]];
   const floorD = polygonSdf(FLOOR);
   const DEPTH = 0.62;
   // Two tall terraces of two courses each (1.4 units) on narrow ledges, then the tall cave wall
