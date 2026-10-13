@@ -14,7 +14,7 @@ import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import { postFlags, type Grade } from '../pipeline';
 import type { ArenaDef } from './index';
-import { apron, backdrop, bandIndex, glints, gobo, lightPools, paintMesas, sunRig, terraces, type MesaOpts, type RgbaTile } from './outdoorKit';
+import { apron, backdrop, getRgb, glints, hash2, gobo, lightPools, paintClouds, paintMesas, paintSky, putRgb, rgb, sunRig, terraces, type MesaOpts, type RgbaTile } from './outdoorKit';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, fogBands, foliageAtlas, foliageMaterial,
   grey, hdr, levelAt, makeGrade, orientedBox, paintFlags, paintRockOn, paintTurf, particles, pixelWater, rockStack, windsweptTree,
@@ -28,7 +28,7 @@ export const ARENA: ArenaDef = {
   grade: cliffGrade,
   background: '#c8bca8',
   fog: '#c8bca8',
-  fogRange: [26, 104],
+  fogRange: [34, 124],
   // A little lower on desktop so the sky with the sun break shows above the sea.
   camera: { wide: { elev: 0.46 } },
 };
@@ -46,15 +46,17 @@ export interface CliffOptions { seed?: number; quality?: 'high' | 'low'; trainer
 
 const SEA_Y = -13;
 const DROP = 13 - 0.12; // land columns reach from the sea up to just under the turf
-const LH = { x: -6.5, z: -4.7 }; // lighthouse site
-/** Tier level of the front row, where the set meets its apron. */
-const FRONT_LV = 2;
+/** Tier level of the front row, where the set meets its apron (the clifftop itself). */
+const FRONT_LV = 0;
 /** Sea stacks below the cliff: x, z, foot radius, top y. */
 const STACKS = [[-2.6, -9.6, 1.0, -7.5], [1.6, -11.6, 1.3, -6.2], [4.4, -8.8, 0.7, -9.6], [-6.8, -15.5, 1.5, -5.5]] as const;
 /** The low sun the sky is painted with (world, on the sky plane) — the key comes from there. */
 const SUN = new THREE.Vector3(26, -4.2, -69.8);
-/** The sky plane: inside the camera's far plane (90) from every layout. */
+/** The sky plane: inside the camera's far plane (90) from every layout; its top edge (world y). */
 const SKY_Z = -70;
+const SKY_TOP = 30;
+/** Rows the sky texture gained above the desktop's old top (y 14): cloud rows are offset by it. */
+const SKY_OFF = (SKY_TOP - 14) * 5;
 /** World y where the sea meets the sky on the sky plane, and the horizon haze colour (= fog). */
 const HORIZON_Y = SEA_Y;
 const HAZE = '#c8bca8';
@@ -76,33 +78,33 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   const texTurf = cachedTexture('turf', () => paintTurf(59, 64));
   const texFlags = cachedTexture('flags', () => paintFlags(61, 64));
   const texWhite = cachedTexture('whitewash', () => paintRockOn(63, RAMPS2.whitewash, 32));
-  const texBrick = cachedTexture('brick', () => paintRockOn(65, RAMPS2.brick, 32, true));
 
   // ---- the headland: the edge bows back into a bay in the middle
   const edgeZ = (x: number) => -3.9 + Math.sin(x * 0.55 + 1) * 0.35 - Math.max(0, Math.abs(x) - 5.0) * 1.05;
   const X0 = -13.5, Z0 = -14.4;
-  const hm = new Heightmap(30, 23, X0, Z0);   // levels above the clifftop (tiers)
+  // 27 rows: the paved clifftop runs on toward the camera (to z ≈ 9.9) so the flagstones fill
+  // the lower third of the frame; levels above the clifftop are the side tiers.
+  const hm = new Heightmap(30, 27, X0, Z0);
   const land = new Uint8Array(hm.nx * hm.nz);
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
     const wob = Math.sin(x * 1.4 + z * 0.9) * 0.35 + Math.sin(z * 2.2 - x * 0.5) * 0.25;
-    const onLand = z > edgeZ(x) + wob * 0.4 || Math.hypot(x - LH.x, z - LH.z) < 1.4;
+    const onLand = z > edgeZ(x) + wob * 0.4;
     land[hm.idx(i, j)] = onLand ? 1 : 0;
     if (!onLand) continue;
     let lv = 0;
     const dl = -6.0 - x + wob, dr = x - 6.6 + wob;
     if (dl > 0) lv = 1 + Math.floor(dl / 1.3) + (dl > 2.4 ? Math.floor((dl - 2.4) / 1.1) : 0);
     if (dr > 0) lv = Math.max(lv, 1 + Math.floor(dr / 1.5) + (dr > 2.8 ? 1 : 0));
-    if (z > 4.3 + wob * 0.5) lv = Math.max(lv, 1 + (z > 5.6 ? 1 : 0));
-    // A lower shelf for the lighthouse, so the tower stays in frame.
-    if (Math.hypot(x - LH.x, z - LH.z) < 1.4) lv = Math.min(lv, 1);
+    // Low banks only at the front corners: the paving runs straight on toward the camera.
+    if (z > 4.6 + wob * 0.5 && Math.abs(x + 0.3) > 6.6 + wob) lv = Math.max(lv, 1 + (z > 6.2 ? 1 : 0));
     if (lv > 0) {
       const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
       const n = cl - Math.floor(cl);
       lv = Math.max(1, Math.min(7, lv + (n > 0.8 ? 1 : n < 0.12 ? -1 : 0)));
     }
-    // The last rows meet the apron (phones look far past the stage): one even front tier.
-    if (j >= hm.nz - 2) lv = FRONT_LV;
+    // The last rows meet the apron (phones look far past the stage): clifftop level.
+    if (j >= hm.nz - 1) lv = FRONT_LV;
     hm.set(i, j, lv);
   }
   const isLand = (x: number, z: number) => { const [i, j] = hm.cell(x, z); return i >= 0 && j >= 0 && i < hm.nx && j < hm.nz ? land[hm.idx(i, j)] === 1 : z > 0; };
@@ -131,7 +133,6 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   // Sea stacks: weathered, tapering rock-kit clumps rising from the surf.
   for (const [sx, sz, r, top] of STACKS) rockStack(rock, V(sx, SEA_Y - 0.6, sz), r, top - SEA_Y + 0.6, rng, { foot: '#9aa0a4', top: '#ffffff', taper: 0.6 });
   const onStack = (x: number, z: number) => STACKS.some(([sx, sz, r]) => Math.hypot(x - sx, z - sz) < r * 0.95);
-  group.add(mk(rock.build(), track(surfaceMaterial(texSlate, undefined, true))));
 
   // ---- turf: the clifftop floor (clipped at the edge) + the tier tops (same material)
   const turfMat = track(surfaceMaterial(texTurf));
@@ -145,53 +146,43 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   {
     const zf = hm.z0 + hm.nz * CELL;
     const ap = apron({
-      x0: -44, x1: 44, z0: zf - 0.02, z1: zf + 36, y: -0.12 + FRONT_LV * LEVEL, map: texTurf, tileTexels: 64,
-      shade: (x, z) => (0.86 - 0.3 * THREE.MathUtils.smoothstep(z, zf, zf + 10)) * (0.9 + 0.1 * Math.sin(x * 0.6) * Math.cos(z * 0.5)),
+      x0: -44, x1: 44, z0: zf - 0.02, z1: zf + 36, y: FRONT_LV === 0 ? 0 : -0.12 + FRONT_LV * LEVEL, map: texTurf, tileTexels: 64,
+      shade: (x, z) => (0.86 - 0.34 * THREE.MathUtils.smoothstep(z, zf, zf + 7)) * (0.96 + 0.04 * Math.sin(x * 0.6) * Math.cos(z * 0.5)),
     });
     track(ap.material as THREE.Material);
     group.add(ap);
   }
   group.add(mk(tierSides.build(), track(surfaceMaterial(cachedTexture('slate-face', () => paintRockOn(67, RAMPS2.slate, 32, true)), undefined, true))));
 
-  // ---- the paving: worn flagstones across the battle ground (some missing, some tilted)
+  // ---- the paving: worn flagstones from the ruins at the back right down to the camera (they
+  // fill the lower third of the frame), loosening toward the edges — some missing, some tilted,
+  // turf and sea pinks in the gaps.
   const flags = new VoxelBatch(64);
-  const plaza = (x: number, z: number) => Math.hypot((x - 0.1) / 5.0, (z - 0.1) / 3.3);
-  for (let gz = -4; gz <= 4; gz++) for (let gx = -6; gx <= 6; gx++) {
+  const plaza = (x: number, z: number) => {
+    const u = (x - 0.1) / (5.4 + Math.max(0, z) * 0.32), v = (z - 2.2) / 5.6;
+    return Math.cbrt(Math.abs(u) ** 3 + Math.abs(v) ** 3) + Math.sin(x * 1.3 + z * 0.7) * 0.04;
+  };
+  const gaps: [number, number][] = [];
+  for (let gz = -4; gz <= 10; gz++) for (let gx = -9; gx <= 9; gx++) {
     const x = gx * 0.9 + (gz % 2 ? 0.45 : 0), z = gz * 0.8;
     const r = plaza(x, z);
-    if (r > 1.05 || !isLand(x, z - 0.6) || (r > 0.75 && rng.chance(0.45)) || rng.chance(0.06)) continue;
+    if (r > 1.05 || !isLand(x, z - 0.6) || levelAt(hm, x, z) > 0) continue;
+    if ((r > 0.78 && rng.chance(0.45)) || rng.chance(0.05)) { gaps.push([x, z]); continue; }
     const w = 0.84 - rng.next() * 0.06, d = 0.74 - rng.next() * 0.06;
     const tilt = r > 0.7 ? (rng.next() - 0.5) * 0.12 : 0;
-    orientedBox(flags, V(x, 0.0, z), V(w, 0.1, d), V(tilt, 1, tilt * 0.5), grey(0.8 + rng.next() * 0.2), rng, (rng.next() - 0.5) * 0.06);
+    orientedBox(flags, V(x, 0.0, z), V(w, 0.1, d), V(tilt, 1, tilt * 0.5), grey(0.72 + rng.next() * 0.16), rng, (rng.next() - 0.5) * 0.06);
   }
+  // The stones fall off into shade away from the sun pool on the battle ground (baked, so the
+  // pool reads as THE lit stage even where the cloud gobo is open).
+  flags.shade((x, y, z) => {
+    const u = (x - 0.2) / 5.2, v = (z - 0.2) / 3.6;
+    return 1 - 0.38 * THREE.MathUtils.smoothstep(Math.hypot(u, v), 0.85, 1.9);
+  });
   group.add(mk(flags.build(), track(surfaceMaterial(texFlags, undefined, true)), false, true));
 
-  // ---- lighthouse (left tier, back), ruined arch (right tier), drystone wall, tree
+  // ---- ruined arch (right tier), ruined pillars, broken wall ends, tree
   const white = new VoxelBatch(32);
-  const brick = new VoxelBatch(32);
-  const glow = new VoxelBatch(16);
-  const metal = new VoxelBatch(16);
   const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); return -0.12 + hm.get(i, j) * LEVEL; };
-  const lh = V(LH.x, 0, LH.z);
-  lh.y = topAt(lh.x, lh.z) + 0.02;
-  {
-    const segs = 5, segH = 0.78;
-    for (let k = 0; k < segs; k++) {
-      const r = 0.95 - k * 0.08;
-      const c = lh.clone().add(V(0, segH * (k + 0.5), 0));
-      const b = k === 1 || k === 4 ? brick : white;
-      for (const spin of [0, Math.PI / 4]) orientedBox(b, c, V(r * 1.45, segH + 0.01, r * 1.45), V(0, 1, 0), grey(0.95), rng, spin);
-    }
-    const gy = lh.y + segs * segH;
-    // Gallery + rail, lamp room (glass glows), roof.
-    for (const spin of [0, Math.PI / 4]) orientedBox(metal, lh.clone().setY(gy + 0.05), V(1.5, 0.1, 1.5), V(0, 1, 0), new THREE.Color('#3a4250'), rng, spin);
-    for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; orientedBox(metal, lh.clone().add(V(Math.cos(a) * 0.72, gy - lh.y + 0.3, Math.sin(a) * 0.72)), V(0.05, 0.45, 0.05), V(0, 1, 0), new THREE.Color('#3a4250'), rng); }
-    for (const spin of [0, Math.PI / 4]) orientedBox(glow, lh.clone().setY(gy + 0.5), V(0.75, 0.8, 0.75), V(0, 1, 0), hdr('#ffe6a0', 2.8), rng, spin);
-    for (let k = 0; k < 4; k++) { const a = (k / 4) * Math.PI * 2 + Math.PI / 8; orientedBox(metal, lh.clone().add(V(Math.cos(a) * 0.4, gy - lh.y + 0.5, Math.sin(a) * 0.4)), V(0.06, 0.8, 0.06), V(0, 1, 0), new THREE.Color('#2a303a'), rng); }
-    for (let k = 0; k < 3; k++) for (const spin of [0, Math.PI / 4]) orientedBox(brick, lh.clone().setY(gy + 0.98 + k * 0.18), V(1.0 - k * 0.32, 0.2, 1.0 - k * 0.32), V(0, 1, 0), grey(1), rng, spin);
-    // Door + a little keeper's hut against the tower.
-    orientedBox(metal, lh.clone().add(V(0.35, 0.4, 0.62)), V(0.36, 0.7, 0.06), V(0, 1, 0), new THREE.Color('#5a3a2a'), rng, 0.4);
-  }
   // Ruined arch: two piers, one broken, a lintel stump, fallen blocks.
   {
     const base = V(7.7, 0, -3.6);
@@ -223,16 +214,24 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   orientedBox(white, V(5.1, 0.26, -2.5), V(0.58, 0.5, 0.58), V(1, 0.08, 0.3), grey(0.64), rng, 0.3);
   orientedBox(white, V(5.1, 0.26, -2.5), V(0.58, 0.5, 0.58), V(1, 0.08, 0.3), grey(0.64), rng, 0.3 + Math.PI / 4);
   for (const [dx, dz, sz] of [[0.6, 0.5, 0.18], [-0.5, 0.7, 0.14], [0.9, 1.1, 0.12]] as const) orientedBox(white, V(4.1 + dx, sz * 0.4, -3.25 + dz), V(sz * 1.4, sz, sz), V((rng.next() - 0.5) * 0.6, 1, 0.2), grey(0.62), rng, rng.next() * 3);
-  // Drystone wall along the front ledge (left and right of the stair gap).
-  for (let x = -6.5; x < 6.5; x += 0.42 + rng.next() * 0.2) {
-    if (Math.abs(x + 0.4) < 1.1) continue;
-    const z = 4.25 + Math.sin(x * 0.7) * 0.15;
+  // Broken drystone wall ends at the front corners (framing, never across the paving).
+  for (const [x0, x1, zw] of [[-9.4, -6.3, 5.6], [5.9, 9.2, 5.9]] as const) for (let x = x0; x < x1; x += 0.42 + rng.next() * 0.2) {
+    const z = zw + Math.sin(x * 0.7) * 0.2;
     const top = topAt(x, z + 0.3);
     // Rounded rock-kit fieldstones, two courses, the top course gappy (not a row of crates).
     for (let k = 0; k < 2; k++) {
-      if (k === 1 && rng.chance(0.3)) continue;
+      if (k === 1 && rng.chance(0.4)) continue;
       const w = 0.42 + rng.next() * 0.18, h = 0.22 + rng.next() * 0.08;
       boulder(white, [x, top + 0.12 + k * 0.22 + h * 0.3, z + (rng.next() - 0.5) * 0.06], [w, h, 0.34], grey(0.62 + rng.next() * 0.16), rng, { ry: (rng.next() - 0.5) * 0.3, rz: (rng.next() - 0.5) * 0.15, aoBottom: 0.5, topK: 1.3 });
+    }
+  }
+  // Foreground stones: weathered slate boulders half sunk in the turf at the front corners and
+  // a few loose ones by the paving's ragged edge.
+  for (const [x, z, sc, n] of [[-5.6, 7.4, 0.62, 4], [6.6, 8.2, 0.7, 4], [-3.2, 8.8, 0.36, 2], [3.6, 9.2, 0.4, 3], [-7.2, 3.2, 0.5, 3]] as const) {
+    for (let k = 0; k < n; k++) {
+      const a = rng.next() * Math.PI * 2, d = k === 0 ? 0 : sc * (0.8 + rng.next() * 0.6);
+      const r = sc * (k === 0 ? 1 : 0.4 + rng.next() * 0.35);
+      boulder(rock, [x + Math.cos(a) * d, topAt(x, z) + r * 0.28, z + Math.sin(a) * d * 0.7], [r * 1.6, r * 0.95, r * 1.25], grey(0.9 + rng.next() * 0.2), rng, { ry: rng.next() * 3, rx: (rng.next() - 0.5) * 0.25, aoBottom: 0.45, topK: 1.45 });
     }
   }
   const trunk = new VoxelBatch(32);
@@ -244,10 +243,28 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   // ---- wind-flattened grass and sea pinks on the turf and the tiers
   const grass = atlasRect(ATLAS.grass), dune = atlasRect(ATLAS.dune), pinks = atlasRect(ATLAS.pinks);
   const clear = (x: number, z: number) => plaza(x, z) < 0.85;
-  for (let i = 0; i < 150; i++) {
-    const x = (rng.next() - 0.5) * 22, z = -8 + rng.next() * 14;
+  for (let i = 0; i < 200; i++) {
+    const x = (rng.next() - 0.5) * 22, z = -8 + rng.next() * 18;
     if (!isLand(x, z) || clear(x, z)) continue;
-    leaves.tuft(V(x, topAt(x, z) + (levelAt(hm, x, z) > 0 ? 0.0 : 0.1) - 0.04, z), 0.42, 0.32 + rng.next() * 0.35, rng.chance(0.15) ? pinks : rng.chance(0.5) ? dune : grass, grey(0.8 + rng.next() * 0.35), rng, 2);
+    leaves.tuft(V(x, topAt(x, z) + (levelAt(hm, x, z) > 0 ? 0.0 : 0.1) - 0.04, z), 0.42, 0.32 + rng.next() * 0.35, rng.chance(0.2) ? pinks : rng.chance(0.5) ? dune : grass, grey(0.8 + rng.next() * 0.35), rng, 2);
+  }
+  // Phone foreground: patches of wind-flattened grass and sea pinks on the turf beyond the
+  // paving, shading off toward the camera.
+  for (let p = 0; p < (q === 'high' ? 24 : 16); p++) {
+    const cx = -14 + rng.next() * 18, cz = 8.5 + rng.next() * 7;
+    const kind = rng.chance(0.35) ? pinks : rng.chance(0.5) ? dune : grass;
+    for (let i = 0; i < 3 + rng.int(4); i++) {
+      const x = cx + (rng.next() - 0.5) * 2.0, z = cz + (rng.next() - 0.5) * 1.3;
+      if (plaza(x, z) < 1.0) continue;
+      const k = 0.95 - 0.4 * THREE.MathUtils.smoothstep(z, 8, 15);
+      leaves.tuft(V(x, -0.03, z), 0.42, 0.32 + rng.next() * 0.35, kind, grey(k * (0.85 + rng.next() * 0.25)), rng, 2);
+    }
+  }
+  // Turf and sea pinks in the paving's gaps (drifts: pinks come in little patches).
+  for (const [x, z] of gaps) {
+    if (Math.hypot(x + 1.3, z - 1.0) < 1.2 || Math.hypot(x - 1.5, z + 1.0) < 1.2) continue;
+    const pink = hash2(Math.round(x * 0.6), Math.round(z * 0.6), 7) < 0.4;
+    for (let k = 0; k < 2; k++) leaves.tuft(V(x + (rng.next() - 0.5) * 0.5, 0.0, z + (rng.next() - 0.5) * 0.4), 0.36, 0.26 + rng.next() * 0.2, pink ? pinks : rng.chance(0.6) ? grass : dune, grey(0.85 + rng.next() * 0.3), rng, 2);
   }
   const fol = foliageMaterial(foliageAtlas(), { strength: 0.2, speed: 2.4, dir: new THREE.Vector2(1, 0.25).normalize() });
   track(fol.material); track(fol.depth);
@@ -256,11 +273,9 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   group.add(folMesh);
   updates.push(fol.update);
 
+  group.add(mk(rock.build(), track(surfaceMaterial(texSlate, undefined, true))));
   group.add(mk(white.build(), track(surfaceMaterial(texWhite, undefined, true))));
-  group.add(mk(brick.build(), track(surfaceMaterial(texBrick, undefined, true))));
-  group.add(mk(metal.build(), track(surfaceMaterial(null))));
   group.add(mk(trunk.build(), track(surfaceMaterial(texSlate, undefined, true))));
-  group.add(mk(glow.build(), track(new THREE.MeshBasicMaterial({ vertexColors: true })), false, false));
 
   if (opts.trainer) {
     // Worn ground (no chalk): mud ground into the paving where feet circle, scuffs, loose grit.
@@ -273,14 +288,16 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   // banks, faint rays), three layers of distant headlands and islands in deepening haze, the
   // sea with its glitter path dissolving into the horizon haze, and fog lying in bands.
   {
-    const sky = backdrop((t) => paintCliffSky(t, (SUN.x + 70) * 5, (14 - SUN.y) * 5, (14 - HORIZON_Y) * 5), 700, 150, [140, 30], [0, -1, SKY_Z]);
+    // The sky plane runs from below the horizon (y −16) up to y 30: tall enough that a portrait
+    // (phone) camera, which looks further up, never sees past its top edge.
+    const sky = backdrop((t) => paintCliffSky(t, (SUN.x + 70) * 5, (SKY_TOP - SUN.y) * 5, (SKY_TOP - HORIZON_Y) * 5), 700, 230, [140, 46], [0, SKY_TOP - 23, SKY_Z]);
     sky.mesh.renderOrder = -10;
     track(sky.mesh.material as THREE.Material);
     group.add(sky.mesh);
     const lands: { z: number; x: [number, number]; y: [number, number]; d: number; o: Omit<MesaOpts, 'foot'> }[] = [
       { z: -60, x: [-64, 64], y: [-15, -4], d: 5, o: { ramp: LAND, capRamp: RAMPS2.turf, capRows: 2, count: 0, w: [30, 70], h: [10, 24], haze: 0.5, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.4, ridge: true, cliff: 2.2, allow: (x) => Math.abs(x / 5 - 64 - SUN.x * 0.86) > 10 } },
-      { z: -47, x: [-50, 50], y: [-15, -2], d: 7, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [16, 44], h: [24, 50], haze: 0.32, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.8, foam: '#e6ece8', tilt: 0.45, cliff: 3.5, allow: (x) => { const wx = x / 7 - 50; return wx < -12 || wx > 34; } } },
-      { z: -34, x: [-40, 40], y: [-15, 1], d: 10, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [22, 52], h: [40, 84], haze: 0.14, hazeCol: HAZE_LAND, sunX: 9999, gullies: 1, foam: '#eef2ee', tilt: 0.6, cliff: 2.2, allow: (x) => { const wx = x / 10 - 40; return wx < -22 || wx > 30; } } },
+      { z: -47, x: [-50, 50], y: [-15, -2], d: 7, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [16, 44], h: [24, 50], haze: 0.32, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.8, foam: '#e6ece8', tilt: 0.45, dome: 0.3, cliff: 3.5, allow: (x) => { const wx = x / 7 - 50; return wx < -12 || wx > 34; } } },
+      { z: -34, x: [-40, 40], y: [-15, 1], d: 10, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [22, 52], h: [40, 84], haze: 0.14, hazeCol: HAZE_LAND, sunX: 9999, gullies: 1, foam: '#eef2ee', tilt: 0.6, dome: 0.35, cliff: 2.2, allow: (x) => { const wx = x / 10 - 40; return wx < -22 || wx > 30; } } },
     ];
     lands.forEach((L, k) => {
       const W = Math.round((L.x[1] - L.x[0]) * L.d), H = Math.round((L.y[1] - L.y[0]) * L.d);
@@ -303,28 +320,28 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     land: (x, z) => isLand(x, z) || onStack(x, z),
     ramp: ['#102840', '#163a56', '#1e4e6a', '#2c6680', '#467f94', '#74a0ac'],
     foam: '#f2f4ee', swash: 0, deep: 7, waveK: 1.3, waveSpeed: 1.8, caps: 0.55, glints: false, far: -16, chop: 0.6,
-    glitter: { x: camX + camZ * slope, slope, width: 2.2, strength: 1, color: '#ffe2a8' },
-    haze: { color: HAZE, from: -40, to: SKY_Z + 1 },
+    glitter: { x: camX + camZ * slope, slope, width: 2.0, strength: 0.7, color: '#ffe2a8' },
+    haze: { color: HAZE, from: -50, to: SKY_Z + 1 },
   });
   track(water);
   group.add(water.mesh);
   updates.push(water.update);
 
   // ---- light: ONE warm low key from the painted sun's side (back-right, ≈ 28°): long shadows of
-  // the ruins and the lighthouse toward the camera, shafts across the clifftop, cool sky fill.
+  // the ruins toward the camera, a clear sun pool on the flagstones, cool sky fill.
   const az = new THREE.Vector2(SUN.x, SUN.z).normalize();
   const sunFrom = V(az.x * 0.883, 0.47, az.y * 0.883);
   const rig = sunRig(group, {
     target: V(0.1, 0, 0), from: sunFrom, distance: 36, angle: 0.5, penumbra: 0.2, shadowRadius: 2,
-    color: '#ffcc90', intensity: 12, cookie: null,
-    sky: '#8ea4c4', ground: '#3a4636', hemi: 1.35,
+    color: '#ffc27a', intensity: 13.5, cookie: null,
+    sky: '#8ea4c4', ground: '#3a4636', hemi: 1.25,
     fill: '#a8bcd8', fillIntensity: 0.4, quality: q,
   });
   const key = rig.key;
-  const gob = gobo(key, { kind: 'clouds', seed: 61, pool: { x: 0.1, z: 0, ru: 4.2, rv: 2.8, angle: Math.atan2(-2.0, 2.8), soft: 0.4 }, outside: 0.4, shade: 0.5, cover: 0.38, scale: 12, drift: [0.25, 0.1], y: 0.05 });
+  const gob = gobo(key, { kind: 'clouds', seed: 61, pool: { x: 0.2, z: 0.2, ru: 4.6, rv: 3.1, angle: Math.atan2(-2.0, 2.8), soft: 0.32 }, outside: 0.34, shade: 0.55, cover: 0.36, scale: 12, drift: [0.25, 0.1], y: 0.05 });
   track(gob);
   updates.push(gob.update);
-  group.add(lightPools([[0.1, 0, 8.6, 5.8]], '#4a3a24', 1.2));
+  group.add(lightPools([[0.2, 0.2, 8.8, 6.0]], '#5c4224', 1.5));
   // Shafts from the sun break, falling across the clifftop (unequal widths).
   const dir = sunFrom.clone().normalize().negate();
   const beams: BeamSpec[] = ([[-0.8, 0.4, 0.6, 2.2], [2.3, -0.5, 0.25, 0.9], [-4.0, 1.5, 0.4, 1.5]] as const).map(([x, z, w0, w1]) => {
@@ -343,10 +360,10 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
 
   // ---- fog lying in horizontal bands over the water and between the headlands
   const fog = fogBands([
-    { x: 0, y: SEA_Y + 1.0, z: -14, w: 60, h: 2.6, color: '#d8d6cc', alpha: 0.38, speed: 0.35 },
-    { x: -6, y: SEA_Y + 1.4, z: -27, w: 90, h: 3.6, color: '#d4ccbe', alpha: 0.32, speed: 0.25 },
-    { x: 10, y: SEA_Y + 2.6, z: -40, w: 110, h: 4.4, color: '#d2c8b8', alpha: 0.32, speed: 0.2 },
-    { x: 0, y: SEA_Y + 2.0, z: -56, w: 150, h: 5.5, color: '#cfc4b2', alpha: 0.6, speed: 0.15 },
+    { x: 0, y: SEA_Y + 1.0, z: -14, w: 60, h: 2.4, color: '#e0ddd2', alpha: 0.2, speed: 0.35 },
+    { x: -6, y: SEA_Y + 1.4, z: -27, w: 90, h: 3.2, color: '#dcd4c6', alpha: 0.16, speed: 0.25 },
+    { x: 10, y: SEA_Y + 2.4, z: -40, w: 110, h: 4.0, color: '#d8cebe', alpha: 0.18, speed: 0.2 },
+    { x: 0, y: SEA_Y + 2.0, z: -56, w: 150, h: 5.0, color: '#d4c8b6', alpha: 0.4, speed: 0.15 },
   ]);
   track(fog);
   group.add(fog.mesh);
@@ -358,8 +375,9 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   for (let x = -12; x <= 12; x += 1.5) sprayEmit.push({ x, z: edgeZ(x) - 0.4 });
   const spray = particles({
     kind: 'spray',
-    emitters: sprayEmit.map(({ x, z }) => ({ min: V(x - 0.6, SEA_Y, z - 0.6), max: V(x + 0.6, SEA_Y + 0.3, z), vmin: V(-0.4, 2.5, -0.3), vmax: V(0.4, 4.2, 0.2), count: Math.round(8 * lowK), life: [1.0, 1.8] as [number, number], size: [0.3, 0.5] as [number, number] })),
-    colorA: hdr('#fff8ee', 1.05), colorB: hdr('#9aa8b0', 0.95), accel: V(0.4, -3.2, 0), grow: [0.8, 2.0], opacity: 0.9,
+    // Bursts at the cliff foot only: short-lived, falling back fast (no specks drifting up the frame).
+    emitters: sprayEmit.map(({ x, z }) => ({ min: V(x - 0.6, SEA_Y, z - 0.6), max: V(x + 0.6, SEA_Y + 0.2, z), vmin: V(-0.3, 1.8, -0.3), vmax: V(0.3, 3.0, 0.2), count: Math.round(6 * lowK), life: [0.6, 1.0] as [number, number], size: [0.28, 0.42] as [number, number] })),
+    colorA: hdr('#fff8ee', 1.05), colorB: hdr('#9aa8b0', 0.95), accel: V(0.3, -5.0, 0), grow: [0.8, 1.6], opacity: 0.9,
   }, rng);
   const gulls = particles({
     kind: 'gull',
@@ -416,63 +434,36 @@ function mk(g: THREE.BufferGeometry, m: THREE.Material, cast = true, receive = t
 }
 
 
-const SKY = ['#3e5274', '#4c6286', '#5e7496', '#7486a2', '#8e9aae', '#aeaeb2', '#ccbca8', '#e4caa0', '#f6deb0'];
-const CLOUD = ['#3e4658', '#525c72', '#6c748a', '#8a8e9e', '#aca8ac', '#d2c2b2', '#f0dcc0', '#fff4dc'];
+const SKY = ['#4a6a94', '#5a7aa2', '#6e8cb0', '#86a0bc', '#a2b4c4', '#c4c6c4', '#e2d2b8', '#f2dcb0'];
+const CLOUD = ['#5a6680', '#7a8298', '#a2a2b0', '#d2c6c0', '#f4e4cc', '#fff6e4'];
 
 /**
- * Late-afternoon sky on the far backdrop: flat bands from slate blue down to warm gold at the
- * horizon (the very bottom rows ARE the horizon haze colour, so the sea's haze meets it without a
- * line), a glow round the low sun, faint crepuscular rays fanning down from it, and three banks
- * of cumulus — flat bases, billowing tops, cool grey bodies, warm silver linings toward the sun.
+ * Late-afternoon sky on the far backdrop after a storm: a SMOOTH gradient from clear blue down
+ * to warm gold at the horizon (the very bottom rows ARE the horizon haze colour, so the sea's
+ * haze meets it without a line), a warm halo round the low sun, a few faint crepuscular rays,
+ * and a handful of hand-shaped cumulus clouds — sunlit tops and silver linings toward the sun,
+ * cool shaded flat bases, soft feathered edges. No banding.
  */
 function paintCliffSky(t: RgbaTile, sunX: number, sunY: number, horizon: number) {
-  const n = SKY.length;
-  const ray = (x: number, y: number) => {
-    if (y <= sunY) return 0;
+  paintSky(t, SKY, 0, horizon - 3, { glow: { x: sunX, y: sunY, r: 210, color: '#ffe2b0', k: 0.8 } });
+  const hz = rgb(HAZE);
+  for (let y = Math.max(0, horizon - 3); y < t.h; y++) for (let x = 0; x < t.w; x++) putRgb(t, x, y, hz, 3);
+  // Faint rays fanning down from the sun: a gentle smooth lift, no hard stripes.
+  for (let y = Math.max(0, Math.floor(sunY)); y < horizon - 3; y++) for (let x = 0; x < t.w; x++) {
     const a = Math.atan2(y - sunY, x - sunX);
     let k = 0;
-    for (const [c, w] of [[1.75, 0.035], [2.05, 0.05], [2.4, 0.03], [1.35, 0.03], [2.75, 0.04]] as const) k = Math.max(k, 1 - Math.abs(a - c) / w);
-    return Math.max(0, k) * Math.max(0, 1 - Math.hypot(x - sunX, y - sunY) / 260);
-  };
-  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
-    const d = Math.hypot(x - sunX, (y - sunY) * 1.6);
-    let v = Math.min(1, Math.max(0, y / horizon)) ** 1.3 * (n - 2.2) + Math.max(0, 1 - d / 170) * 2.6 + (ray(x, y) > 0.3 ? 0.8 : 0);
-    v = Math.min(n - 1, v);
-    if (y >= horizon - 3) { t.set(x, y, HAZE); continue; }
-    t.set(x, y, SKY[bandIndex(v, x, y, n, 0.08)]!);
-    if (y >= horizon - 7 && (x * 7 + y * 3) % (horizon - y) === 0) t.set(x, y, HAZE);
+    for (const [c, w] of [[1.75, 0.05], [2.05, 0.07], [2.4, 0.045], [1.35, 0.045], [2.75, 0.06]] as const) k = Math.max(k, 1 - Math.abs(a - c) / w);
+    k = Math.max(0, k) * Math.max(0, 1 - Math.hypot(x - sunX, y - sunY) / 300) * 0.22;
+    if (k <= 0) continue;
+    const c0 = getRgb(t, x, y);
+    putRgb(t, x, y, [c0[0] + (255 - c0[0]) * k, c0[1] + (240 - c0[1]) * k, c0[2] + (205 - c0[2]) * k], 2);
   }
-  // The sun disc (partly behind the middle cloud bank, painted over it below).
+  // Clouds: a few big cumulus high up, smaller ones lower down, none over the sun disc.
+  const toSun = (x: number) => Math.abs(x - sunX) < 70;
+  paintClouds(t, { seed: 611, stretch: 1.3, count: 3, size: [44, 72], rows: [40 + SKY_OFF, 56 + SKY_OFF], ramp: CLOUD, light: [0.6, -0.8], flat: 0.36, avoid: toSun });
+  paintClouds(t, { seed: 613, stretch: 1.3, count: 4, size: [20, 34], rows: [76 + SKY_OFF, 94 + SKY_OFF], ramp: CLOUD, light: [0.6, -0.8], flat: 0.34, avoid: toSun });
+  paintClouds(t, { seed: 617, stretch: 1.3, count: 5, size: [9, 16], rows: [104 + SKY_OFF, horizon - 12], ramp: CLOUD.slice(1), light: [0.6, -0.8], flat: 0.3, avoid: toSun });
+  paintClouds(t, { seed: 619, stretch: 1.4, count: 3, size: [50, 80], rows: [16, SKY_OFF + 6], ramp: CLOUD, light: [0.6, -0.8], flat: 0.32, avoid: toSun });
+  // The sun disc.
   for (let y = -7; y <= 7; y++) for (let x = -7; x <= 7; x++) if (x * x + y * y <= 49) t.set(sunX + x, sunY + y, x * x + y * y > 30 ? '#fff0c8' : '#fffcf0');
-  // Cumulus banks: union of discs with flat bases.
-  const rng = new Rng(611);
-  const cn = CLOUD.length;
-  for (const [row, count, rMin, rMax] of [[24, 9, 16, 34], [62, 11, 10, 22], [96, 13, 6, 12]] as const) {
-    const discs: [number, number, number][] = [];
-    let x = rng.next() * 40;
-    while (x < t.w + 20) {
-      const r = rMin + rng.next() * (rMax - rMin);
-      // Gaps between clouds; never a cloud right over the sun disc on the lowest bank.
-      if (rng.chance(0.8) && !(row === 96 && Math.abs(x - sunX) < 50)) {
-        for (let k = 0; k < 4 + rng.int(4); k++) discs.push([x + (rng.next() - 0.5) * r * 2.6, row - rng.next() * r * 0.7, r * (0.45 + rng.next() * 0.55)]);
-      }
-      x += r * (1.3 + rng.next() * 1.6);
-    }
-    void count;
-    const base = row + rMax * 0.35;
-    for (let y = Math.max(0, Math.floor(row - rMax * 2)); y <= base && y < horizon - 6; y++) for (let x2 = 0; x2 < t.w; x2++) {
-      let best = -1, top = 0;
-      for (const [cx, cy, r] of discs) {
-        const dd = Math.hypot((x2 - cx) * 0.62, (y - cy) * 1.1) / r;
-        if (dd < 1 && 1 - dd > best) { best = 1 - dd; top = (cy - r * 0.9 - y) / r; }
-      }
-      if (best < 0) continue;
-      const toSun = Math.max(0, 1 - Math.hypot(x2 - sunX, y - sunY) / 190);
-      const edge = best < 0.12;
-      let v = 1.2 + (base - y) / (rMax * 1.4) * 1.8 + toSun * 2.4 + (top > -0.25 ? 0.7 : 0);
-      if (edge) v += 0.9 + toSun * 2.6;                    // lit rim, silver lining near the sun
-      if (y > base - 3) v -= 0.9;                          // flat, shaded base
-      t.set(x2, y, CLOUD[bandIndex(Math.max(0, Math.min(cn - 1, v)), x2, y, cn, 0.12)]!);
-    }
-  }
 }
