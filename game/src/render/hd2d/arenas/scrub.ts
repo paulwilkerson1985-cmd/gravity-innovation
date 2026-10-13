@@ -1,19 +1,21 @@
 // Ember Ridge outdoors ("Dry scrub", and Ridge Hiker Brann's trail duel): a sunset-lit shelf of
 // cracked red earth on the ridge, ringed by terraced sandstone boulders (kit/rock.ts) with dry
-// scrub bushes and a dead tree, open at the back onto a hazy canyon with distant red mesas and
-// a low sun. Warm sunset key from the back-left (long shadows toward the camera), plum fill,
-// drifting ember motes and a heat-haze wobble on the far mesas. All original and procedural.
+// scrub bushes and a dead tree, open at the back onto a hazy canyon: three painted layers of
+// mesas (stepped, banded strata, ragged caps, sunlit rims, hazier with distance) under a low
+// sun. ONE low warm key from the back-left throws long shadows toward the camera and pools on
+// the battle floor; weak plum fill; branching, tapering dry cracks in the floor; drifting ember
+// motes and a heat-haze wobble on the far layers. All original and procedural.
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
-import { Heightmap, LEVEL, TEXEL, VoxelBatch, dustMotes, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
+import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, dustMotes, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
 import { boulder, boulderColumns, organicTerraces, rubblePile } from '../kit/rock';
 import { cachedTexture, paintBoulder, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
-import { nearStage, paintTrodden } from './meadow';
+import { BATTLE_POOL, nearStage, paintTrodden, poolR } from './meadow';
 import {
-  Foliage, SpriteAtlas, backdrop, bandIndex, disposeGroup, glints, groundMesh, hash2, macro, mkMesh, noiseField,
-  paintBark, paintTuft, paintTwigs, paintSilhouette, sunRig, type RgbaTile, type V3,
+  Foliage, SpriteAtlas, apron, backdrop, bandIndex, disposeGroup, glints, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  paintBark, paintEarth, paintMesas, paintTuft, paintTwigs, sunRig, type RgbaTile, type V3,
 } from './outdoorKit';
 
 export const SCRUB_RAMPS = {
@@ -24,18 +26,20 @@ export const SCRUB_RAMPS = {
   sage: ['#24281c', '#343c24', '#48522c', '#5e6a36', '#788442', '#959e54', '#b4b86e'],
   bark: ['#1e1210', '#2e1c16', '#42281e', '#583628', '#6e4634', '#865842', '#9e6c52'],
   sky: ['#3a2a5a', '#5a3a6e', '#8a4a72', '#b85a6a', '#e07a5a', '#f6a05a', '#ffc86e', '#ffe2a0'],
-  mesaFar: ['#7a3e52', '#8a4a5a', '#9a5660', '#ab6466', '#c47a6c'],
-  mesaNear: ['#3a1a28', '#4a2230', '#5e2c34', '#743a3a', '#8e4c40'],
+  mesaFar: ['#7a3e58', '#8a4a62', '#9c5868', '#ae6870', '#c07a78', '#d49084'],
+  mesaMid: ['#4a2230', '#622c36', '#7e3a3c', '#9c4c42', '#ba624a', '#d68056', '#eca468'],
+  mesaNear: ['#26121a', '#36181e', '#4a2024', '#622c2a', '#7e3a30', '#9c4e38', '#c06c44'],
 } as const satisfies Record<string, Ramp>;
 
 export function sunsetGrade(): Grade {
   return {
     lift: new THREE.Vector3(0.018, 0.006, 0.016), gamma: new THREE.Vector3(1.06, 1.06, 1.06), gain: new THREE.Vector3(1.06, 0.99, 0.9),
     saturation: 0.76, contrast: 1.05,
-    shadowTint: new THREE.Color('#3a1f44'), highTint: new THREE.Color('#ffd08e'), splitAmount: 0.13,
-    vignette: 0.2, vignetteSoft: 0.7,
+    shadowTint: new THREE.Color('#2a2050'), highTint: new THREE.Color('#ffc880'), splitAmount: 0.2,
+    vignette: 0.3, vignetteSoft: 0.62,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
-    dither: 2.0, exposure: 1.68,
+    dither: 2.0, exposure: 1.62,
+    shadowDesat: 0.2,
   };
 }
 
@@ -43,6 +47,8 @@ const SPOTS: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-1.3, 0, 1.0), 
 const PEOPLE: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-2.5, 0, 1.9), new THREE.Vector3(2.75, 0, -1.95)];
 /** The shelf ends here; beyond is the canyon (backdrop). */
 const EDGE_Z = -6.6;
+/** Level of the front rock ledge where the set meets its apron. */
+const FRONT_LV = 2;
 
 export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   const S = SCRUB_RAMPS;
@@ -69,6 +75,7 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
     if (x > 0 && lv > 0) lv += 1; // right side rises higher
     if (z > 4.0) lv = Math.min(lv, z > 6 ? 2 : 1); // low front ledge
     if (z < EDGE_Z + 0.6 && Math.abs(x) < 8) lv = Math.max(lv, (hash2(i, j, 2) < 0.55 ? 1 : 0)); // broken lip at the drop
+    if (z > hm.z0 + (hm.nz - 2) * CELL) lv = FRONT_LV; // one even front ledge meets the apron
     hm.set(i, j, Math.min(lv, 7));
   }
   const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
@@ -100,6 +107,19 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   });
   extra.push(ground.texture);
   group.add(ground.mesh);
+  // Apron: dark soil and dry grass in front of the front rock ledge, far past the near frustum
+  // (portrait phones look down past the stage).
+  {
+    const zf = hm.z0 + hm.nz * CELL;
+    const mott = macro(31);
+    const ap = apron({
+      x0: -40, x1: 40, z0: zf - 0.3, z1: zf + 34, y: FRONT_LV * LEVEL - 0.06, tileTexels: 64,
+      map: cachedTexture('od-scrub-apron', () => paintEarth(84, S.earth, 64, { roots: 4, pebbles: 26, strata: 0.15 })),
+      shade: (x, z) => (0.7 - 0.25 * THREE.MathUtils.smoothstep(z, zf, zf + 9)) * (0.82 + 0.3 * mott(x * 0.5, z * 0.5)),
+    });
+    extra.push(ap.material as THREE.Material);
+    group.add(ap);
+  }
 
   // ---- dead tree on the left tier (bark boxes) + twig crown sprites
   const bark = new VoxelBatch(32);
@@ -154,50 +174,58 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   group.add(folMesh);
   updates.push((t) => { fol.uTime.value = t; });
 
-  // ---- the canyon: sunset sky, low sun, distant mesas (heat haze), near ridge silhouettes
-  // The canyon is seen BELOW the shelf edge line (the camera looks down), so the painted
-  // horizon sits low: plane PW×PH centred at y = PY on z = PZ (visible band ≈ y −9…−1).
-  const BW = 640, BH = 180, PW = 52, PH = 15, PY = -4.4, PZ = -26;
-  const sunPx = [262, 64] as const;
-  const back = backdrop((t) => {
-    for (let y = 0; y < t.h; y++) {
-      const v = Math.min(1, Math.pow(y / (t.h * 0.52), 1.05)) * (S.sky.length - 1);
-      for (let x = 0; x < t.w; x++) {
-        const d = Math.hypot(x - sunPx[0], (y - sunPx[1]) * 1.3);
-        // Flat bands (horizontal, bending into arcs round the sun), 1–2 rows of clustered
-        // dither at each boundary — no full-field checkerboard.
-        t.set(x, y, S.sky[bandIndex(Math.min(S.sky.length - 1, v + Math.max(0, 1 - d / 90) * 1.6), x, y, S.sky.length, 0.06)]!);
-      }
-    }
-    // Sun disc and thin cloud streaks.
-    for (let y = -11; y <= 11; y++) for (let x = -11; x <= 11; x++) if (x * x + y * y <= 121) t.set(sunPx[0] + x, sunPx[1] + y, x * x + y * y > 90 ? '#ffe8b0' : '#fff8e0');
-    const r = new Rng(91);
-    for (let k = 0; k < 14; k++) {
-      const cy = 10 + r.int(70), cx = r.int(t.w), len = 40 + r.int(100);
-      for (let i = 0; i < len; i++) { t.set(cx + i, cy, S.sky[3 + (cy > 45 ? 2 : 0)]!); t.set(cx + i + 1, cy + 1, S.sky[3 + (cy > 45 ? 2 : 0)]!); if (i > 6 && i < len - 8) { t.set(cx + i + 4, cy + 2, S.sky[2]!); t.set(cx + i + 4, cy + 3, S.sky[2]!); } }
-    }
-    // Stepped buttes of varied width (lit left faces, strata, a bright cap rim), hazier far away.
-    paintSilhouette(t, r, S.mesaFar, t.h * 0.6, 42, 30, t.h, { flatTop: true, haze: 0.25 });
-    paintSilhouette(t, r, S.mesaNear, t.h * 0.76, 30, 22, t.h, { flatTop: true, haze: 0.08 });
-    paintSilhouette(t, r, S.mesaNear.slice(0, 4) as unknown as Ramp, t.h * 0.9, 14, 16, t.h);
-  }, BW, BH, [PW, PH], [0, PY, PZ], { haze: 1 });
-  extra.push(back.mesh.material as THREE.Material);
-  group.add(back.mesh);
-  updates.push(back.update);
+  // ---- the canyon: three painted layers at increasing depth (parallax + aerial perspective):
+  // a near canyon rim, mid mesas, and the sky with the low sun and the farthest mesas. The
+  // camera looks DOWN, so the canyon only shows below the shelf edge line: every layer is sized
+  // for that band (desk and portrait), filled down to its bottom, and hazier with distance.
+  const sunWorld: V3 = [-7.5, -1.2, -39.8];
+  const layers: { z: number; x: [number, number]; y: [number, number]; d: number; gain: number; paint(t: RgbaTile, r: Rng, toY: (y: number) => number): void }[] = [
+    {
+      // Sky + far mesas (lightest, pink-violet, lowest contrast).
+      z: -40, x: [-44, 44], y: [-22, 5], d: 7, gain: 0.92,
+      paint: (t, r, toY) => {
+        paintSunsetSky(t, toY(sunWorld[1]), Math.round((sunWorld[0] + 44) * 7));
+        paintMesas(t, r, { ramp: S.mesaFar, foot: toY(-9), count: 7, w: [10, 24], h: [24, 40], haze: 0.4, sunX: (sunWorld[0] + 44) * 7, gullies: 0.5, hazeCol: '#d8908a', cliff: 3.6 });
+      },
+    },
+    {
+      // Mid mesas: stronger strata, a lit sun-side flank and rim.
+      z: -25, x: [-30, 30], y: [-14, 3.5], d: 11, gain: 0.66,
+      paint: (t, r, toY) => paintMesas(t, r, { ramp: S.mesaMid, foot: toY(-6.5), count: 5, w: [12, 30], h: [30, 52], haze: 0.16, sunX: (sunWorld[0] + 30) * 11 - 120, gullies: 1, hazeCol: '#c07070', cliff: 3.2 }),
+    },
+    {
+      // Near canyon rim: a low broken ridge with a few dead snags, darkest and warmest.
+      z: -15, x: [-24, 24], y: [-8, 2.6], d: 14, gain: 0.55,
+      paint: (t, r, toY) => paintMesas(t, r, { ramp: S.mesaNear, foot: toY(-3.2), count: 6, w: [18, 40], h: [10, 22], haze: 0.04, sunX: (sunWorld[0] + 24) * 14 - 160, gullies: 1.4, hazeCol: '#8a4a48', ridge: true }),
+    },
+  ];
+  layers.forEach((L, k) => {
+    const W = Math.round((L.x[1] - L.x[0]) * L.d), H = Math.round((L.y[1] - L.y[0]) * L.d);
+    const toY = (y: number) => Math.round((L.y[1] - y) * L.d);
+    const b = backdrop((t) => L.paint(t, new Rng(91 + k * 7), toY), W, H, [L.x[1] - L.x[0], L.y[1] - L.y[0]], [(L.x[0] + L.x[1]) / 2, (L.y[0] + L.y[1]) / 2, L.z], { haze: k === 0 ? 1 : k === 1 ? 0.5 : 0, gain: L.gain });
+    b.mesh.renderOrder = -10 + k;
+    extra.push(b.mesh.material as THREE.Material);
+    group.add(b.mesh);
+    updates.push(b.update);
+  });
   // HDR glint on the sun disc so it blooms.
-  const sunWorld: V3 = [-PW / 2 + (sunPx[0] / BW) * PW, PY + PH / 2 - (sunPx[1] / BH) * PH, PZ + 0.2];
-  const sunGlow = glints([sunWorld], 2.2, '#ffd890', 2.4);
+  const sunGlow = glints([sunWorld], 3.2, '#ffd890', 2.6);
   extra.push(sunGlow.points.geometry, sunGlow.points.material as THREE.Material);
   group.add(sunGlow.points);
 
-  // ---- sunset light: low warm key from the back-left (toward the sun), plum sky fill
-  const sunFrom = new THREE.Vector3(-0.55, 0.5, -0.8);
+  // ---- sunset light: ONE low warm key from the back-left (toward the sun), long shadows
+  // toward the camera, a lit pool on the battle floor; weak plum sky fill (warm vs cool).
+  const sunFrom = new THREE.Vector3(-0.55, 0.42, -0.8);
   const { key, spriteLight } = sunRig(group, {
-    target: new THREE.Vector3(0, 0, 0), from: sunFrom, distance: 34, angle: 0.42,
-    color: '#ffb878', intensity: 8.6, cookie: null,
-    sky: '#e8b0b0', ground: '#6a3a2a', hemi: 2.1,
-    fill: '#a890d0', fillIntensity: 0.5, quality: q,
+    target: new THREE.Vector3(0.1, 0, 0), from: sunFrom, distance: 34, angle: 0.46, penumbra: 0.25, shadowRadius: 2,
+    color: '#ffb070', intensity: 13, cookie: null,
+    sky: '#8a78b8', ground: '#6a3a2a', hemi: 1.5,
+    fill: '#c098c0', fillIntensity: 0.7, quality: q,
   });
+  const gob = gobo(key, { kind: 'clouds', seed: 23, pool: { ...BATTLE_POOL, ru: BATTLE_POOL.ru * 1.15, rv: BATTLE_POOL.rv * 1.15, soft: 0.4 }, outside: 0.5, shade: 0.55, cover: 0.3, scale: 11 });
+  extra.push(gob);
+  const pool = lightPools([[BATTLE_POOL.x, BATTLE_POOL.z, BATTLE_POOL.ru * 2.2, BATTLE_POOL.rv * 2.2]], '#5a3018', 1.3);
+  group.add(pool);
 
   // ---- ember motes and dust drifting across the shelf
   const drift: BeamSpec[] = [
@@ -223,43 +251,100 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   };
 }
 
-/** Cracked red earth: blotchy ramp with a polygonal crack network, dry grass flecks, a worn trail. */
+/** Sunset sky on a backdrop tile: flat bands bending round a low sun, the sun disc, thin wisps. */
+function paintSunsetSky(t: RgbaTile, sunY: number, sunX: number) {
+  const S = SCRUB_RAMPS;
+  const n = S.sky.length;
+  const horizon = sunY + 26;
+  for (let y = 0; y < t.h; y++) {
+    const v = Math.min(1, Math.max(0, y / horizon)) ** 1.15 * (n - 1);
+    for (let x = 0; x < t.w; x++) {
+      const d = Math.hypot(x - sunX, (y - sunY) * 1.5);
+      t.set(x, y, S.sky[bandIndex(Math.min(n - 1, v + Math.max(0, 1 - d / 150) * 2.2), x, y, n, 0.06)]!);
+    }
+  }
+  // Long thin wisps: lit warm undersides near the sun, violet away from it.
+  const r = new Rng(93);
+  for (let k = 0; k < 16; k++) {
+    const cy = Math.round(sunY - 30 + r.int(48)), cx = r.int(t.w), len = 50 + r.int(140);
+    for (let i = 0; i < len; i++) {
+      const x = cx + i, near = Math.max(0, 1 - Math.abs(x - sunX) / 220);
+      const base = Math.max(1, Math.min(n - 2, Math.round((cy / horizon) * (n - 1)) - 1));
+      t.set(x, cy, S.sky[base]!);
+      if (i > 4 && i < len - 6) t.set(x + 3, cy + 1, S.sky[Math.min(n - 1, base + 1 + Math.round(near * 2))]!);
+    }
+  }
+  for (let y = -9; y <= 9; y++) for (let x = -9; x <= 9; x++) {
+    const d = x * x + y * y;
+    if (d <= 81) t.set(sunX + x, sunY + y, d > 60 ? '#ffe8b0' : '#fff8e2');
+  }
+}
+
+/**
+ * Cracked red earth, unique over the whole floor (no tiling): blotchy bands, then DRY CRACKS as
+ * branching random walks — they wander, taper from 2 texels to a hairline and mostly end open
+ * (no closed polygons), a lit lip on their near wall — plus scattered pebbles with a cast
+ * shadow and painted dry-grass tufts. The battle floor stays calm (hairlines only).
+ */
 function paintScrubFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number) => number, trainer: boolean) {
   const S = SCRUB_RAMPS;
   const rng = new Rng(99);
   const nA = noiseField(64, 64, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]);
   const mac = macro(29);
-  // Voronoi cells (~0.9 units) for the crack network.
-  const cell = 1.25;
-  const seed = (i: number, j: number): [number, number] => [(i + 0.2 + hash2(i, j, 11) * 0.6) * cell, (j + 0.2 + hash2(i, j, 12) * 0.6) * cell];
   for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
     const X = wx(x), Z = wz(y);
     const n = nA(x, y), m = mac(X, Z);
-    const ci = Math.floor(X / cell), cj = Math.floor(Z / cell);
-    let d1 = 99, d2 = 99, owner = 0;
-    for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) {
-      const [sx, sz] = seed(ci + a, cj + b);
-      const d = Math.hypot(X - sx, Z - sz);
-      if (d < d1) { d2 = d1; d1 = d; owner = hash2(ci + a, cj + b, 13); } else if (d < d2) d2 = d;
-    }
     const e = Math.hypot(X / 5.6, (Z - 0.1) / 3.6);
-    let v = 2.6 + (n - 0.5) * 2.0 + (m - 0.5) * 0.9 + (owner - 0.5) * 0.35 + Math.max(0, 1 - e) * 0.7;
-    // Plates curl up a little: lit near-edge on the upper side of each plate.
-    const crack = d2 - d1 < TEXEL * 0.7 && e > 0.25 && nA(x * 2, y * 2) > 0.38;
-    if (crack) { t.set(x, y, S.crack[hash2(x, y, 7) < 0.6 ? 0 : 1]!); continue; }
-    if (d2 - d1 < TEXEL * 1.8) v += 0.6;
+    const calm = 1 - THREE.MathUtils.smoothstep(poolR(X, Z), 0.7, 1.2);
+    let v = 2.6 + (n - 0.5) * (2.0 - calm * 0.9) + (m - 0.5) * 1.1 + Math.max(0, 1 - e) * 0.6;
     // Dry grass creeping in toward the tiers.
     if (e > 1.0 && hash2(x, y, 5) < Math.min(0.6, (e - 1.0) * 1.2) * (0.6 + n)) {
       t.band(x, y, S.dry, 2.5 + (n - 0.5) * 3 + (hash2(x, y, 6) < 0.15 ? 1.5 : 0));
       continue;
     }
-    if (hash2(x, y, 3) < 0.05) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
+    if (hash2(x, y, 3) < 0.05 - calm * 0.035) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
     t.band(x, y, S.earth, v);
   }
-  // Pebbles.
-  for (let k = 0; k < 300; k++) {
+  // ---- cracks: branching, tapering random walks
+  const crackDark = S.crack[0], crackMid = S.crack[1];
+  const walk = (x: number, y: number, a: number, len: number, w: number, depth: number) => {
+    for (let s = 0; s < len; s++) {
+      a += (rng.next() - 0.5) * 0.55;
+      x += Math.cos(a); y += Math.sin(a) * 0.8;
+      const px = Math.round(x), py = Math.round(y);
+      if (!t.inside(px, py)) return;
+      const k = 1 - s / len;
+      if (k < 0.18 && rng.chance(0.45)) continue; // the tail breaks up into dashes
+      const calm = poolR(wx(px), wz(py)) < 0.95;
+      t.set(px, py, k > 0.5 && !calm ? crackDark : crackMid);
+      if (w * k > 1.2 && !calm) t.set(px + (Math.abs(Math.sin(a)) > 0.7 ? 1 : 0), py + (Math.abs(Math.sin(a)) > 0.7 ? 0 : 1), crackDark);
+      t.scale(px, py + (w * k > 1.2 && !calm ? 2 : 1), 1.14); // lit near wall
+      if (depth < 2 && rng.chance(0.045)) walk(x, y, a + (rng.chance(0.5) ? 1 : -1) * (0.6 + rng.next() * 0.6), len * (0.3 + rng.next() * 0.3), w * 0.6, depth + 1);
+    }
+  };
+  const area = t.w * t.h;
+  for (let c = 0; c < area / 3600; c++) {
     const x = rng.int(t.w), y = rng.int(t.h);
-    t.set(x, y, S.sandstone[5]!); t.set(x + 1, y, S.sandstone[4]!); t.set(x, y + 1, S.sandstone[2]!); t.set(x + 1, y + 1, S.sandstone[1]!);
+    const inCalm = poolR(wx(x), wz(y)) < 1;
+    walk(x, y, rng.next() * Math.PI * 2, inCalm ? 14 + rng.int(14) : 30 + rng.int(60), inCalm ? 1 : 2.2, inCalm ? 2 : 0);
+  }
+  // ---- pebbles (lit top-left, dark rim, a cast shadow down-right) and dry-grass tufts
+  for (let k = 0; k < 420; k++) {
+    const x = rng.int(t.w), y = rng.int(t.h);
+    if (poolR(wx(x), wz(y)) < 0.9 && rng.chance(0.85)) continue;
+    const big = rng.chance(0.3);
+    t.scale(x + 1, y + 1, 0.72); t.scale(x + 2, y + 1, 0.8); if (big) { t.scale(x + 2, y + 2, 0.75); t.scale(x + 3, y + 2, 0.82); }
+    t.set(x, y, S.sandstone[5]!); t.set(x + 1, y, S.sandstone[4]!); t.set(x, y + 1, S.sandstone[2]!);
+    if (big) { t.set(x + 1, y + 1, S.sandstone[3]!); t.set(x - 1, y, S.sandstone[4]!); t.set(x + 2, y + 1, S.sandstone[1]!); }
+  }
+  for (let k = 0; k < 160; k++) {
+    const x = rng.int(t.w), y = rng.int(t.h);
+    if (poolR(wx(x), wz(y)) < 1.05) continue;
+    for (let b = -2; b <= 2; b++) {
+      const len = 2 + rng.int(3);
+      for (let i = 0; i < len; i++) t.set(x + Math.round(b * i * 0.5), y - i, S.dry[Math.min(S.dry.length - 1, 2 + i + (b === 0 ? 1 : 0))]!);
+    }
+    t.scale(x, y + 1, 0.8); t.scale(x + 1, y + 1, 0.85);
   }
   if (trainer) paintTrodden(t, wx, wz, [S.sandstone[6], S.sandstone[4], S.sandstone[1]], 1.1);
 }
@@ -270,7 +355,7 @@ export const ARENA: ArenaDef = {
   match: [{ route: 'ridge', hotspot: 'scrub' }, { trainer: 'hiker-brann' }],
   build: buildScrubArena,
   grade: sunsetGrade,
-  background: '#e07a5a',
+  background: '#3a2018',
   fog: '#c87a6a',
   fogRange: [12, 50],
   // Flatter on phones so the sunset canyon stays in view above the shelf.
