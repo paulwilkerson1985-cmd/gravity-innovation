@@ -146,6 +146,24 @@ export class PixelTile {
   }
 }
 
+/**
+ * A PixelTile with a per-texel RGB multiplier applied when it is written to a canvas: per-chunk
+ * hue and value jitter (each stone of a rock tile a little warmer, cooler, lighter or darker)
+ * while the painting itself stays indexed into the ramp.
+ */
+export class TintedTile extends PixelTile {
+  readonly mul: Float32Array;
+  constructor(w: number, h: number, ramp: Ramp) { super(w, h, ramp); this.mul = new Float32Array(w * h * 3).fill(1); }
+  override toCanvas(): HTMLCanvasElement {
+    const c = super.toCanvas();
+    const ctx = c.getContext('2d')!;
+    const img = ctx.getImageData(0, 0, this.w, this.h);
+    for (let i = 0; i < this.w * this.h; i++) for (let k = 0; k < 3; k++) img.data[i * 4 + k] = Math.max(0, Math.min(255, Math.round(img.data[i * 4 + k]! * this.mul[i * 3 + k]!)));
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+}
+
 /** Wrap a canvas as a crisp pixel texture (nearest, no mipmaps, sRGB, repeat). */
 export function pixelTexture(c: HTMLCanvasElement): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
@@ -189,36 +207,51 @@ function crack(t: PixelTile, rng: Rng, len: number, dark = 1, lip = true) {
 
 /**
  * Packed-dirt arena floor, painterly: the fbm posterised into 4 flat bands (sparse blue-noise
- * dither only at band edges), packed lighter patches, damp darker blotches, scuffs, and small
- * stones (lit top, dark rim) with a 1-texel cast shadow down-right.
+ * dither only at band edges), packed lighter dust patches, damp darker blotches, clods of mixed
+ * sizes with broken rims (no cell lattice), scuffs and drag marks, hairline and open cracks
+ * (some branching, some stopping short), grit, and small stones (lit top, dark rim) with a
+ * 1-texel cast shadow down-right. Paint it at 128 texels for a floor: fewer visible repeats.
  */
 export function paintDirt(seed: number, size = 64, ramp: Ramp = RAMPS.dirt): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
-  t.field(fbm(size, rng, [[4, 0.55], [8, 0.3], [32, 0.15]]), 1.6, 4.6, 1.0, 'band');
+  const big = size / 64;
+  t.field(fbm(size, rng, [[Math.round(4 * big), 0.5], [Math.round(8 * big), 0.3], [Math.round(32 * big), 0.2]]), 2.2, 4.7, 0.9, 'band');
   const blob = (cx: number, cy: number, rx: number, ry: number, d: number, ragged: number) => {
     for (let y = -ry - 1; y <= ry + 1; y++) for (let x = -rx - 1; x <= rx + 1; x++) {
       const q = (x / rx) ** 2 + (y / ry) ** 2;
       if (q < 1 - ragged * clusterNoise(cx + x + 7, cy + y + 3)) t.nudge(cx + x, cy + y, d);
     }
   };
-  // Packed, lighter patches (trodden earth) and damp darker blotches.
-  for (let i = 0; i < 4; i++) blob(rng.int(size), rng.int(size), 4 + rng.int(5), 2 + rng.int(3), 1, 0.35);
-  for (let i = 0; i < 3; i++) blob(rng.int(size), rng.int(size), 2 + rng.int(4), 2 + rng.int(2), -1, 0.5);
-  // Scuffs: short streaks, a dark drag with a lit edge.
-  for (let i = 0; i < 6; i++) {
-    const x = rng.int(size), y = rng.int(size), len = 3 + rng.int(4);
-    for (let k = 0; k < len; k++) { t.nudge(x + k, y + (k > len / 2 ? 1 : 0), -1); t.nudge(x + k, y - 1 + (k > len / 2 ? 1 : 0), 1); }
+  // Dust patches (packed, lighter: of every size), damp darker blotches.
+  for (let i = 0; i < 5 * big * big; i++) blob(rng.int(size), rng.int(size), 3 + rng.int(8), 2 + rng.int(4), 1, 0.45);
+  for (let i = 0; i < 2 * big * big; i++) blob(rng.int(size), rng.int(size), 2 + rng.int(4), 1 + rng.int(2), -1, 0.6);
+  clods(t, rng, Math.round((size * size) / 30));
+  // Scuffs and drag marks: short streaks, a dark drag with a lit edge, at a few angles.
+  for (let i = 0; i < 8 * big * big; i++) {
+    const x = rng.int(size), y = rng.int(size), len = 3 + rng.int(6), slope = rng.chance(0.5) ? 0 : rng.chance(0.5) ? 0.5 : -0.5;
+    for (let k = 0; k < len; k++) { const yy = y + Math.round(k * slope); t.nudge(x + k, yy, -1); if (rng.chance(0.7)) t.nudge(x + k, yy - 1, 1); }
   }
-  clods(t, rng, Math.round((size * size) / 22));
-  for (let i = 0; i < size * 0.6; i++) t.nudge(rng.int(size), rng.int(size), rng.chance(0.5) ? -1 : 1); // grit
-  for (let i = 0; i < 3; i++) crackRel(t, rng, 4 + rng.int(5), 1);
-  // Small stones with a cast shadow (light from the back-left window: shadow toward +x, +y).
-  for (let i = 0; i < size / 2.5; i++) {
-    const x = rng.int(size), y = rng.int(size), big = rng.chance(0.3);
+  for (let i = 0; i < size * size * 0.012; i++) t.nudge(rng.int(size), rng.int(size), rng.chance(0.55) ? -1 : 1); // grit
+  // Cracks: hairlines that stop short, and a few open ones (2 texels wide, darker core) that branch.
+  for (let i = 0; i < 4 * big * big; i++) crackRel(t, rng, 3 + rng.int(6), 1);
+  for (let i = 0; i < 2 * big * big; i++) {
+    let x = rng.int(size), y = rng.int(size), dx = rng.chance(0.5) ? 1 : -1, dy = 0;
+    const len = 8 + rng.int(10);
+    for (let k = 0; k < len; k++) {
+      const open = k > 1 && k < len - 2;
+      t.nudge(x, y, -2); if (open) { t.nudge(x, y + 1, -1); t.nudge(x, y + 2, 1); } else t.nudge(x, y + 1, 1);
+      if (k === Math.floor(len / 2)) crackRel(t, rng, 3 + rng.int(4), 1, [x, y, 1, 1]); // branch
+      if (rng.chance(0.35)) { const q = dx; dx = dy || (rng.chance(0.5) ? 1 : -1); dy = q ? 0 : (rng.chance(0.7) ? 1 : -1); }
+      x += dx; y += dy;
+    }
+  }
+  // Small stones with a cast shadow (light from the back-left: shadow toward +x, +y).
+  for (let i = 0; i < size * size / 160; i++) {
+    const x = rng.int(size), y = rng.int(size), bigS = rng.chance(0.3);
     const top = Math.min(ramp.length - 1, 4 + rng.int(2));
-    t.set(x + 1, y + 1, 0); if (big) { t.set(x + 2, y + 1, 0); t.set(x + 2, y + 2, 1); t.set(x + 1, y + 2, 1); }
-    t.set(x, y, top); if (big) { t.set(x + 1, y, top - 1); t.set(x, y + 1, top - 1); t.set(x + 1, y + 1, top - 2); }
+    t.set(x + 1, y + 1, 0); if (bigS) { t.set(x + 2, y + 1, 0); t.set(x + 2, y + 2, 1); t.set(x + 1, y + 2, 1); }
+    t.set(x, y, top); if (bigS) { t.set(x + 1, y, top - 1); t.set(x, y + 1, top - 1); t.set(x + 1, y + 1, top - 2); }
   }
   return t;
 }
@@ -239,51 +272,117 @@ export function paintRock(seed: number, size = 32, ramp: Ramp = RAMPS.rock): Pix
 }
 
 /**
- * Boulder face (kit/rock.ts): soft 2×2-texel-cluster mottling (contrast 1.1), lit flecks, and a
- * couple of relative cracks (two shades into the stone, lit lower lip) — rounded rock, not
- * pockmarked. The bevel shader does the form (dark foot → lit top).
+ * Boulder face (kit/rock.ts): a mosaic of rock chunks (chunks()) over soft mottling, dark pits
+ * and lit flecks, and a short relative crack. The bevel shader does the block form (dark foot →
+ * lit top); the texture gives every face its craggy sub-facets.
  */
 export function paintBoulder(seed: number, size = 32, ramp: Ramp = RAMPS.rock): PixelTile {
   const rng = new Rng(seed);
   const t = boulderBase(rng, size, ramp);
-  for (let i = 0; i < size * 0.6; i++) { const x = rng.int(size), y = rng.int(size); t.nudge(x, y, 1); t.nudge(x + 1, y, 1); }
   crackRel(t, rng, 4 + rng.int(4), 2);
   return t;
 }
 
-function boulderBase(rng: Rng, size: number, ramp: Ramp): PixelTile {
-  const t = new PixelTile(size, size, ramp);
+function boulderBase(rng: Rng, size: number, ramp: Ramp): TintedTile {
+  const t = new TintedTile(size, size, ramp);
   const half = size / 2;
   const f = fbm(half, rng, [[Math.max(2, half / 8), 0.35], [Math.max(4, half / 4), 0.4], [Math.max(8, half / 2), 0.25]]);
   const n = ramp.length;
   // Mottling on 2×2 clusters, posterised into flat shades (sparse blue-noise dither at the band
-  // edges only — no Bayer checkers on stone).
+  // edges only — no Bayer checkers on stone). Kept in the lower-middle of the ramp: the chunk
+  // edges need headroom both ways.
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const v = Math.max(0, Math.min(1, 0.5 + (f[(y >> 1) * half + (x >> 1)]! - 0.5) * 1.1));
-    const pos = 2.0 + v * (n - 3.2);
+    const pos = 2.4 + v * (n - 4.5);
     const e = pos - (Math.floor(pos) + 0.5);
     t.idx[y * size + x] = Math.abs(e) < 0.12 ? Math.floor(pos) + ((e + 0.12) / 0.24 > clusterNoise(x, y) ? 1 : 0) : Math.round(pos);
   }
-  lumps(t, rng, Math.round((size * size) / 70));
-  // Sparse dark specks (relative, 2 shades into the stone).
-  for (let i = 0; i < size * 0.2; i++) { const x = rng.int(size), y = rng.int(size); t.nudge(x, y, -2); if (rng.chance(0.5)) t.nudge(x + 1, y, -1); }
+  chunks(t, rng, Math.round((size * size) / 56));
+  // Dark pits: 1–3 texel clusters two or three shades into the stone (the speckled rock look),
+  // never horizontal pairs (those read as grain once a top face is foreshortened).
+  for (let i = 0; i < size * size / 40; i++) {
+    const x = rng.int(size), y = rng.int(size), d = rng.chance(0.3) ? -3 : -2;
+    t.nudge(x, y, d);
+    if (rng.chance(0.5)) t.nudge(x, y + 1, d + 1);
+    if (rng.chance(0.25)) t.nudge(x + 1, y + 1, d + 1);
+  }
+  // Lit flecks: single texels, a few 2×2 clusters.
+  for (let i = 0; i < size * size / 70; i++) {
+    const x = rng.int(size), y = rng.int(size);
+    t.nudge(x, y, 1);
+    if (rng.chance(0.3)) { t.nudge(x + 1, y, 1); t.nudge(x, y + 1, 1); t.nudge(x + 1, y + 1, 1); }
+  }
   return t;
 }
 
 /**
- * Gravel clods (tileable Voronoi of small cells): each clod lit along its upper rim, with a dark
- * gap texel under its lower rim (some clods a shade darker) — the gritty, pebbly packed earth.
+ * Rock chunks (tileable, multiplicatively weighted Voronoi, so chunk sizes vary ~3×): every
+ * chunk gets a 4-tone ramp — a shade for its body (up, down or level), a lit top-left part, a
+ * shadowed bottom-right, a crisp 1-texel lit top edge and a dark crevice texel along its lower
+ * and right edges (mortar where the two meet) — plus its own ±10% value and ±6% hue jitter.
+ * About a third of the borders are fused (no crevice), so the mosaic never reads as a grid.
+ */
+function chunks(t: TintedTile, rng: Rng, count: number) {
+  const { w, h } = t;
+  const seeds = Array.from({ length: count }, () => ({
+    x: rng.next() * w, y: rng.next() * h, wt: 0.65 + rng.next() * 0.9,
+    off: rng.chance(0.22) ? -1 : rng.chance(0.25) ? 1 : 0,
+    v: (rng.next() - 0.5) * 0.2, hue: (rng.next() - 0.5) * 0.12,
+  }));
+  const owner = new Int16Array(w * h);
+  const rel = new Float32Array(w * h * 2);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let best = 1e9, bi = 0, bx = 0, by = 0;
+    seeds.forEach((s, i) => {
+      let dx = x + 0.5 - s.x, dy = y + 0.5 - s.y;
+      if (dx > w / 2) dx -= w; else if (dx < -w / 2) dx += w;
+      if (dy > h / 2) dy -= h; else if (dy < -h / 2) dy += h;
+      const q = (dx * dx + dy * dy * 1.15) / (s.wt * s.wt); // weighted sizes, a little taller than wide
+      if (q < best) { best = q; bi = i; bx = dx; by = dy; }
+    });
+    owner[y * w + x] = bi;
+    rel[(y * w + x) * 2] = bx / seeds[bi]!.wt; rel[(y * w + x) * 2 + 1] = by / seeds[bi]!.wt;
+  }
+  const own = (x: number, y: number) => owner[((y + h) % h) * w + ((x + w) % w)]!;
+  const fused = (a: number, b: number) => { const lo = Math.min(a, b), hi = Math.max(a, b); return ((lo * 7919 + hi * 104729) % 101) / 101 < 0.35; };
+  const R = Math.sqrt((w * h) / count / Math.PI);
+  const d = new Int8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, o = owner[i]!, s = seeds[o]!;
+    let k = s.off;
+    // Lit top-left, shadowed bottom-right inside the chunk.
+    const l = -(rel[i * 2]! * 0.55 + rel[i * 2 + 1]! * 0.85) / R;
+    if (l > 0.5) k += 1; else if (l < -0.6) k -= 1;
+    const up = own(x, y - 1), dn = own(x, y + 1), lf = own(x - 1, y), rt = own(x + 1, y);
+    const eUp = up !== o && !fused(o, up), eDn = dn !== o && !fused(o, dn);
+    const eLf = lf !== o && !fused(o, lf), eRt = rt !== o && !fused(o, rt);
+    if (eDn && eRt) k = s.off - 2; // mortar corner
+    else if (eDn) k = s.off - (clusterNoise(x * 2 + 5, y) < 0.7 ? 2 : 1); // crevice under the chunk
+    else if (eRt) k = Math.min(k, s.off - 1);
+    else if (eUp && l > -0.2) k = s.off + 2; // crisp lit top edge (the lit half of it)
+    else if (eUp || eLf) k = Math.max(k, s.off + 1);
+    d[i] = k;
+    const hue = s.hue, v = 1 + s.v;
+    t.mul[i * 3] = v * (1 + hue); t.mul[i * 3 + 1] = v * (1 + hue * 0.3); t.mul[i * 3 + 2] = v * (1 - hue);
+  }
+  for (let i = 0; i < d.length; i++) if (d[i]) t.idx[i] = Math.max(0, Math.min(t.ramp.length - 1, t.idx[i]! + d[i]!));
+}
+
+/**
+ * Gravel clods (tileable, weighted Voronoi: small and big cells mixed): some clods lit along
+ * their upper rim with a dark gap texel under the lower rim, some a shade darker or lighter,
+ * most rimless — gritty, pebbly packed earth without a visible cell lattice.
  */
 function clods(t: PixelTile, rng: Rng, count: number) {
   const { w, h } = t;
-  const seeds = Array.from({ length: count }, () => [rng.next() * w, rng.next() * h, rng.chance(0.25) ? -1 : 0, rng.chance(0.55)] as const);
+  const seeds = Array.from({ length: count }, () => [rng.next() * w, rng.next() * h, rng.chance(0.2) ? -1 : rng.chance(0.12) ? 1 : 0, rng.chance(0.38), 0.5 + rng.next() * 1.3] as const);
   const owner = new Int16Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     let best = 1e9, bi = 0;
-    seeds.forEach(([sx, sy], i) => {
+    seeds.forEach(([sx, sy, , , wt], i) => {
       let dx = Math.abs(x + 0.5 - sx), dy = Math.abs(y + 0.5 - sy);
       dx = Math.min(dx, w - dx); dy = Math.min(dy, h - dy);
-      const q = dx * dx * 0.55 + dy * dy;
+      const q = (dx * dx * 0.55 + dy * dy) / (wt * wt);
       if (q < best) { best = q; bi = i; }
     });
     owner[y * w + x] = bi;
@@ -294,32 +393,11 @@ function clods(t: PixelTile, rng: Rng, count: number) {
     const o = own(x, y);
     const [, , off, rim] = seeds[o]!;
     let k: number = off;
-    if (rim && own(x, y + 1) !== o) k -= 1; // gap under the clod
-    else if (rim && own(x, y - 1) !== o) k += 1; // lit upper rim
+    // Rims are broken (every other run of texels), so even rimmed clods never outline fully.
+    const broken = clusterNoise(x * 3 + 1, y * 5 + 2) < 0.35;
+    if (rim && !broken && own(x, y + 1) !== o) k -= 1; // gap under the clod
+    else if (rim && !broken && own(x, y - 1) !== o) k += 1; // lit upper rim
     d[y * w + x] = k;
-  }
-  for (let i = 0; i < d.length; i++) if (d[i]) t.idx[i] = Math.max(0, Math.min(t.ramp.length - 1, t.idx[i]! + d[i]!));
-}
-
-/**
- * Rough lumps (tileable Voronoi): each lump a shade up, down or level, lit on its upper part and
- * shaded on its lower part (light from above) — the knobbly surface of hand-pixelled rock.
- */
-function lumps(t: PixelTile, rng: Rng, count: number) {
-  const { w, h } = t;
-  const seeds = Array.from({ length: count }, () => [rng.next() * w, rng.next() * h, rng.chance(0.2) ? -1 : rng.chance(0.2) ? 1 : 0, 1.5 + rng.next() * 1.5] as const);
-  const d = new Int8Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let best = 1e9, by = 0, bi = 0;
-    seeds.forEach(([sx, sy], i) => {
-      let dx = x + 0.5 - sx, dy = y + 0.5 - sy;
-      if (dx > w / 2) dx -= w; else if (dx < -w / 2) dx += w;
-      if (dy > h / 2) dy -= h; else if (dy < -h / 2) dy += h;
-      const q = dx * dx * 0.6 + dy * dy; // wider than tall
-      if (q < best) { best = q; by = dy; bi = i; }
-    });
-    const [, , off, band] = seeds[bi]!;
-    d[y * w + x] = off + (by < -band ? 1 : by > band ? -1 : 0);
   }
   for (let i = 0; i < d.length; i++) if (d[i]) t.idx[i] = Math.max(0, Math.min(t.ramp.length - 1, t.idx[i]! + d[i]!));
 }
@@ -333,11 +411,11 @@ export function paintBoulderAtlas(seed: number, ramp: Ramp = RAMPS.boulder): Pix
   const rng = new Rng(seed);
   const t = boulderBase(rng, 64, ramp);
   const fleck = (x0: number, y0: number, n: number) => { for (let i = 0; i < n; i++) { const x = x0 + 2 + rng.int(28), y = y0 + 2 + rng.int(28); t.nudge(x, y, 1); t.nudge(x + 1, y, 1); } };
-  fleck(0, 0, 14); fleck(32, 0, 10); fleck(32, 32, 10);
+  fleck(0, 0, 8); fleck(32, 0, 6); fleck(32, 32, 6);
   // Quadrant 1: a few short, wandering cracks.
   for (let i = 0; i < 3; i++) crackRel(t, rng, 4 + rng.int(4), 2, [36, 4, 22, 22]);
   // Quadrant 2: weathered — many small lit flecks and a chipped facet.
-  fleck(0, 32, 34);
+  fleck(0, 32, 24);
   for (let j = -3; j <= 3; j++) for (let k = -3; k <= 3; k++) if (Math.abs(j) + Math.abs(k) <= 3) t.nudge(14 + k, 46 + j, Math.abs(j) + Math.abs(k) < 2 ? 1 : 0);
   // Quadrant 3: a darker stratum band with a lit edge above.
   for (let x = 33; x < 63; x++) { const y = 44 + Math.round(Math.sin(x * 0.3) * 1.5); t.nudge(x, y, -1); t.nudge(x, y + 1, -1); t.nudge(x, y - 1, 1); }

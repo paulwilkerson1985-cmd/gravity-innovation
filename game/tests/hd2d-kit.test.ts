@@ -16,19 +16,40 @@ function checkGeometry(g: THREE.BufferGeometry) {
 }
 
 describe('hd2d kit: rock', () => {
-  it('a boulder is a closed rounded block with outward normals', () => {
-    const b = new VoxelBatch(32);
-    boulder(b, [0, 0.5, 0], [1, 1, 1], new THREE.Color(1, 1, 1), new Rng(1), { skip: [false, false, false, false, false, false], jitter: 0, topJitter: 0 });
-    // Octagonal rings (8 quads per band): foot bevel + bottom cap, two side bands around the bulge,
-    // two top-edge bevel bands, top cap.
-    expect(tris(b)).toBe(16 + 6 + 2 * 16 + 2 * 16 + 6);
-    const g = b.build();
-    checkGeometry(g);
+  const outward = (g: THREE.BufferGeometry, cy: number) => {
     const pos = g.attributes.position!, nor = g.attributes.normal!;
     for (let i = 0; i < pos.count; i += 3) {
       const c = new THREE.Vector3();
-      for (let k = 0; k < 3; k++) c.add(new THREE.Vector3(pos.getX(i + k), pos.getY(i + k) - 0.5, pos.getZ(i + k)));
+      for (let k = 0; k < 3; k++) c.add(new THREE.Vector3(pos.getX(i + k), pos.getY(i + k) - cy, pos.getZ(i + k)));
       expect(c.dot(new THREE.Vector3(nor.getX(i), nor.getY(i), nor.getZ(i)))).toBeGreaterThan(0);
+    }
+  };
+
+  it('a boulder is a closed faceted block with outward normals', () => {
+    const b = new VoxelBatch(32);
+    boulder(b, [0, 0.5, 0], [1, 1, 1], new THREE.Color(1, 1, 1), new Rng(1), { skip: [false, false, false, false, false, false], jitter: 0, topJitter: 0, chips: 0 });
+    // Octagonal rings (8 quads per band): foot bevel + bottom cap, two side bands around the
+    // creased middle, two top-edge bevel bands, and a faceted top cap (a fan of 8 around a centre).
+    expect(tris(b)).toBe(16 + 6 + 2 * 16 + 2 * 16 + 8);
+    const g = b.build();
+    checkGeometry(g);
+    outward(g, 0.5);
+  });
+
+  it('a boulder has a low bevel (not a pillow) and chipped corners stay closed and outward', () => {
+    const flat = new VoxelBatch(32);
+    boulder(flat, [0, 0, 0], [0.9, 0.7, 0.9], new THREE.Color(1, 1, 1), new Rng(3), { jitter: 0, topJitter: 0, chips: 0, peak: 0, bulge: 0 });
+    // The top cap spans most of the block: the bevel is ~10–15% of the half-extent, not ~40%.
+    const pos = flat.build().attributes.position!;
+    let maxTopX = 0;
+    for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0.35 - 1e-4) maxTopX = Math.max(maxTopX, Math.abs(pos.getX(i)));
+    expect(maxTopX).toBeGreaterThan(0.45 * 0.8);
+    for (let seed = 1; seed < 6; seed++) {
+      const b = new VoxelBatch(32);
+      boulder(b, [0, 1, 0], [1.2, 0.8, 0.9], new THREE.Color(1, 1, 1), new Rng(seed), { chips: 2, skip: [false, false, false, false, false, false] });
+      const g = b.build();
+      checkGeometry(g);
+      outward(g, 1);
     }
   });
 
@@ -59,11 +80,31 @@ describe('hd2d kit: rock', () => {
     expect(a.b.count).toBe(c.b.count);
     expect(a.hm.get(4, 4)).toBe(0);
     expect(Math.max(...a.hm.h)).toBeGreaterThan(1);
-    // Far fewer triangles than one full boulder per block.
+    // Fewer triangles than one full boulder per block (hidden faces skipped, buried blocks cheap).
     let blocks = 0;
     for (const v of a.hm.h) blocks += Math.ceil(v);
-    expect(tris(a.b)).toBeLessThan(blocks * 44);
+    expect(tris(a.b)).toBeLessThan(blocks * 64);
     checkGeometry(a.b.build());
+  });
+
+  it('the low tier wall is all cheap top-bevel boulders', () => {
+    const hm = new Heightmap(8, 8, -3.6, -3.6);
+    organicTerraces(hm, (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 1.5, new Rng(4), { max: 5 });
+    const hi = new VoxelBatch(32), lo = new VoxelBatch(32);
+    boulderColumns(hm, hi, new Rng(5));
+    boulderColumns(hm, lo, new Rng(5), { lite: true });
+    expect(tris(lo)).toBeLessThan(tris(hi) * 0.6);
+    checkGeometry(lo.build());
+  });
+
+  it('rubble is a cool-grey value ramp by default', () => {
+    const b = new VoxelBatch(32);
+    rubblePile(b, [0, 0, 0], new Rng(8), { radius: 1 });
+    const col = b.build().attributes.color!;
+    let r = 0, bl = 0, lo = 9, hiV = 0;
+    for (let i = 0; i < col.count; i++) { r += col.getX(i); bl += col.getZ(i); lo = Math.min(lo, col.getY(i)); hiV = Math.max(hiV, col.getY(i)); }
+    expect(bl).toBeGreaterThan(r); // cool
+    expect(hiV / lo).toBeGreaterThan(1.3); // stones differ in value
   });
 
   it('rubble and pebbles keep out of the kin spots', () => {

@@ -1,23 +1,24 @@
-// HD-2D rock kit: rounded, irregular pixel-textured boulders (pillow-bevelled blocks), terraced
+// HD-2D rock kit: craggy, irregular pixel-textured boulders (low-bevel faceted blocks), terraced
 // boulder walls from a Heightmap, rubble piles and pebble scatter. Everything is emitted into a
 // VoxelBatch (one merged mesh per material), shaded by the same baked AO + texel bevel shader as
 // the voxel blocks, so a whole cliff stays ONE draw call.
 //
-// Why pillow bevels: a cube with a 1-texel seam still reads "voxel" (or "crate"). A boulder here
-// is a stack of horizontal rings (an octagon in plan: the vertical edges are chamfered too):
-// foot → shoulder (the side faces), a steep then a shallow bevel ring over the top edge (a
-// rounded, pillow-like silhouette) and the top cap. Side faces carry the "rock face" bevel code
-// (no seam; a quantised vertical value gradient, dark foot → lit top), the top cap a soft lit
-// rim, the bevel rings fixed brightness steps — bright top planes, mid fronts, dark undersides.
+// A boulder is a stack of horizontal rings (an irregular octagon in plan: every vertical edge is
+// chamfered by its own amount): foot → shoulder (the side faces), a steep then a shallow bevel
+// ring over the top edge (about one texel wide: the crisp lit edge of a block, not a pillow) and
+// a faceted top cap (a fan around a raised or sunk centre). One or two corners per stone are
+// chipped off: their top rings drop and pull in, leaving a sloped facet. Side faces carry the
+// "rock face" bevel code (no seam; a quantised vertical value gradient, dark foot → lit top),
+// the bevel rings fixed brightness steps — bright top planes, mid fronts, dark undersides.
 // Corners move as units (every ring vertex of a corner shares its jitter), so tops tilt and
-// bulge irregularly without opening holes.
+// break irregularly without opening holes.
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { VoxelBatch, type Face4, type Heightmap, type V3 } from '../arena';
 import { CELL, LEVEL, TEXEL } from './units';
 
 export interface BoulderOptions {
-  /** Edge rounding in world units (default 38–45% of the smallest half-extent, ≥ 1.5 texels). */
+  /** Edge rounding in world units (default 10–15% of the smallest half-extent, ≥ 1 texel). */
   chamfer?: number;
   /** Corner jitter in world units (default 0.035): irregular silhouette. */
   jitter?: number;
@@ -33,14 +34,15 @@ export interface BoulderOptions {
   /** No bevel along the bottom edges (sits on something). */
   flatBottom?: boolean;
   /**
-   * Outward bulge of the side faces at mid height (world units; default 15% of the smallest
-   * half-extent, ≤ 0.06): convex, lumpy sides instead of flat slabs. Not on the cheap version.
+   * Outward bulge of the side faces at mid height (world units; default 5% of the smallest
+   * half-extent, ≤ 0.025), with per-vertex creases in and out: faceted sides, not pillows.
+   * Not on the cheap version.
    */
   bulge?: number;
   /**
-   * Cheap "pillow" boulder (≤ 26 triangles): square in plan, straight sides, only the top rim
-   * rounded. Reads the same from the battle camera for blocks seen mostly from above; implies a
-   * flat bottom.
+   * Cheap boulder (≤ 26 triangles): square in plan, straight sides, only the top rim bevelled.
+   * Reads the same from the battle camera for blocks seen mostly from above; implies a flat
+   * bottom.
    */
   topOnly?: boolean;
   /**
@@ -48,12 +50,19 @@ export interface BoulderOptions {
    * The bottom (-y) is skipped by default.
    */
   skip?: boolean[];
+  /** Corners chipped off the top edge (0–2; default random: none 30%, one 50%, two 20%). */
+  chips?: number;
+  /**
+   * Height of the top cap's centre over its rim (world units; default random −0.3…+0.9 of the
+   * chamfer): a faceted, chiselled top instead of a flat lid. Not on the cheap version.
+   */
+  peak?: number;
 }
 
 const tmp = new THREE.Vector3();
 
-/** Bevel brightness: the shallow top ring catches light, the steep shoulder less, the foot sinks. */
-const K_TOP = 1.3, K_SHOULDER = 1.08, K_SIDE = 0.9, K_BOTTOM = 0.4;
+/** Bevel brightness: the shallow top ring is the lit edge, the steep shoulder less, the foot sinks. */
+const K_TOP = 1.42, K_SHOULDER = 1.1, K_SIDE = 0.86, K_BOTTOM = 0.4;
 
 /** Bevel-shader code for a "rock face" (arena.ts addBevel): no seam, (u, v, -(W + 2), ±H). */
 const rockFace = (u: number, v: number, w: number, hh: number): Face4 => [u, v, -(w + 2), hh];
@@ -65,18 +74,20 @@ const facet = (k: number): Face4 => [0, 0, -1, k];
 const RING = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
 const FACE_AFTER = [5, 0, 4, 1] as const;
 
-/** A ring vertex: local undistorted position, its corner (shared jitter), AO, top-drop weight. */
-type RV = { p: V3; k: number; ao: number; dy: number };
+/** A ring vertex: local undistorted position, its corner (shared jitter), AO, top-drop and chip weights. */
+type RV = { p: V3; k: number; ao: number; dy: number; cw: number };
 
 /**
- * One rounded boulder: rings (foot, shoulder, two top-edge bevel rings, top cap), octagonal in
- * plan, corners jittered as units, flat-shaded, box-mapped in local space at TEXEL density.
- * `center` is the box centre; `size` the full extents before rounding.
+ * One craggy boulder: rings (foot, shoulder, two narrow top-edge bevel rings, faceted top cap),
+ * an irregular octagon in plan, corners jittered as units, 0–2 corners chipped, flat-shaded,
+ * box-mapped in local space at TEXEL density. `center` is the box centre; `size` the full
+ * extents before bevelling.
  */
 export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Color, rng: Rng, o: BoulderOptions = {}) {
   const h: V3 = [size[0] / 2, size[1] / 2, size[2] / 2];
   const minH = Math.min(h[0], h[1], h[2]);
-  const c = Math.min(o.chamfer ?? Math.max(TEXEL * 1.5, minH * (0.38 + rng.next() * 0.07)), minH * 0.48);
+  const minXZ = Math.min(h[0], h[2]);
+  const c = Math.min(o.chamfer ?? Math.max(TEXEL, minH * (0.1 + rng.next() * 0.05)), minH * 0.48);
   const j = o.jitter ?? 0.035;
   const tj = o.topJitter ?? 0.06;
   const ab = o.aoBottom ?? 0.55, at = o.aoTop ?? 1;
@@ -91,25 +102,36 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   const offU = pick(), offV = pick();
   const m = new THREE.Matrix4().compose(new THREE.Vector3(...center), new THREE.Quaternion().setFromEuler(new THREE.Euler(o.rx ?? 0, o.ry ?? 0, o.rz ?? 0)), new THREE.Vector3(1, 1, 1));
   const kTop = K_TOP * Math.sqrt(topK / 1.3);
-  // Plan-view chamfer of the vertical edges (none on the cheap version: 4-vertex rings).
-  const cv = lite ? 0 : c * 0.85;
+  // Plan-view chamfer of the vertical edges, its own size per corner (none on the cheap
+  // version: 4-vertex rings) — an irregular octagon, never a rounded square.
+  const cv = lite ? 0 : c;
+  const cutMul = RING.map(() => 0.5 + rng.next() * 2.2);
   // Per corner: column jitter (x, z) and a drop of the top rings — tilted, uneven tops.
   const colJ = RING.map(() => [(rng.next() - 0.5) * 2 * j, (rng.next() - 0.5) * 2 * j] as const);
   const drop = RING.map(() => -rng.next() * tj + (rng.next() - 0.5) * j);
+  // Chipped corners: the top rings of 0–2 corners drop and pull in (a sloped broken facet).
+  const nChips = o.chips ?? (rng.next() < 0.3 ? 0 : rng.next() < 0.71 ? 1 : 2);
+  const chipCut = [0, 0, 0, 0], chipDrop = [0, 0, 0, 0];
+  for (let n = 0, k0 = rng.int(4); n < Math.min(nChips, 4); n++) {
+    const k = (k0 + n * (1 + rng.int(3))) % 4;
+    chipCut[k] = lite ? 0 : minXZ * (0.22 + rng.next() * 0.2);
+    chipDrop[k] = Math.min(h[1] * (0.18 + rng.next() * 0.22), minXZ * 0.6);
+  }
 
-  const ring = (y: number, inset: number, cut: number, ao: number, dy: number): RV[] => {
+  const ring = (y: number, inset: number, cut: number, ao: number, dy: number, cw = 0): RV[] => {
     const out: RV[] = [];
     RING.forEach(([sx, sz], k) => {
-      if (cv <= 0) { out.push({ p: [sx * (h[0] - inset), y, sz * (h[2] - inset)], k, ao, dy }); return; }
-      const xp: RV = { p: [sx * (h[0] - inset), y, sz * (h[2] - inset - cut)], k, ao, dy }; // on the ±x face
-      const zp: RV = { p: [sx * (h[0] - inset - cut), y, sz * (h[2] - inset)], k, ao, dy }; // on the ±z face
+      if (cv <= 0) { out.push({ p: [sx * (h[0] - inset), y, sz * (h[2] - inset)], k, ao, dy, cw }); return; }
+      const ck = Math.min(cut * cutMul[k]! + chipCut[k]! * cw, 0.8 * (minXZ - inset));
+      const xp: RV = { p: [sx * (h[0] - inset), y, sz * (h[2] - inset - ck)], k, ao, dy, cw }; // on the ±x face
+      const zp: RV = { p: [sx * (h[0] - inset - ck), y, sz * (h[2] - inset)], k, ao, dy, cw }; // on the ±z face
       if (k % 2 === 0) out.push(xp, zp); else out.push(zp, xp);
     });
     return out;
   };
   const world = (v: RV): V3 => {
     const d = colJ[v.k]!;
-    tmp.set(v.p[0] + d[0], v.p[1] + drop[v.k]! * v.dy, v.p[2] + d[1]).applyMatrix4(m);
+    tmp.set(v.p[0] + d[0], v.p[1] + drop[v.k]! * v.dy - chipDrop[v.k]! * v.cw, v.p[2] + d[1]).applyMatrix4(m);
     return [tmp.x, tmp.y, tmp.z];
   };
   // Box-map UVs from the dominant LOCAL axis, so the texture follows the rock when rotated.
@@ -139,7 +161,7 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   };
   // A band of quads between two rings with the same vertex count. `kind` decides the bevel code
   // and when a hidden face hides the band: sides with their face, top bevels only when the top is
-  // hidden too (the rounded rim between two neighbours stays visible from above), foot bevels with
+  // hidden too (the lit rim between two neighbours stays visible from above), foot bevels with
   // the bottom.
   const band = (A: RV[], B: RV[], kind: 'side' | 'top' | 'foot', kFace: number, kCut: number, side: [number, number] = [A[0]!.p[1], B[0]!.p[1]]) => {
     const n = A.length;
@@ -154,8 +176,8 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
       const axis = isCut || face === 0 || face === 1 ? 0 : 2;
       if (isCut || kind !== 'side') { emit(quad, axis, () => facet(isCut ? kCut : kFace), 1); continue; }
       const ua = axis === 0 ? 2 : 0;
-      const wFace = 2 * (h[ua]! - cv), hFace = Math.max(TEXEL, yt - yb);
-      emit(quad, axis, (v) => rockFace(v.p[ua]! + h[ua]! - cv, v.p[1] - yb, wFace, -hFace), 1);
+      const wFace = 2 * h[ua]!, hFace = Math.max(TEXEL, yt - yb);
+      emit(quad, axis, (v) => rockFace(v.p[ua]! + h[ua]!, v.p[1] - yb, wFace, -hFace), 1);
     }
   };
 
@@ -164,26 +186,26 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   const eps = TEXEL * 0.25;
   const cutAt = (inset: number) => (cv <= 0 ? 0 : Math.max(eps, cv - inset * 0.5));
   const yTop = h[1];
-  const r1 = ring(yTop - c, 0, cv, at, 0.6);
-  const r2 = ring(yTop - c * 0.29, c * 0.29, cutAt(c * 0.29), at, 0.85);
-  const r3 = ring(yTop, c, cutAt(c), at, 1);
+  const r1 = ring(yTop - c, 0, cv, at, 0.6, 1);
+  const r2 = ring(yTop - c * 0.29, c * 0.29, cutAt(c * 0.29), at, 0.85, 1);
+  const r3 = ring(yTop, c, cutAt(c), at, 1, 1);
   let foot: RV[];
   if (flat) foot = ring(-h[1], 0, cv, ab, 0);
   else {
-    const cb = Math.min(c * 0.7, h[1] * 0.4);
+    const cb = Math.min(c * 0.8, h[1] * 0.4);
     const r0 = ring(-h[1], cb, cutAt(cb), ab * 0.85, 0);
     foot = ring(-h[1] + cb, 0, cv, ab, 0);
     band(r0, foot, 'foot', K_BOTTOM, K_BOTTOM);
     if (!skip[3]) emit(r0, 1, () => facet(K_BOTTOM), 1);
   }
   if (flat && !skip[3]) emit(foot, 1, () => facet(K_BOTTOM), 1);
-  // Sides: one band, or two around a bulging, extra-jittered middle ring (lumpy, convex rock).
-  const bul = lite ? 0 : o.bulge ?? Math.min(0.06, minH * 0.15);
+  // Sides: one band, or two around a creased, extra-jittered middle ring (faceted rock).
+  const bul = lite ? 0 : o.bulge ?? Math.min(0.025, minH * 0.05);
   const sideRange: [number, number] = [foot[0]!.p[1], r1[0]!.p[1]];
   if (bul > 0) {
-    const ym = sideRange[0] + (sideRange[1] - sideRange[0]) * (0.4 + rng.next() * 0.15);
-    const mid = ring(ym, -bul, cv + bul * 0.6, (ab + at) / 2 * 1.04, 0.3).map((v) => {
-      const e = (rng.next() - 0.3) * bul; // lumps: each ring vertex pushed in or out a little
+    const ym = sideRange[0] + (sideRange[1] - sideRange[0]) * (0.35 + rng.next() * 0.3);
+    const mid = ring(ym, -bul, cv + bul * 0.6, (ab + at) / 2 * 1.04, 0.3, 0.35).map((v) => {
+      const e = (rng.next() - 0.45) * bul * 2.2; // creases: each ring vertex pushed in or out
       return { ...v, p: [v.p[0] * (1 + e / Math.max(h[0], 1e-3)), v.p[1], v.p[2] * (1 + e / Math.max(h[2], 1e-3))] as V3 };
     });
     band(foot, mid, 'side', 1, K_SIDE, sideRange);
@@ -191,19 +213,27 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   } else band(foot, r1, 'side', 1, K_SIDE);
   band(r1, r2, 'top', K_SHOULDER, K_SHOULDER * 0.96);
   band(r2, r3, 'top', kTop, kTop * 0.95);
-  if (!skip[2]) emit(r3, 1, (v) => rockFace(v.p[0] + h[0] - c, h[2] - c - v.p[2], 2 * (h[0] - c), 2 * (h[2] - c)), topK);
+  if (skip[2]) return;
+  const topCode = (v: RV): Face4 => rockFace(v.p[0] + h[0] - c, h[2] - c - v.p[2], 2 * (h[0] - c), 2 * (h[2] - c));
+  if (lite) { emit(r3, 1, topCode, topK); return; }
+  // Faceted top: a fan around a raised (or sunk) centre, a little off-centre.
+  const peak = o.peak ?? c * (-0.3 + rng.next() * 1.2);
+  const ctr: RV = { p: [(rng.next() - 0.5) * h[0] * 0.5, yTop + peak, (rng.next() - 0.5) * h[2] * 0.5], k: 0, ao: at, dy: 0, cw: 0 };
+  const cAvg = drop.reduce((a, b) => a + b, 0) / 4 - chipDrop.reduce((a, b) => a + b, 0) / 8;
+  ctr.p[1] += cAvg;
+  for (let s = 0; s < r3.length; s++) emit([ctr, r3[s]!, r3[(s + 1) % r3.length]!], 1, topCode, topK);
 }
 
 export interface BoulderWallOptions {
   /** World y of level 0 (default 0). */
   baseY?: number;
-  /** Share of narrow stones (0.6–0.85 cells wide) along a row (default 0.2). */
+  /** Share of narrow stones (0.6–0.85 cells wide) along a row (default 0.25). */
   split?: number;
-  /** Share of wide stones (1.3–1.8 cells) along a row (default 0.45). */
+  /** Share of wide stones (1.15–1.4 cells) along a row (default 0.4). */
   merge?: number;
   /** Share of stones that span two levels when the level above tops the same run (default 0.55). */
   tall?: number;
-  /** How far boulders bulge past their cell (default -0.04: a 1–2 texel crevice to the next). */
+  /** How far boulders bulge past their cell (default -0.032: a ~1 texel crevice to the next). */
   bulge?: number;
   /** Tint brightness range, low tiers → top tier (default [0.84, 1.14]). */
   shade?: [number, number];
@@ -223,20 +253,37 @@ export interface BoulderWallOptions {
   deep?: number;
   /** Cheap top-bevel-only boulders for every block (low tier). Buried top blocks always use them. */
   lite?: boolean;
+  /**
+   * Vertical stagger of every stone's foot and top, in courses (default 0.35): stones of one
+   * level start and end at different heights, so rows never line up into brick courses.
+   */
+  stagger?: number;
+  /** Share of stones split into two stacked stones of unequal height (default 0.35). */
+  stack?: number;
+  /** Yaw jitter of front stones in radians (default 0.35 ≈ ±20°; top stones get 40% of it). */
+  yaw?: number;
+  /** How far stones push out of (+) or sink into (−) the wall face, world units (default 0.13). */
+  protrude?: number;
+  /** Per-stone value jitter (default 0.1 = ±10%) and hue jitter (default 0.05). */
+  toneJitter?: number;
+  hueJitter?: number;
 }
 
 /**
  * Terraced boulder walls from a Heightmap: every visible level of a row of cells becomes a run
- * of rounded boulders of random width (0.6–1.8 cells, staggered between levels like dry-stone
- * masonry), inset from their cells so a near-black crevice (the recessed core) shows between
- * them, darker low down and lighter toward the top tiers, with baked AO. Tops of a run share one
- * height, so a ledge reads as one continuous lit shelf. Fully hidden blocks emit nothing. Same
- * contract as `rockColumns` (drop-in replacement).
+ * of craggy boulders of random width (0.6–1.4 cells) whose feet and tops are staggered by about
+ * a third of a course (some split into two stacked stones), yawed ±20°, pushed out of or sunk
+ * into the face, each with its own tone and hue, inset from their cells so a near-black crevice
+ * (the recessed core) shows between them; darker low down and lighter toward the top tiers, with
+ * baked AO. Tops of a run stay close to one height, so a ledge still reads as a lit shelf.
+ * Fully hidden blocks emit nothing. Same contract as `rockColumns` (drop-in replacement).
  */
 export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: BoulderWallOptions = {}) {
   const baseY = o.baseY ?? 0;
-  const pSplit = o.split ?? 0.2, pMerge = o.merge ?? 0.45, pTall = o.tall ?? 0.55, pDeep = o.deep ?? 0;
-  const bulge = o.bulge ?? -0.04;
+  const pSplit = o.split ?? 0.25, pMerge = o.merge ?? 0.4, pTall = o.tall ?? 0.55, pDeep = o.deep ?? 0;
+  const stagger = (o.stagger ?? 0.35) * LEVEL, pStack = o.stack ?? 0.35, yawJ = o.yaw ?? 0.35, push = o.protrude ?? 0.13;
+  const toneJ = o.toneJitter ?? 0.1, hueJ = o.hueJitter ?? 0.05;
+  const bulge = o.bulge ?? -0.032;
   const core = o.core ?? 0.1;
   const lite = o.lite ?? false;
   const [sLo, sHi] = o.shade ?? [0.84, 1.14];
@@ -247,7 +294,7 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
   /** Stone width in cells: narrow (split), wide (merge) or about one cell. */
   const width = () => {
     const r = rng.next();
-    return r < pSplit ? 0.6 + rng.next() * 0.25 : r < pSplit + pMerge ? 1.3 + rng.next() * 0.5 : 0.9 + rng.next() * 0.35;
+    return r < pSplit ? 0.6 + rng.next() * 0.25 : r < pSplit + pMerge ? 1.15 + rng.next() * 0.25 : 0.85 + rng.next() * 0.3;
   };
   // What a cell's block at level l looks like (null: absent or fully hidden). Neighbouring
   // cells of a row with the same key form one run of stones.
@@ -352,22 +399,48 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
       const sideR = sx1 >= xB - 1e-3 && (rightOpen || (tall && !covered(i1, j, (openTop - baseY) / LEVEL)));
       const sideL = sx0 <= xA + 1e-3 && (leftOpen || (tall && !covered(i0 - 1, j, (openTop - baseY) / LEVEL)));
       const exposed = exposedRow || sideR || sideL;
-      const y1 = (tall ? upTop : yTop) + (top ? (rng.next() - 0.5) * 0.03 : 0);
-      const sy = y1 - y0 + (top ? 0 : 0.04);
-      const sx = sx1 - sx0 + bulge * 2, sz = (deep ? 2 : 1) * CELL + bulge * 2;
-      const jz = (rng.next() - 0.5) * 0.04 - (deep ? CELL / 2 : 0);
+      const yEnd = tall ? upTop : yTop;
+      // Feet and (non-top) tops staggered by about a third of a course: no aligned courses.
+      // Feet mostly sink into the course below (or the floor); a few rise and show the dark core.
+      const yFoot = y0 - (rng.next() < 0.8 ? rng.next() * stagger : -rng.next() * stagger * 0.35);
+      const yHead = top ? yEnd + (rng.next() - 0.5) * 0.05 : yEnd + (rng.next() - 0.5) * 2 * stagger;
+      const zc = (z0 + z1) / 2 - (deep ? CELL / 2 : 0);
+      const dz = (deep ? 2 : 1) * CELL;
+      // Protruding chunks and recesses along the open face(s): the back stays against the core.
+      const pz = front ? (rng.next() - 0.42) * 2 * push : 0;
+      const px = sideR ? (rng.next() - 0.42) * 2 * push : sideL ? -(rng.next() - 0.42) * 2 * push : 0;
+      // Two stacked stones of unequal height (and width) instead of one.
+      const pieces: [number, number, number, number][] = [];
+      if (exposed && !lite && yHead - yFoot > LEVEL * 0.8 && rng.chance(pStack)) {
+        const ys = yFoot + (yHead - yFoot) * (0.35 + rng.next() * 0.3);
+        const w = sx1 - sx0, cut = rng.next() * 0.22 * w;
+        pieces.push(rng.chance(0.5) ? [sx0 + cut, sx1, yFoot, ys] : [sx0, sx1 - cut, yFoot, ys], [sx0, sx1, ys, yHead]);
+      } else pieces.push([sx0, sx1, yFoot, yHead]);
       const base = tints[rng.int(tints.length)]!;
-      let shade = sLo + (sHi - sLo) * tierLight + (rng.next() - 0.5) * 0.06;
-      if (rng.chance(0.03)) shade *= 0.9;
-      boulder(batch, [(sx0 + sx1) / 2, y0 + sy / 2, (z0 + z1) / 2 + jz], [sx, sy, sz], base.clone().multiplyScalar(shade), rng, {
-        skip: [!sideR, !sideL, false, true, !front, !backD],
-        // Rounded feet: the V between stacked stones is a dark crevice line.
-        flatBottom: lite || !exposed,
-        topOnly: lite || !exposed,
-        aoBottom: l === 0 ? 0.3 : 0.45,
-        topK: top ? topKTop : 1.18,
-        jitter: 0.035 + rng.next() * 0.035,
-        topJitter: top ? 0.05 : 0.025,
+      const shadeBase = sLo + (sHi - sLo) * tierLight;
+      pieces.forEach(([a0, a1, ya, yb], pi) => {
+        const isTop = top && pi === pieces.length - 1;
+        // Each stone its own tone (±10%) and hue (warm/cool drift ±5%).
+        let shade = shadeBase * (1 + (rng.next() - 0.5) * 2 * toneJ);
+        if (rng.chance(0.05)) shade *= 0.86;
+        const hue = (rng.next() - 0.5) * 2 * hueJ;
+        const tint = base.clone().multiplyScalar(shade);
+        tint.r *= 1 + hue; tint.g *= 1 + hue * 0.25; tint.b *= 1 - hue;
+        const sy = Math.max(0.12, yb - ya + (isTop ? 0 : 0.04));
+        const sx = a1 - a0 + bulge * 2 + Math.abs(px), sz = dz + bulge * 2 + pz + (rng.next() - 0.5) * 0.06;
+        const ry = (rng.next() - 0.5) * 2 * yawJ * (deep ? 0.25 : isTop ? 0.4 : 1) * (front || backD ? 1 : exposed ? 0.45 : 0.25);
+        boulder(batch, [(a0 + a1) / 2 + px / 2, ya + sy / 2, zc + pz / 2 + (rng.next() - 0.5) * 0.03], [sx, sy, sz], tint, rng, {
+          ry,
+          skip: [!sideR, !sideL, false, true, !front, !backD],
+          // Bevelled feet: the V between stacked stones is a dark crevice line.
+          flatBottom: lite || !exposed,
+          topOnly: lite || !exposed,
+          aoBottom: l === 0 ? 0.3 : 0.45,
+          topK: isTop ? topKTop : 1.22,
+          jitter: 0.03 + rng.next() * 0.03,
+          topJitter: isTop ? 0.045 : 0.07,
+          chips: isTop && rng.chance(0.35) ? 0 : undefined,
+        });
       });
     }
     if (core > 0) {
@@ -390,12 +463,33 @@ export interface RubbleOptions {
   heap?: number;
   /** Size of the biggest boulders (default 0.55 × radius, ≤ 0.95). */
   big?: number;
+  /** Base tint (default white); each stone takes a step of the value ramp times this. */
   tint?: THREE.ColorRepresentation;
+  /**
+   * Per-stone tint ramp, dark → light, linear multipliers (default COOL_GREY: a 4-step cool
+   * grey value ramp, so a pile reads as many separate stones that catch the light differently).
+   */
+  ramp?: readonly (readonly [number, number, number])[];
+}
+
+/**
+ * A cool-grey 4-step value ramp for rubble and pebbles (linear multipliers of the texture):
+ * shadowed, mid, lit and highlight stones — grey rubble reads against warm walls.
+ */
+export const COOL_GREY: readonly (readonly [number, number, number])[] = [[0.7, 0.72, 0.79], [0.84, 0.86, 0.92], [0.97, 0.98, 1.03], [1.1, 1.1, 1.13]];
+
+/** A ramp step for a stone: big stones lean light, small fringe stones lean dark. */
+function rampTint(base: THREE.Color, ramp: RubbleOptions['ramp'], bias: number, rng: Rng): THREE.Color {
+  const R = ramp ?? COOL_GREY;
+  const i = Math.max(0, Math.min(R.length - 1, Math.floor(rng.next() * R.length + bias)));
+  const q = R[i]!, k = 0.95 + rng.next() * 0.1;
+  return new THREE.Color(base.r * q[0] * k, base.g * q[1] * k, base.b * q[2] * k);
 }
 
 /**
  * A rubble pile: a few big chunky stones heaped in the middle, medium stones around them and
- * a fringe of small stones spilling onto the floor. Randomly rotated and tilted, partly sunk.
+ * a fringe of small stones spilling onto the floor. Randomly rotated and tilted, partly sunk;
+ * each stone a step of a cool-grey value ramp.
  */
 export function rubblePile(batch: VoxelBatch, center: [number, number, number], rng: Rng, o: RubbleOptions) {
   const r = o.radius;
@@ -412,28 +506,28 @@ export function rubblePile(batch: VoxelBatch, center: [number, number, number], 
     const x = center[0] + Math.cos(a) * d, z = center[2] + Math.sin(a) * d * 0.85;
     const lift = Math.max(0, (1 - d / r) * r * heap - s * 0.25);
     const sx = s * (0.95 + rng.next() * 0.35), sy = s * (0.8 + rng.next() * 0.35), sz = s * (0.85 + rng.next() * 0.35);
-    const tint = base.clone().multiplyScalar(0.85 + rng.next() * 0.25);
+    const tint = rampTint(base, o.ramp, t < 0.15 ? 0.6 : t > 0.6 ? -0.5 : 0, rng);
     boulder(batch, [x, center[1] + lift + sy * 0.4, z], [sx, sy, sz], tint, rng, {
       ry: rng.next() * Math.PI, rx: (rng.next() - 0.5) * 0.35, rz: (rng.next() - 0.5) * 0.35,
-      // Chunky, blocky stones: flat facets, a small rounding, no bulge (the walls are the pillowy ones).
-      chamfer: Math.max(TEXEL * 1.2, Math.min(sx, sy, sz) * (0.1 + rng.next() * 0.06)), bulge: 0,
-      jitter: s * 0.08, topJitter: s * 0.1, aoBottom: 0.45, topK: 1.2,
+      // Chunky, blocky stones: flat facets, a small bevel, no bulge.
+      chamfer: Math.max(TEXEL, Math.min(sx, sy, sz) * (0.08 + rng.next() * 0.06)), bulge: 0,
+      jitter: s * 0.08, topJitter: s * 0.12, aoBottom: 0.45, topK: 1.25,
     });
   }
 }
 
 /**
  * Scatter small stones over a floor rectangle, skipping `keepOut` circles (kin spots!).
- * `area` = [x0, z0, x1, z1].
+ * `area` = [x0, z0, x1, z1]. Each pebble a step of `ramp` (default COOL_GREY) times `tint`.
  */
-export function pebbles(batch: VoxelBatch, area: [number, number, number, number], count: number, rng: Rng, keepOut: { x: number; z: number; r: number }[] = [], tint: THREE.ColorRepresentation = '#ffffff') {
+export function pebbles(batch: VoxelBatch, area: [number, number, number, number], count: number, rng: Rng, keepOut: { x: number; z: number; r: number }[] = [], tint: THREE.ColorRepresentation = '#ffffff', ramp?: RubbleOptions['ramp']) {
   const base = new THREE.Color(tint);
   for (let k = 0; k < count; k++) {
     const x = area[0] + rng.next() * (area[2] - area[0]), z = area[1] + rng.next() * (area[3] - area[1]);
     if (keepOut.some((c) => (x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r)) continue;
     const s = 0.06 + rng.next() * 0.1;
-    boulder(batch, [x, s * 0.25, z], [s * 1.3, s * 0.65, s], base.clone().multiplyScalar(0.8 + rng.next() * 0.35), rng, {
-      ry: rng.next() * 3, chamfer: s * 0.18, jitter: s * 0.06, topJitter: s * 0.1, aoBottom: 0.55, topK: 1.25, topOnly: true,
+    boulder(batch, [x, s * 0.25, z], [s * 1.3, s * 0.65, s], rampTint(base, ramp, s > 0.12 ? 0.5 : -0.2, rng), rng, {
+      ry: rng.next() * 3, chamfer: s * 0.14, jitter: s * 0.08, topJitter: s * 0.14, aoBottom: 0.55, topK: 1.25, topOnly: true,
     });
   }
 }
