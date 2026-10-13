@@ -46,6 +46,8 @@ export const RAMPS = {
    * cool to a desaturated tan (lit tops read pale, not orange, under the hue-preserving tone map).
    */
   boulder: ['#281a16', '#402920', '#663822', '#83502f', '#9b6a48', '#b38b6c', '#cbab8e'],
+  /** Golden-ochre cut stone (cave course stones): brown darks, ochre mids, warm sandy lights. */
+  caveStone: ['#2c1b13', '#4a2d1d', '#6c4224', '#8c5c2f', '#a8783b', '#c3964f', '#dab46c'],
   // ---- outdoor kit ramps (kit/*): grounds, foliage, water, sky
   sand: ['#66523e', '#846e53', '#ad8c5c', '#c6a670', '#d9be88', '#e8d4a2', '#f4e6c0'],
   grass: ['#223621', '#2f4b2b', '#386a2c', '#4b8434', '#649e3e', '#84b74c', '#a9cc62'],
@@ -329,52 +331,58 @@ function crack(t: PixelTile, rng: Rng, len: number, dark = 1, lip = true) {
 // ------------------------------------------------------------------ painters
 
 /**
- * Packed-dirt arena floor, painterly: the fbm posterised into 4 flat bands (sparse blue-noise
- * dither only at band edges), packed lighter dust patches, damp darker blotches, clods of mixed
- * sizes with broken rims (no cell lattice), scuffs and drag marks, hairline and open cracks
- * (some branching, some stopping short), grit, and small stones (lit top, dark rim) with a
- * 1-texel cast shadow down-right. Paint it at 128 texels for a floor: fewer visible repeats.
+ * Packed-dirt arena floor, painterly and LOW-frequency (no single-texel grit): the fbm
+ * posterised into 4 flat bands (sparse blue-noise dither only at band edges), broad packed
+ * lighter dust patches, damp darker blotches, a few big clods with broken rims (no cell
+ * lattice), sparse dark 2–4 texel clods with a lit upper edge, scuffs and drag marks, a few
+ * hairline and open cracks, and small 2×2 stones with a cast shadow down-right. Paint it at 128
+ * texels for a floor: fewer visible repeats.
  */
 export function paintDirt(seed: number, size = 64, ramp: Ramp = RAMPS.dirt): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
   const big = size / 64;
-  t.field(fbm(size, rng, [[Math.round(4 * big), 0.5], [Math.round(8 * big), 0.3], [Math.round(32 * big), 0.2]]), 2.2, 4.7, 0.9, 'band');
+  t.field(fbm(size, rng, [[Math.round(3 * big), 0.55], [Math.round(6 * big), 0.3], [Math.round(16 * big), 0.15]]), 2.3, 4.7, 0.95, 'band');
   const blob = (cx: number, cy: number, rx: number, ry: number, d: number, ragged: number) => {
     for (let y = -ry - 1; y <= ry + 1; y++) for (let x = -rx - 1; x <= rx + 1; x++) {
       const q = (x / rx) ** 2 + (y / ry) ** 2;
       if (q < 1 - ragged * clusterNoise(cx + x + 7, cy + y + 3)) t.nudge(cx + x, cy + y, d);
     }
   };
-  // Dust patches (packed, lighter: of every size), damp darker blotches.
-  for (let i = 0; i < 5 * big * big; i++) blob(rng.int(size), rng.int(size), 3 + rng.int(8), 2 + rng.int(4), 1, 0.45);
-  for (let i = 0; i < 2 * big * big; i++) blob(rng.int(size), rng.int(size), 2 + rng.int(4), 1 + rng.int(2), -1, 0.6);
-  clods(t, rng, Math.round((size * size) / 30));
-  // Scuffs and drag marks: short streaks, a dark drag with a lit edge, at a few angles.
-  for (let i = 0; i < 8 * big * big; i++) {
-    const x = rng.int(size), y = rng.int(size), len = 3 + rng.int(6), slope = rng.chance(0.5) ? 0 : rng.chance(0.5) ? 0.5 : -0.5;
+  // Dust patches (packed, lighter: big and flat), damp darker blotches.
+  for (let i = 0; i < 4 * big * big; i++) blob(rng.int(size), rng.int(size), 5 + rng.int(8), 3 + rng.int(4), 1, 0.4);
+  for (let i = 0; i < 1.5 * big * big; i++) blob(rng.int(size), rng.int(size), 3 + rng.int(4), 2 + rng.int(2), -1, 0.5);
+  clods(t, rng, Math.round((size * size) / 110));
+  // Dark clods: 2–4 texels, lit along the top edge (light from behind the camera, above).
+  for (let i = 0; i < size * size / 150; i++) {
+    const x = rng.int(size), y = rng.int(size), w = 2 + rng.int(2), h = rng.chance(0.5) ? 2 : 1;
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) t.nudge(x + xx, y + yy, -2);
+    for (let xx = 0; xx < w; xx++) t.nudge(x + xx, y - 1, 1);
+  }
+  // Scuffs and drag marks: short streaks, a dark drag with a lit edge.
+  for (let i = 0; i < 4 * big * big; i++) {
+    const x = rng.int(size), y = rng.int(size), len = 4 + rng.int(6), slope = rng.chance(0.5) ? 0 : rng.chance(0.5) ? 0.5 : -0.5;
     for (let k = 0; k < len; k++) { const yy = y + Math.round(k * slope); t.nudge(x + k, yy, -1); if (rng.chance(0.7)) t.nudge(x + k, yy - 1, 1); }
   }
-  for (let i = 0; i < size * size * 0.012; i++) t.nudge(rng.int(size), rng.int(size), rng.chance(0.55) ? -1 : 1); // grit
-  // Cracks: hairlines that stop short, and a few open ones (2 texels wide, darker core) that branch.
-  for (let i = 0; i < 4 * big * big; i++) crackRel(t, rng, 3 + rng.int(6), 1);
-  for (let i = 0; i < 2 * big * big; i++) {
+  // Cracks: a few hairlines that stop short, one open crack (2 texels wide) that branches.
+  for (let i = 0; i < 2 * big * big; i++) crackRel(t, rng, 4 + rng.int(5), 1);
+  for (let i = 0; i < 1 * big * big; i++) {
     let x = rng.int(size), y = rng.int(size), dx = rng.chance(0.5) ? 1 : -1, dy = 0;
-    const len = 8 + rng.int(10);
+    const len = 10 + rng.int(10);
     for (let k = 0; k < len; k++) {
       const open = k > 1 && k < len - 2;
       t.nudge(x, y, -2); if (open) { t.nudge(x, y + 1, -1); t.nudge(x, y + 2, 1); } else t.nudge(x, y + 1, 1);
       if (k === Math.floor(len / 2)) crackRel(t, rng, 3 + rng.int(4), 1, [x, y, 1, 1]); // branch
-      if (rng.chance(0.35)) { const q = dx; dx = dy || (rng.chance(0.5) ? 1 : -1); dy = q ? 0 : (rng.chance(0.7) ? 1 : -1); }
+      if (rng.chance(0.3)) { const q = dx; dx = dy || (rng.chance(0.5) ? 1 : -1); dy = q ? 0 : (rng.chance(0.7) ? 1 : -1); }
       x += dx; y += dy;
     }
   }
-  // Small stones with a cast shadow (light from the back-left: shadow toward +x, +y).
-  for (let i = 0; i < size * size / 160; i++) {
-    const x = rng.int(size), y = rng.int(size), bigS = rng.chance(0.3);
-    const top = Math.min(ramp.length - 1, 4 + rng.int(2));
-    t.set(x + 1, y + 1, 0); if (bigS) { t.set(x + 2, y + 1, 0); t.set(x + 2, y + 2, 1); t.set(x + 1, y + 2, 1); }
-    t.set(x, y, top); if (bigS) { t.set(x + 1, y, top - 1); t.set(x, y + 1, top - 1); t.set(x + 1, y + 1, top - 2); }
+  // Small 2×2 stones with a cast shadow (light from the back-left: shadow toward +x, +y).
+  for (let i = 0; i < size * size / 420; i++) {
+    const x = rng.int(size), y = rng.int(size);
+    const top = Math.min(ramp.length - 1, 5 + rng.int(2));
+    t.set(x + 2, y + 1, 1); t.set(x + 2, y + 2, 1); t.set(x + 1, y + 2, 1);
+    t.set(x, y, top); t.set(x + 1, y, top - 1); t.set(x, y + 1, top - 1); t.set(x + 1, y + 1, top - 2);
   }
   return t;
 }
@@ -421,20 +429,76 @@ function boulderBase(rng: Rng, size: number, ramp: Ramp): TintedTile {
     t.idx[y * size + x] = Math.abs(e) < 0.12 ? Math.floor(pos) + ((e + 0.12) / 0.24 > clusterNoise(x, y) ? 1 : 0) : Math.round(pos);
   }
   chunks(t, rng, Math.round((size * size) / 70));
-  // Dark pits: 1–4 texel clusters two or three shades into the stone (the speckled rock look),
-  // never horizontal pairs (those read as grain once a top face is foreshortened).
-  for (let i = 0; i < size * size / 26; i++) {
+  // Dark pits: 2–4 texel clusters (a pit and its shadowed lower lip; never a lone texel, which
+  // reads as salt-and-pepper speckle at battle distance), never horizontal pairs (grain).
+  for (let i = 0; i < size * size / 44; i++) {
     const x = rng.int(size), y = rng.int(size), d = rng.chance(0.3) ? -3 : -2;
     t.nudge(x, y, d);
-    if (rng.chance(0.55)) t.nudge(x, y + 1, d + 1);
-    if (rng.chance(0.3)) t.nudge(x + 1, y + 1, d + 1);
-    if (rng.chance(0.2)) t.nudge(x - 1, y + 1, d + 1);
+    t.nudge(x, y + 1, d + 1);
+    if (rng.chance(0.45)) { t.nudge(x + 1, y, d + 1); t.nudge(x + 1, y + 1, d + 1); }
   }
-  // Lit flecks: single texels, a few 2×2 clusters.
-  for (let i = 0; i < size * size / 70; i++) {
+  // Lit flecks: 2×2 clusters.
+  for (let i = 0; i < size * size / 110; i++) {
     const x = rng.int(size), y = rng.int(size);
-    t.nudge(x, y, 1);
-    if (rng.chance(0.3)) { t.nudge(x + 1, y, 1); t.nudge(x, y + 1, 1); t.nudge(x + 1, y + 1, 1); }
+    t.nudge(x, y, 1); t.nudge(x + 1, y, 1); t.nudge(x, y + 1, 1);
+    if (rng.chance(0.5)) t.nudge(x + 1, y + 1, 1);
+  }
+  return t;
+}
+
+/**
+ * Cut-stone surface for coursed stones (kit/rock.ts courseWall): chiselled facets — a weighted,
+ * vertically stretched Voronoi of 3×5-ish texel cells, each one flat tone of the ramp (dark,
+ * mid, lit or bright: 3–4 tones over broad mottling), lit along part of its top edge and shaded
+ * along part of its lower and right edges (light from the upper left) — plus a few 2×3 texel
+ * dark pits and a gentle warm/cool drift per patch. Every feature is ≥ 2 texels: no single-texel
+ * noise. The bevel shader adds each stone's seam, dark underside and lit top band.
+ */
+function stoneSurface(rng: Rng, size: number, ramp: Ramp): TintedTile {
+  const t = new TintedTile(size, size, ramp);
+  const half = size / 2;
+  const n = ramp.length;
+  const f = fbm(half, rng, [[Math.max(2, half / 8), 0.6], [Math.max(4, half / 4), 0.4]]);
+  const lo = n >= 7 ? 2.4 : 1.4, hi = n >= 7 ? 4.0 : n - 2.4;
+  const count = Math.round((size * size) / 20);
+  const seeds = Array.from({ length: count }, () => {
+    const r = rng.next();
+    return { x: rng.next() * size, y: rng.next() * size, wt: 0.7 + rng.next() * 0.6, tone: r < 0.24 ? -1 : r < 0.6 ? 0 : r < 0.86 ? 1 : 2 };
+  });
+  const owner = new Int16Array(size * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let best = 1e9, bi = 0;
+    seeds.forEach((sd, i) => {
+      let dx = Math.abs(x + 0.5 - sd.x), dy = Math.abs(y + 0.5 - sd.y);
+      dx = Math.min(dx, size - dx); dy = Math.min(dy, size - dy);
+      const q = (dx * dx + dy * dy * 0.42) / (sd.wt * sd.wt);
+      if (q < best) { best = q; bi = i; }
+    });
+    owner[y * size + x] = bi;
+  }
+  const own = (x: number, y: number) => owner[((y + size) % size) * size + ((x + size) % size)]!;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const o = own(x, y), sd = seeds[o]!;
+    const v = Math.max(0, Math.min(1, 0.5 + (f[(y >> 1) * half + (x >> 1)]! - 0.5) * 1.2));
+    let k = Math.round(lo + v * (hi - lo)) + sd.tone;
+    const brk = clusterNoise(x * 3 + o, y * 2 + 1);
+    const up = own(x, y - 1), dn = own(x, y + 1), rt = own(x + 1, y);
+    if (up !== o && sd.tone >= 0 && brk < 0.6) k += 1; // lit top edge
+    else if (dn !== o && seeds[dn]!.tone > sd.tone - 1 && brk < 0.65) k -= 1; // shadowed lower edge
+    else if (rt !== o && brk < 0.4) k -= 1; // shaded right edge
+    t.idx[y * size + x] = Math.max(0, Math.min(n - 1, k));
+  }
+  // Dark pits: 2×2 / 2×3 texels, two shades deep, with a lit lower lip.
+  for (let i = 0; i < size * size / 160; i++) {
+    const x = rng.int(size), y = rng.int(size), tall = rng.chance(0.5);
+    for (let yy = 0; yy < (tall ? 3 : 2); yy++) { t.nudge(x, y + yy, -2); t.nudge(x + 1, y + yy, yy === 0 ? -1 : -2); }
+    t.nudge(x, y + (tall ? 3 : 2), 1);
+  }
+  // Broad warm/cool and value drift (±5%), constant over 8-texel patches.
+  const drift = fbm(size / 8, rng, [[2, 1]]);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dv = (drift[(y >> 3) * (size / 8) + (x >> 3)]! - 0.5) * 0.2, i = y * size + x;
+    t.mul[i * 3] = 1 + dv; t.mul[i * 3 + 1] = 1 + dv * 0.5; t.mul[i * 3 + 2] = 1 - dv * 0.4;
   }
   return t;
 }
@@ -527,23 +591,22 @@ function clods(t: PixelTile, rng: Rng, count: number) {
 }
 
 /**
- * A 64×64 boulder atlas: one continuous tileable stone surface whose four 32² quadrants are
- * different variants (plain; cracked; weathered with lit flecks; a darker stratum band). Use it
- * with a VoxelBatch(64): boulder() starts each stone in one quadrant (still one material).
+ * A 64×64 cut-stone atlas for coursed stones and rubble (stoneSurface): one continuous tileable
+ * surface whose four 32² quadrants vary a little (plain; a short crack; weathered with more lit
+ * knobs; a faint darker stratum). Mid tones only, 2–4 texel clusters, no single-texel speckle:
+ * each stone's bright warm top band, mid front, darker underside and ~45% seam come from the
+ * coursed-stone bevel code (arena.ts addBevel) on top of it. boulder() starts each stone in one
+ * quadrant (still one material).
  */
 export function paintBoulderAtlas(seed: number, ramp: Ramp = RAMPS.boulder): PixelTile {
   const rng = new Rng(seed);
-  const t = boulderBase(rng, 64, ramp);
-  const fleck = (x0: number, y0: number, n: number) => { for (let i = 0; i < n; i++) { const x = x0 + 2 + rng.int(28), y = y0 + 2 + rng.int(28); t.nudge(x, y, 1); t.nudge(x + 1, y, 1); } };
-  fleck(0, 0, 8); fleck(32, 0, 6); fleck(32, 32, 6);
-  // Quadrant 1: a few short, wandering cracks.
-  for (let i = 0; i < 3; i++) crackRel(t, rng, 4 + rng.int(4), 2, [36, 4, 22, 22]);
-  // Quadrant 2: weathered — many small lit flecks and a chipped facet.
-  fleck(0, 32, 24);
-  for (let j = -3; j <= 3; j++) for (let k = -3; k <= 3; k++) if (Math.abs(j) + Math.abs(k) <= 3) t.nudge(14 + k, 46 + j, Math.abs(j) + Math.abs(k) < 2 ? 1 : 0);
-  // Quadrant 3: a darker stratum band with a lit edge above.
-  for (let x = 33; x < 63; x++) { const y = 44 + Math.round(Math.sin(x * 0.3) * 1.5); t.nudge(x, y, -1); t.nudge(x, y + 1, -1); t.nudge(x, y - 1, 1); }
-  crackRel(t, rng, 6, 2, [36, 34, 22, 8]);
+  const t = stoneSurface(rng, 64, ramp);
+  // Quadrant 1: a short wandering crack (2 shades deep, lit lower lip).
+  crackRel(t, rng, 5 + rng.int(3), 2, [38, 6, 18, 18]);
+  // Quadrant 2: weathered — extra lit knobs.
+  for (let i = 0; i < 10; i++) { const x = 2 + rng.int(28), y = 34 + rng.int(28); t.nudge(x, y, 1); t.nudge(x + 1, y, 1); t.nudge(x, y + 1, 1); t.nudge(x + 1, y + 2, -1); }
+  // Quadrant 3: a faint darker stratum, 2 texels thick, with a lit edge above.
+  for (let x = 33; x < 63; x++) { const y = 46 + Math.round(Math.sin(x * 0.3) * 1.5); t.nudge(x, y, -1); t.nudge(x, y + 1, -1); t.nudge(x, y - 1, 1); }
   return t;
 }
 
