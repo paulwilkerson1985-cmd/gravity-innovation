@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, dustMotes, lightBeams, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
-import { cachedTexture, type Ramp } from '../textures';
+import { cachedTexture, paintBoulder, type Ramp } from '../textures';
+import { boulder, boulderColumns } from '../kit/rock';
 import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
 import { MEADOW_RAMPS, nearStage, paintTrodden } from './meadow';
@@ -51,7 +52,8 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
 
   // ---- heightmap: a bowl of tall mossy rock; a passage out at the back-left rising to the meadow
   const X0 = -14.4, Z0 = -14.4;
-  const hm = new Heightmap(32, 24, X0, Z0);
+  // 30 rows: the low front ledge runs on under the portrait (phone) camera.
+  const hm = new Heightmap(32, 30, X0, Z0);
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
     const wob = Math.sin(x * 1.3 + z * 0.7) * 0.35 + Math.sin(z * 2.1 - x * 0.4) * 0.25 + Math.sin(x * 0.45 - z * 0.8 + 1.7) * 0.3;
@@ -92,30 +94,35 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   const fol = new Foliage(atlas);
 
   // ---- rock walls (stone sides, moss tops, moss drips)
-  const texRock = cachedTexture('od-rock-hollow', () => paintEarth(71, H.rock, 32, { roots: 1, pebbles: 5, strata: 0.35 }));
+  const texRock = cachedTexture('od-boulder-hollow', () => paintBoulder(71, 32, H.rock));
   const texMoss = cachedTexture('od-moss-hollow', () => paintTurf(72, H.moss, 32, { lo: 1.8, hi: 4.6, flecks: 0.1 }));
-  const sides = new VoxelBatch(32);
+  // Rocky grotto walls: chunky rounded boulders (rock kit) under rounded moss caps with long
+  // hanging moss — no flat earth slabs. The moss tops come from the organic terraces (lips,
+  // diagonal corners), sitting just over the boulder tops.
+  const rock = new VoxelBatch(32);
+  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#eef4ea', '#f4f2e6'], shade: [0.82, 1.2], core: 0.22, lite: q === 'low' });
   const tops = new VoxelBatch(32);
-  const stone = new VoxelBatch(32);
-  terraces(hm, sides, tops, rng, { topK: 1.0, jitter: 0.26, lip: 0.15, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(9), chance: 1, long: 1.1 }, rocks: { batch: stone, chance: 0.1 } });
-  const nearShade = (x: number, y: number, z: number) => 1 - 0.14 * THREE.MathUtils.smoothstep(z, 3.4, 7.0);
-  tops.shade(nearShade); sides.shade(nearShade);
-  // Upper walls catch the sky from the open meadow above: lighter toward the rim.
-  sides.shade((x, y) => 1 + 0.5 * Math.min(1, Math.max(0, y) / 4));
-  tops.shade((x, y) => 1 + 0.12 * Math.min(1, Math.max(0, y) / 4));
-  // The arch over the passage: a lintel of blocks spanning the wall, with a ragged underside.
-  for (let x = GAP.x0 - 0.45; x < GAP.x1 + 0.45; x += CELL) {
-    const sag = (hash2(Math.round(x * 3), 1, 3) < 0.5 ? 1 : 0) * 0.35;
+  terraces(hm, new VoxelBatch(32), tops, rng, { topK: 1.0, jitter: 0.2, lip: 0.15, baseY: 0.03, sides: false, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(9), chance: 1, long: 1.1 } });
+  // The arch over the passage: a lintel of boulders spanning the wall, with a ragged underside.
+  for (let x = GAP.x0 - 0.45; x < GAP.x1 + 0.45; x += CELL * 0.85) {
+    const sag = (hash2(Math.round(x * 3), 1, 3) < 0.5 ? 1 : 0) * 0.3;
     for (let z = GAP.z - 2.0; z < GAP.z - 0.2; z += CELL) {
-      sides.box([x, ARCH_Y - sag, z], [x + CELL - 0.02, ARCH_Y + 2 * LEVEL, z + CELL - 0.02], new THREE.Color(1, 1, 1).multiplyScalar(0.85 + rng.next() * 0.25), rng, { aoBottom: 0.6 });
+      const h = 2 * LEVEL + sag;
+      boulder(rock, [x + CELL / 2, ARCH_Y - sag + h / 2, z + CELL / 2], [CELL * 0.95, h, CELL * 0.95], new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.25), rng, { ry: (rng.next() - 0.5) * 0.3, topK: 1.2 });
     }
-    tops.box([x - 0.03, ARCH_Y + 2 * LEVEL - 0.08, GAP.z - 2.05], [x + CELL + 0.01, ARCH_Y + 2 * LEVEL + 0.012, GAP.z - 0.2], new THREE.Color(1, 1, 1), rng);
+    tops.box([x - 0.03, ARCH_Y + 2 * LEVEL - 0.05, GAP.z - 2.05], [x + CELL * 0.85 + 0.01, ARCH_Y + 2 * LEVEL + 0.05, GAP.z - 0.2], new THREE.Color(1, 1, 1), rng);
   }
+  const nearShade = (x: number, y: number, z: number) => 1 - 0.12 * THREE.MathUtils.smoothstep(z, 3.4, 7.0);
+  tops.shade(nearShade); rock.shade(nearShade);
+  // Upper walls catch the sky from the open meadow above: lighter toward the rim.
+  rock.shade((x, y) => 1 + 0.22 * Math.min(1, Math.max(0, y) / 4));
+  tops.shade((x, y) => 1 + 0.12 * Math.min(1, Math.max(0, y) / 4));
   const rockMat = surfaceMaterial(texRock, undefined, true);
   const mossMat = surfaceMaterial(texMoss);
   extra.push(rockMat, mossMat);
-  group.add(mkMesh(sides.build(), rockMat));
+  group.add(mkMesh(rock.build(), rockMat));
   group.add(mkMesh(tops.build(), mossMat));
+  const stone = new VoxelBatch(32);
 
   // ---- floor (damp packed earth, moss toward the walls, wet rim by the pool)
   const ground = groundMesh({

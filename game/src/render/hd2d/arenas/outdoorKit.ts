@@ -544,6 +544,8 @@ export interface TerraceOpts {
   diagonals?: boolean;
   /** World y of level 0 (default 0). */
   baseY?: number;
+  /** Emit the earth side slabs (default true); false when another builder walls the columns (rock kit boulders). */
+  sides?: boolean;
   /** Cells to skip entirely (e.g. off the cliff edge). */
   skip?: (i: number, j: number) => boolean;
 }
@@ -595,7 +597,7 @@ export function terraces(hm: Heightmap, sides: VoxelBatch, tops: VoxelBatch, rng
   const sideQuad = (a: P2, b: P2, y0: number, y1: number, n: V3, u0: number, slabW: number, tint: THREE.Color, foot: number) => {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     const hh = y1 - y0;
-    if (hh < 0.01 || len < 0.01) return;
+    if (hh < 0.01 || len < 0.01 || o.sides === false) return;
     const ox = (Math.floor(hash2(Math.round(a[0] * 7), Math.round(a[1] * 7), 3) * 32) / 32);
     const uv = (u: number, y: number): [number, number] => [ox + u * t, y * t];
     const P = (q: P2, y: number): V3 => [q[0], y, q[1]];

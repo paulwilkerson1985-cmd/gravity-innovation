@@ -244,7 +244,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   // field the far canopy is lower and sunnier, so the gazebo still reads against it.)
   for (let x = -16; x <= 16; x += 2.6) {
     const open = flowers && x > -1 && x < 9.5;
-    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), (open ? 3.4 : 4.2) + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: open ? new THREE.Color(0.6, 0.66, 0.6) : new THREE.Color(0.48, 0.56, 0.56) });
+    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: open ? new THREE.Color(0.62, 0.68, 0.6) : new THREE.Color(0.48, 0.56, 0.56) });
   }
   // Bushes on the terraces, tall grass and tufts around the clearing edge.
   for (let i = 0; i < 14; i++) {
@@ -362,12 +362,13 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
 
   // ---- far backdrop: sky and the distant tree line (rarely more than a sliver in view)
   const back = backdrop((t) => {
-    paintSky(t, R.sky, 0, Math.round(t.h * 0.7));
+    paintSky(t, R.sky, 0, Math.round(t.h * 0.5));
     const r = new Rng(77);
-    // Three rows of tree line, hazier with distance (aerial perspective).
-    paintSilhouette(t, r, R.far, t.h * 0.62, 18, 10, t.h, { haze: 0.6 });
-    paintSilhouette(t, r, R.far, t.h * 0.76, 22, 9, t.h, { haze: 0.3 });
-    paintSilhouette(t, r, R.leaf, t.h * 0.9, 20, 8, t.h, { haze: 0.08 });
+    // Three rows of tree line, hazier with distance (aerial perspective); they fill most of the
+    // plane, so only a thin band of sky shows between the canopies (no flat sky patch).
+    paintSilhouette(t, r, R.far, t.h * 0.34, 16, 10, t.h, { haze: 0.6 });
+    paintSilhouette(t, r, R.far, t.h * 0.56, 22, 9, t.h, { haze: 0.32 });
+    paintSilhouette(t, r, R.leaf, t.h * 0.8, 20, 8, t.h, { haze: 0.1 });
   }, 320, 120, [80, 30], [0, 8, -24]);
   extra.push(back.mesh.material as THREE.Material);
   group.add(back.mesh);
@@ -379,7 +380,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   const sunFrom = flowers ? new THREE.Vector3(0.7, 0.85, -0.6) : new THREE.Vector3(-0.55, 1.0, -0.7);
   const { key, spriteLight } = sunRig(group, {
     target, from: sunFrom, distance: 34, angle: 0.4,
-    color: flowers ? '#ffd49a' : '#fff2cc', intensity: flowers ? 7.2 : 7.6, cookie,
+    color: flowers ? '#ffd8a0' : '#fff2cc', intensity: flowers ? 8.6 : 7.6, cookie,
     sky: flowers ? '#ffd9b0' : '#cfe6ff', ground: flowers ? '#5a5a2a' : '#3e5a2a', hemi: flowers ? 1.6 : 1.75,
     fill: flowers ? '#ffc890' : '#fff6e0', fillIntensity: 0.55, quality: q,
   });
