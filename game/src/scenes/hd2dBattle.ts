@@ -24,13 +24,23 @@ export function hd2dTerrainFor(routeId: string, hotspotKind: string | undefined)
 /** Per-layout camera: elevation (rad), yaw (rad), vertical FOV, how tall a person reads, and where the kin go (fractions of the screen). */
 const CAMERA = {
   wide: { elev: 0.58, yaw: -0.06, fov: 32, person: 0.15, mine: [0.38, 0.7], foe: [0.6, 0.53] },
-  portrait: { elev: 0.74, yaw: -0.1, fov: 34, person: 0.135, mine: [0.36, 0.52], foe: [0.64, 0.33] },
+  portrait: { elev: 0.74, yaw: -0.45, fov: 34, person: 0.14, mine: [0.4, 0.53], foe: [0.62, 0.32] },
   land: { elev: 0.72, yaw: -0.08, fov: 30, person: 0.18, mine: [0.3, 0.68], foe: [0.52, 0.44] },
 } as const;
 
 /** World size every kin is normalised toward (bigger final forms keep a little of their bulk). */
 const KIN_SIZE = [1.3, 1.15] as const;
 const PERSON_SCALE = 1.55;
+
+/** A soft blob under a figure (follows it via onBeforeRender), for tiers without live shadows. */
+function contactShadow(target: THREE.Object3D): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.32, 14), new THREE.MeshBasicMaterial({ color: 0x1a0d08, transparent: true, opacity: 0.35, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.renderOrder = -0.5;
+  m.onBeforeRender = () => { m.position.set(target.position.x, 0.015, target.position.z); m.updateMatrixWorld(); };
+  m.frustumCulled = false;
+  return m;
+}
 
 /** Turn a figure (built facing +Z) toward a floor point; yaw only, so idle sway can use z. */
 function face(o: THREE.Object3D, target: THREE.Vector3) {
@@ -79,14 +89,20 @@ export class Hd2dBattleStage {
 
   private addFigure(f: Figure) {
     this.figures.set(f, this.baker.add(f.mesh, { rig: f.uniforms, pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: 0.05 }));
+    if (this.pipeline.settings.staticShadows) {
+      f.mesh.castShadow = false;
+      this.scene.add(contactShadow(f.mesh));
+    }
   }
 
   /** Sprite-ify a kin as it is sent out. */
   attachKin(view: CreatureView, side: 0 | 1) {
     this.detachKin(side);
-    this.kin[side] = this.baker.add(view.mesh, { rig: view.uniforms, emissiveFrom: view.material, pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: side === 0 ? 0.1 : 0.04 });
-    // The real cast shadow replaces most of the blob; keep a faint contact shadow.
-    (view.shadow.material as THREE.MeshBasicMaterial).opacity *= 0.7;
+    const sub = this.baker.add(view.mesh, { rig: view.uniforms, emissiveFrom: view.material, pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: side === 0 ? 0.1 : 0.04 });
+    this.kin[side] = sub;
+    if (this.pipeline.settings.staticShadows) view.mesh.castShadow = false; // frozen shadow map: blob only
+    // With a real cast shadow, keep only a faint contact blob.
+    else (view.shadow.material as THREE.MeshBasicMaterial).opacity *= 0.7;
   }
 
   detachKin(side: 0 | 1) {

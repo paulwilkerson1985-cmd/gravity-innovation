@@ -25,6 +25,8 @@ export interface GameHooks {
   renderInfo(): { calls: number; triangles: number };
   /** HD-2D pipeline stats of the current scene (`?gfx=hd2d`), else null. */
   perf(): unknown;
+  /** Render the current scene `n` times, each followed by a GPU sync; returns median ms/frame and draw calls. */
+  benchFrames(n?: number): { ms: number; calls: number; internal: [number, number] } | null;
   seed: number;
   // ---- meta (saves & menus)
   save(): Promise<boolean>;
@@ -75,6 +77,22 @@ export function installHooks(game: Game) {
     }),
     canvasStats: () => (game.current ? game.renderer.sample(game.current.scene, game.current.camera) : null),
     renderInfo: () => ({ calls: game.renderer.gl.info.render.calls, triangles: game.renderer.gl.info.render.triangles }),
+    benchFrames: (n = 20) => {
+      const s = game.current;
+      if (!s) return null;
+      const gl = game.renderer.gl;
+      const ctx = gl.getContext();
+      const px = new Uint8Array(4);
+      const times: number[] = [];
+      for (let i = 0; i < n; i++) {
+        const t0 = performance.now();
+        game.renderer.render(s.scene, s.camera);
+        ctx.readPixels(0, 0, 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, px);
+        times.push(performance.now() - t0);
+      }
+      times.sort((a, b) => a - b);
+      return { ms: times[Math.floor(n / 2)]!, calls: gl.info.render.calls, internal: [ctx.drawingBufferWidth, ctx.drawingBufferHeight] };
+    },
     perf: () => (game.current as unknown as { perf?: () => unknown } | null)?.perf?.() ?? null,
     save: () => { game.saveEnabled = true; return game.save({ now: true }); },
     load: () => game.load(),

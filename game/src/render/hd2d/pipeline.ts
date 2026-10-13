@@ -50,11 +50,16 @@ export interface TierSettings {
   gtao: boolean;
   /** Dust motes per light beam. */
   dust: number;
+  /**
+   * Render the shadow map once (static arena only) instead of every frame; kin and people
+   * then rely on their blob contact shadows. Phones.
+   */
+  staticShadows: boolean;
 }
 
 export const TIERS: Record<Quality, TierSettings> = {
-  high: { internalHeight: 480, minShort: 300, shadowMapSize: 2048, shadowType: THREE.PCFSoftShadowMap, bloom: true, tiltShift: true, gtao: false, dust: 90 },
-  low: { internalHeight: 400, minShort: 280, shadowMapSize: 1024, shadowType: THREE.PCFShadowMap, bloom: true, tiltShift: true, gtao: false, dust: 45 },
+  high: { internalHeight: 480, minShort: 300, shadowMapSize: 2048, shadowType: THREE.PCFSoftShadowMap, bloom: true, tiltShift: true, gtao: false, dust: 50, staticShadows: false },
+  low: { internalHeight: 400, minShort: 280, shadowMapSize: 1024, shadowType: THREE.PCFShadowMap, bloom: true, tiltShift: true, gtao: false, dust: 26, staticShadows: true },
 };
 
 /** Colour grade, vignette and tilt-shift parameters (sRGB, after tone mapping). */
@@ -77,7 +82,7 @@ export function warmCaveGrade(): Grade {
     saturation: 0.92, contrast: 1.06,
     shadowTint: new THREE.Color('#3a1f2e'), highTint: new THREE.Color('#ffe2a8'), splitAmount: 0.14,
     vignette: 0.42, vignetteSoft: 0.55,
-    tiltTop: 1.4, tiltBottom: 0.8, focusTop: 0.62, focusBottom: 0.12,
+    tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
     dither: 2.0,
     exposure: 1.05,
   };
@@ -145,6 +150,11 @@ const GradeShader = {
     }`,
 };
 
+/** Phone tier: the same bloom from a mip chain at half the usual resolution (¼ of the frame). */
+class LowBloomPass extends UnrealBloomPass {
+  override setSize(width: number, height: number) { super.setSize(Math.round(width / 2), Math.round(height / 2)); }
+}
+
 /** Stats kept for `__game.perf()`: CPU ms of the last frames (render + post). */
 export interface PerfStats { quality: Quality; frameMs: number; calls: number; triangles: number; internal: [number, number] }
 
@@ -156,6 +166,7 @@ export class Hd2dPipeline {
   private gradePass: ShaderPass;
   private gtao: GTAOPass | null = null;
   private ms: number[] = [];
+  private frames = 0;
   /** Hooks run right before the composer renders (sprite baking). */
   readonly beforeRender: ((renderer: THREE.WebGLRenderer) => void)[] = [];
 
@@ -165,6 +176,7 @@ export class Hd2dPipeline {
     if (flags.has('gtao')) this.settings.gtao = true;
     if (flags.has('nobloom')) this.settings.bloom = false;
     if (flags.has('notilt')) this.settings.tiltShift = false;
+    if (flags.has('pcf')) this.settings.shadowType = THREE.PCFShadowMap;
     this.grade = grade;
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0 });
@@ -179,7 +191,9 @@ export class Hd2dPipeline {
     }
     if (this.settings.bloom) {
       // Threshold is in linear HDR: only the window, beams, embers and FX glows bloom.
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), quality === 'high' ? 0.6 : 0.5, 0.55, 0.82);
+      this.bloom = quality === 'high'
+        ? new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.5, 1.05)
+        : new LowBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.45, 1.05);
       this.composer.addPass(this.bloom);
     }
     this.composer.addPass(new OutputPass());
@@ -220,6 +234,12 @@ export class Hd2dPipeline {
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = this.grade.exposure;
     for (const f of this.beforeRender) f(r);
+    if (this.settings.staticShadows) {
+      // Two refreshes after the arena is built (lights settle), then frozen.
+      r.shadowMap.autoUpdate = false;
+      if (this.frames < 2) r.shadowMap.needsUpdate = true;
+    }
+    this.frames++;
     this.composer.render();
     r.toneMapping = prevTone; r.toneMappingExposure = prevExp;
     this.ms.push(performance.now() - t0);
@@ -253,6 +273,7 @@ export function installPipeline(r: { gl: THREE.WebGLRenderer; setInternal(p: { h
   p.setSize();
   return () => {
     gl.shadowMap.enabled = false;
+    gl.shadowMap.autoUpdate = true;
     gl.info.autoReset = true;
     r.setInternal(null);
     p.dispose();
