@@ -240,10 +240,13 @@ export function paintSkyBanks(t: RgbaTile, s: SkySpec) {
     const base = n > 1 ? top0 + ((top1 - top0) * b) / (n - 1) : top0;
     const lobeR = (7 + b * 5) * scale;
     const lobes: [number, number, number][] = [];
+    const outlined = new Set<number>();
     for (let x = -lobeR * 2; x < t.w + lobeR * 2;) {
-      const r = lobeR * (0.6 + rng.next() * 0.8);
-      lobes.push([x, base + r * (0.35 + rng.next() * 0.5), r]);
-      x += r * (0.8 + rng.next() * 0.7);
+      const big = rng.chance(0.3);
+      const r = lobeR * (big ? 1.2 + rng.next() * 0.6 : 0.45 + rng.next() * 0.55);
+      lobes.push([x, base + r * (0.3 + rng.next() * 0.6) + (rng.next() - 0.5) * lobeR * 0.5, r]);
+      if (rng.chance(0.4)) outlined.add(lobes.length - 1);
+      x += r * (0.7 + rng.next() * 0.9);
     }
     // Top contour of the bank: the highest arc over each column.
     const arcY = (l: [number, number, number], x: number) => { const dx = x + 0.5 - l[0]; return Math.abs(dx) >= l[2] ? Infinity : l[1] - Math.sqrt(l[2] * l[2] - dx * dx); };
@@ -257,7 +260,9 @@ export function paintSkyBanks(t: RgbaTile, s: SkySpec) {
         // Lit rim, then bands darkening with depth below the contour (far banks stay lighter).
         let v = depth < 1.5 ? N - 1 : depth < 4 ? N - 1.6 : (N - 2.2) - Math.min(N - 2.5, (depth - 4) * (0.09 + b * 0.02));
         // Inner puff outlines: where a lower puff's arc crosses this column below the top.
-        for (const l of lobes) {
+        for (let li = 0; li < lobes.length; li++) {
+          if (!outlined.has(li)) continue;
+          const l = lobes[li]!;
           const ay = arcY(l, x);
           if (!Number.isFinite(ay) || ay - topY < 3 * scale) continue;
           const d = y - ay;

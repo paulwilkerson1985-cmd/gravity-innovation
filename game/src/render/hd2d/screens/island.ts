@@ -434,14 +434,16 @@ export function buildIslandSet(quality: Quality, theme: IslandTheme, spots: Isla
 
   // Trees round the rim (not in front, not on spots or paths).
   {
-    const n = theme === 'summit' ? 13 : theme === 'ridge' ? 9 : 12;
+    const n = theme === 'summit' ? 11 : theme === 'ridge' ? 8 : 9;
+    const caves = wild.filter((w) => w.kind === 'cave');
     let placed = 0;
-    for (let i = 0; i < 80 && placed < n; i++) {
+    for (let i = 0; i < 120 && placed < n; i++) {
       const a = rng.next() * Math.PI * 2;
-      const r = R(a) - 0.55 - rng.next() * 0.9;
+      const r = R(a) - 0.5 - rng.next() * 0.7;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (z > 1.6 || blocked(x, z, 0.35) || onPath(x, z, 0.75)) continue;
-      tree(x, z, 0.85 + rng.next() * 0.35);
+      // Trees stay on the outer ring, clear of the paths, the spots and the view onto caves.
+      if (z > 1.6 || blocked(x, z, 0.35) || onPath(x, z, 0.75) || caves.some((c) => Math.hypot(x - c.x, z - c.z) < 2.4)) continue;
+      tree(x, z, 0.8 + rng.next() * 0.3);
       placed++;
     }
   }
@@ -456,8 +458,8 @@ export function buildIslandSet(quality: Quality, theme: IslandTheme, spots: Isla
     }
   };
   scatter('bush', theme === 'summit' ? 4 : 7, { r0: 2.2, sway: 0.02 });
-  scatter('tuft', low ? 40 : 70);
-  scatter('tall', theme === 'summit' ? 6 : 16, { sway: 0.08 });
+  scatter('tuft', theme === 'summit' ? 12 : low ? 40 : 70, theme === 'summit' ? { r0: 3.2 } : {});
+  scatter('tall', theme === 'summit' ? 3 : 16, { sway: 0.08, r0: theme === 'summit' ? 3.2 : 0 });
   for (const key of petals) scatter(`flowers-${key}`, theme === 'meadow' ? (low ? 5 : 8) : 3, { sway: 0.05 });
 
   // ---- theme dressing
@@ -593,18 +595,18 @@ export function buildIslandSet(quality: Quality, theme: IslandTheme, spots: Isla
     if (s.kind === 'grass') {
       const f = new Foliage(atlas);
       const flower = s.id.includes('flower');
-      for (let i = 0; i < (low ? 22 : 34); i++) {
-        const a = rng.next() * Math.PI * 2, r = Math.sqrt(rng.next()) * 0.85;
+      for (let i = 0; i < (low ? 26 : 40); i++) {
+        const a = rng.next() * Math.PI * 2, r = Math.sqrt(rng.next()) * 0.9;
         const x = Math.cos(a) * r, z = Math.sin(a) * r * 0.8;
         const key = flower && i % 3 === 0 ? `flowers-${petals[i % petals.length]}` : 'tall';
-        f.add(atlas.get(key, rng), [x, 0, z], 'billboard', { scale: S(1.45 + rng.next() * 0.35), sway: 0.09, flip: rng.chance(0.5), tint: W(0.9 + rng.next() * 0.25) });
+        f.add(atlas.get(key, rng), [x, 0, z], 'billboard', { scale: S(1.6 + rng.next() * 0.4), sway: 0.09, flip: rng.chance(0.5), tint: W(1.05 + rng.next() * 0.25) });
       }
       const m = f.build(atlasTex, { upNormal: 0.6 });
       updates.push((t) => { f.uTime.value = t; });
       g.add(m);
     } else if (s.kind === 'cave') {
       const b = new VoxelBatch(16);
-      // A mound of boulders opening toward the camera, a dark mouth inside.
+      // A mound of boulders opening toward the camera, a dark mouth inside (×1.25 on the map).
       const n = 9;
       for (let i = 0; i < n; i++) {
         const a = Math.PI * 1.05 + (i / (n - 1)) * Math.PI * 0.9 + (rng.next() - 0.5) * 0.1;
@@ -622,17 +624,21 @@ export function buildIslandSet(quality: Quality, theme: IslandTheme, spots: Isla
       boulder(b, [-0.5, 0.35, 0.2], [0.4, 0.7, 0.38], W(0.95), rng, { aoBottom: 0.5, flatBottom: true });
       boulder(b, [0.52, 0.32, 0.18], [0.38, 0.64, 0.36], W(0.9), rng, { aoBottom: 0.5, flatBottom: true });
       boulder(b, [0, 0.86, 0.12], [1.15, 0.26, 0.4], W(1.05), rng, { aoBottom: 0.6, topK: 1.4 });
-      const m = mkMesh(b.build(), surfaceMaterial(wallTex, undefined, true, false));
+      const caveTex = theme === 'meadow' || theme === 'summit' ? cachedTexture('scr-pebble', () => paintBoulder(13, 32, RAMPS.stone)) : wallTex;
+      const m = mkMesh(b.build(), surfaceMaterial(caveTex, undefined, true, false));
+      m.scale.setScalar(1.25);
       g.add(m);
       if (theme === 'ridge' || theme === 'coast') {
         const gl = new VoxelBatch(16);
         gl.box([-0.28, 0, 0.02], [0.28, 0.1, 0.06], theme === 'ridge' ? new THREE.Color('#ff7a1e').multiplyScalar(2) : new THREE.Color('#6ad0ff').multiplyScalar(1.4), rng, { flat: true });
-        g.add(mkMesh(gl.build(), new THREE.MeshBasicMaterial({ vertexColors: true }), false, false));
+        const gm = mkMesh(gl.build(), new THREE.MeshBasicMaterial({ vertexColors: true }), false, false);
+        gm.scale.setScalar(1.25);
+        g.add(gm);
       }
       // Moss / grass on top in the shared foliage.
       for (let i = 0; i < 6; i++) {
         const a = Math.PI * 1.15 + (i / 5) * Math.PI * 0.7;
-        fol.add(atlas.get('tuft', rng), [s.x + Math.cos(a) * 0.55, 1.05, s.z + Math.sin(a) * 0.4], 'billboard', { scale: S(1), sway: 0.04 });
+        fol.add(atlas.get('tuft', rng), [s.x + Math.cos(a) * 0.68, 1.3, s.z + Math.sin(a) * 0.5], 'billboard', { scale: S(1), sway: 0.04 });
       }
     } else if (s.kind === 'water') {
       const pond = { rx: 1.1, rz: 0.82 };
@@ -751,7 +757,7 @@ export function buildIslandSet(quality: Quality, theme: IslandTheme, spots: Isla
     const dir = new THREE.Vector3(Math.sin(T.azim) * Math.cos(T.elev), Math.sin(T.elev), -Math.cos(T.azim) * Math.cos(T.elev));
     const beams: BeamSpec[] = T.beams.map(([x, z, wd]) => {
       const end = new THREE.Vector3(x, topAt(x, z), z);
-      return { start: end.clone().addScaledVector(dir, 4.2 / dir.y), end, width: [wd * 0.5, wd], fade: 0.5 };
+      return { start: end.clone().addScaledVector(dir, 3.0 / dir.y), end, width: [wd * 0.6, wd], fade: 0.45 };
     });
     const rays = lightBeams(beams, T.beamColor, T.beamK);
     const motes = dustMotes(beams, low ? 10 : 18, rng, T.beamColor);

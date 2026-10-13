@@ -245,7 +245,8 @@ export class TitleScene extends BaseScene {
     const area = freeArea(w, hgt, land ? { top: [q('.tagline')], right: [q('.title-buttons')], bottom: [q('.footnote')] } : { top: [q('.tagline')], bottom: [q('.title-buttons')] }, 6);
     const pts = boxPoints(this.views.map((v) => v.inner), 0.15);
     const target = new THREE.Vector3(0.2, 0.7, -0.2);
-    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, narrow ? 0.62 : 0.46, 1), target, fill: narrow ? 0.86 : 0.74, alignY: 'bottom' });
+    // A little from the left: the trio turns a 3/4 face to us and the gazebo clears the logo.
+    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(narrow ? -0.12 : -0.28, narrow ? 0.62 : 0.46, 1), target, fill: narrow ? 0.86 : 0.74, alignY: 'bottom' });
     this.hd2d!.framed(target);
   }
 

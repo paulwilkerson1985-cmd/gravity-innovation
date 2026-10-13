@@ -1,5 +1,5 @@
 // HD-2D non-battle screens (`?gfx=hd2d`): title, starter pick, route maps (meadow, ridge, coast,
-// plateau), the menu over a route, party and the other menu screens all render through the
+// plateau), the menu over a route, party, the other menu screens and evolution all render through the
 // HD-2D pipeline (perf() non-null, integer pixel grid buffer), aren't blank, keep the whole frame
 // under 100 draw calls on both tiers, keep their DOM UI / data-testids, and log no errors.
 import { expect, test, type Page } from '@playwright/test';
@@ -102,6 +102,11 @@ test('hd2d screens: every route map, the menu and the menu screens', async ({ pa
     await expectHd2dFrame(page, scene, true);
   }
   await expect(page.getByTestId('party-list')).toHaveCount(0); // left the party screen
+  // Evolution (the same room at dusk, both forms as baked sprites).
+  await g(page, (h) => { h.debugSetParty([{ species: 'ashkit', level: 20 }]); return h.goto('evolution', { route: 'meadow' }); });
+  await waitScene(page, 'evolution');
+  await expect(page.getByTestId('evo-text')).toBeVisible();
+  await expectHd2dFrame(page, 'evolution', true);
   expect(errors, errors.join('\n')).toEqual([]);
 });
 
