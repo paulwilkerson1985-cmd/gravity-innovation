@@ -4,7 +4,11 @@
 //  * Every texture is a tiny tile (16–64 texels) painted from a hand-picked RAMP of 4–7 shades,
 //    dark → light, hue-shifted (shadows lean red/purple, highlights lean yellow). Never sample
 //    colours outside the ramp; blends between neighbouring shades use a 4×4 Bayer dither.
-//  * NearestFilter, no mipmaps, sRGB, RepeatWrapping: the texel grid must stay visible.
+//  * NearestFilter magnification, sRGB, RepeatWrapping: the texel grid must stay visible. Minified
+//    surfaces sample a PALETTE-PRESERVING mip chain (pixelTexture: every mip texel is the mode of
+//    its 2×2 parent block, never an average), so far walls and floors keep their ramp colours
+//    instead of breaking into salt-and-pepper speckle. `?texel=1` swaps every image for a
+//    2-colour checker (mip levels colour-coded) to check texel density in captures.
 //  * World texel density is fixed per arena (TEXEL world units per texel, see arena.ts), so a
 //    floor, a wall and a crate show the same pixel size on screen.
 //  * Deterministic: every painter takes a seed; the same seed paints the same tile.
@@ -165,16 +169,134 @@ export class TintedTile extends PixelTile {
   }
 }
 
-/** Wrap a canvas as a crisp pixel texture (nearest, no mipmaps, sRGB, repeat). */
-export function pixelTexture(c: HTMLCanvasElement): THREE.CanvasTexture {
-  const t = new THREE.CanvasTexture(c);
+export interface PixelTextureOptions {
+  /**
+   * Build a palette-preserving mip chain (default true) and sample it with
+   * NearestMipmapNearestFilter. Pass false for thin alpha cards whose 1-texel strokes must not
+   * vanish at distance.
+   */
+  mips?: boolean;
+}
+
+let texelDebug: boolean | null = null;
+/** `?texel=1`: every pixelTexture image becomes a 2-colour checker (see pixelTexture). */
+export function texelDebugMode(): boolean {
+  texelDebug ??= typeof location !== 'undefined' && new URLSearchParams(location.search).get('texel') === '1';
+  return texelDebug;
+}
+
+/**
+ * Wrap a canvas as a crisp pixel texture (nearest magnification, sRGB, repeat). By default the
+ * texture carries a hand-built mip chain: each level halves the previous one by a MODE filter —
+ * the 2×2 parent block votes (ring neighbours break ties), alpha by majority (ties keep the
+ * texel opaque) — so every mip texel is an existing ramp colour and alpha stays 0 or 1. Sampled
+ * with NearestMipmapNearestFilter: a wall 20 units away shows its stones' flat ramp tones, not
+ * the random texels nearest sampling picks out of a minified tile.
+ *
+ * `?texel=1` (captures): the image is replaced by a same-size checker (alpha kept), grey at
+ * level 0 and colour-coded below (1 red, 2 green, 3 blue, 4+ yellow): a grey 1-px checker means
+ * one texel per internal pixel; colour means the surface is minified.
+ */
+export function pixelTexture(c: HTMLCanvasElement, o: PixelTextureOptions = {}): THREE.CanvasTexture {
+  const debug = texelDebugMode();
+  const mips = o.mips !== false && (c.width > 1 || c.height > 1);
+  let levels: HTMLCanvasElement[] = [c];
+  if (mips || debug) levels = mipChain(c, mips ? Infinity : 1);
+  if (debug) levels = levels.map((l, i) => checkerLevel(l, i));
+  const t = new THREE.CanvasTexture(levels[0]!);
   t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.NearestFilter;
+  t.minFilter = mips ? THREE.NearestMipmapNearestFilter : THREE.NearestFilter;
   t.generateMipmaps = false;
+  if (mips) t.mipmaps = levels;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 1;
   return t;
+}
+
+/** Canvas → its mip chain (level 0 = the canvas itself), down to 1×1 or `maxLevels` levels. */
+function mipChain(c: HTMLCanvasElement, maxLevels: number): HTMLCanvasElement[] {
+  const out = [c];
+  let w = c.width, h = c.height;
+  let data = c.getContext('2d')!.getImageData(0, 0, w, h).data;
+  while ((w > 1 || h > 1) && out.length < maxLevels) {
+    const next = modeHalve(data, w, h);
+    w = next.w; h = next.h; data = next.data;
+    const lc = document.createElement('canvas');
+    lc.width = w; lc.height = h;
+    lc.getContext('2d')!.putImageData(new ImageData(data, w, h), 0, 0);
+    out.push(lc);
+  }
+  return out;
+}
+
+/**
+ * Halve an RGBA image with a palette-preserving mode filter. Each output texel looks at its
+ * parent block (2×2, 3 wide/tall on odd sizes): alpha is the block's majority (ties opaque);
+ * the colour is the block colour with the most votes — 4 per texel in the block plus 1 per
+ * texel of the surrounding ring (wrapped), so the ring only breaks ties — and on a full tie
+ * the one nearest the block's mean luminance. Never averages: output colours ⊂ input colours.
+ */
+export function modeHalve(src: Uint8ClampedArray, w: number, h: number): { data: Uint8ClampedArray<ArrayBuffer>; w: number; h: number } {
+  const w2 = Math.max(1, w >> 1), h2 = Math.max(1, h >> 1);
+  const out = new Uint8ClampedArray(w2 * h2 * 4);
+  const keys: number[] = [], score: number[] = [], lum: number[] = [];
+  const key = (i: number) => (src[i]! << 16) | (src[i + 1]! << 8) | src[i + 2]!;
+  for (let y2 = 0; y2 < h2; y2++) {
+    const sy0 = Math.floor((y2 * h) / h2), sy1 = Math.floor(((y2 + 1) * h) / h2);
+    for (let x2 = 0; x2 < w2; x2++) {
+      const sx0 = Math.floor((x2 * w) / w2), sx1 = Math.floor(((x2 + 1) * w) / w2);
+      keys.length = 0; score.length = 0; lum.length = 0;
+      let opaque = 0, n = 0, meanL = 0;
+      for (let y = sy0; y < sy1; y++) for (let x = sx0; x < sx1; x++) {
+        const i = (y * w + x) * 4;
+        n++;
+        if (src[i + 3]! < 128) continue;
+        opaque++;
+        const k = key(i), l = src[i]! * 0.3 + src[i + 1]! * 0.59 + src[i + 2]! * 0.11;
+        meanL += l;
+        const at = keys.indexOf(k);
+        if (at >= 0) score[at]! += 4; else { keys.push(k); score.push(4); lum.push(l); }
+      }
+      const o = (y2 * w2 + x2) * 4;
+      if (opaque * 2 < n || keys.length === 0) continue; // transparent (0, 0, 0, 0)
+      meanL /= opaque;
+      if (keys.length > 1) {
+        for (let y = sy0 - 1; y <= sy1; y++) for (let x = sx0 - 1; x <= sx1; x++) {
+          if (y >= sy0 && y < sy1 && x >= sx0 && x < sx1) continue;
+          const i = ((((y % h) + h) % h) * w + (((x % w) + w) % w)) * 4;
+          if (src[i + 3]! < 128) continue;
+          const at = keys.indexOf(key(i));
+          if (at >= 0) score[at]! += 1;
+        }
+      }
+      let best = 0;
+      for (let k = 1; k < keys.length; k++) {
+        if (score[k]! > score[best]! || (score[k] === score[best] && Math.abs(lum[k]! - meanL) < Math.abs(lum[best]! - meanL))) best = k;
+      }
+      const k = keys[best]!;
+      out[o] = (k >> 16) & 255; out[o + 1] = (k >> 8) & 255; out[o + 2] = k & 255; out[o + 3] = 255;
+    }
+  }
+  return { data: out, w: w2, h: h2 };
+}
+
+const CHECKER: readonly (readonly [string, string])[] = [['#e6e6e6', '#3c3c3c'], ['#ff6a5a', '#7a1e16'], ['#6ae070', '#1e6a24'], ['#6a9cff', '#1e327a'], ['#ffe060', '#7a6a10']];
+/** `?texel=1`: a 1-texel checker the size of `c`, alpha kept, coloured by mip `level`. */
+function checkerLevel(c: HTMLCanvasElement, level: number): HTMLCanvasElement {
+  const { width: w, height: h } = c;
+  const src = c.getContext('2d')!.getImageData(0, 0, w, h).data;
+  const pair = CHECKER[Math.min(level, CHECKER.length - 1)]!.map((hex) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)] as const);
+  const img = new ImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, col = pair[(x + y) & 1]!;
+    img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2];
+    img.data[i + 3] = src[i + 3]! < 128 ? 0 : 255;
+  }
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  out.getContext('2d')!.putImageData(img, 0, 0);
+  return out;
 }
 
 /**

@@ -119,6 +119,35 @@ describe('hd2d kit: rock', () => {
   });
 });
 
+describe('hd2d kit: textures', () => {
+  it('mip levels are mode-filtered: palette kept, alpha binary, never averaged', async () => {
+    const { modeHalve } = await import('../src/render/hd2d/textures');
+    const w = 9, h = 6;
+    const pal = [[40, 30, 20], [120, 90, 60], [200, 170, 120]];
+    const src = new Uint8ClampedArray(w * h * 4);
+    const rng = new Rng(3);
+    for (let i = 0; i < w * h; i++) {
+      const c = pal[rng.int(3)]!;
+      src.set([c[0]!, c[1]!, c[2]!, rng.chance(0.2) ? 0 : 255], i * 4);
+    }
+    let lv = { data: src, w, h };
+    const keys = new Set(pal.map((c) => c.join(',')));
+    while (lv.w > 1 || lv.h > 1) {
+      lv = modeHalve(lv.data, lv.w, lv.h);
+      for (let i = 0; i < lv.w * lv.h; i++) {
+        const a = lv.data[i * 4 + 3]!;
+        expect(a === 0 || a === 255).toBe(true);
+        if (a) expect(keys.has(`${lv.data[i * 4]},${lv.data[i * 4 + 1]},${lv.data[i * 4 + 2]}`)).toBe(true);
+      }
+    }
+    expect([lv.w, lv.h]).toEqual([1, 1]);
+    // A lone dark texel in a lit 2×2 block is voted away (no speckle at distance).
+    const blk = new Uint8ClampedArray(16);
+    blk.set([200, 200, 200, 255, 200, 200, 200, 255, 10, 10, 10, 255, 200, 200, 200, 255]);
+    expect(Array.from(modeHalve(blk, 2, 2).data)).toEqual([200, 200, 200, 255]);
+  });
+});
+
 describe('hd2d kit: sprites', () => {
   it('extracts a small palette that keeps rare distinct colours (eyes) and merges jitter', async () => {
     const { extractPalette, SPRITE_PALETTE_MAX } = await import('../src/render/hd2d/sprite');
