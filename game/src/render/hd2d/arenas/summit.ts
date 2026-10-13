@@ -268,13 +268,15 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
   }
   for (const x of [-7.7, 7.5]) marble.aabb([x - 0.46, colTop + 0.38, L.backZ], [x + 0.46, colTop + 0.78, 6.7], shade(1.0), rng, { aoBottom: 0.7 });
 
-  // ---- throne dais: three steps of cut stone with gilt nosings, a violet runner on the top
+  // ---- throne dais: three steps of pale marble (they read against the dark slate floor, so the
+  // gilt nosings sit visibly ON the step edges instead of floating as orange rails), each riser
+  // a shade darker than its tread, a violet runner on the top
   const D = L.dais;
   for (let s = 0; s < 3; s++) {
     const g = s * 0.4;
     const y1 = (s + 1) * D.step;
-    stone.aabb([D.x0 + g, s * D.step, L.backZ], [D.x1 - g, y1, D.z1 - g], shade(1.12 - s * 0.04), rng, { aoBottom: 0.6, topK: 1.25 });
-    gold.aabb([D.x0 + g, y1 - 0.05, D.z1 - g - 0.02], [D.x1 - g, y1 + 0.01, D.z1 - g + 0.03], shade(1), rng);
+    marble.aabb([D.x0 + g, s * D.step, L.backZ], [D.x1 - g, y1, D.z1 - g], shade(0.8 - s * 0.03), rng, { aoBottom: 0.45, topK: 1.4 });
+    gold.aabb([D.x0 + g + 0.04, y1 - 0.035, D.z1 - g - 0.01], [D.x1 - g - 0.04, y1 + 0.004, D.z1 - g + 0.012], shade(0.72), rng);
   }
   const daisTop = 3 * D.step;
   royal.aabb([L.throne.x - 0.75, daisTop, L.backZ + 0.3], [L.throne.x + 0.75, daisTop + 0.02, D.z1 - 0.9], shade(0.95), rng);
@@ -426,6 +428,15 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
       beams.push({ start: s, end: s.clone().addScaledVector(L.moonDir, len), width: [0.42, 0.9 + rng.next() * 0.35] });
     }
   }
+  // Hall of Fame: a broad moon shaft from high above (the hall is open to the sky) falls on the
+  // champion's podium at the centre of the crest (the moon key already aims at the podium circle).
+  if (opts.hall) {
+    const tgt = new THREE.Vector3(0, 1.0, 0.25);
+    const d = new THREE.Vector3(0.18, -1, 0.34).normalize();
+    const start = tgt.clone().addScaledVector(d, -9.5);
+    beams.push({ start, end: tgt.clone().addScaledVector(d, 1.05), width: [0.9, 2.4] });
+    beams.push({ start: start.clone().add(new THREE.Vector3(0.5, 0, 0.2)), end: tgt.clone().addScaledVector(d, 0.9).add(new THREE.Vector3(0.6, 0, 0.1)), width: [0.4, 1.0] });
+  }
   const rays = lightBeams(beams, new THREE.Color('#9fb6ff'), 0.17);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
   if (!flags.has('norays')) group.add(rays.mesh);
@@ -435,11 +446,11 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
   group.add(motes.points);
   updates.push(motes.update);
   // A cold pool where the centre shafts land (the haze the shadowed patches glow inside).
-  const moonPools = lightPools(L.windows.map((c) => {
+  const moonPools = lightPools([...L.windows.map((c) => {
     const s = new THREE.Vector3(c, L.spring - 0.6, L.backZ);
     const land = s.clone().addScaledVector(L.moonDir, s.y / -L.moonDir.y);
     return { x: (land.x + c) / 2 + 0.3, z: (land.z + L.backZ) / 2 + 1.5, sx: 2.6, sz: 6.5, color: new THREE.Color(0.16, 0.22, 0.42) };
-  }), radialTexture('200,215,255'));
+  }), ...(opts.hall ? [{ x: 0.2, z: 0.5, sx: 3.0, sz: 2.4, y: 0.02, color: new THREE.Color(0.08, 0.1, 0.2) }] : [])], radialTexture('200,215,255'));
   track(moonPools.mesh.geometry); track(moonPools.material);
   group.add(moonPools.mesh);
 

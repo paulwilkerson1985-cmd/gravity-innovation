@@ -76,7 +76,7 @@ export class VictoryScene extends BaseScene {
     for (let i = 0; i < n; i++) {
       const rank = order.indexOf(i);
       const { x, z } = this.slot(i, n);
-      const hgt = (heights[rank] ?? 0.4) + (this.narrow && rank >= 3 ? 0.55 : 0);
+      const hgt = (heights[rank] ?? 0.4) + this.backLift(rank);
       b.add(GEO.cyl, cols[rank] ?? '#c7b8ff', { p: [x, hgt / 2, z], s: [0.62, hgt, 0.62] }, 0.06);
       b.add(GEO.cyl, '#ffffff', { p: [x, hgt + 0.02, z], s: [0.66, 0.05, 0.66] });
     }
@@ -93,7 +93,7 @@ export class VictoryScene extends BaseScene {
       this.scene.add(summitPodiums(party.map((_, i) => {
         const rank = order.indexOf(i);
         const { x, z } = this.slot(i, n);
-        return { x, z, h: (heights[rank] ?? 0.4) + (this.narrow && rank >= 3 ? 0.55 : 0), rank };
+        return { x, z, h: (heights[rank] ?? 0.4) + this.backLift(rank), rank };
       })));
     } else {
       this.scene.add(new THREE.Mesh(built, flatMaterial()));
@@ -106,7 +106,7 @@ export class VictoryScene extends BaseScene {
       const rank = order.indexOf(i);
       const { x, z } = this.slot(i, n);
       const v = new CreatureView(species(c.species).look, i);
-      v.root.position.set(x, (heights[rank] ?? 0.4) + (this.narrow && rank >= 3 ? 0.55 : 0) + 0.05, z);
+      v.root.position.set(x, (heights[rank] ?? 0.4) + this.backLift(rank) + 0.05, z);
       v.root.rotation.y = -x * 0.08;
       this.scene.add(v.root);
       this.views.push(v);
@@ -126,12 +126,14 @@ export class VictoryScene extends BaseScene {
       you = personMesh(PLAYER_LOOK);
       you.scale.setScalar(1.25);
     }
-    if (this.narrow) you.position.set(2.95, 0, -1.45);
+    if (this.hd2d && this.narrow) you.position.set(1.85, 0, 0.75);
+    else if (this.hd2d) you.position.set(3.85, 0, -1.7);
+    else if (this.narrow) you.position.set(2.95, 0, -1.45);
     else you.position.set(right + 1.55, 0, 0.35);
     you.rotation.y = -0.6;
     this.scene.add(you);
     this.you = you;
-    this.span = this.narrow ? [Math.min(-2, ...xs) - 1.0, 3.6] : [Math.min(0, ...xs) - 1.1, right + 2.1];
+    this.span = this.hd2d && this.narrow ? [Math.min(...xs) - 0.8, Math.max(2.4, ...xs) + 0.7] : this.hd2d ? [Math.min(-2, ...xs) - 0.85, 4.45] : this.narrow ? [Math.min(-2, ...xs) - 1.0, 3.6] : [Math.min(0, ...xs) - 1.1, right + 2.1];
 
     this.conf = confetti(170, 16, 9, 7);
     this.scene.add(this.conf.mesh);
@@ -173,9 +175,32 @@ export class VictoryScene extends BaseScene {
     return [...Array(n).keys()].sort((a, b) => party[b]!.level - party[a]!.level || a - b);
   }
 
+  /** Extra podium height of the back row (two-row line-ups), so the back kin stand clear above the front ones. */
+  private backLift(rank: number): number {
+    if (this.hd2d && this.narrow) return rank === 0 ? 0 : rank < 3 ? 0.45 : rank < 5 ? 1.15 : 1.75;
+    if (rank < 3) return 0;
+    return this.hd2d ? 0.95 : this.narrow ? 0.55 : 0;
+  }
+
   /** Podium positions: centre first, then alternating outwards. */
   private slot(i: number, n: number): { x: number; z: number } {
     const rank = this.podiumOrder(n).indexOf(i);
+    if (this.hd2d && this.narrow) {
+      // HD-2D portrait: a three-tier pyramid (1 · 2 · 3), each tier further back and higher (the
+      // one right behind the champion highest of all), so the line-up is narrow (the camera comes
+      // close) and no statue covers another.
+      const tiers: [number, number][] = [[0, 0.35], [-1.25, -1.35], [1.25, -1.35], [-2.3, -2.9], [2.3, -2.9], [0, -3.3]];
+      const [x, z] = tiers[rank] ?? [0, 0];
+      return { x, z };
+    }
+    if (this.hd2d) {
+      // HD-2D (every layout): a compact two-row line-up on the crest, so the camera can come
+      // close. Front: champion centre, two either side; back: staggered between them and raised.
+      const front: [number, number][] = [[0, 0.25], [-2.1, 0], [2.1, 0]];
+      const back: [number, number][] = [[-1.05, -2.2], [1.05, -2.2], [-3.15, -2.2]];
+      const [x, z] = (rank < 3 ? front[rank] : back[rank - 3]) ?? [0, 0];
+      return { x, z };
+    }
     if (this.narrow) {
       // Front row: ranks 0-2 (centre, left, right); back row: ranks 3-5 between and beside them.
       const front: [number, number][] = [[0, 0.1], [-1.9, 0], [1.9, 0]];
@@ -196,12 +221,14 @@ export class VictoryScene extends BaseScene {
     // landscape phone and on wide screens, where the sheet is a side column).
     const side = layoutMode(w, hgt) !== 'portrait';
     const area = freeArea(w, hgt, side ? { top: [this.top], right: [this.sheet] } : { top: [this.top], bottom: [this.sheet] }, 6);
-    // HD-2D: never frame tighter than the crest (the hall is part of the picture).
-    const sx0 = this.hd2d ? Math.min(this.span[0], -3.6) : this.span[0], sx1 = this.hd2d ? Math.max(this.span[1], 3.6) : this.span[1];
-    const pts = corners(new THREE.Vector3(sx0, 0, this.narrow ? -2.6 : -2.0), new THREE.Vector3(sx1, this.narrow ? 3.1 : 2.5, 0.9));
+    const [sx0, sx1] = this.span;
+    // HD-2D: framed on the two-row line-up itself (podium bases to the back kin's heads).
+    const pts = this.hd2d
+      ? (this.narrow ? corners(new THREE.Vector3(sx0, 0.3, -3.4), new THREE.Vector3(sx1, 3.4, 1.1)) : corners(new THREE.Vector3(sx0, 0.3, -2.7), new THREE.Vector3(sx1, 3.3, 0.7)))
+      : corners(new THREE.Vector3(sx0, 0, this.narrow ? -2.6 : -2.0), new THREE.Vector3(sx1, this.narrow ? 3.1 : 2.5, 0.9));
     this.camera.clearViewOffset();
-    const dir = this.hd2d ? new THREE.Vector3(0, 0.42, 1) : new THREE.Vector3(0, 0.22, 1);
-    const dist = fitPoints(this.camera, w, hgt, pts, area, { dir, target: new THREE.Vector3((this.span[0] + this.span[1]) / 2, 1.1, -0.5), fill: this.hd2d ? 0.9 : 0.98 });
+    const dir = this.hd2d ? new THREE.Vector3(0, 0.4, 1) : new THREE.Vector3(0, 0.22, 1);
+    const dist = fitPoints(this.camera, w, hgt, pts, area, { dir, target: new THREE.Vector3((sx0 + sx1) / 2, 1.3, -0.9), fill: 0.98 });
     if (this.hd2d) { this.hd2d.afterFrame(dist); return; }
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 6; this.scene.fog.far = dist + 40; }
   }
