@@ -130,7 +130,7 @@ export class BattleScene extends BaseScene {
     audio.music(track);
 
     const theme = (g.dex().routes.get(this.routeId)?.theme ?? 'meadow') as Theme;
-    const terrain = hd2dTerrainFor(this.routeId, this.trainer ? undefined : spot?.kind);
+    const terrain = hd2dTerrainFor({ routeId: this.routeId, hotspotId: spot?.id, hotspotKind: spot?.kind, trainerId: this.trainer?.id });
     if (terrain) {
       this.hd2d = new Hd2dBattleStage(g, this.scene, this.camera, terrain);
       this.spots = this.hd2d.spots;

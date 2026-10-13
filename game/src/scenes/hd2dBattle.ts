@@ -7,22 +7,28 @@ import type { Game } from '../game/game';
 import type { CreatureView } from '../render/creature';
 import { Hd2dPipeline, detectQuality, hd2dRequested, installPipeline, postFlags, type Quality } from '../render/hd2d/pipeline';
 import { SpriteBaker, type SpriteSubject } from '../render/hd2d/sprite';
-import { buildCaveArena, type ArenaRig } from '../render/hd2d/arena';
+import type { ArenaRig } from '../render/hd2d/arena';
+import { arenaById, resolveArena, type ArenaContext, type ArenaDef, type CameraPreset, type LayoutName } from '../render/hd2d/arenas';
 import { Figure, heroFigure, trainerFigure } from '../render/hd2d/characters';
 import { layoutMode, uiZoom } from './framing';
 
-/** Terrains with an HD-2D arena so far (rollout adds the rest, docs/HD2D.md). */
-export type Hd2dTerrain = 'cave';
+/** The arena chosen for a battle and the context it was chosen from. */
+export interface Hd2dTerrain { def: ArenaDef; ctx: ArenaContext }
 
-/** Which arena (if any) a battle gets when `?gfx=hd2d` is on: Ember Ridge battles and every cave hotspot. */
-export function hd2dTerrainFor(routeId: string, hotspotKind: string | undefined): Hd2dTerrain | null {
+/**
+ * Which arena (if any) a battle gets when `?gfx=hd2d` is on. Data-driven: arenas claim
+ * route / hotspot / kind / trainer combinations in `render/hd2d/arenas/*` (docs/HD2D.md).
+ * `?arena=<id>` forces one (captures, A/B).
+ */
+export function hd2dTerrainFor(ctx: ArenaContext): Hd2dTerrain | null {
   if (!hd2dRequested()) return null;
-  if (routeId === 'ridge' || hotspotKind === 'cave') return 'cave';
-  return null;
+  const forced = new URLSearchParams(location.search).get('arena');
+  const def = forced ? arenaById(forced) ?? null : resolveArena(ctx);
+  return def ? { def, ctx } : null;
 }
 
 /** Per-layout camera: elevation (rad), yaw (rad), vertical FOV, how tall a person reads, and where the kin go (fractions of the screen). */
-const CAMERA = {
+const CAMERA: Record<LayoutName, CameraPreset> = {
   wide: { elev: 0.58, yaw: -0.06, fov: 32, person: 0.15, mine: [0.38, 0.7], foe: [0.6, 0.53] },
   portrait: { elev: 0.74, yaw: -0.45, fov: 34, person: 0.14, mine: [0.4, 0.53], foe: [0.62, 0.32] },
   land: { elev: 0.72, yaw: -0.08, fov: 30, person: 0.18, mine: [0.3, 0.68], foe: [0.52, 0.44] },
@@ -61,15 +67,15 @@ export class Hd2dBattleStage {
   private inScene = postFlags().has('mesh');
   private pxPerTexel = postFlags().has('px2') ? 2 : 1;
 
-  constructor(private game: Game, private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, terrain: Hd2dTerrain) {
-    void terrain; // one arena for now
+  constructor(private game: Game, private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, readonly terrain: Hd2dTerrain) {
     this.quality = detectQuality();
-    this.rig = buildCaveArena({ quality: this.quality });
+    const def = terrain.def;
+    this.rig = def.build({ quality: this.quality, ctx: terrain.ctx, trainerBattle: !!terrain.ctx.trainerId });
     scene.add(this.rig.group);
-    scene.background = new THREE.Color('#120a07');
-    scene.fog = new THREE.Fog(new THREE.Color('#2a160d'), 18, 42);
+    scene.background = new THREE.Color(def.background);
+    scene.fog = def.fog === null ? null : new THREE.Fog(new THREE.Color(def.fog), 18, 42);
     this.spots = [this.rig.spots[0].clone(), this.rig.spots[1].clone()];
-    this.pipeline = new Hd2dPipeline(game.renderer.gl, scene, camera, this.quality);
+    this.pipeline = new Hd2dPipeline(game.renderer.gl, scene, camera, this.quality, def.grade?.());
     this.uninstall = installPipeline(game.renderer, this.pipeline);
     this.baker = new SpriteBaker(scene, camera, this.rig.spriteLight);
     this.pipeline.beforeRender.push((r) => this.baker.bake(r));
@@ -147,7 +153,7 @@ export class Hd2dBattleStage {
   /** Elevated 3/4 camera; the image is slid so the kin land on the layout's targets. */
   frame(w: number, h: number) {
     const mode = layoutMode(w, h);
-    const c = CAMERA[mode];
+    const c: CameraPreset = { ...CAMERA[mode], ...this.terrain.def.camera?.[mode] };
     const cam = this.camera;
     cam.fov = c.fov;
     cam.aspect = w / h;
@@ -168,7 +174,8 @@ export class Hd2dBattleStage {
     const tx = ((c.mine[0] + c.foe[0]) / 2) * w, ty = ((c.mine[1] + c.foe[1]) / 2) * h;
     cam.setViewOffset(w, h, (a[0] + b[0]) / 2 - tx, (a[1] + b[1]) / 2 - ty, w, h);
     cam.updateProjectionMatrix();
-    if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 6; this.scene.fog.far = dist + 30; }
+    const [fogNear, fogFar] = this.terrain.def.fogRange ?? [6, 30];
+    if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + fogNear; this.scene.fog.far = dist + fogFar; }
     this.pipeline.setSize();
     this.rig.setPixelSize(this.quality === 'high' ? 2 : 1.5);
   }

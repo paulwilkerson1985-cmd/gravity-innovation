@@ -93,12 +93,46 @@ Screens: `docs/screenshots/hd2d/`.
   `heroFigure()`, `trainerFigure(id)`, `HERO_LOOK`. Looks/hats/props come from
   `render/trainer.ts`, so route-map and battle figures stay the same people.
 
+### Terrain registry: `src/render/hd2d/arenas/`
+Every arena is one file in `arenas/` exporting `ARENA: ArenaDef` (or `ARENAS: ArenaDef[]`);
+`arenas/index.ts` picks the files up with `import.meta.glob` — **no central list to edit**.
+
+```ts
+export const ARENA: ArenaDef = {
+  id: 'meadow', label: 'Meadow clearing',
+  match: [{ route: 'meadow' }, { route: 'meadow', hotspot: 'tall-grass' }],
+  build: (o: ArenaBuildOptions) => buildMeadowArena(o), // → ArenaRig
+  grade: meadowGrade,            // optional, defaults to warmCaveGrade()
+  background: '#9cc8e8', fog: '#cfe3d0', fogRange: [8, 40], // fog null = off
+  camera: { portrait: { elev: 0.8 } }, // optional per-layout tweaks (wide | portrait | land)
+};
+```
+
+- `ArenaContext` = `{ routeId, hotspotId?, hotspotKind?, trainerId?, mode? }` (mode defaults
+  to `'adventure'`; e.g. the PvP stadium can claim `{ mode: 'pvp' }`).
+- `ArenaMatch` = any of `route / hotspot / kind / trainer / mode` + `priority`. A rule matches
+  when **all** its fields equal the context; the most specific match wins (weights trainer 16,
+  hotspot 8, route 4, kind 2, mode 1, summed), then `priority`, then file order. An empty rule
+  never matches.
+- `ArenaBuildOptions` = `{ quality, seed?, ctx, trainerBattle }` — `trainerBattle` asks the
+  builder for a battle-ground marking (chalk ring / worn patch).
+- `resolveArena(ctx)`, `arenaById(id)`, `arenas()`, `registerArena(def)` (runtime/tests).
+  `tests/hd2d-arenas.test.ts` checks ids are unique and rules name real routes/hotspots/trainers.
+- Only `import type` from `arenas/index.ts` inside an arena file (index imports the files).
+- `?arena=<id>` forces an arena for captures (`&gfx=hd2d` still required).
+
+Current mapping (updated by each arena's `match`):
+
+| Battle | Arena |
+|---|---|
+| any `cave` hotspot, any other Ember Ridge battle | `cave` (quarry) |
+
 ### Scene adapter: `src/scenes/hd2dBattle.ts`
-`hd2dTerrainFor(routeId, hotspotKind)` picks the arena; `Hd2dBattleStage` owns arena, pipeline,
-baker, hero/trainer figures and the camera (`frame(w, h)` per layout: elevation, yaw, FOV, how
-tall a person reads, where the kin land), `attachKin/detachKin/fitKin`, `trainer(id)`,
-`trainerPath(entering)`, `throwOrigin()`. `BattleScene` keeps all flow, UI and FX and only
-branches on `this.hd2d` in ~10 places.
+`hd2dTerrainFor(ctx)` resolves the arena from the registry; `Hd2dBattleStage` builds it, applies
+its grade/background/fog/camera tweaks and owns pipeline, baker, hero/trainer figures and the
+camera (`frame(w, h)` per layout: elevation, yaw, FOV, how tall a person reads, where the kin
+land), `attachKin/detachKin/fitKin`, `trainer(id)`, `trainerPath(entering)`, `throwOrigin()`.
+`BattleScene` keeps all flow, UI and FX and only branches on `this.hd2d` in ~10 places.
 
 ## Conventions for new arenas
 
@@ -122,10 +156,12 @@ branches on `this.hd2d` in ~10 places.
   and props go to the edges; walls must not rise into the kin silhouettes for any layout.
 
 ### Adding a terrain
-1. Add ramps (and painters if the surface is new) to `textures.ts`.
-2. Write `buildXxxArena(opts): ArenaRig` in `arena.ts` (or a new `arenas/xxx.ts`) from the kit:
+1. Add ramps (and painters if the surface is new) — the kit's `textures.ts`, or locally in
+   your arena file until the kit has them.
+2. Create `src/render/hd2d/arenas/<name>.ts` with `buildXxxArena(opts): ArenaRig` from the kit:
    heightmap + `rockColumns`, floor, props, light rig, beams/dust or other atmosphere.
-3. Map routes/hotspots to it in `hd2dTerrainFor` and give it a `Grade`.
+3. Export `ARENA: ArenaDef` from it with `match` rules, a `Grade`, background and fog — the
+   registry picks it up. Add your rows to the mapping table above.
 4. Capture desktop / portrait / landscape (`e2e/hd2d.spec.ts` pattern), check calls < 100.
 
 ## Performance
