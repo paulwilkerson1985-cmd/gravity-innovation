@@ -584,7 +584,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   props.box([benchX + 1.1, ly + 0.72, benchZ + 0.2], [benchX + 1.3, ly + 0.95, benchZ + 0.4], new THREE.Color('#2f5f8f'), rng);
   // Mine cart on a short rail by the lodge edge.
   const cartX = lodge.x1 - 1.4, cartZ = lodge.z1 - 1.1;
-  metal.box([cartX - 0.5, ly + 0.15, cartZ - 0.35], [cartX + 0.5, ly + 0.75, cartZ + 0.35], rampColor(RAMPS.steel, 2), rng);
+  metal.box([cartX - 0.5, ly + 0.15, cartZ - 0.35], [cartX + 0.5, ly + 0.75, cartZ + 0.35], rampColor(RAMPS.steel, 4), rng);
   props.box([cartX - 0.42, ly + 0.7, cartZ - 0.28], [cartX + 0.42, ly + 0.86, cartZ + 0.28], new THREE.Color('#ff8a3a'), rng); // ember ore
   for (const sx of [-0.32, 0.32]) for (const sz of [-0.36, 0.36]) metal.box([cartX + sx - 0.1, ly, cartZ + sz - 0.03], [cartX + sx + 0.1, ly + 0.2, cartZ + sz + 0.03], rampColor(RAMPS.steel, 0), rng);
   for (const sz of [-0.36, 0.36]) metal.box([lodge.x1 - 2.6, ly, cartZ + sz - 0.03], [lodge.x1 - 0.1, ly + 0.04, cartZ + sz + 0.03], rampColor(RAMPS.steel, 4), rng);

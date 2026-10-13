@@ -29,7 +29,7 @@ const CAMERA = {
 } as const;
 
 /** World size every kin is normalised toward (bigger final forms keep a little of their bulk). */
-const KIN_SIZE = [1.3, 1.15] as const;
+const KIN_SIZE = [1.3, 1.2] as const;
 const PERSON_SCALE = 1.55;
 
 /** A soft blob under a figure (follows it via onBeforeRender), for tiers without live shadows. */
@@ -116,8 +116,8 @@ export class Hd2dBattleStage {
     g.computeBoundingBox();
     const bb = g.boundingBox!;
     const size = Math.max(bb.max.y - bb.min.y, 0.8 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) * view.baseScale;
-    const k = (KIN_SIZE[side] / size) * Math.pow(size / 1.1, 0.3);
-    view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.55, 1.6));
+    const k = (KIN_SIZE[side] / size) * Math.pow(size / 1.1, 0.5);
+    view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.55, 1.7));
   }
 
   /** The foe trainer as a figure, starting centre stage on the foe spot. */
