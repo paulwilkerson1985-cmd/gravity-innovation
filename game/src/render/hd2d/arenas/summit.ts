@@ -438,7 +438,7 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
   const spriteLight: SpriteLight = {
     keyDir: L.moonDir.clone().negate(),
     keyColor: new THREE.Color('#c4d0ff').multiplyScalar(0.55),
-    sky: new THREE.Color('#c9cdf0').multiplyScalar(0.6),
+    sky: new THREE.Color('#c9cdf0').multiplyScalar(0.7),
     ground: new THREE.Color('#5d4656').multiplyScalar(0.6),
     rim: new THREE.Color('#d8e4ff').multiplyScalar(0.6),
   };

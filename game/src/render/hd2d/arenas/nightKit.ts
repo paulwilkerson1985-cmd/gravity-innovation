@@ -625,7 +625,7 @@ export function paintSky(s: SkySpec): THREE.CanvasTexture {
       for (let y = Math.max(0, t0); y < s.h; y++) {
         const depth = y - t0;
         // Moon-facing slopes (descending to the right) catch light; snow on the upper band.
-        if (r.snow && depth < 3 + ((x * 7) % 3)) put(x, y, slope > 0 ? [214, 224, 250] : [150, 162, 204]);
+        if (r.snow && depth < 1 + ((x * 7) % 3 === 0 ? 1 : 0) + (slope > 0 ? 1 : 0)) put(x, y, slope > 0 ? [176, 188, 226] : [112, 122, 168]);
         else put(x, y, slope > 0 && depth < 10 ? lit : col);
       }
     }

@@ -360,7 +360,7 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
   group.add(litMesh(paint.build(), track(surfaceMaterial(texPaint, undefined, true))));
   group.add(litMesh(steel.build(), track(surfaceMaterial(texSteel, undefined, true))));
   group.add(litMesh(glow.build(), track(new THREE.MeshBasicMaterial({ vertexColors: true })), false, false));
-  const boardMat = track(new THREE.MeshBasicMaterial({ map: track(paintBanner(NIGHT.neutral, NIGHT.neutral, 'stripe', 32, 16)), vertexColors: true }));
+  const boardMat = track(new THREE.MeshBasicMaterial({ map: track(paintBanner(NIGHT.neutral, NIGHT.neutral, 'stripe', 32, 16)), vertexColors: true, alphaTest: 0.5 }));
   boardMat.map!.wrapS = boardMat.map!.wrapT = THREE.RepeatWrapping;
   const boardMesh = litMesh(boards.build(), boardMat, false, false);
   group.add(boardMesh);
@@ -417,7 +417,7 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
     front.target.position.set(-0.4, 0, 0.4);
     group.add(front, front.target);
   }
-  const rays = lightBeams(beams, new THREE.Color('#eef0ff'), 0.08);
+  const rays = lightBeams(beams, new THREE.Color('#eef0ff'), 0.1);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
   if (!flags.has('norays')) group.add(rays.mesh);
   updates.push(rays.update);
