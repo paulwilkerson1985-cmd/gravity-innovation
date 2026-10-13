@@ -11,7 +11,7 @@ import { paintBoulderAtlas, type Ramp } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
-import { RAMPS2, V, TRODDEN_SIZE, troddenMarking, cachedCanvas, cachedTexture, decal, disposeGroup, glowTexture, grey, hdr, makeGrade, orientedBox, shadeVertices, paintAlpha, paintAsh, paintRockOn, particles } from './localKit';
+import { RAMPS2, V, TRODDEN_SIZE, troddenMarking, cachedCanvas, cachedTexture, decal, disposeGroup, glowTexture, grey, hdr, makeGrade, shadeVertices, paintAlpha, paintAsh, paintRockOn, particles } from './localKit';
 
 export interface TerrainArenaOptions { seed?: number; quality?: 'high' | 'low'; trainer?: boolean }
 
@@ -260,11 +260,11 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     ...basalt, keep: (x, z) => z < pier.z1 - 0.2 || Math.abs(x - fall.x) > fall.w / 2 - 0.05,
   });
   // Behind the fall: a recessed, scorched chute the sheet pours down.
-  slag.box([fall.x - fall.w / 2 - 0.05, 0, pier.z1 - 0.5], [fall.x + fall.w / 2 + 0.05, pier.y + 0.04, pier.z1 - 0.12], grey(0.45), rng, { skip: [true, true, false, true, false, true] });
+  slag.box([fall.x - fall.w / 2 - 0.05, 0, pier.z1 - 0.5], [fall.x + fall.w / 2 + 0.05, pier.y - 0.04, pier.z1 - 0.12], grey(0.45), rng, { skip: [true, true, true, true, false, true] });
   // The near lip: one low course facing the camera, the dark apron below it.
   courseWall(rock, [[-16, LIP_Z], [16, LIP_Z]], APRON_Y, 0, rng, { ...basalt, course: 0.8, length: 1.3, ends: false, topTint: undefined });
   // Tall faceted spires of columnar basalt.
-  for (const [x, z, h, r] of [[5.0, -5.1, 5.6, 0.95], [-6.9, -2.6, 5.0, 0.85], [8.3, 1.2, 4.2, 0.75]] as const) basaltSpire(rock, [x, groundY(x, z), z], r, h, rng, lite);
+  for (const [x, z, h, r] of [[5.0, -5.1, 5.6, 0.95], [-6.9, -2.6, 5.0, 0.85], [8.3, 1.2, 4.2, 0.75]] as const) basaltSpire(rock, [x, groundY(x, z), z], r, h, rng, lite, [fall.x, pier.y * 0.6, fall.z + 0.3]);
   // Big dark rocks at the near corners (silhouettes framing the stage).
   for (const [x, z, s] of [[-7.4, 4.2, 1.5], [-5.6, 5.4, 1.1], [7.0, 4.5, 1.6], [8.6, 3.2, 1.2]] as const) {
     boulder(rock, [x, groundY(x, z) + s * 0.35, z], [s * 1.4, s, s * 1.1], grey(0.7 + rng.next() * 0.15), rng, { ry: rng.next() * 0.8 - 0.4, aoBottom: 0.45, topK: 1.3, jitter: s * 0.05, topJitter: s * 0.1 });
@@ -293,7 +293,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   // pool, a lighter worn patch where the foe stands, dark beyond the lip
   {
     const foe = SPOTS[1];
-    const g = groundGrid([-16, -13, 16, 14], 0.25, 64, groundY, (x, z) => {
+    const g = groundGrid([-16, -13, 16, 14], lite ? 0.3 : 0.25, 64, groundY, (x, z) => {
       if (z > LIP_Z + 0.35) return [0.28, 0.24, 0.22];
       const d = floorD(x, z), dn = nextRiser(d, TIERS, DEPTH);
       const ao = 1 - 0.45 * Math.exp(-Math.max(0, dn) / 0.3) - (d > 0 ? 0.12 : 0);
@@ -359,13 +359,6 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     rubblePile(slag, [x, groundY(x, z), z], rng, { radius: r, heap: 0.55, tint: '#9a8a82', ramp: [[0.55, 0.5, 0.48], [0.7, 0.64, 0.6], [0.85, 0.78, 0.72], [1.0, 0.9, 0.82]] });
   }
   pebbles(slag, [-6, -3.6, 6.5, 4.2], lite ? 18 : 34, rng, keepOut.map((c) => ({ ...c, r: c.r * 0.8 })), '#8a7a72', [[0.6, 0.55, 0.52], [0.8, 0.72, 0.66], [1.0, 0.9, 0.82]]);
-  // Ember crystals at two wall feet (warm accents, bloom).
-  for (const [x, z, out] of [[-5.9, 0.6, 0.2], [6.3, -0.6, Math.PI - 0.3]] as const) {
-    for (let i = 0; i < 5; i++) {
-      const a = out + (rng.next() - 0.5) * 1.4, h = 0.35 + rng.next() * 0.45, d = 0.05 + rng.next() * 0.22;
-      orientedBox(glow, V(x + Math.cos(a) * d, h * 0.38, z + Math.sin(a) * d), V(0.16, h, 0.16), V(Math.cos(a) * 0.5, 1, Math.sin(a) * 0.5), hdr('#ff9a3a', 0.6 + rng.next() * 0.3), rng, rng.next());
-    }
-  }
   group.add(mk(slag.build(), track(surfaceMaterial(texSlag, undefined, true))));
   group.add(mk(glow.build(), track(new THREE.MeshBasicMaterial({ vertexColors: true })), false, false));
 
@@ -466,7 +459,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
  * middle, the rest stepping down round it), each with a bevelled, lit top and a broken cap,
  * slightly leaning. Emitted into the rock batch with the rock-face bevel code.
  */
-function basaltSpire(b: VoxelBatch, base: V3, r: number, h: number, rng: Rng, lite: boolean) {
+function basaltSpire(b: VoxelBatch, base: V3, r: number, h: number, rng: Rng, lite: boolean, light: V3) {
   const cols: [number, number, number, number][] = [[0, 0, r * 0.62, h]];
   const n = lite ? 4 : 6;
   for (let i = 0; i < n; i++) {
@@ -491,7 +484,12 @@ function basaltSpire(b: VoxelBatch, base: V3, r: number, h: number, rng: Rng, li
       const e1 = new THREE.Vector3(q[1]![0] - q[0]![0], q[1]![1] - q[0]![1], q[1]![2] - q[0]![2]);
       const e2 = new THREE.Vector3(q[2]![0] - q[0]![0], q[2]![1] - q[0]![1], q[2]![2] - q[0]![2]);
       const nrm = e1.cross(e2).normalize();
+      // Facets turned toward the lava fall catch a hot rim (the spires read as faceted heroes,
+      // not flat dark slabs); the rest stay dark.
+      const toL = new THREE.Vector3(light[0] - q[0]![0], 0, light[2] - q[0]![2]).normalize();
+      const rim = side ? Math.max(0, nrm.x * toL.x + nrm.z * toL.z) ** 2 : 0;
       const c = tint.clone().multiplyScalar(k);
+      c.r *= 1 + rim * 1.6; c.g *= 1 + rim * 0.7; c.b *= 1 + rim * 0.15;
       const uv = q.map((p) => (side ? [(p[0] + p[2]) / tile, p[1] / tile] : [p[0] / tile, p[2] / tile]) as [number, number]);
       const fa = q.map((p, i) => (side ? [i === 1 || i === 2 ? w : 0, p[1] - y0, -(w + 2), -(ch - bev)] : [0, 0, -1, k]) as [number, number, number, number]);
       for (let t = 1; t + 1 < q.length; t++) b.tri([q[0]!, q[t]!, q[t + 1]!], [nrm.x, nrm.y, nrm.z], [uv[0]!, uv[t]!, uv[t + 1]!], [c, c, c], [fa[0]!, fa[t]!, fa[t + 1]!]);

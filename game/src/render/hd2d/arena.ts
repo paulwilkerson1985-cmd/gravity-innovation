@@ -615,7 +615,8 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
 
   // ---- floor and every ledge: ONE ground mesh at terrace height, AO at the wall feet
   {
-    const ground = groundGrid([-17, -9.5, 17, 13], 0.25, 128, groundY, (x, z) => {
+    // Low tier: a coarser grid (the ledge ramps still sit inside the stones).
+    const ground = groundGrid([-17, -9.5, 17, 13], lite ? 0.3 : 0.25, 128, groundY, (x, z) => {
       if (inLodge(x, z)) return [0.8, 0.78, 0.76];
       const d = floorD(x, z);
       const dn = nextRiser(d, TIERS, DEPTH);
@@ -820,7 +821,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   };
   shafts(win, keyDir, [-0.22, 0.24], 1);
   shafts(win2, key2Dir, [0], 0.8);
-  const rays = lightBeams(beams, beamColor, 0.3);
+  const rays = lightBeams(beams, beamColor, 0.36);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
   if (!flags.has('norays')) group.add(rays.mesh);
   const dust = dustMotes(beams, q === 'high' ? 24 : 12, rng, new THREE.Color('#ffd9a0').multiplyScalar(0.75));
