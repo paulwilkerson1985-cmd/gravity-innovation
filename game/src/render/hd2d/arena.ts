@@ -818,7 +818,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
 
   // ---- lights: warm window key (cookie spot, shadows), side fill, hemisphere
   const keyColor = new THREE.Color('#ffd7a0');
-  const key = new THREE.SpotLight(keyColor, 110, 0, 0.42, 0.55, 1.2);
+  const key = new THREE.SpotLight(keyColor, 150, 0, 0.42, 0.55, 1.2);
   key.position.set(win.x + 0.3, win.y + 0.6, win.z - 0.6);
   key.target.position.set(-0.6, 0, 0.6);
   key.map = track(windowCookie(3, 2));
@@ -953,7 +953,7 @@ function lightPools(track: <T extends { dispose(): void }>(x: T) => T, spots: TH
       }
       v += (acc / 5) * gains[k]!;
     });
-    put(x, y, v * 0.46);
+    put(x, y, v * 0.4);
   }
   // Lodge patch: a 2×2-pane window of light slanting across the planks.
   for (let y = 0; y < H2; y++) for (let x = 0; x < W; x++) {

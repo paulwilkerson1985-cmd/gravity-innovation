@@ -415,8 +415,8 @@ export function rubblePile(batch: VoxelBatch, center: [number, number, number], 
     const tint = base.clone().multiplyScalar(0.85 + rng.next() * 0.25);
     boulder(batch, [x, center[1] + lift + sy * 0.4, z], [sx, sy, sz], tint, rng, {
       ry: rng.next() * Math.PI, rx: (rng.next() - 0.5) * 0.35, rz: (rng.next() - 0.5) * 0.35,
-      // Chunky stones: flat facets with a modest rounding (the walls are the pillowy ones).
-      chamfer: Math.max(TEXEL * 1.2, Math.min(sx, sy, sz) * (0.17 + rng.next() * 0.06)),
+      // Chunky, blocky stones: flat facets, a small rounding, no bulge (the walls are the pillowy ones).
+      chamfer: Math.max(TEXEL * 1.2, Math.min(sx, sy, sz) * (0.1 + rng.next() * 0.06)), bulge: 0,
       jitter: s * 0.08, topJitter: s * 0.1, aoBottom: 0.45, topK: 1.2,
     });
   }

@@ -210,10 +210,11 @@ export function paintDirt(seed: number, size = 64, ramp: Ramp = RAMPS.dirt): Pix
     const x = rng.int(size), y = rng.int(size), len = 3 + rng.int(4);
     for (let k = 0; k < len; k++) { t.nudge(x + k, y + (k > len / 2 ? 1 : 0), -1); t.nudge(x + k, y - 1 + (k > len / 2 ? 1 : 0), 1); }
   }
-  for (let i = 0; i < size * 0.35; i++) t.nudge(rng.int(size), rng.int(size), rng.chance(0.5) ? -1 : 1); // grit
+  clods(t, rng, Math.round((size * size) / 22));
+  for (let i = 0; i < size * 0.6; i++) t.nudge(rng.int(size), rng.int(size), rng.chance(0.5) ? -1 : 1); // grit
   for (let i = 0; i < 3; i++) crackRel(t, rng, 4 + rng.int(5), 1);
   // Small stones with a cast shadow (light from the back-left window: shadow toward +x, +y).
-  for (let i = 0; i < size / 5; i++) {
+  for (let i = 0; i < size / 2.5; i++) {
     const x = rng.int(size), y = rng.int(size), big = rng.chance(0.3);
     const top = Math.min(ramp.length - 1, 4 + rng.int(2));
     t.set(x + 1, y + 1, 0); if (big) { t.set(x + 2, y + 1, 0); t.set(x + 2, y + 2, 1); t.set(x + 1, y + 2, 1); }
@@ -267,6 +268,37 @@ function boulderBase(rng: Rng, size: number, ramp: Ramp): PixelTile {
   // Sparse dark specks (relative, 2 shades into the stone).
   for (let i = 0; i < size * 0.2; i++) { const x = rng.int(size), y = rng.int(size); t.nudge(x, y, -2); if (rng.chance(0.5)) t.nudge(x + 1, y, -1); }
   return t;
+}
+
+/**
+ * Gravel clods (tileable Voronoi of small cells): each clod lit along its upper rim, with a dark
+ * gap texel under its lower rim (some clods a shade darker) — the gritty, pebbly packed earth.
+ */
+function clods(t: PixelTile, rng: Rng, count: number) {
+  const { w, h } = t;
+  const seeds = Array.from({ length: count }, () => [rng.next() * w, rng.next() * h, rng.chance(0.25) ? -1 : 0, rng.chance(0.55)] as const);
+  const owner = new Int16Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let best = 1e9, bi = 0;
+    seeds.forEach(([sx, sy], i) => {
+      let dx = Math.abs(x + 0.5 - sx), dy = Math.abs(y + 0.5 - sy);
+      dx = Math.min(dx, w - dx); dy = Math.min(dy, h - dy);
+      const q = dx * dx * 0.55 + dy * dy;
+      if (q < best) { best = q; bi = i; }
+    });
+    owner[y * w + x] = bi;
+  }
+  const own = (x: number, y: number) => owner[((y + h) % h) * w + ((x + w) % w)]!;
+  const d = new Int8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const o = own(x, y);
+    const [, , off, rim] = seeds[o]!;
+    let k: number = off;
+    if (rim && own(x, y + 1) !== o) k -= 1; // gap under the clod
+    else if (rim && own(x, y - 1) !== o) k += 1; // lit upper rim
+    d[y * w + x] = k;
+  }
+  for (let i = 0; i < d.length; i++) if (d[i]) t.idx[i] = Math.max(0, Math.min(t.ramp.length - 1, t.idx[i]! + d[i]!));
 }
 
 /**
