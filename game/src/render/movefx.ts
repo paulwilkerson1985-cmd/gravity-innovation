@@ -664,13 +664,16 @@ async function neutral(c: Ctx) {
 
 const TAU = Math.PI * 2;
 
-/** Whole internal px per FX texel: target on-screen height ÷ ~52 px (1 on most screens). */
+/**
+ * Whole internal px per FX texel: target on-screen height ÷ ~52 px (1 on most screens), at most
+ * 2 (big kin on a portrait phone must not get flames taller than the screen is wide).
+ */
 function texScale(c: Ctx): number {
   if (!c.camera || typeof document === 'undefined') return 1;
   const canvas = document.getElementById('view') as HTMLCanvasElement | null;
   const H = canvas?.height || 360;
   const a = c.ground.clone().project(c.camera), b = c.ground.clone().add(V(0, c.h, 0)).project(c.camera);
-  return THREE.MathUtils.clamp(Math.round((Math.abs(b.y - a.y) * 0.5 * H) / 52), 1, 3);
+  return THREE.MathUtils.clamp(Math.round((Math.abs(b.y - a.y) * 0.5 * H) / 52), 1, 2);
 }
 
 /** The camera's forward direction on the floor plane (into the screen). */
