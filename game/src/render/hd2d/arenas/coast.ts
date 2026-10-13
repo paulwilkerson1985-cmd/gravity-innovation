@@ -12,10 +12,11 @@ import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
+import { mergeGeos } from './outdoorKit';
 import { paintPlanks } from '../textures';
 import {
-  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, battleMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, levelAt, makeGrade, orientedBox, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater,
+  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
+  cachedCanvas, grey, hdr, levelAt, makeGrade, orientedBox, paintAlpha, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -32,9 +33,9 @@ export const ARENA: ArenaDef = {
 export function coastGrade(): Grade {
   return makeGrade({
     gain: new THREE.Vector3(1.02, 1.0, 0.97), lift: new THREE.Vector3(0.0, 0.006, 0.014),
-    saturation: 1.04, contrast: 1.06,
+    saturation: 0.82, contrast: 1.05,
     shadowTint: new THREE.Color('#2a3a5a'), highTint: new THREE.Color('#fff0c8'), splitAmount: 0.12,
-    vignette: 0.3, exposure: 1.0,
+    vignette: 0.16, exposure: 1.08,
   });
 }
 
@@ -168,6 +169,37 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
     orientedBox(props, V(x + Math.cos(a) * 0.1, sandY(x, z) + 0.025, z + Math.sin(a) * 0.1), V(0.07, 0.04, 0.2), V(0, 1, 0), new THREE.Color('#ff7a4a'), rng, -a + Math.PI / 2);
   }
 
+  // ---- foreground sand dressing (the near dune, under the camera): a half-buried rock pile,
+  // tide pools, shells and a driftwood branch — the beach reads close-up, not empty.
+  rubblePile(wet, [-3.9, sandY(-3.9, 5.2) - 0.24, 5.2], rng, { radius: 0.95, heap: 0.45, big: 0.6 });
+  rubblePile(wet, [4.6, sandY(4.6, 5.6) - 0.2, 5.6], rng, { radius: 0.6, heap: 0.4, big: 0.42 });
+  orientedBox(drift, V(1.6, sandY(1.6, 5.0) + 0.1, 5.0), V(0.2, 1.7, 0.2), V(Math.cos(0.3), 0.05, Math.sin(0.3)), grey(1.0), rng, 0.4);
+  orientedBox(drift, V(2.1, sandY(2.1, 5.2) + 0.2, 5.25), V(0.07, 0.55, 0.07), V(0.5, 1, 0.2), grey(0.9), rng);
+  for (let i = 0; i < 22; i++) {
+    const x = (rng.next() - 0.5) * 12, z = 3.4 + rng.next() * 2.8;
+    if (clear(x, z)) continue;
+    const c = rng.pick(['#f6e6d8', '#f0b8a0', '#e8d0b0', '#ffd8c8', '#d8c8b8']);
+    orientedBox(props, V(x, sandY(x, z) + 0.03, z), V(0.12 + rng.next() * 0.06, 0.06, 0.1), V((rng.next() - 0.5) * 0.3, 1, 0), new THREE.Color(c), rng, rng.next() * 3);
+  }
+  {
+    const tex = cachedCanvas('tide-pool', () => paintAlpha(40, 26, ['#6a5240', '#86684c', '#245e7a', '#327c98', '#58a8b8', '#a8dcd8', '#f0fbf6'], (x, y) => {
+      const u = (x + 0.5 - 20) / 19, v = (y + 0.5 - 13) / 12;
+      const r = Math.hypot(u, v) + Math.sin(x * 0.7 + y * 0.4) * 0.05;
+      if (r > 1) return -1;
+      if (r > 0.82) return r > 0.92 ? 0 : 1;          // wet sand rim
+      const d = 1 - r / 0.82;
+      if ((x * 5 + y * 3) % 23 === 0 && d > 0.3) return 6; // glint
+      return 2 + Math.min(3, Math.floor(d * 3 + (v < -0.2 ? 1 : 0)));
+    }));
+    const geos = ([[3.4, 4.5, 1.5, 0.9, 0.3], [5.7, 3.7, 1.1, 0.7, -0.4], [-1.6, 5.6, 1.2, 0.75, 0.1]] as const).map(([x, z, w, d, r]) => {
+      const g = new THREE.PlaneGeometry(w, d);
+      g.rotateX(-Math.PI / 2); g.rotateY(r); g.translate(x, sandY(x, z) + 0.02, z);
+      return g;
+    });
+    const pools = mk(mergeGeos(geos), track(new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5 })), false, true);
+    group.add(pools);
+  }
+
   // ---- palms + dune grass (one foliage mesh), trunks (bark mesh)
   const leaves = new FoliageBatch();
   const capTop = (x: number, z: number) => { const [i, j] = hm.cell(x, z); return -0.7 + hm.get(i, j) * LEVEL; };
@@ -204,7 +236,8 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   group.add(mk(props.build(), track(surfaceMaterial(null))));
 
   if (opts.trainer) {
-    const m = decal(battleMarking('#8f7150', '#fff2d2'), 0.1, 0.012, 0.0, 7.6, 7.6, { rot: Math.atan2(2.0, 2.8), opacity: 0.8 });
+    // A trodden oval in the sand (no chalk): packed damp sand, scuffs, kicked shells and pebbles.
+    const m = decal(troddenMarking('#8a6c4c', '#f8ead0', ['#f6e6d8', '#c8b8a8', '#7a6450']), 0.1, 0.012, 0.0, TRODDEN_SIZE, TRODDEN_SIZE, { rot: Math.atan2(2.0, 2.8) });
     track(m.material as THREE.Material);
     group.add(m);
   }

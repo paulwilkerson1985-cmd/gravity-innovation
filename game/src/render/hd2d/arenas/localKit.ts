@@ -10,16 +10,19 @@ import { Rng } from '../../../engine/rng';
 import { CELL, TEXEL, type Heightmap, type VoxelBatch } from '../arena';
 import { PixelTile, cachedTexture, ditherIndex, fbm, pixelTexture, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
+import { bandIndex } from './outdoorKit';
 
 // ------------------------------------------------------------------ grade & small helpers
 
 export function makeGrade(o: Partial<Grade> & Pick<Grade, 'gain' | 'shadowTint' | 'highTint'>): Grade {
   return {
     lift: new THREE.Vector3(0, 0, 0), gamma: new THREE.Vector3(1, 1, 1),
-    saturation: 1, contrast: 1.05, splitAmount: 0.12,
-    vignette: 0.38, vignetteSoft: 0.55,
+    // Dusty and open (HD-2D daylight): a light vignette, moderate saturation, bright highs.
+    // Depth comes from local darkening (foreground occluders, wall-foot AO), not the frame edge.
+    saturation: 0.8, contrast: 1.05, splitAmount: 0.12,
+    vignette: 0.18, vignetteSoft: 0.7,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
-    dither: 2.0, exposure: 1.05,
+    dither: 2.0, exposure: 1.15,
     ...o,
   };
 }
@@ -30,20 +33,33 @@ export const grey = (k: number) => new THREE.Color(k, k, k);
 /** Linear colour from an sRGB hex, scaled (HDR > 1 blooms). */
 export function hdr(hex: string, k = 1): THREE.Color { return new THREE.Color(hex).multiplyScalar(k); }
 
+export { bandIndex, clumpNoise } from './outdoorKit';
+
+/** `PixelTile.field` with band posterisation (local, so this kit owns its look). */
+export function bandField(t: PixelTile, f: Float32Array, lo: number, hi: number, contrast = 1, edge = 0.14) {
+  const n = t.ramp.length;
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
+    const v = Math.max(0, Math.min(1, 0.5 + (f[y * t.w + x]! - 0.5) * contrast));
+    t.idx[y * t.w + x] = bandIndex(lo + v * (hi - lo), x, y, n, edge);
+  }
+}
+
 // ------------------------------------------------------------------ extra ramps & painters
 
 /** Ramps for the volcanic and coast terrains (dark → light, hue-shifted). */
 export const RAMPS2 = {
-  basalt: ['#211b28', '#2f2636', '#403446', '#534557', '#67566a', '#7d6a7c', '#968190'],
-  ash: ['#2c2226', '#3b2e30', '#4d3c3a', '#604c46', '#745e53', '#8a7262', '#a08773'],
-  slag: ['#1c1416', '#2b1d1c', '#3d2722', '#523428', '#6a4330'],
+  // Volcanic: warm grey-brown basalt (violet only in the darkest shades, i.e. far shadow), a
+  // light dusty ash floor so the cave reads lava-lit rather than black, warm slag.
+  basalt: ['#2c2229', '#403138', '#56444a', '#6e595a', '#887170', '#a38a82', '#bea596'],
+  ash: ['#3a2e2b', '#4e403a', '#63534a', '#7a6758', '#927d6a', '#a9927c', '#bfa78f'],
+  slag: ['#2a1e1e', '#3d2b26', '#54392e', '#6c4a36', '#865c40'],
   lava: ['#3a0806', '#7a1408', '#c22a0a', '#f05a12', '#ff9a2a', '#ffd25a', '#fff4b0'],
   sand: ['#9a7c5a', '#b5966c', '#c9ab7e', '#d9bd8e', '#e6cc9f', '#f0dbb2', '#f8eacb'],
   wetSand: ['#5e4a38', '#73594a', '#876a54', '#9a7c60', '#ac8f6c', '#bea27c'],
   sandstone: ['#5a4234', '#73563f', '#8c6c4f', '#a48360', '#b99a73', '#cdb189', '#dfc8a2'],
   wetRock: ['#232a33', '#323c46', '#435058', '#56646a', '#6b7a7c', '#849390', '#a0ada5'],
   slate: ['#2a2d35', '#383c46', '#4a4e58', '#5c616a', '#71767e', '#888d92', '#a2a6a8'],
-  turf: ['#26382a', '#324a32', '#41593a', '#536b43', '#677d4e', '#7d905c', '#97a66e'],
+  turf: ['#2e4230', '#3b5539', '#4a6541', '#5d784a', '#728b55', '#889e63', '#a2b276'],
   drift: ['#3a3430', '#544b44', '#6e645a', '#887d70', '#a39886', '#bdb39e', '#d6cdb8'],
   whitewash: ['#4c5258', '#6a7178', '#8a9096', '#a8adb0', '#c4c7c6', '#dddcd6', '#f1efe6'],
   brick: ['#3c1412', '#5a1d17', '#7a281d', '#9a3524', '#b6472d', '#cc5c3a'],
@@ -75,7 +91,7 @@ export function paintBasalt(seed: number, size = 32): PixelTile {
 export function paintAsh(seed: number, size = 64): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, RAMPS2.ash);
-  t.field(fbm(size, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]), 1.6, 5.0, 1.5);
+  bandField(t, fbm(size, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]), 1.6, 5.0, 1.7);
   // Ropey ridges: short arcs, lit then dark.
   for (let i = 0; i < 10; i++) {
     const cx = rng.int(size), cy = rng.int(size), r = 3 + rng.int(4);
@@ -93,7 +109,7 @@ export function paintAsh(seed: number, size = 64): PixelTile {
 export function paintSand(seed: number, size = 64, ramp: Ramp = RAMPS2.sand): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
-  t.field(fbm(size, rng, [[4, 0.55], [8, 0.3], [32, 0.15]]), 2.2, 4.6, 1.3);
+  bandField(t, fbm(size, rng, [[4, 0.55], [8, 0.3], [32, 0.15]]), 2.2, 4.6, 1.3);
   // Wind ripples: wavy dark/lit pairs.
   for (let r = 0; r < 7; r++) {
     const y0 = rng.int(size), x0 = rng.int(size), len = 8 + rng.int(12);
@@ -129,7 +145,7 @@ export function paintRockOn(seed: number, ramp: Ramp, size = 32, strata = false)
 export function paintTurf(seed: number, size = 64): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, RAMPS2.turf);
-  t.field(fbm(size, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]), 1.8, 4.6, 1.4);
+  bandField(t, fbm(size, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]), 1.8, 4.6, 1.4);
   for (let i = 0; i < size * 3; i++) { const x = rng.int(size), y = rng.int(size); t.nudge(x, y, 1); t.nudge(x, y + 1, -1); }
   return t;
 }
@@ -338,8 +354,11 @@ void main() {
   float crest = smoothstep(0.82, 0.97, wv) * (1.0 - smoothstep(1.0, 3.2, d)) * (0.6 + 0.4 * n);
   float caps = 0.0;
   if (uCaps > 0.0) {
-    float c1 = sin(p.x * 0.9 + uTime * 0.8 + sin(p.y * 0.5) * 2.0) * sin(p.y * 1.3 - uTime * 0.5 + p.x * 0.2);
-    caps = smoothstep(1.0 - uCaps * 0.35, 1.0, c1 * 0.5 + 0.5 + (n - 0.5) * 0.25) * smoothstep(1.5, 4.0, d);
+    // Whitecaps cluster ALONG the travelling wave crests (not a field of specks), in clumps that
+    // drift with the swell, and fade out with distance toward the horizon.
+    float n3 = hash(floor((cell + vec2(floor(uTime * 0.6), 0.0)) / 3.0));
+    float along = smoothstep(0.9 - uCaps * 0.06, 0.99, wv) * step(0.62 - uCaps * 0.25, n3);
+    caps = along * smoothstep(1.5, 4.0, d) * (1.0 - far * 0.9);
   }
   float foam = max(edgeFoam, max(crest, caps));
   if (foam > b * 0.9 + 0.08) c = mix(uFoam, c, 0.12 * step(0.5, b));
@@ -468,6 +487,16 @@ void main() {
   bool on = abs(y - floor(wingY + 0.5)) < 0.5 || (x == 3.0 && y == 4.0);
   if (!on) discard;
   gl_FragColor = vec4(x == 3.0 ? uColB : uColA, 1.0);
+#elif defined(STEAM) || defined(MIST)
+  // Steam: a round soft puff, radial alpha quantised to 3 flat steps (pixel-art translucency),
+  // lit warm from below (the lava) and cool on top; it grows and fades as it rises.
+  float r = length(c) * 2.0;
+  float lump = 0.1 * sin(atan(c.y, c.x) * 3.0 + vSeed * 20.0);
+  float a = (1.0 - smoothstep(0.25, 1.0 + lump, r)) * fade * uOpacity;
+  float lv = floor(a * 3.0 + 0.35) / 3.0 * 0.62;
+  if (lv <= 0.0) discard;
+  float below = clamp(0.45 + c.y * 1.5, 0.0, 1.0) * (1.0 - 0.6 * vK);
+  gl_FragColor = vec4(mix(uColA, uColB, below), lv);
 #elif defined(RAIN)
   if (abs(c.x + c.y * 0.35) > 0.5 / vSize + 0.02) discard;
   if (fade * uOpacity < bayer4(gl_FragCoord.xy)) discard;
@@ -758,6 +787,61 @@ export function battleMarking(light: string, dark: string): THREE.CanvasTexture 
   });
 }
 
+/**
+ * Battle ground worn into the floor (trainer duels on natural ground), as an alpha decal: a
+ * trodden oval of compacted earth (dark clumps in a band where feet circle, a few polished light
+ * clumps in the middle), scuffs dug in at both kin spots and pebbles kicked out to the rim. Lay it
+ * along the kin line: `decal(tex, 0.1, y, 0, TRODDEN_SIZE, TRODDEN_SIZE, { rot: Math.atan2(2.0, 2.8) })`.
+ * Colours are sRGB hexes: compacted shade, polished shade, and pebble [lit, mid, dark].
+ */
+export const TRODDEN_SIZE = 120 * TEXEL;
+export function troddenMarking(dark: string, light: string, pebble: readonly [string, string, string], strength = 1): THREE.CanvasTexture {
+  return cachedCanvas(`trodden-${dark}-${light}-${pebble.join('')}-${strength}`, () => {
+    const n = 120, m = n / 2;
+    const c = document.createElement('canvas');
+    c.width = c.height = n;
+    const ctx = c.getContext('2d')!;
+    const img = ctx.createImageData(n, n);
+    const put = (x: number, y: number, hex: string, a: number) => {
+      x = Math.round(x); y = Math.round(y);
+      if (x < 0 || y < 0 || x >= n || y >= n) return;
+      const i = (y * n + x) * 4;
+      img.data[i] = parseInt(hex.slice(1, 3), 16); img.data[i + 1] = parseInt(hex.slice(3, 5), 16); img.data[i + 2] = parseInt(hex.slice(5, 7), 16);
+      img.data[i + 3] = Math.max(img.data[i + 3]!, Math.round(Math.min(255, a * strength)));
+    };
+    const h2 = (x: number, y: number, s: number) => { const v = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
+    const RU = 3.2 / TEXEL, RV = 2.0 / TEXEL;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const u = x + 0.5 - m, v = y + 0.5 - m;
+      const r = Math.hypot(u / RU, v / RV) + Math.sin(u * 0.13 + v * 0.08) * 0.05 + (h2(x >> 2, y >> 2, 3) - 0.5) * 0.08;
+      if (r > 1.12) continue;
+      const clump = h2(x >> 1, y >> 1, 5);
+      const band = Math.max(0, 1 - Math.abs(r - 0.84) / 0.24);
+      if (band > 0 && clump < band * 0.7) put(x, y, dark, 60 + band * 40);
+      else if (r < 0.6 && clump < 0.4) put(x, y, light, 46);
+    }
+    const rng = new Rng(611);
+    const spot = 1.72 / TEXEL;
+    for (const sx of [-spot, spot]) for (let k = 0; k < 9; k++) {
+      const a = rng.next() * Math.PI * 2, d = (0.35 + rng.next() * 0.55) / TEXEL;
+      let px = m + sx + Math.cos(a) * d, py = m + Math.sin(a) * d * 0.8;
+      const dir = (rng.next() - 0.5) * 1.2;
+      for (let i = 0, len = 4 + rng.int(6); i < len; i++) {
+        put(px, py, dark, 150); put(px, py - 1, light, 90);
+        px += Math.cos(dir); py += Math.sin(dir) * 0.6 + (rng.next() - 0.5) * 0.6;
+      }
+    }
+    for (let k = 0; k < 34; k++) {
+      const a = rng.next() * Math.PI * 2, r = 0.95 + rng.next() * 0.3;
+      const px = m + Math.cos(a) * RU * r, py = m + Math.sin(a) * RV * r;
+      put(px, py, pebble[0], 255); if (rng.chance(0.6)) put(px + 1, py, pebble[1], 255);
+      put(px, py + 1, pebble[2], 255); if (rng.chance(0.3)) put(px + 1, py + 1, pebble[2], 255);
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  });
+}
+
 /** Dispose helper: geometry of every mesh under a group + extra disposables. */
 export function disposeGroup(group: THREE.Group, extra: { dispose(): void }[]) {
   for (const d of extra) d.dispose();
@@ -770,7 +854,7 @@ export function disposeGroup(group: THREE.Group, extra: { dispose(): void }[]) {
 export function paintFlags(seed: number, size = 64, ramp: Ramp = RAMPS2.whitewash): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(size, size, ramp);
-  t.field(fbm(size, rng, [[4, 0.5], [16, 0.5]]), 2.4, 4.4, 1.2);
+  bandField(t, fbm(size, rng, [[4, 0.5], [16, 0.5]]), 2.4, 4.4, 1.2);
   // Rows of slabs with staggered joints.
   const rowH = 16;
   for (let r = 0; r < size / rowH; r++) {
@@ -815,32 +899,35 @@ export function palmTree(trunk: VoxelBatch, leaves: FoliageBatch, base: THREE.Ve
   let prev = base.clone();
   for (let s = 1; s <= segs; s++) {
     const k = s / segs;
-    const p = base.clone().add(new THREE.Vector3(lean.x * k * k, height * k, lean.y * k * k));
+    const bend = k * k * (1.2 - 0.2 * k);
+    const p = base.clone().add(new THREE.Vector3(lean.x * bend, height * k, lean.y * bend));
     const mid = prev.clone().add(p).multiplyScalar(0.5);
     const len = p.distanceTo(prev);
-    const w = 0.28 - k * 0.1;
+    const w = 0.32 - k * 0.15;
     orientedBox(trunk, mid, new THREE.Vector3(w, len + 0.05, w), p.clone().sub(prev), tint.clone().multiplyScalar(0.92 + (s % 2) * 0.1), rng);
     prev = p;
   }
   const top = prev;
   // Coconuts.
   for (let i = 0; i < 3; i++) { const a = rng.next() * Math.PI * 2; trunk.rotBox([top.x + Math.cos(a) * 0.14, top.y - 0.12, top.z + Math.sin(a) * 0.14], [0.16, 0.16, 0.16], a, new THREE.Color('#6a4a2a'), rng); }
-  const n = 9;
+  // 6–8 long fronds that arch up out of the crown and droop (three cards each: rise, arch, droop).
+  const n = 6 + rng.int(3);
   const frond = atlasRect(ATLAS.frond);
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rng.next() * 0.3;
+    const a = (i / n) * Math.PI * 2 + rng.next() * 0.35;
     const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
-    const len = 1.5 + rng.next() * 0.5;
+    const len = 1.6 + rng.next() * 0.5;
     const side = new THREE.Vector3(-out.z, 0, out.x);
-    // Inner half rises a little, outer half droops: two cards, root → mid → tip.
-    const mid = top.clone().addScaledVector(out, len * 0.5).add(new THREE.Vector3(0, 0.18, 0));
-    const tip = top.clone().addScaledVector(out, len).add(new THREE.Vector3(0, -0.55 - rng.next() * 0.3, 0));
-    const tintL = new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2);
+    const p1 = top.clone().addScaledVector(out, len * 0.3).add(new THREE.Vector3(0, 0.22, 0));
+    const p2 = top.clone().addScaledVector(out, len * 0.65).add(new THREE.Vector3(0, 0.05, 0));
+    const tip = top.clone().addScaledVector(out, len).add(new THREE.Vector3(0, -0.75 - rng.next() * 0.35, 0));
+    const tintL = new THREE.Color(1, 1, 1).multiplyScalar(0.88 + rng.next() * 0.22);
     // The atlas frond is drawn root (u0) → tip (u1) along x; its width runs along v.
     const [u0, v0, u1, v1] = frond;
-    const um = (u0 + u1) / 2;
-    frondCard(leaves, top, mid, side, 0.62, [u0, v0, um, v1], tintL, 0.3, 0.7);
-    frondCard(leaves, mid, tip, side, 0.62, [um, v0, u1, v1], tintL, 0.7, 1.0);
+    const ua = u0 + (u1 - u0) * 0.3, ub = u0 + (u1 - u0) * 0.65;
+    frondCard(leaves, top, p1, side, 0.6, [u0, v0, ua, v1], tintL, 0.25, 0.5);
+    frondCard(leaves, p1, p2, side, 0.66, [ua, v0, ub, v1], tintL, 0.5, 0.8);
+    frondCard(leaves, p2, tip, side, 0.56, [ub, v0, u1, v1], tintL.clone().multiplyScalar(0.92), 0.8, 1.0);
   }
 }
 
@@ -1007,12 +1094,12 @@ export function levelAt(hm: Heightmap, x: number, z: number): number {
   return v >= 90 ? 0 : v;
 }
 
-/** Multiply a geometry's vertex colours by `f(x, y, z)` → [r, g, b] (baked light falloff). */
-export function shadeVertices(g: THREE.BufferGeometry, f: (x: number, y: number, z: number, ny: number) => [number, number, number]): THREE.BufferGeometry {
+/** Multiply a geometry's vertex colours by `f(x, y, z, ny, nx, nz)` → [r, g, b] (baked light falloff, rims). */
+export function shadeVertices(g: THREE.BufferGeometry, f: (x: number, y: number, z: number, ny: number, nx: number, nz: number) => [number, number, number]): THREE.BufferGeometry {
   const pos = g.attributes.position!, col = g.attributes.color, nor = g.attributes.normal;
   if (!col) return g;
   for (let k = 0; k < pos.count; k++) {
-    const [r, gg, b] = f(pos.getX(k), pos.getY(k), pos.getZ(k), nor ? nor.getY(k) : 0);
+    const [r, gg, b] = f(pos.getX(k), pos.getY(k), pos.getZ(k), nor ? nor.getY(k) : 0, nor ? nor.getX(k) : 0, nor ? nor.getZ(k) : 0);
     col.setXYZ(k, col.getX(k) * r, col.getY(k) * gg, col.getZ(k) * b);
   }
   col.needsUpdate = true;

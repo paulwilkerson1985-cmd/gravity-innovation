@@ -11,9 +11,10 @@ import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
+import { backdrop, paintSky, terraces } from './outdoorKit';
 import {
-  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, battleMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, levelAt, makeGrade, orientedBox, paintFlags, paintRockOn, paintTurf, particles, pixelWater, sweepBeam, terraceCaps, windsweptTree,
+  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
+  grey, hdr, levelAt, makeGrade, orientedBox, paintFlags, paintRockOn, paintTurf, particles, pixelWater, sweepBeam, windsweptTree,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -29,10 +30,10 @@ export const ARENA: ArenaDef = {
 
 export function cliffGrade(): Grade {
   return makeGrade({
-    gain: new THREE.Vector3(0.98, 1.0, 1.04), lift: new THREE.Vector3(0.006, 0.01, 0.02),
-    saturation: 0.86, contrast: 1.1,
-    shadowTint: new THREE.Color('#1e2a3e'), highTint: new THREE.Color('#e8eef4'), splitAmount: 0.14,
-    vignette: 0.46, exposure: 1.04,
+    gain: new THREE.Vector3(0.98, 1.0, 1.04), lift: new THREE.Vector3(0.006, 0.01, 0.02), gamma: new THREE.Vector3(1.1, 1.1, 1.1),
+    saturation: 0.78, contrast: 1.06,
+    shadowTint: new THREE.Color('#1e2a3e'), highTint: new THREE.Color('#f4eee4'), splitAmount: 0.12,
+    vignette: 0.16, exposure: 1.46,
   });
 }
 
@@ -88,14 +89,23 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   // ---- slate: every land column runs from the sea to its tier top (one mesh), sea stacks too
   // Rounded boulders for the top two levels below the turf (what the camera reads), plain
   // bevelled blocks for the long drop below (seen small and through mist: a third of the tris).
+  // The tiers above the clifftop are organic terraces (outdoorKit): solid slate faces under a
+  // rounded turf lip, boulders poking out — no turf slabs floating on posts at the front. The
+  // boulder band only rings the cliff edge (two levels under the turf), the long drop below it.
   const UPPER = 2;
   const upper = new Heightmap(hm.nx, hm.nz, X0, Z0), lower = new Heightmap(hm.nx, hm.nz, X0, Z0);
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) if (land[hm.idx(i, j)]) {
-    upper.set(i, j, hm.get(i, j) + UPPER);
+    upper.set(i, j, UPPER);
     lower.set(i, j, (DROP - UPPER * LEVEL) / LEVEL);
   }
   const rock = new VoxelBatch(32);
   boulderColumns(upper, rock, rng, { baseY: -0.12 - UPPER * LEVEL, tints: ['#ffffff', '#eef2f6', '#f2f0ea'] });
+  const tierSides = new VoxelBatch(32);
+  const tierTops = new VoxelBatch(64);
+  terraces(hm, tierSides, tierTops, rng, { baseY: -0.12, lip: 0.14, jitter: 0.16, rocks: { batch: rock, chance: 0.3, tint: '#f2f4f6' }, skip: (i, j) => !land[hm.idx(i, j)] });
+  // Foreground tiers a touch darker (depth from local shade).
+  const near = (x: number, y: number, z: number) => 1 - 0.08 * THREE.MathUtils.smoothstep(z, 4.0, 7.5);
+  tierSides.shade(near); tierTops.shade(near);
   rockColumns(lower, rock, rng, RAMPS2.slate, { baseY: SEA_Y });
   const stacks = new Heightmap(hm.nx, hm.nz, X0, Z0);
   for (const [sx, sz, r, top] of [[-2.6, -9.6, 1.0, -7.5], [1.6, -11.6, 1.3, -6.2], [4.4, -8.8, 0.7, -9.6]] as const) {
@@ -104,14 +114,14 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   boulderColumns(stacks, rock, rng, { baseY: SEA_Y - 0.6 });
   group.add(mk(rock.build(), track(surfaceMaterial(texSlate, undefined, true))));
 
-  // ---- turf: tier caps + the clifftop floor (clipped at the edge)
-  const caps = new VoxelBatch(64);
-  terraceCaps(hm, caps, rng, { baseY: -0.12, thick: 0.14, skip: (x, z, lv) => lv <= 0 || !isLand(x, z) });
+  // ---- turf: the clifftop floor (clipped at the edge) + the tier tops (same material)
+  const turfMat = track(surfaceMaterial(texTurf));
   {
     const g = floorGrid(hm, texTurf, 64, { res: 2, aoK: 0.8, tintAt: (x, z) => { const k = 0.9 + 0.1 * Math.sin(x * 0.7) * Math.cos(z * 0.9); return [k, k, k * 0.95]; } });
-    group.add(mk(clip(g, isLand), track(surfaceMaterial(texTurf)), false, true));
+    group.add(mk(clip(g, isLand), turfMat, false, true));
   }
-  group.add(mk(caps.build(), track(surfaceMaterial(texTurf, undefined, true))));
+  group.add(mk(tierTops.build(), turfMat));
+  group.add(mk(tierSides.build(), track(surfaceMaterial(cachedTexture('slate-face', () => paintRockOn(67, RAMPS2.slate, 32, true)), undefined, true))));
 
   // ---- the paving: worn flagstones across the battle ground (some missing, some tilted)
   const flags = new VoxelBatch(64);
@@ -122,7 +132,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     if (r > 1.05 || !isLand(x, z - 0.6) || (r > 0.75 && rng.chance(0.45)) || rng.chance(0.06)) continue;
     const w = 0.84 - rng.next() * 0.06, d = 0.74 - rng.next() * 0.06;
     const tilt = r > 0.7 ? (rng.next() - 0.5) * 0.12 : 0;
-    orientedBox(flags, V(x, 0.0, z), V(w, 0.1, d), V(tilt, 1, tilt * 0.5), grey(0.88 + rng.next() * 0.22), rng, (rng.next() - 0.5) * 0.06);
+    orientedBox(flags, V(x, 0.0, z), V(w, 0.1, d), V(tilt, 1, tilt * 0.5), grey(0.8 + rng.next() * 0.2), rng, (rng.next() - 0.5) * 0.06);
   }
   group.add(mk(flags.build(), track(surfaceMaterial(texFlags, undefined, true)), false, true));
 
@@ -197,9 +207,25 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   group.add(mk(glow.build(), track(new THREE.MeshBasicMaterial({ vertexColors: true })), false, false));
 
   if (opts.trainer) {
-    const m = decal(battleMarking('#f4efe0', '#3a4048'), 0.1, 0.07, 0.0, 7.4, 7.4, { rot: Math.atan2(2.0, 2.8), opacity: 0.6 });
+    // Worn ground (no chalk): mud ground into the paving where feet circle, scuffs, loose grit.
+    const m = decal(troddenMarking('#3a3a30', '#c8ccc4', ['#a2a6a8', '#71767e', '#383c46'], 0.8), 0.1, 0.07, 0.0, TRODDEN_SIZE, TRODDEN_SIZE, { rot: Math.atan2(2.0, 2.8) });
     track(m.material as THREE.Material);
     group.add(m);
+  }
+
+  // ---- overcast sky with a bright haze band on the horizon (banded, no checkerboard)
+  {
+    const sky = ['#5e6a78', '#68768a', '#74818f', '#808c98', '#8c97a1', '#98a2aa', '#a6aeb4', '#b4bbbe'];
+    const back = backdrop((t) => {
+      paintSky(t, sky, 0, t.h);
+      // Low, long cloud banks: lighter streaks above the haze.
+      for (let k = 0; k < 18; k++) {
+        const y = Math.round(t.h * (0.25 + (k % 9) * 0.06)), x0 = (k * 53) % t.w, len = 40 + ((k * 37) % 60);
+        for (let x = x0; x < x0 + len; x++) t.set(x % t.w, y, sky[Math.min(sky.length - 1, Math.floor((y / t.h) * sky.length) + 1)]!);
+      }
+    }, 320, 64, [240, 48], [0, SEA_Y + 22, -86]);
+    track(back.mesh.material as THREE.Material);
+    group.add(back.mesh);
   }
 
   // ---- the sea below
@@ -214,8 +240,9 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
   updates.push(water.update);
 
   // ---- light: flat storm key, grey sky, slate bounce, the lighthouse lamp + its sweep
-  const key = new THREE.SpotLight(new THREE.Color('#dfe6f0'), 2.3, 0, 0.6, 0.6, 0);
-  key.position.set(8, 22, -8);
+  // Overcast, but with direction: a soft key from high back-left (elev ≈ 0.9 rad).
+  const key = new THREE.SpotLight(new THREE.Color('#e8ecf2'), 1.9, 0, 0.6, 0.6, 0);
+  key.position.set(-7.4, 18.8, -12.6);
   key.target.position.set(0, 0, 0.5);
   key.castShadow = true;
   key.shadow.mapSize.set(q === 'high' ? 2048 : 1024, q === 'high' ? 2048 : 1024);

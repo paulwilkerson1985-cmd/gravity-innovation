@@ -12,8 +12,8 @@ import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 import {
-  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, battleMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, levelAt, makeGrade, orientedBox, paintDrift, paintSand, paintTurf, particles, pixelWater, terraceCaps,
+  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
+  grey, hdr, levelAt, makeGrade, orientedBox, paintDrift, paintSand, particles, pixelWater,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -30,9 +30,9 @@ export const ARENA: ArenaDef = {
 export function shallowsGrade(): Grade {
   return makeGrade({
     gain: new THREE.Vector3(1.0, 1.0, 1.0), lift: new THREE.Vector3(0.0, 0.008, 0.018),
-    saturation: 0.98, contrast: 1.08,
-    shadowTint: new THREE.Color('#1f3a52'), highTint: new THREE.Color('#fff2d0'), splitAmount: 0.14,
-    vignette: 0.36, exposure: 1.02,
+    saturation: 0.8, contrast: 1.06,
+    shadowTint: new THREE.Color('#1f3a52'), highTint: new THREE.Color('#fff2d0'), splitAmount: 0.12,
+    vignette: 0.18, exposure: 1.14,
   });
 }
 
@@ -52,7 +52,6 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
 
   const texSand = cachedTexture('wet-sand', () => paintSand(43, 64, RAMPS2.wetSand));
   const texRock = cachedTexture('wet-boulder', () => paintBoulder(29, 32, RAMPS2.wetRock));
-  const texWeed = cachedTexture('weed', () => paintTurf(47, 64));
   const texDrift = cachedTexture('drift', () => paintDrift(25, 32));
 
   // ---- the sandbar: an ellipse along the kin diagonal, with a ragged rim
@@ -86,14 +85,12 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     }
     hm.set(i, j, lv);
   }
+  // Bare wet rock islands (rounded boulder stacks, lighter, salt-bleached tops) — no grass caps.
   const rock = new VoxelBatch(32);
-  boulderColumns(hm, rock, rng, { baseY: -0.9, tints: ['#ffffff', '#eef4f4', '#f4f0e8'] });
+  boulderColumns(hm, rock, rng, { baseY: -0.9, tints: ['#ffffff', '#eef4f4', '#f4f0e8'], shade: [0.7, 1.15] });
+  // A few loose boulders at the foot of each stack, half in the water.
+  for (const [sx, sz, r] of stacks.slice(0, 8)) rubblePile(rock, [sx, WATER_Y - 0.15, sz + r * 0.6], rng, { radius: r * 0.7, heap: 0.35, big: Math.min(0.6, r * 0.4) });
   group.add(mk(rock.build(), track(surfaceMaterial(texRock, undefined, true))));
-  const caps = new VoxelBatch(64);
-  terraceCaps(hm, caps, rng, { baseY: -0.9, thick: 0.1, skip: () => rng.chance(0.45) });
-  const weedMat = track(surfaceMaterial(texWeed, undefined, true));
-  weedMat.color.set('#a8b890');
-  group.add(mk(caps.build(), weedMat));
 
   // ---- sand (dry crown → wet rim)
   {
@@ -174,8 +171,8 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   }
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const lv = hm.get(i, j);
-    if (lv <= 0 || !rng.chance(0.35)) continue;
-    leaves.tuft(V(hm.cx(i) + (rng.next() - 0.5) * 0.5, -0.9 + lv * LEVEL, hm.cz(j) + (rng.next() - 0.5) * 0.5), 0.4, 0.35 + rng.next() * 0.25, grass, grey(0.7 + rng.next() * 0.3), rng, 2);
+    if (lv <= 0 || !rng.chance(0.08)) continue;
+    leaves.tuft(V(hm.cx(i) + (rng.next() - 0.5) * 0.5, -0.9 + lv * LEVEL, hm.cz(j) + (rng.next() - 0.5) * 0.5), 0.3, 0.25 + rng.next() * 0.2, grass, grey(0.65 + rng.next() * 0.25), rng, 2);
   }
   const fol = foliageMaterial(foliageAtlas(), { strength: 0.1, speed: 1.6 });
   track(fol.material); track(fol.depth);
@@ -188,7 +185,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   group.add(mk(props.build(), track(surfaceMaterial(null))));
 
   if (opts.trainer) {
-    const m = decal(battleMarking('#5e4a38', '#e8d8b8'), 0.1, 0.012, 0.0, 7.2, 7.2, { rot: Math.atan2(2.0, 2.8), opacity: 0.75 });
+    const m = decal(troddenMarking('#5e4a38', '#e8d8b8', ['#e8e0d0', '#a89a88', '#5e4a38']), 0.1, 0.012, 0.0, TRODDEN_SIZE, TRODDEN_SIZE, { rot: Math.atan2(2.0, 2.8) });
     track(m.material as THREE.Material);
     group.add(m);
   }
