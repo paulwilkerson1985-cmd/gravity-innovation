@@ -405,8 +405,8 @@ export interface ArenaRig {
   /** Where a leaving trainer walks to (up the stairs). */
   trainerExit: THREE.Vector3;
   spriteLight: SpriteLight;
-  /** The shadow-casting key light (window spot). */
-  key: THREE.SpotLight;
+  /** The shadow-casting key light (window spot, or a directional sun from kit/lights.ts). */
+  key: THREE.SpotLight | THREE.DirectionalLight;
   update(t: number): void;
   setPixelSize(px: number): void;
   dispose(): void;

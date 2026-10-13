@@ -29,6 +29,15 @@ export const RAMPS = {
   rail: ['#4d120e', '#7a1d15', '#a8291c', '#cc3b26', '#e65c38', '#f78a55'],
   rug: ['#173a2a', '#1f5238', '#2b6c47', '#3f8a58', '#62a86a', '#a6cf86'],
   ember: ['#4a0f08', '#8a1f0c', '#d2400f', '#ff7a1e', '#ffb444', '#fff0a0'],
+  // ---- outdoor kit ramps (kit/*): grounds, foliage, water, sky
+  sand: ['#6e5236', '#8f6f48', '#ad8c5c', '#c6a670', '#d9be88', '#e8d4a2', '#f4e6c0'],
+  grass: ['#1e3a1c', '#2a5224', '#386a2c', '#4b8434', '#649e3e', '#84b74c', '#a9cc62'],
+  snow: ['#4e5a78', '#6c7a98', '#8d9bb6', '#afbcd0', '#cdd7e4', '#e4ebf3', '#f7fafc'],
+  ash: ['#1c1718', '#2b2426', '#3c3335', '#4f4446', '#645759', '#7b6c6c', '#968683'],
+  leaf: ['#13261a', '#1d3b22', '#2a5428', '#3d6e2c', '#578a34', '#77a540', '#a0c25a'],
+  bark: ['#24160f', '#3a2418', '#523424', '#6a4630', '#82583c', '#9c6e4c'],
+  water: ['#0f2a4a', '#164068', '#1f5888', '#2c74a4', '#4492bc', '#6db2d2', '#a8d6e6'],
+  foam: ['#8fb8cc', '#bcd8e4', '#e2f0f4', '#ffffff'],
 } as const satisfies Record<string, Ramp>;
 
 const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
@@ -258,6 +267,67 @@ export function paintRug(size = 32): PixelTile {
     }
     t.idx[y * size + x] = v;
   }
+  return t;
+}
+
+// ------------------------------------------------------------------ outdoor ground painters
+
+/** Beach/desert sand: soft dunes (low-frequency light/dark bands), shell/pebble flecks, ripples. */
+export function paintSand(seed: number, size = 64, ramp: Ramp = RAMPS.sand): PixelTile {
+  const rng = new Rng(seed);
+  const t = new PixelTile(size, size, ramp);
+  t.field(fbm(size, rng, [[2, 0.5], [4, 0.3], [16, 0.2]]), 2.4, 4.8, 1.3);
+  // Wind ripples: diagonal 1-texel darker streaks with a lit lip above.
+  for (let y = 0; y < size; y += 5 + rng.int(3)) {
+    const off = rng.int(size);
+    for (let x = 0; x < size; x++) {
+      const yy = y + Math.round(Math.sin((x + off) * 0.25) * 1.5);
+      if (rng.chance(0.75)) { t.nudge(x, yy, -1); t.nudge(x, yy - 1, 1); }
+    }
+  }
+  for (let i = 0; i < size / 3; i++) t.set(rng.int(size), rng.int(size), rng.chance(0.5) ? ramp.length - 1 : 1);
+  return t;
+}
+
+/** Short turf: blade flecks (lit tip over a dark base), clover clumps, a little soil showing. */
+export function paintGrass(seed: number, size = 64, ramp: Ramp = RAMPS.grass): PixelTile {
+  const rng = new Rng(seed);
+  const t = new PixelTile(size, size, ramp);
+  t.field(fbm(size, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]), 2.0, 4.4, 1.4);
+  for (let i = 0; i < size * size * 0.12; i++) {
+    const x = rng.int(size), y = rng.int(size);
+    const v = t.get(x, y);
+    t.set(x, y, v + 1); t.set(x, y + 1, v - 1); // blade: lit tip, shadowed root
+  }
+  for (let i = 0; i < size / 8; i++) {
+    const cx = rng.int(size), cy = rng.int(size);
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1]] as const) t.set(cx + dx, cy + dy, 5);
+    t.set(cx, cy, 6);
+  }
+  return t;
+}
+
+/** Packed snow: very soft blue-shadowed drifts, sparkle texels, a few footprint dents. */
+export function paintSnow(seed: number, size = 64, ramp: Ramp = RAMPS.snow): PixelTile {
+  const rng = new Rng(seed);
+  const t = new PixelTile(size, size, ramp);
+  t.field(fbm(size, rng, [[2, 0.6], [4, 0.3], [16, 0.1]]), 3.2, 5.6, 1.2);
+  for (let i = 0; i < size / 2; i++) t.set(rng.int(size), rng.int(size), ramp.length - 1);
+  for (let i = 0; i < 3; i++) {
+    const x = rng.int(size), y = rng.int(size);
+    for (let k = 0; k < 4; k++) { t.nudge(x + k * 3, y + (k % 2) * 4, -1); t.nudge(x + k * 3 + 1, y + (k % 2) * 4, -1); }
+  }
+  return t;
+}
+
+/** Volcanic ash/cinder ground: dark grit, glassy lit flecks, faint cracks. */
+export function paintAsh(seed: number, size = 64, ramp: Ramp = RAMPS.ash): PixelTile {
+  const rng = new Rng(seed);
+  const t = new PixelTile(size, size, ramp);
+  t.field(fbm(size, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]), 1.6, 4.2, 1.5);
+  for (let i = 0; i < size * 1.5; i++) t.nudge(rng.int(size), rng.int(size), rng.chance(0.5) ? -1 : 1);
+  for (let i = 0; i < size / 4; i++) t.set(rng.int(size), rng.int(size), ramp.length - 1);
+  for (let i = 0; i < 4; i++) crack(t, rng, 6 + rng.int(8), 0);
   return t;
 }
 

@@ -118,3 +118,44 @@ describe('hd2d kit: props', () => {
     }
   });
 });
+
+describe('hd2d kit: outdoor', () => {
+  it('light presets build a shadow key, a sprite light and a grade', async () => {
+    const { lightRig, presetGrade, LIGHT_PRESETS } = await import('../src/render/hd2d/kit/lights');
+    for (const p of Object.keys(LIGHT_PRESETS) as (keyof typeof LIGHT_PRESETS)[]) {
+      const g = new THREE.Group();
+      const rig = lightRig(g, p, { quality: 'low' });
+      expect(rig.key.castShadow).toBe(true);
+      expect(rig.spriteLight.keyDir.y).toBeGreaterThan(0);
+      expect(presetGrade(p).exposure).toBeGreaterThan(0.5);
+      rig.dispose();
+    }
+  });
+
+  it('particle presets make one Points each', async () => {
+    const { particleSystem, PARTICLE_PRESETS } = await import('../src/render/hd2d/kit/particles');
+    for (const p of Object.keys(PARTICLE_PRESETS) as (keyof typeof PARTICLE_PRESETS)[]) {
+      const s = particleSystem(p, { min: [-1, 0, -1], max: [1, 1, 1], count: 20 }, new Rng(1));
+      expect(s.points.geometry.getAttribute('position').count).toBe(20);
+      s.update(3); s.setPixelSize(2); s.dispose();
+    }
+  });
+
+  it('shore distance is 0 on land and grows over water', async () => {
+    const { shoreDistance } = await import('../src/render/hd2d/kit/water');
+    const tex = shoreDistance({ x0: 0, z0: 0, w: 4, d: 1 }, (x) => x < 1, 4, 2);
+    const d = tex.image.data as Uint8Array;
+    expect(d[0]).toBe(0);
+    expect(d[15]!).toBeGreaterThan(d[5]!);
+    expect(d[5]!).toBeGreaterThan(0);
+  });
+
+  it('foliage batches quads and keeps out of the kin spots', async () => {
+    const { FoliageBatch } = await import('../src/render/hd2d/kit/foliage');
+    const f = new FoliageBatch();
+    f.add('bush', [0, 0, 0]);
+    f.scatter(['tuft', 'flowerRed'], [-2, -2, 2, 2], 100, new Rng(2), { keepOut: [{ x: 0, z: 0, r: 1 }] });
+    expect(f.count).toBeGreaterThan(30);
+    expect(f.count).toBeLessThan(101);
+  });
+});

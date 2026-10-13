@@ -205,6 +205,40 @@ fence(pb, [[-4, 0, 3], [0, 0, 3.5], [4, 0, 3]], rng, { h: 0.7, step: 0.9 });
 lanternPost(pb, [x, 0, z], rng);
 ```
 The cave lodge now uses them (`?post=oldprops` = the old dressing for A/B).
+### Outdoor kit — grounds, foliage, water, light presets, particles
+Worked example: `kit/showcase.ts` (`buildKitShowcase({ light, particles })`) builds a whole
+outdoor clearing from these pieces only — copy it as a starting point. Sheet:
+`docs/screenshots/hd2d/kit-outdoor.jpg`. (Several arena files still carry local equivalents in
+`arenas/localKit.ts`, `outdoorKit.ts`, `nightKit.ts`; new arenas should prefer `kit/`.)
+
+- **Ground painters** (`textures.ts`): `paintSand`, `paintGrass`, `paintSnow`, `paintAsh`
+  (+ `paintBoulder`), with ramps `RAMPS.sand / grass / snow / ash / leaf / bark / water / foam`.
+  Tile them at `TEXEL × 64` like the cave floor.
+- **Foliage** (`kit/foliage.ts`): one procedural RGBA atlas (`canopy`, `canopy2`, `bush`,
+  `tallgrass`, `tuft`, `flowerRed|Yellow|Blue|White`), camera-facing cylindrical billboards in
+  ONE Lambert mesh (lit, receives shadows, casts sprite-shaped shadows via a matching depth
+  material), wind sway quantised to whole texels.
+  ```ts
+  const fol = new FoliageBatch();
+  tree(trunks, fol, [x, 0, z], rng, { height: 2.8 });          // bark boxes + 3 canopy sprites
+  fol.scatter(['tallgrass', 'tuft'], [-6, -3, 6, 4], 60, rng, { keepOut });
+  fol.add('bush', [x, 0, z], { scale: 1.2, sway: 0.25 });
+  const f = fol.build({ strength: 1, speed: 1.4 }); group.add(f.mesh); /* update(t) */ f.update(t);
+  ```
+- **Water** (`kit/water.ts`): `pixelWater({ rect, y, land, range, ripples, light, flow })` —
+  one plane; per-texel noise quantised to `RAMPS.water` with Bayer dither, depth tint and
+  rolling foam from a shore-distance field (`shoreDistance(rect, land)`), 1-texel ripple rings,
+  glints. `light` ≈ 1 day, 0.85 sunset, 0.32 moonlight (it is unlit, so match the rig).
+- **Light presets** (`kit/lights.ts`): `lightRig(group, 'daylight' | 'sunset' | 'overcast' |
+  'moonlight' | 'cave', { quality, target, extent, cookie? })` → `{ key, hemi, fill, spriteLight,
+  background, fog }`; directional sun with a fitted shadow box, or a far cookie SpotLight when
+  `cookie` is given (dapple/window/clouds). `presetGrade(preset)` is the matching `Grade`;
+  `LIGHT_PRESETS[p].background/fog` for the `ArenaDef`. `ArenaRig.key` now also accepts a
+  `DirectionalLight`.
+- **Particles** (`kit/particles.ts`): `particleSystem('pollen' | 'embers' | 'steam' | 'spray' |
+  'snow' | 'dust' | 'rain' | 'fireflies', { min, max, count, override? }, rng)` → one `Points`,
+  all motion in the vertex shader, square pixel points; wire `update(t)` and
+  `setPixelSize(px)` into your `ArenaRig`.
 <!-- kit:end -->
 
 ## Conventions for new arenas
