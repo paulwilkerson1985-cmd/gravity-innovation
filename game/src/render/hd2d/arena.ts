@@ -529,7 +529,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const frontStair = { x0: -5.4, x1: -3.6, z0: 3.65, z1: 5.4 };
   const cliffZ = -6.3; // back wall face (windows) for x < lodge.x0
   // Signed distance to the floor: a rounded rectangle open toward the camera (+z).
-  const R = 1.6;
+  const R = 2.6;
   const sdf = (x: number, z: number) => {
     const qx = Math.abs(x) - (floorHalfX - R), qz = floorBack + R - z;
     return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - R;
@@ -573,7 +573,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // ---- rock (one mesh)
   const rock = new VoxelBatch(voxel ? 32 : 64);
   if (voxel) rockColumns(hm, rock, rng, RAMPS.rock);
-  else boulderColumns(hm, rock, rng, { lite: q === 'low' });
+  else boulderColumns(hm, rock, rng, { lite: q === 'low', shade: [0.74, 1.0], topK: 1.75 });
   // A dark pebble skirt along the wall foot (≤ 0.4 units out onto the floor).
   {
     const per = q === 'high' ? 3 : 1;
@@ -636,7 +636,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const metal = new VoxelBatch(16);
   const wood = new VoxelBatch(32);
   const props = new VoxelBatch(32);
-  const red = rampColor(RAMPS.rail, 3);
+  const red = rampColor(RAMPS.rail, 3).multiplyScalar(1.7);
   /**
    * A solid stone stair running along `axis` from `from` (floor, y = 0) to `to` (y = yTo), between
    * `c0`..`c1` across: bright treads, dark risers, and a solid sloped red stringer slab either
@@ -656,19 +656,19 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     const len = Math.hypot(to - from, yTo);
     const mid = (from + to) / 2;
     const cap = red.clone().multiplyScalar(1.6);
-    for (const c of [c0 - 0.1, c1 + 0.1]) {
+    for (const c of [c0 - 0.13, c1 + 0.13]) {
       if (axis === 'z') {
         const ang = Math.atan2(yTo, from - to);
         const up = new THREE.Vector3(0, Math.cos(ang), Math.sin(ang));
         if (up.y < 0) up.negate();
-        metal.rotBox([c, yTo / 2 + 0.16, mid], [0.2, 0.62, len + 0.2], 0, red, rng, ang);
-        metal.rotBox([c, yTo / 2 + 0.16 + up.y * 0.32, mid + up.z * 0.32], [0.22, 0.06, len + 0.2], 0, cap, rng, ang);
+        metal.rotBox([c, yTo / 2 + 0.16, mid], [0.26, 0.62, len + 0.2], 0, red, rng, ang);
+        metal.rotBox([c, yTo / 2 + 0.16 + up.y * 0.32, mid + up.z * 0.32], [0.28, 0.06, len + 0.2], 0, cap, rng, ang);
       } else {
         const ang = Math.atan2(yTo, to - from);
         const up = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
         if (up.y < 0) up.negate();
-        metal.rotBox([mid, yTo / 2 + 0.16, c], [len + 0.2, 0.62, 0.2], 0, red, rng, 0, ang);
-        metal.rotBox([mid + up.x * 0.32, yTo / 2 + 0.16 + up.y * 0.32, c], [len + 0.2, 0.06, 0.22], 0, cap, rng, 0, ang);
+        metal.rotBox([mid, yTo / 2 + 0.16, c], [len + 0.2, 0.62, 0.26], 0, red, rng, 0, ang);
+        metal.rotBox([mid + up.x * 0.32, yTo / 2 + 0.16 + up.y * 0.32, c], [len + 0.2, 0.06, 0.28], 0, cap, rng, 0, ang);
       }
     }
   };
@@ -680,17 +680,17 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
   const rubble = (x: number, z: number, r: number) => {
     if (!clear(x, z, r * 1.1)) return;
-    // Several stones of a size, not one boulder: the biggest is ~0.7 of min(0.95, r).
-    rubblePile(stone, [x, topAt(x, z), z], rng, { radius: r * 1.2, count: 12 + rng.int(4), big: Math.min(0.95, r) * 0.72, heap: 0.75 });
+    // A mound of many chunky stones (not one boulder): the biggest ≈ 0.55 × min(0.95, r).
+    rubblePile(stone, [x, topAt(x, z), z], rng, { radius: r * 1.25, count: 18 + rng.int(7), big: Math.min(0.95, r) * 0.55, heap: 0.75 });
   };
-  rubble(-4.4, -2.0, 0.95); // left back floor, in the window light
-  rubble(-4.5, 2.0, 0.8); // left front floor
-  rubble(4.5, 2.1, 1.0); // right front floor
-  rubble(5.0, -2.25, 0.7); // foot of the lodge stair
-  rubble(-3.0, 3.3, 0.5); // foot of the front stair
-  rubble(-6.6, -1.0, 0.65); // on the first left ledge
-  rubble(6.6, 0.6, 0.55); // on the first right ledge
-  rubble(6.3, 5.0, 0.7); // on the right front corner ledge
+  rubble(-4.3, -2.0, 1.1); // left back floor, in the window light
+  rubble(-4.45, 2.05, 0.95); // left front floor
+  rubble(4.4, 2.1, 1.2); // right front floor
+  rubble(5.0, -2.2, 0.8); // foot of the lodge stair
+  rubble(-3.0, 3.35, 0.55); // foot of the front stair
+  rubble(-6.6, -1.0, 0.8); // on the first left ledge
+  rubble(6.6, 0.6, 0.7); // on the first right ledge
+  rubble(6.3, 5.0, 0.85); // on the right front corner ledge
   // Scattered pebbles on the floor.
   pebbles(stone, [-floorHalfX, floorBack, floorHalfX, floorFront + 2], 46, rng, keepOut.map((c) => ({ ...c, r: c.r * 0.8 })));
 
@@ -733,7 +733,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
       }
     }
   } else {
-    for (let u = 0; u < 3; u++) bookcase(pb, [lodge.x0 + 1.3 + u * 1.55, ly, lodge.z0 + 1.6], rng, { w: 1.4, h: 1.95, d: 0.5 });
+    for (let u = 0; u < 3; u++) bookcase(pb, [lodge.x0 + 1.3 + u * 1.55, ly, lodge.z0 + 2.0], rng, { w: 1.4, h: 1.95, d: 0.5 });
   }
   // Crates (stacked), a table on the rug, banners, a brazier, a crate and barrel by the wall.
   crate(pb, [lodge.x0 + 1.0, ly, lodge.z1 - 0.9], 0.55, rng, { ry: 0.2 });
@@ -784,7 +784,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   group.add(mesh(stone.build(), stoneMat));
   // Wood: a warm lift (the lodge glows in the window light).
   const woodMat = track(surfaceMaterial(texPlank, undefined, true));
-  woodMat.color.setRGB(1.14, 1.04, 0.9);
+  woodMat.color.setRGB(1.22, 1.12, 0.96);
   woodMat.emissive.set('#2a1608');
   woodMat.emissiveMap = texPlank;
   group.add(mesh(wood.build(), woodMat));
@@ -953,7 +953,7 @@ function lightPools(track: <T extends { dispose(): void }>(x: T) => T, spots: TH
       }
       v += (acc / 5) * gains[k]!;
     });
-    put(x, y, v * 0.38);
+    put(x, y, v * 0.46);
   }
   // Lodge patch: a 2×2-pane window of light slanting across the planks.
   for (let y = 0; y < H2; y++) for (let x = 0; x < W; x++) {

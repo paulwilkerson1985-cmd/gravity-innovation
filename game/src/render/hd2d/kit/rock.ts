@@ -201,12 +201,14 @@ export interface BoulderWallOptions {
   split?: number;
   /** Share of wide stones (1.3–1.8 cells) along a row (default 0.45). */
   merge?: number;
-  /** Share of stones that span two levels when the level above tops the same run (default 0.35). */
+  /** Share of stones that span two levels when the level above tops the same run (default 0.55). */
   tall?: number;
   /** How far boulders bulge past their cell (default -0.04: a 1–2 texel crevice to the next). */
   bulge?: number;
   /** Tint brightness range, low tiers → top tier (default [0.84, 1.14]). */
   shade?: [number, number];
+  /** Brightness of the top planes of the top stones (default 1.62): lit shelves over darker fronts. */
+  topK?: number;
   /** Per-boulder hue drift: a list of tint colours picked at random (default white). */
   tints?: THREE.ColorRepresentation[];
   /**
@@ -228,11 +230,12 @@ export interface BoulderWallOptions {
  */
 export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: BoulderWallOptions = {}) {
   const baseY = o.baseY ?? 0;
-  const pSplit = o.split ?? 0.2, pMerge = o.merge ?? 0.45, pTall = o.tall ?? 0.35;
+  const pSplit = o.split ?? 0.2, pMerge = o.merge ?? 0.45, pTall = o.tall ?? 0.55;
   const bulge = o.bulge ?? -0.04;
   const core = o.core ?? 0.1;
   const lite = o.lite ?? false;
   const [sLo, sHi] = o.shade ?? [0.84, 1.14];
+  const topKTop = o.topK ?? 1.62;
   const tints = (o.tints ?? ['#ffffff']).map((t) => new THREE.Color(t));
   const coreTint = new THREE.Color(core, core * 0.62, core * 0.42); // warm near-black (#1a100b-ish)
   const covered = (i: number, j: number, top: number) => hm.get(i, j) >= top - 0.01;
@@ -340,7 +343,7 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
         flatBottom: lite || !exposed,
         topOnly: lite || !exposed,
         aoBottom: l === 0 ? 0.3 : 0.45,
-        topK: top ? 1.62 : 1.18,
+        topK: top ? topKTop : 1.18,
         jitter: 0.025 + rng.next() * 0.025,
         topJitter: top ? 0.035 : 0.02,
       });
