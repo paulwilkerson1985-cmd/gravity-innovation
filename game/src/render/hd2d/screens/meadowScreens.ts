@@ -24,6 +24,8 @@ function titleGrade() {
   g.splitAmount = 0.26;
   g.highTint = new THREE.Color('#ffc874');
   g.saturation = 0.86;
+  // The near bank (under the buttons) sinks into shade: the lit clearing is the stage.
+  g.bottomShade = -0.32; g.bottomShadeHeight = 0.4;
   g.tiltTop = 1.4; g.focusTop = 0.74;
   return g;
 }

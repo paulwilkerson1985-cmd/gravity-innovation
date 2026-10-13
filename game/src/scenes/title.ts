@@ -246,7 +246,7 @@ export class TitleScene extends BaseScene {
     const pts = boxPoints(this.views.map((v) => v.inner), 0.15);
     const target = new THREE.Vector3(0.2, 0.7, -0.2);
     // A touch from the left (the trio turns a 3/4 face to us); more would show the set's edge.
-    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(-0.08, narrow ? 0.62 : 0.52, 1), target, fill: narrow ? 0.86 : 0.74, alignY: 'bottom' });
+    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(-0.08, narrow ? 0.62 : 0.52, 1), target, fill: narrow ? 0.86 : 0.84, alignY: 'bottom' });
     this.hd2d!.framed(target);
   }
 

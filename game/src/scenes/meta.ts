@@ -130,7 +130,7 @@ export abstract class MetaScene extends BaseScene {
     this.scene.add(obj);
     // HD-2D: vertex-coloured item models become baked pixel sprites too.
     const mesh = obj as THREE.Mesh;
-    if (this.hd2d && mesh.isMesh && mesh.geometry.getAttribute('color')) this.propSprite = this.hd2d.addMesh(mesh, { texelHeight: 26 });
+    if (this.hd2d && mesh.isMesh && mesh.geometry.getAttribute('color')) this.propSprite = this.hd2d.addMesh(mesh, { texelHeight: 34 });
     this.spinT0 = null;
     this.frame(1.25);
     if (!reduceMotion()) {
