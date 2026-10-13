@@ -1008,11 +1008,11 @@ export function levelAt(hm: Heightmap, x: number, z: number): number {
 }
 
 /** Multiply a geometry's vertex colours by `f(x, y, z)` → [r, g, b] (baked light falloff). */
-export function shadeVertices(g: THREE.BufferGeometry, f: (x: number, y: number, z: number) => [number, number, number]): THREE.BufferGeometry {
-  const pos = g.attributes.position!, col = g.attributes.color;
+export function shadeVertices(g: THREE.BufferGeometry, f: (x: number, y: number, z: number, ny: number) => [number, number, number]): THREE.BufferGeometry {
+  const pos = g.attributes.position!, col = g.attributes.color, nor = g.attributes.normal;
   if (!col) return g;
   for (let k = 0; k < pos.count; k++) {
-    const [r, gg, b] = f(pos.getX(k), pos.getY(k), pos.getZ(k));
+    const [r, gg, b] = f(pos.getX(k), pos.getY(k), pos.getZ(k), nor ? nor.getY(k) : 0);
     col.setXYZ(k, col.getX(k) * r, col.getY(k) * gg, col.getZ(k) * b);
   }
   col.needsUpdate = true;
