@@ -172,6 +172,37 @@ camera (`frame(w, h)` per layout: elevation, yaw, FOV, how tall a person reads, 
 land), `attachKin/detachKin/fitKin`, `trainer(id)`, `trainerPath(entering)`, `throwOrigin()`.
 `BattleScene` keeps all flow, UI and FX and only branches on `this.hd2d` in ~10 places.
 
+### Night sets: champion hall + Arena stadium (`arenas/summit.ts`, `arenas/stadium.ts`, `arenas/nightKit.ts`)
+- **Crown Plateau hall** (`ARENA` id `summit`, claims route `plateau` → Champion Vale): ashlar
+  walls built course by course with arched openings cut exactly per course + marble voussoirs,
+  flagstone floor with baked AO, a 96-texel inlaid crest under the battle, marble columns,
+  swaying violet banners, a three-step dais with the throne (Vale's post is on the dais top),
+  six iron braziers (flipbook fire billboards, flickering warm pools; 2 point lights on high).
+  Light motif: one **far, narrow cold spot** (≈ parallel moonlight) shining through the back
+  windows — the window/mullion patches on the floor are real wall shadows, no cookie needed —
+  plus moonbeam ribbons and motes; snow falls behind the windows in front of a painted pixel
+  night sky (moon ×1.25 so it blooms). `summitGrade()`: violet shadows, warm firelit highs.
+  Portrait gets a lower camera via the registry `camera` field so Vale clears the foe panel.
+  `buildSummitArena({ hall: true })` + `summitPodiums()` stage the **Hall of Fame**
+  (`scenes/hd2dHall.ts`, branch in `victory.ts`; framing never tighter than the crest).
+- **Arena stadium** (`ARENA` id `stadium`, `mode: 'pvp'`; built directly by `scenes/hd2dArena.ts`):
+  turf painted texel-for-texel with markings and trainer boxes, a stepped bowl from a 0.75 grid
+  (aisles, seat strips in section colours), **one billboard draw call for ~500–900 pixel
+  spectators** (12×16 sprite sheet, 6 looks × idle/clap | arms-up/hop frames; magenta texels
+  take each fan's shirt tint; `cheer()` raises the excited fraction), seat-coloured rings at the
+  kin spots, bunting boards and flags, four floodlight masts (back-left = shadowed key spot),
+  crossing shafts, dusk sky. `Hd2dArenaStage` puts **both players** on the field (near seat
+  from the back, far seat behind its kin); `setNear(seat)` = the hotseat perspective swap
+  (players change posts, rings recolour). `stadiumPodium()` + winner figure for `arenaVictory`.
+- Helpers in `nightKit.ts`: `Pieces` (free-rotated textured boxes merged per material),
+  painters (slabs, blocks, marble, crest, banners, flames, sky), `billboards()` (flipbook
+  quads, optional idle/excited split), `snowfall()`, `swayMaterial()`, `lightPools()`.
+- Calls (whole frame, SwiftShader): champion battle 54–56 high / 47–49 low; Hall of Fame
+  with 6 kin 75; stadium battle 52–55 high / 47 low; victory podium 56.
+- Gaps: the hall is roofless (stars above the wall tops in the HoF framing); floodlight mast
+  heads sit above the battle frame (only their shafts show); crowd sprites are spherical
+  billboards (they tilt slightly with the camera); the stadium has no front stand.
+
 <!-- kit:begin -->
 ## Shared kit (`src/render/hd2d/kit/`) — for arena builders
 
