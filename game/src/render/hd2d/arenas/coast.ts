@@ -2,8 +2,11 @@
 // Merrow): a sandy cove between two terraced sandstone headlands, pixel waves rolling in from
 // the back with foam and a running swash, a weathered pier on the right, a beached rowboat,
 // driftwood, rock outcrops with spray, palms and dune grass, gulls wheeling over the water.
-// Light motif: a high late-morning sun through drifting cloud (a dappled cookie on the sun
-// spot), sun glints on the sea, warm sand bounce.
+// Light motif: GOLDEN HOUR — one low warm sun from the back-left (behind the sea stacks), long
+// shadows from the palms and rocks running toward the camera, drifting cloud shadows over the
+// sand (a world-space gobo) with a lit pool on the battle floor, a glitter path on the sea
+// that dissolves into a warm horizon haze, cool blue sky fill in the shade, deeper vignette.
+// The sea stacks are weathered, tapering clumps of rock-kit boulders (localKit rockStack).
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, Heightmap, LEVEL, VoxelBatch, surfaceMaterial, type ArenaRig } from '../arena';
@@ -12,11 +15,12 @@ import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
-import { mergeGeos } from './outdoorKit';
+import { apron, gobo, lightPools, mergeGeos, sunRig } from './outdoorKit';
+import { BATTLE_POOL } from './meadow';
 import { paintPlanks } from '../textures';
 import {
-  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  cachedCanvas, grey, hdr, levelAt, makeGrade, orientedBox, paintAlpha, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater,
+  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
+  cachedCanvas, grey, hdr, levelAt, makeGrade, orientedBox, paintAlpha, paintBark, paintDrift, paintSand, palmTree, particles, pixelWater, rockStack,
 } from './localKit';
 
 export const ARENA: ArenaDef = {
@@ -25,23 +29,25 @@ export const ARENA: ArenaDef = {
   match: [{ route: 'coast' }, { route: 'coast', hotspot: 'dune-grass' }, { trainer: 'angler-merrow' }],
   build: (o) => buildCoastArena({ seed: o.seed, quality: o.quality, trainer: o.trainerBattle }),
   grade: coastGrade,
-  background: '#cfe6ee',
-  fog: '#cfe6ee',
-  fogRange: [8, 46],
+  background: '#d8b48c',
+  fog: '#e2b88e',
+  fogRange: [10, 52],
 };
 
 export function coastGrade(): Grade {
   return makeGrade({
-    gain: new THREE.Vector3(1.02, 1.0, 0.97), lift: new THREE.Vector3(0.0, 0.006, 0.014),
-    saturation: 0.82, contrast: 1.05,
-    shadowTint: new THREE.Color('#2a3a5a'), highTint: new THREE.Color('#fff0c8'), splitAmount: 0.12,
-    vignette: 0.16, exposure: 1.08,
+    gain: new THREE.Vector3(1.07, 1.0, 0.88), lift: new THREE.Vector3(0.0, 0.008, 0.024),
+    saturation: 0.8, contrast: 1.1,
+    shadowTint: new THREE.Color('#203a66'), highTint: new THREE.Color('#ffcc90'), splitAmount: 0.2,
+    vignette: 0.36, vignetteSoft: 0.58, exposure: 1.18, shadowDesat: 0.15,
   });
 }
 
 export interface CoastOptions { seed?: number; quality?: 'high' | 'low'; trainer?: boolean }
 
 const WATER_Y = -0.16;
+/** Sea stacks: x, z, foot radius, height above the water. */
+const STACKS = [[-4.8, -9.0, 1.25, 2.7], [5.6, -10.6, 1.45, 3.5], [-0.6, -12.6, 0.95, 1.8], [9.4, -13.5, 0.8, 1.4]] as const;
 
 export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   const rng = new Rng(opts.seed ?? 31);
@@ -85,8 +91,8 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
       if (z < -11) continue;
       lv = Math.max(lv, h);
     }
-    // Sea stacks.
-    for (const [sx, sz, r, h] of [[-4.8, -9.0, 1.3, 3], [5.6, -10.6, 1.5, 4], [-0.6, -12.4, 1.0, 2]] as const) if (Math.hypot(x - sx, z - sz) < r) lv = Math.max(lv, h);
+    // The last row stays open sand: the headlands end in a boulder face, the apron runs on.
+    if (j === hm.nz - 1) lv = 0;
     if (lv > 0) {
       const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
       const n = cl - Math.floor(cl);
@@ -98,6 +104,10 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   // ---- sandstone terraces with sand mats on top (rock reaches under water)
   const rock = new VoxelBatch(32);
   boulderColumns(hm, rock, rng, { baseY: -0.7, tints: ['#ffffff', '#fff4e8', '#f4ece4'] });
+  // Sea stacks: weathered, tapering clumps rising out of the water (darker and wet at the foot).
+  for (const [sx, sz, r, h] of STACKS) {
+    rockStack(rock, V(sx, WATER_Y - 0.5, sz), r, h + 0.5, rng, { foot: '#a89888', top: '#fff8ec', taper: 0.55 });
+  }
   group.add(mk(rock.build(), track(surfaceMaterial(texStone, undefined, true))));
   // ---- sand floor (dry → wet toward the water) + caps share the sand texture
   {
@@ -106,14 +116,27 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
       tintAt: (x, z) => { const s = z - shoreZ(x); const wet = 1 - THREE.MathUtils.smoothstep(s, 0.6, 1.6); return [1 - wet * 0.32, 1 - wet * 0.3, 1 - wet * 0.24]; },
     });
     group.add(mk(g, track(surfaceMaterial(texSand)), false, true));
+    // Apron: the dune runs on far past the near frustum (portrait phones see far under the
+    // stage), same sand texture and world UVs as the floor, rolling a little and darkening.
+    const zf = hm.z0 + hm.nz * CELL;
+    const ap = apron({
+      x0: -44, x1: 44, z0: zf - 0.02, z1: zf + 36, map: texSand, tileTexels: 64,
+      y: (x, z) => sandY(x, Math.min(z, zf)) + 0.35 * THREE.MathUtils.smoothstep(z, zf, zf + 6) * (0.6 + 0.4 * Math.sin(x * 0.35 + z * 0.2)),
+      shade: (x, z) => 1 - 0.32 * THREE.MathUtils.smoothstep(z, zf, zf + 10) + 0.06 * Math.sin(x * 0.7 + z * 0.4),
+    });
+    track(ap.material as THREE.Material);
+    group.add(ap);
   }
 
   // ---- sea
   const water = pixelWater({
     rect: { x0: -50, z0: -100, w: 100, d: 108 }, y: WATER_Y, fieldRes: 256, range: 7,
-    land: (x, z) => sandY(x, z) > WATER_Y || levelAt(hm, x, z) > 0,
-    ramp: ['#14466e', '#1c6390', '#2a84aa', '#3aa2bc', '#5ec2c8', '#9adcd2'],
-    foam: '#f6fbf6', wet: '#8a7154', swash: 0.55, deep: 6, waveK: 1.5, waveSpeed: 1.6, caps: 0.25, far: -10,
+    land: (x, z) => sandY(x, z) > WATER_Y || levelAt(hm, x, z) > 0 || STACKS.some(([sx, sz, r]) => Math.hypot(x - sx, z - sz) < r * 0.95),
+    ramp: ['#123a5e', '#1a5680', '#26769a', '#3a94aa', '#64b0b4', '#a8cfc0'],
+    foam: '#fff6e8', wet: '#7a6048', swash: 0.55, deep: 6, waveK: 1.5, waveSpeed: 1.6, caps: 0.25, far: -10, chop: 0.5,
+    // Glitter path toward the low sun (back-left), warm horizon haze.
+    glitter: { x: -6.3, slope: -0.49, width: 2.2, strength: 0.9, color: '#ffd28a' },
+    haze: { color: '#e8c49a', from: -14, to: -46 },
   });
   track(water);
   group.add(water.mesh);
@@ -242,25 +265,21 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
     group.add(m);
   }
 
-  // ---- light: sun (a far spot with a drifting-cloud cookie), sky/sand hemisphere, sea fill
-  const key = new THREE.SpotLight(new THREE.Color('#fff1d6'), 3.3, 0, 0.62, 0.3, 0);
-  key.position.set(-11, 22, -6);
-  key.target.position.set(0.3, 0, 0.2);
-  key.map = cloudCookie(5);
-  track(key.map);
-  key.castShadow = true;
-  key.shadow.mapSize.set(q === 'high' ? 2048 : 1024, q === 'high' ? 2048 : 1024);
-  key.shadow.bias = -0.0005;
-  key.shadow.normalBias = 0.025;
-  key.shadow.radius = 3;
-  key.shadow.camera.near = 12;
-  key.shadow.camera.far = 40;
-  group.add(key, key.target);
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#cfe8ff'), new THREE.Color('#c8a070'), 1.25);
-  group.add(hemi);
-  const fill = new THREE.DirectionalLight(new THREE.Color('#bfe0ff'), 0.6);
-  fill.position.set(4, 5, 10);
-  group.add(fill, fill.target);
+  // ---- light: a low golden-hour sun from the back-left (≈ 19°), long shadows toward the camera,
+  // drifting cloud shadows + a lit pool on the battle floor; weak cool sky fill.
+  const sunFrom = V(-0.42, 0.33, -0.85);
+  const rig = sunRig(group, {
+    target: V(0.1, 0, 0), from: sunFrom, distance: 36, angle: 0.48, penumbra: 0.2, shadowRadius: 2,
+    color: '#ffb46e', intensity: 12.5, cookie: null,
+    sky: '#7a98c8', ground: '#b08860', hemi: 1.4,
+    fill: '#9ab8e8', fillIntensity: 0.4, quality: q,
+  });
+  const key = rig.key;
+  key.shadow.bias = -0.0006;
+  const gob = gobo(key, { kind: 'clouds', seed: 5, pool: { ...BATTLE_POOL, soft: 0.4 }, outside: 0.55, shade: 0.4, cover: 0.42, scale: 12, drift: [0.22, 0.08], y: 0.1 });
+  track(gob);
+  updates.push(gob.update);
+  group.add(lightPools([[BATTLE_POOL.x, BATTLE_POOL.z, BATTLE_POOL.ru * 2.1, BATTLE_POOL.rv * 2.1]], '#5a3a18', 1.3));
 
   // ---- spray at the outcrops, gulls over the water
   const lowK = q === 'high' ? 1 : 0.5;
@@ -279,13 +298,7 @@ export function buildCoastArena(opts: CoastOptions = {}): ArenaRig {
   }, rng);
   for (const p of [spray, gulls]) { group.add(p.points); track(p); updates.push(p.update); pixelers.push(p.setPixelSize); }
 
-  const spriteLight: SpriteLight = {
-    keyDir: key.position.clone().sub(key.target.position).normalize(),
-    keyColor: new THREE.Color('#fff0d6').multiplyScalar(0.7),
-    sky: new THREE.Color('#cfe6ff').multiplyScalar(0.55),
-    ground: new THREE.Color('#d8b080').multiplyScalar(0.5),
-    rim: new THREE.Color('#fff4dc').multiplyScalar(0.6),
-  };
+  const spriteLight: SpriteLight = { ...rig.spriteLight, rim: new THREE.Color('#ffd8a0').multiplyScalar(0.7) };
 
   return {
     group,
@@ -307,4 +320,4 @@ function mk(g: THREE.BufferGeometry, m: THREE.Material, cast = true, receive = t
   return out;
 }
 
-void CELL;
+

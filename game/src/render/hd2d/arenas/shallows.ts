@@ -1,20 +1,22 @@
 // Rough shallows (Squall Coast `shallows`, water hotspot): the battle stands on a long sandbar
 // in open water — wet sand with a dry crown, ringed by pixel surf — between weed-capped sea
-// stacks, a half-sunken wreck and a striped mooring post. Kelp ribbons float and sway, spray
-// bursts off the rocks. Light motif: a break in the overcast — a bright patch of sun on the
-// sandbar (cloud cookie) while the sea around stays cool, with sun glints on the water.
+// stacks (weathered, tapering rock-kit clumps), a half-sunken wreck and a striped mooring post.
+// Kelp ribbons float and sway, spray bursts off the rocks. Light motif: STORM LIGHT — a dark,
+// cool overcast sea with drifting cloud shadows, and one warm sun break falling on the sandbar
+// (a world-space gobo pool; the water under it lifts and glitters) with long shadows.
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
-import { Heightmap, LEVEL, VoxelBatch, surfaceMaterial, type ArenaRig } from '../arena';
-import { boulderColumns, rubblePile } from '../kit/rock';
+import { Heightmap, VoxelBatch, surfaceMaterial, type ArenaRig } from '../arena';
+import { rubblePile } from '../kit/rock';
 import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 import {
-  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, cloudCookie, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, levelAt, makeGrade, orientedBox, paintDrift, paintSand, particles, pixelWater,
+  ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
+  grey, hdr, makeGrade, orientedBox, paintDrift, paintSand, particles, pixelWater, rockStack,
 } from './localKit';
+import { gobo, lightPools, sunRig } from './outdoorKit';
 
 export const ARENA: ArenaDef = {
   id: 'shallows',
@@ -22,17 +24,17 @@ export const ARENA: ArenaDef = {
   match: [{ route: 'coast', hotspot: 'shallows' }, { kind: 'water', priority: -1 }],
   build: (o) => buildShallowsArena({ seed: o.seed, quality: o.quality, trainer: o.trainerBattle }),
   grade: shallowsGrade,
-  background: '#a9c8d4',
-  fog: '#b4cfd8',
-  fogRange: [6, 40],
+  background: '#3e5260',
+  fog: '#7a8c98',
+  fogRange: [8, 44],
 };
 
 export function shallowsGrade(): Grade {
   return makeGrade({
-    gain: new THREE.Vector3(1.0, 1.0, 1.0), lift: new THREE.Vector3(0.0, 0.008, 0.018),
-    saturation: 0.8, contrast: 1.06,
-    shadowTint: new THREE.Color('#1f3a52'), highTint: new THREE.Color('#fff2d0'), splitAmount: 0.12,
-    vignette: 0.18, exposure: 1.14,
+    gain: new THREE.Vector3(1.04, 1.0, 0.94), lift: new THREE.Vector3(0.0, 0.01, 0.024),
+    saturation: 0.8, contrast: 1.12,
+    shadowTint: new THREE.Color('#183450'), highTint: new THREE.Color('#ffd8a0'), splitAmount: 0.22,
+    vignette: 0.38, vignetteSoft: 0.58, exposure: 1.2, shadowDesat: 0.25,
   });
 }
 
@@ -68,26 +70,17 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     return Math.max(-0.75, -Math.max(0, r - 0.72) * 1.3);
   };
 
-  // ---- sea stacks (weed-capped wet rock), heightmap
+  // ---- sea stacks: weathered, tapering rock-kit clumps (wet dark feet, salt-bleached tops)
   const X0 = -13.5, Z0 = -14.4;
-  const hm = new Heightmap(30, 23, X0, Z0);
+  const hm = new Heightmap(30, 23, X0, Z0); // flat: the floor grid's extent (no rock columns)
   const stacks: [number, number, number, number][] = [
-    // x, z, radius, height (levels)
-    [-5.6, -5.4, 1.9, 5], [-3.4, -7.4, 1.2, 3], [-8.6, -2.0, 1.6, 4], [-8.8, 2.4, 1.3, 2],
-    [7.0, -4.0, 1.7, 4], [8.6, 0.2, 1.5, 3], [5.6, 4.4, 1.0, 1], [1.8, -9.5, 1.4, 6], [-10.5, -7.5, 2.2, 7], [10.8, -8.6, 2.4, 7],
+    // x, z, foot radius, height above the water
+    [-5.6, -5.4, 1.5, 3.2], [-3.4, -7.4, 1.0, 2.0], [-8.6, -2.0, 1.3, 2.6], [-8.8, 2.4, 1.0, 1.3],
+    [7.0, -4.0, 1.4, 2.7], [8.6, 0.2, 1.2, 1.9], [5.6, 4.4, 0.8, 0.8], [1.8, -9.5, 1.2, 3.8], [-10.5, -7.5, 1.9, 4.6], [10.8, -8.6, 2.0, 4.8],
   ];
-  for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
-    const x = hm.cx(i), z = hm.cz(j);
-    let lv = 0;
-    for (const [sx, sz, r, h] of stacks) {
-      const d = Math.hypot(x - sx, (z - sz) * 1.1) + Math.sin(x * 2.3 + z * 1.7) * 0.25;
-      if (d < r) lv = Math.max(lv, Math.max(1, Math.round(h * (1 - (d / r) * 0.55))));
-    }
-    hm.set(i, j, lv);
-  }
-  // Bare wet rock islands (rounded boulder stacks, lighter, salt-bleached tops) — no grass caps.
+  const onStack = (x: number, z: number) => stacks.some(([sx, sz, r]) => Math.hypot(x - sx, (z - sz) * 1.1) < r * 0.95);
   const rock = new VoxelBatch(32);
-  boulderColumns(hm, rock, rng, { baseY: -0.9, tints: ['#ffffff', '#eef4f4', '#f4f0e8'], shade: [0.85, 1.25], topK: 1.9, merge: 0.6, tall: 0.75 });
+  for (const [sx, sz, r, h] of stacks) rockStack(rock, V(sx, WATER_Y - 0.7, sz), r, h + 0.7, rng, { foot: '#8e9a9c', top: '#fffdf4', taper: 0.58 });
   // A few loose boulders at the foot of each stack, half in the water.
   for (const [sx, sz, r] of stacks.slice(0, 8)) rubblePile(rock, [sx, WATER_Y - 0.15, sz + r * 0.6], rng, { radius: r * 0.7, heap: 0.35, big: Math.min(0.6, r * 0.4) });
   group.add(mk(rock.build(), track(surfaceMaterial(texRock, undefined, true))));
@@ -101,12 +94,16 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     group.add(mk(g, track(surfaceMaterial(texSand)), false, true));
   }
 
-  // ---- the water around everything
+  // ---- the water around everything (reaching far past the near frustum: phones look down
+  // past the stage), dark and cool under the overcast, lit under the sun break
   const water = pixelWater({
-    rect: { x0: -40, z0: -80, w: 80, d: 92 }, y: WATER_Y, fieldRes: 224, range: 6,
-    land: (x, z) => sandY(x, z) > WATER_Y || levelAt(hm, x, z) > 0,
-    ramp: ['#173e5c', '#205a78', '#2c7590', '#3f8fa2', '#62acb4', '#94cac6'],
-    foam: '#f4faf6', wet: '#6e5a48', swash: 0.4, deep: 4, waveK: 1.9, waveSpeed: 1.9, caps: 0.45, far: -9,
+    rect: { x0: -44, z0: -80, w: 88, d: 124 }, y: WATER_Y, fieldRes: 288, range: 6,
+    land: (x, z) => sandY(x, z) > WATER_Y || onStack(x, z),
+    ramp: ['#102a3e', '#173c54', '#21526a', '#326a7c', '#4e8890', '#86b4b2'],
+    foam: '#eef6f2', wet: '#5e4c3c', swash: 0.4, deep: 4, waveK: 1.9, waveSpeed: 1.9, caps: 0.5, far: -9, chop: 0.6,
+    pool: { x: 0.4, z: -0.2, rx: 7.5, rz: 5.0, outside: -0.7, inside: 0.5 },
+    glitter: { x: -3.8, slope: -0.75, width: 1.6, strength: 0.7, color: '#ffe0a8' },
+    haze: { color: '#8a9aa6', from: -16, to: -44 },
   });
   track(water);
   group.add(water.mesh);
@@ -169,10 +166,8 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     const d = new THREE.Vector2((rng.next() - 0.5) * 13, (rng.chance(0.5) ? 1 : -1) * (3.0 + rng.next() * 1.4));
     kelpAt(centre.x + ax.x * d.x + ac.x * d.y, centre.y + ax.y * d.x + ac.y * d.y);
   }
-  for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
-    const lv = hm.get(i, j);
-    if (lv <= 0 || !rng.chance(0.08)) continue;
-    leaves.tuft(V(hm.cx(i) + (rng.next() - 0.5) * 0.5, -0.9 + lv * LEVEL, hm.cz(j) + (rng.next() - 0.5) * 0.5), 0.3, 0.25 + rng.next() * 0.2, grass, grey(0.65 + rng.next() * 0.25), rng, 2);
+  for (const [sx, sz, r, h] of stacks) for (let k = 0; k < 2; k++) {
+    leaves.tuft(V(sx + (rng.next() - 0.5) * r * 0.5, WATER_Y + h * 0.9, sz + (rng.next() - 0.5) * r * 0.4), 0.3, 0.25 + rng.next() * 0.2, grass, grey(0.65 + rng.next() * 0.25), rng, 2);
   }
   const fol = foliageMaterial(foliageAtlas(), { strength: 0.1, speed: 1.6 });
   track(fol.material); track(fol.depth);
@@ -190,25 +185,19 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     group.add(m);
   }
 
-  // ---- light: a break in the clouds over the bar, cool sky, sea-blue bounce
-  const key = new THREE.SpotLight(new THREE.Color('#fff2d8'), 3.2, 0, 0.5, 0.45, 0);
-  key.position.set(-9, 21, -4);
-  key.target.position.set(0.1, 0, 0.2);
-  key.map = cloudCookie(9, 0.45);
-  track(key.map);
-  key.castShadow = true;
-  key.shadow.mapSize.set(q === 'high' ? 2048 : 1024, q === 'high' ? 2048 : 1024);
-  key.shadow.bias = -0.0005;
-  key.shadow.normalBias = 0.025;
-  key.shadow.radius = 3;
-  key.shadow.camera.near = 12;
-  key.shadow.camera.far = 40;
-  group.add(key, key.target);
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#d6e8f4'), new THREE.Color('#3a6a7a'), 1.45);
-  group.add(hemi);
-  const fill = new THREE.DirectionalLight(new THREE.Color('#a8d0e8'), 0.55);
-  fill.position.set(5, 4, 10);
-  group.add(fill, fill.target);
+  // ---- light: storm light — one warm sun break (≈ 38°, back-left) on the sandbar with long
+  // shadows, drifting dark cloud shadows everywhere else, cool weak sky fill.
+  const rig = sunRig(group, {
+    target: V(0.3, 0, -0.1), from: V(-0.55, 0.62, -0.55), distance: 34, angle: 0.5, penumbra: 0.2, shadowRadius: 2,
+    color: '#ffd498', intensity: 13, cookie: null,
+    sky: '#8a9cb4', ground: '#2a4048', hemi: 1.25,
+    fill: '#9ab0c8', fillIntensity: 0.35, quality: q,
+  });
+  const key = rig.key;
+  const gob = gobo(key, { kind: 'clouds', seed: 9, pool: { x: 0.3, z: -0.1, ru: 4.6, rv: 2.9, angle: Math.atan2(-2.0, 2.8), soft: 0.35 }, outside: 0.3, shade: 0.35, cover: 0.5, scale: 10, drift: [0.3, 0.12], y: 0.1 });
+  track(gob);
+  updates.push(gob.update);
+  group.add(lightPools([[0.3, -0.1, 9.6, 6.2]], '#4a3a20', 1.2));
 
   // ---- spray off the rocks and the bar ends, a few gulls
   const lowK = q === 'high' ? 1 : 0.5;
@@ -222,13 +211,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   }, rng);
   for (const p of [spray, gulls]) { group.add(p.points); track(p); updates.push(p.update); pixelers.push(p.setPixelSize); }
 
-  const spriteLight: SpriteLight = {
-    keyDir: key.position.clone().sub(key.target.position).normalize(),
-    keyColor: new THREE.Color('#fff0d8').multiplyScalar(0.66),
-    sky: new THREE.Color('#d0e4f2').multiplyScalar(0.56),
-    ground: new THREE.Color('#5a8a96').multiplyScalar(0.5),
-    rim: new THREE.Color('#eaf6ff').multiplyScalar(0.6),
-  };
+  const spriteLight: SpriteLight = { ...rig.spriteLight, rim: new THREE.Color('#fff0d0').multiplyScalar(0.62) };
 
   return {
     group,
