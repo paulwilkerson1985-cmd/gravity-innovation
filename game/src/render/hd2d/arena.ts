@@ -558,13 +558,13 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const FLOOR: Path2 = [[-10.2, 11], [-3.0, -4.0], [2.2, -4.0], [2.2, -3.1], [8.7, -3.1], [8.7, 11]];
   const floorD = polygonSdf(FLOOR);
   const DEPTH = 0.62;
-  // Two terraces of two courses each (1.2 units), then the tall cave wall (the window wall at
-  // the back) rising past the top of the frame.
-  const TIERS: TerraceTier[] = [{ d: 0, y: 1.2 }, { d: 1.3, y: 2.4 }, { d: 2.6, y: 7.2, course: 0.8, length: 0.95 }];
+  // Two tall terraces of two courses each (1.4 units) on narrow ledges, then the tall cave wall
+  // (the window wall at the back) rising past the top of the frame.
+  const TIERS: TerraceTier[] = [{ d: 0, y: 1.4 }, { d: 1.05, y: 2.8 }, { d: 2.1, y: 7.6, course: 0.8, length: 0.95 }];
   const ly = TIERS[0]!.y; // lodge shelf top
   const lodge = { x0: 2.2, x1: 13, z0: -6.6, z1: -3.1 };
-  const stair = { x0: 2.75, x1: 3.95, foot: -1.45, n: 5 };
-  const winWallZ = -6.6; // the back terrace wall (TIERS[2] at the back edge)
+  const stair = { x0: 2.75, x1: 3.95, foot: -1.3, n: 6 };
+  const winWallZ = -6.1; // the back terrace wall (TIERS[2] at the back edge)
   const inLodge = (x: number, z: number) => x > lodge.x0 + 0.3 && z < lodge.z1 - 0.3;
   // Windows high in the back wall (right of the foe's HUD box, top left of the screen).
   // Panes sit just proud of the wall face; only stones centred inside an opening are left out.
@@ -575,6 +575,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // Ground behind a wall steps up only once well inside its stones (the grid ramp stays hidden).
   const groundY = (x: number, z: number) => {
     if (inLodge(x, z)) return z < lodge.z0 - 0.35 - DEPTH * 0.7 ? TIERS[TIERS.length - 1]!.y : ly;
+    if (frontRight(x, z - 0.3)) return 0;
     return terraceHeight(floorD(x, z), TIERS, DEPTH);
   };
   // Kin, people and the trainer's walk stay clear of props.
@@ -595,16 +596,19 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const rock = new VoxelBatch(64);
   const stone = new VoxelBatch(64); // grey: rubble, pebbles, the stairs
   const lite = q === 'low';
-  const course = { depth: DEPTH, lite, tint: ['#ffffff', '#fbf0e4', '#f2f2ec'], core: 0.42, gap: TEXEL * 2 };
+  const course = { depth: DEPTH, lite, tint: ['#ffffff', '#fbf0e4', '#f2f2ec'], core: 0.36, gap: TEXEL * 2.5, length: 0.75 };
+  // Past the phone camera's view of the stage (front right, under the move menu) the right wall
+  // stops: no magnified stones in the portrait foreground.
+  const frontRight = (x: number, z: number) => x > 7.6 && z > 6.0;
   const keepTerrace = (x: number, z: number, y: number) =>
-    !(inLodge(x, z) && y > ly + 0.05) && !(stairCut(x, z) && y < ly + 0.05) && !(x > lodge.x0 + 0.3 && z < lodge.z1 + 0.1 && y < ly + 0.05 && z < lodge.z1 - DEPTH);
+    !frontRight(x, z) && !(inLodge(x, z) && y > ly + 0.05) && !(stairCut(x, z) && y < ly + 0.05) && !(x > lodge.x0 + 0.3 && z < lodge.z1 + 0.1 && y < ly + 0.05 && z < lodge.z1 - DEPTH);
   // The tall wall is the window wall at the back: a bay is left open for each window.
   coursedTerrace(rock, floorD, TIERS, rng, {
     ...course, bounds: [-17, -9.5, 17, 13], keep: (x, z, y) => keepTerrace(x, z, y) && !(z < winWallZ + 0.3 && inWindow(x, y)),
     pebbles: { batch: stone, perUnit: q === 'high' ? 0.45 : 0.25, tint: '#d8d6d2' },
   });
   // Behind the lodge: the cave wall rises over the lodge's back wall.
-  courseWall(rock, [[lodge.x0 - 0.2, lodge.z0 - 0.35], [17, lodge.z0 - 0.35]], ly, 7.2, rng, { ...course, course: 0.8, length: 0.95, ends: false });
+  courseWall(rock, [[lodge.x0 - 0.2, lodge.z0 - 0.35], [17, lodge.z0 - 0.35]], ly, 7.6, rng, { ...course, course: 0.8, length: 0.95, ends: false });
   rock.shade(fore);
   // Upper courses catch the window light and the bounce off the lit floor (no black band); low
   // courses sit in a little warm shade.

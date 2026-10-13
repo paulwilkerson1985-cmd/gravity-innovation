@@ -46,8 +46,8 @@ export const RAMPS = {
    * cool to a desaturated tan (lit tops read pale, not orange, under the hue-preserving tone map).
    */
   boulder: ['#281a16', '#402920', '#663822', '#83502f', '#9b6a48', '#b38b6c', '#cbab8e'],
-  /** Golden-ochre cut stone (cave course stones): brown darks, ochre mids, warm sandy lights. */
-  caveStone: ['#2c1b13', '#4a2d1d', '#6c4224', '#8c5c2f', '#a8783b', '#c3964f', '#dab46c'],
+  /** Warm brown cut stone (cave course stones): deep brown darks, russet mids, muted tan lights. */
+  caveStone: ['#26160f', '#422618', '#633a20', '#80512d', '#9c6b41', '#b5885d', '#cba57e'],
   // ---- outdoor kit ramps (kit/*): grounds, foliage, water, sky
   sand: ['#66523e', '#846e53', '#ad8c5c', '#c6a670', '#d9be88', '#e8d4a2', '#f4e6c0'],
   grass: ['#223621', '#2f4b2b', '#386a2c', '#4b8434', '#649e3e', '#84b74c', '#a9cc62'],
@@ -471,7 +471,7 @@ function stoneSurface(rng: Rng, size: number, ramp: Ramp): TintedTile {
     seeds.forEach((sd, i) => {
       let dx = Math.abs(x + 0.5 - sd.x), dy = Math.abs(y + 0.5 - sd.y);
       dx = Math.min(dx, size - dx); dy = Math.min(dy, size - dy);
-      const q = (dx * dx + dy * dy * 0.42) / (sd.wt * sd.wt);
+      const q = (dx * dx + dy * dy * 0.3) / (sd.wt * sd.wt);
       if (q < best) { best = q; bi = i; }
     });
     owner[y * size + x] = bi;
