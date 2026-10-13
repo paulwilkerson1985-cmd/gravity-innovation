@@ -13,6 +13,9 @@ import { loadSavedSeat } from '../net/client';
 import { savedSeatStorage } from '../net/session';
 import { SaveError, parseSave, pickSaveFile, summarize, type SaveSummary } from '../game/save';
 import type { SavePeek } from '../game/game';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import { buildTitleSet } from '../render/hd2d/screens/meadowScreens';
+import { Hd2dScreenStage } from './hd2dScreen';
 
 export class TitleScene extends BaseScene {
   readonly name = 'title' as const;
@@ -22,6 +25,8 @@ export class TitleScene extends BaseScene {
   private peek: SavePeek | undefined;
   private peeking: Promise<SavePeek> | null = null;
   private busy = false;
+  /** HD-2D staging (`?gfx=hd2d`): the golden-hour flower field, else null. */
+  private hd2d: Hd2dScreenStage | null = null;
   private keyHandler = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.repeat && document.activeElement === document.body && !document.querySelector('.modal-root')) {
       if (this.peek && 'summary' in this.peek) void this.continue(); else void this.start();
@@ -30,18 +35,23 @@ export class TitleScene extends BaseScene {
 
   enter() {
     audio.music('title');
-    this.scene.add(makeSky('title'));
-    addLights(this.scene, 'title');
-    this.scene.fog = new THREE.Fog('#ffc8e4', 16, 40);
-    this.scene.add(backdrop('meadow', 3));
+    if (hd2dRequested()) this.hd2d = new Hd2dScreenStage(this.game, this.scene, this.camera, (q) => buildTitleSet(q));
+    else {
+      this.scene.add(makeSky('title'));
+      addLights(this.scene, 'title');
+      this.scene.fog = new THREE.Fog('#ffc8e4', 16, 40);
+      this.scene.add(backdrop('meadow', 3));
+    }
     const ids = ['pyrelord', 'maelstrode', 'verdantusk'];
     ids.forEach((id, i) => {
       const v = new CreatureView(species(id).look, i);
       v.root.position.set((i - 1) * 2.4, 0, i === 1 ? -0.6 : 0);
       v.root.rotation.y = (1 - i) * 0.45;
-      const p = platform('#8fdc6a', 1.1 * species(id).look.scale);
+      // HD-2D: the kin stand in the flower field's clearing as pixel sprites (no platform).
+      const p = this.hd2d ? new THREE.Object3D() : platform('#8fdc6a', 1.1 * species(id).look.scale);
       p.position.copy(v.root.position);
-      this.scene.add(p, v.root);
+      if (this.hd2d) this.scene.add(v.root); else this.scene.add(p, v.root);
+      this.hd2d?.addKin(v);
       this.views.push(v);
       this.stands.push(p);
     });
@@ -75,6 +85,7 @@ export class TitleScene extends BaseScene {
     ));
     focusFirst(buttons);
     window.addEventListener('keydown', this.keyHandler);
+    if (this.hd2d) this.resize(this.game.renderer.width, this.game.renderer.height);
     void this.refreshSlot();
   }
 
@@ -196,6 +207,7 @@ export class TitleScene extends BaseScene {
 
   override resize(w: number, hgt: number) {
     super.resize(w, hgt);
+    if (this.hd2d) { this.frameHd2d(w, hgt); return; }
     // Tall screens: a tighter group pose (the middle kin a step behind) so the trio reads big.
     const narrow = w / hgt < 0.8;
     this.views.forEach((v, i) => {
@@ -215,6 +227,31 @@ export class TitleScene extends BaseScene {
     fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, 0.2, 1), target: new THREE.Vector3(0, 1.1, -0.2), fill: 0.98, alignY: 'bottom' });
   }
 
+  /**
+   * HD-2D framing: the trio stands in the lit clearing of the flower field; the camera looks
+   * down at it from the front (≈ 24°), the trio fills the space between the logo and the
+   * buttons with a margin, so the diorama (beds, gazebo, shafts) frames them.
+   */
+  private frameHd2d(w: number, hgt: number) {
+    const narrow = w / hgt < 0.8;
+    this.views.forEach((v, i) => {
+      const x = (i - 1) * (narrow ? 1.25 : 2.2);
+      const z = i === 1 ? (narrow ? -1.0 : -0.7) : (narrow ? 0.45 : 0.15);
+      v.root.position.set(x + 0.2, 0, z);
+      v.root.rotation.y = (1 - i) * (narrow ? 0.35 : 0.5);
+    });
+    const q = (sel: string) => this.ui.querySelector(sel);
+    const land = layoutMode(w, hgt) === 'land';
+    const area = freeArea(w, hgt, land ? { top: [q('.tagline')], right: [q('.title-buttons')], bottom: [q('.footnote')] } : { top: [q('.tagline')], bottom: [q('.title-buttons')] }, 6);
+    const pts = boxPoints(this.views.map((v) => v.inner), 0.15);
+    const target = new THREE.Vector3(0.2, 0.7, -0.2);
+    fitPoints(this.camera, w, hgt, pts, area, { dir: new THREE.Vector3(0, narrow ? 0.62 : 0.46, 1), target, fill: narrow ? 0.86 : 0.74, alignY: 'bottom' });
+    this.hd2d!.framed(target);
+  }
+
+  /** HD-2D render stats (debug hook), null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
+
   /** Layout checks (debug hook). */
   subjects() {
     return this.views.map((v, i) => ({ name: `kin${i}`, obj: v.inner }));
@@ -222,10 +259,17 @@ export class TitleScene extends BaseScene {
 
   override update(_dt: number, t: number) {
     this.views.forEach((v) => v.update(t));
+    if (this.hd2d) {
+      this.hd2d.update(t);
+      // A slow drift across the field (whole texels at the trio's depth), ±0.55 units.
+      this.hd2d.drift(new THREE.Vector3(Math.sin(t * 0.11) * 0.55, Math.sin(t * 0.07) * 0.08, 0));
+    }
   }
 
   override exit() {
     window.removeEventListener('keydown', this.keyHandler);
+    this.hd2d?.dispose();
+    this.hd2d = null;
     super.exit();
   }
 }

@@ -9,6 +9,9 @@ import { calcStats, species } from '../engine';
 import { STARTERS } from '../data/species';
 import { chooseStarter } from '../game/state';
 import { ease, tween } from '../render/anim';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import { DAIS_TOP, buildStarterSet, daisSpot, type StarterSet } from '../render/hd2d/screens/meadowScreens';
+import { Hd2dScreenStage } from './hd2dScreen';
 
 export class StarterScene extends BaseScene {
   readonly name = 'starter' as const;
@@ -20,23 +23,39 @@ export class StarterScene extends BaseScene {
   private spot!: THREE.Group;
   private sheet!: HTMLElement;
   private narrow = innerWidth / innerHeight < 1.2;
+  /** HD-2D staging (`?gfx=hd2d`): the meadow clearing with stone daises, else null. */
+  private hd2d: Hd2dScreenStage | null = null;
+  private hd2dSet: StarterSet | null = null;
 
   enter() {
-    this.scene.add(makeSky('meadow'));
-    addLights(this.scene, 'meadow');
-    this.scene.fog = new THREE.Fog('#d9f6ff', 16, 40);
-    this.scene.add(backdrop('meadow', 5));
+    const set = hd2dRequested() ? buildStarterSet : null;
+    if (set) {
+      this.hd2d = new Hd2dScreenStage(this.game, this.scene, this.camera, (q) => (this.hd2dSet = set(q)));
+      this.pads = [...this.hd2dSet!.daises];
+      this.spot = new THREE.Group(); // unused: the set lights the chosen dais (placeSpot)
+    } else {
+      this.scene.add(makeSky('meadow'));
+      addLights(this.scene, 'meadow');
+      this.scene.fog = new THREE.Fog('#d9f6ff', 16, 40);
+      this.scene.add(backdrop('meadow', 5));
+    }
     STARTERS.forEach((id, i) => {
       const v = new CreatureView(species(id).look, i);
-      const p = battlePad(['#ff9a6a', '#7cc4ff', '#8fdc6a'][i] ?? '#f2e6c8', 0.85);
+      // HD-2D: the kin stand on lit stone daises (built by the set) as pixel sprites.
+      const p = this.hd2d ? this.pads[i]! : battlePad(['#ff9a6a', '#7cc4ff', '#8fdc6a'][i] ?? '#f2e6c8', 0.85);
       v.root.userData.pick = { index: i };
       p.userData.pick = { index: i };
-      this.scene.add(p, v.root);
+      if (this.hd2d) { this.scene.add(v.root); this.hd2d.addKin(v); } else { this.scene.add(p, v.root); this.pads.push(p); }
       this.views.push(v);
-      this.pads.push(p);
       this.placeAt(i, this.slot(i, -1), 1);
     });
-    // Spotlight for the chosen one: a glowing ring on its pad and a soft beam from above.
+    this.onPick((o) => this.select((o.userData.pick as { index: number }).index));
+    if (!this.hd2d) this.addSpot();
+    this.buildUi();
+  }
+
+  /** Spotlight for the chosen one: a glowing ring on its pad and a soft beam from above. */
+  private addSpot() {
     this.spot = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.98, 0.07, 6, 32), new THREE.MeshBasicMaterial({ color: '#ffe14d' }));
     ring.rotation.x = Math.PI / 2;
@@ -47,8 +66,9 @@ export class StarterScene extends BaseScene {
     this.spot.add(ring, beam);
     this.spot.visible = false;
     this.scene.add(this.spot);
-    this.onPick((o) => this.select((o.userData.pick as { index: number }).index));
+  }
 
+  private buildUi() {
     this.info = h('div', { class: 'starter-info', 'data-testid': 'starter-info' }, 'Tap a kin to meet it.');
     const row = h('div', { class: 'starter-cards' }, ...STARTERS.map((id, i) => {
       const s = species(id);
@@ -91,18 +111,22 @@ export class StarterScene extends BaseScene {
       this.views.forEach((_, j) => {
         const p = from[j]!.clone().lerp(to[j]!, e);
         if (j === i) p.y += Math.sin(k * Math.PI) * 0.55;
-        this.placeAt(j, p, s0[j]! + ((j === i ? 1.25 : 0.9) - s0[j]!) * e);
+        // HD-2D: the kin stay on their daises; the chosen one hops and grows a little.
+        const big = this.hd2d ? 1.12 : 1.25, small = this.hd2d ? 0.94 : 0.9;
+        this.placeAt(j, p, s0[j]! + ((j === i ? big : small) - s0[j]!) * e);
       });
     });
     this.spot.visible = true;
     this.spot.position.set(to[i]!.x, 0, to[i]!.z);
     this.spot.scale.setScalar(this.narrow ? 0.85 : 1);
+    this.hd2dSet?.placeSpot(daisSpot(i, this.narrow), this.narrow ? 0.85 : 1);
     this.resize(this.game.renderer.width, this.game.renderer.height);
     focus();
   }
 
   /** Where kin j stands when `sel` is chosen (-1: none yet, a straight line-up). */
   private slot(j: number, sel: number): THREE.Vector3 {
+    if (this.hd2d) return daisSpot(j, this.narrow).setY(DAIS_TOP);
     // Narrow free areas (portrait phones, the landscape strip left of the sheet) use a
     // triangle: the middle kin steps back so the three stand close and read big.
     if (this.narrow) {
@@ -122,6 +146,11 @@ export class StarterScene extends BaseScene {
     const v = this.views[j]!;
     this.scales[j] = scale;
     v.root.position.copy(p);
+    if (this.hd2d) {
+      v.root.scale.setScalar(scale);
+      this.pads[j]!.position.copy(daisSpot(j, this.narrow));
+      return;
+    }
     v.root.scale.setScalar(scale * (this.narrow ? 1.3 : 1));
     this.pads[j]!.position.set(p.x, Math.min(p.y, 0), p.z);
     this.pads[j]!.scale.setScalar(scale * (this.narrow ? 0.85 : 1));
@@ -151,7 +180,9 @@ export class StarterScene extends BaseScene {
       this.views.forEach((_, j) => this.placeAt(j, this.slot(j, this.selected), this.scales[j]!));
       if (this.selected >= 0) this.spot.position.copy(this.slot(this.selected, this.selected)).setY(0);
       this.spot.scale.setScalar(narrow ? 0.85 : 1);
+      if (this.selected >= 0) this.hd2dSet?.placeSpot(daisSpot(this.selected, narrow), narrow ? 0.85 : 1);
     }
+    if (this.hd2d) { this.frameHd2d(w, hgt, area, narrow, land); return; }
     // Boxes hug the pads of either arrangement (unselected pads at 0.9 scale, the chosen one forward).
     // A narrow area looks down more steeply, so the triangle's depth fills the height too.
     const pts = narrow
@@ -161,7 +192,30 @@ export class StarterScene extends BaseScene {
     fitPoints(this.camera, w, hgt, pts, area, { dir, target: new THREE.Vector3(0, 0.6, 0.0), fill: 0.98, alignY: narrow && !land ? 'bottom' : 'center' });
   }
 
+  /** HD-2D framing: the three daises (and the kin on them) fill the free area, seen from ≈ 27–38°. */
+  private frameHd2d(w: number, hgt: number, area: { x: number; y: number; w: number; h: number }, narrow: boolean, land: boolean) {
+    // A wider box than the daises: the kin read at the battle sprites' texel size (2 px per
+    // texel on a 720p desktop) inside more of the clearing.
+    const pts = narrow
+      ? corners(new THREE.Vector3(-2.3, -0.05, -2.2), new THREE.Vector3(2.3, 2.2, 1.6))
+      : corners(new THREE.Vector3(-5.2, -0.05, -1.8), new THREE.Vector3(5.2, 2.2, 1.6));
+    const dir = narrow ? new THREE.Vector3(0, land ? 0.55 : 0.78, 1) : new THREE.Vector3(0, 0.56, 1);
+    const target = new THREE.Vector3(0, 0.6, -0.1);
+    fitPoints(this.camera, w, hgt, pts, area, { dir, target, fill: narrow ? 0.94 : 0.92, alignY: narrow && !land ? 'bottom' : 'center' });
+    this.hd2d!.framed(target);
+  }
+
+  /** HD-2D render stats (debug hook), null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
+
+  override exit() {
+    this.hd2d?.dispose();
+    this.hd2d = null;
+    super.exit();
+  }
+
   override update(_dt: number, t: number) {
+    this.hd2d?.update(t);
     this.views.forEach((v, i) => {
       v.update(t);
       v.root.rotation.y = i === this.selected ? Math.sin(t * 1.5) * 0.5 : 0;
