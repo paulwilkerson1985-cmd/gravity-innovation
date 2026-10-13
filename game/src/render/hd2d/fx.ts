@@ -55,13 +55,18 @@ function put(t: PixelTile, x: number, y: number, i: number) {
 function at(t: PixelTile, x: number, y: number): number {
   return x >= 0 && y >= 0 && x < t.w && y < t.h ? t.idx[y * t.w + x]! : 0;
 }
-/** Filled texels touching transparency (4-neighbour) become `band` (unless brighter than `keep`). */
-function edgeBand(t: PixelTile, band: number, keep = 99) {
+/**
+ * Filled texels touching transparency (4-neighbour) become `band` (unless brighter than `keep`).
+ * `grounded`: the row under the tile counts as filled (bottom-anchored effects stand on the
+ * floor, they get no outline along it).
+ */
+function edgeBand(t: PixelTile, band: number, keep = 99, grounded = false) {
   const edge: number[] = [];
   for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
     const v = at(t, x, y);
     if (!v || v >= keep) continue;
-    if (!at(t, x - 1, y) || !at(t, x + 1, y) || !at(t, x, y - 1) || !at(t, x, y + 1)) edge.push(y * t.w + x);
+    const below = grounded && y === t.h - 1 ? 1 : at(t, x, y + 1);
+    if (!at(t, x - 1, y) || !at(t, x + 1, y) || !at(t, x, y - 1) || !below) edge.push(y * t.w + x);
   }
   for (const i of edge) t.idx[i] = band;
 }
@@ -181,8 +186,8 @@ function paintSplash(f: number, n: number): PixelTile {
     }
   }
   // Puddle base: grows, then thins and breaks up as the water drains away.
-  const bw = 6 + 9 * easeOut(Math.min(1, tau * 1.6)), bh = 2.4 - tau * 0.9;
-  const drain = Math.max(0, (tau - 0.55) / 0.45);
+  const bw = 5 + 6.5 * easeOut(Math.min(1, tau * 1.6)), bh = 2.2 - tau * 0.9;
+  const drain = Math.max(0, (tau - 0.4) / 0.6);
   for (let y = H - 5; y < H; y++) for (let x = 0; x < W; x++) {
     const e = ((x + 0.5 - W / 2) / bw) ** 2 + ((y + 0.5 - (H - 1)) / bh) ** 2;
     if (e <= 1 && bayer(x, y) >= drain * 0.95) put(t, x, y, at(t, x, y) ? 3 : 2);
@@ -195,9 +200,9 @@ function paintSplash(f: number, n: number): PixelTile {
     const up = H - 1 - y;
     if (!s(x - 1, y - 1) || !s(x, y - 1)) put(t, x, y, 4);
     else if (!s(x + 1, y + 1) || !s(x + 1, y)) put(t, x, y, 2);
-    if (up <= 1 || (!s(x, y + 1) && up < 6)) put(t, x, y, 1);
+    if (up === 0) put(t, x, y, 2);
   }
-  edgeBand(t, 1, 4);
+  edgeBand(t, 1, 4, true);
   // Foam clusters on the crests and along the puddle rim.
   for (const [x, y] of foam) { put(t, x, y, 5); put(t, x + 1, y, 5); put(t, x, y - 1, 5); put(t, x - 1, y, 4); put(t, x + 1, y - 1, 4); }
   if (tau > 0.25 && drain < 0.6) for (let i = -2; i <= 2; i++) { const x = W / 2 + i * bw * 0.42; put(t, x, H - 3, 5); put(t, x + 1, H - 3, 5); put(t, x, H - 4, 4); }

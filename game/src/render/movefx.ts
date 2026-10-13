@@ -812,8 +812,13 @@ async function tidePx(c: Ctx) {
   const fwd = camFwdXZ(c);
   const star = pixelStar(c, '#bfe6ff', 1.3, k);
   const crown = new FlipBatch(c.scene, 20, 'normal', 5);
-  openArc(c, 7 + c.tier * 2, 0.35).forEach((a, i) => crown.add('splash', ringPos(c, a, 0.34 * R), { anchor: 'bottom', scale: k, fps: 14, flip: i % 2 === 1, delay: (i % 3) * 0.03, fadeOut: 0.12 }));
-  crown.add('splash', c.ground.clone().addScaledVector(fwd, 0.18 * R), { anchor: 'bottom', scale: k * 2, fps: 13, fadeOut: 0.14 });
+  openArc(c, 7 + c.tier * 2, 0.35).forEach((a, i) => crown.add('splash', ringPos(c, a, 0.4 * R), { anchor: 'bottom', scale: k, fps: 14, frame0: 1, flip: i % 2 === 1, delay: (i % 3) * 0.03, fadeOut: 0.12 }));
+  // The geyser behind the target and, for stronger moves, two big jets left and right of it.
+  crown.add('splash', c.ground.clone().addScaledVector(fwd, 0.18 * R), { anchor: 'bottom', scale: k * 2, fps: 13, frame0: 1, fadeOut: 0.14 });
+  if (c.tier > 0) for (const side of [-1, 1]) {
+    const p = c.ground.clone().addScaledVector(fwd, 0.08 * R).add(V(-fwd.z * side * 0.5 * R, 0, fwd.x * side * 0.5 * R));
+    crown.add('splash', p, { anchor: 'bottom', scale: k * 2, fps: 14, frame0: 1, flip: side > 0, delay: 0.04, fadeOut: 0.14 });
+  }
   const drops = new PixelPoints(c.scene, 80, 'normal', 6);
   const cols = ['#ffffff', '#c4f2ff', '#48c6f0', '#2378d2'];
   for (let i = 0; i < Math.round(26 * c.P); i++) {
