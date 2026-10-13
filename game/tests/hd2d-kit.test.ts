@@ -38,6 +38,13 @@ describe('hd2d kit: rock', () => {
     expect(tris(full)).toBeLessThan(44);
   });
 
+  it('a top-only (pillow) boulder is 18 closed-looking triangles', () => {
+    const b = new VoxelBatch(32);
+    boulder(b, [0, 0.5, 0], [1, 1, 1], new THREE.Color(1, 1, 1), new Rng(1), { topOnly: true, skip: [false, false, false, true, false, false] });
+    expect(tris(b)).toBe(18);
+    checkGeometry(b.build());
+  });
+
   it('walls emit nothing for fully buried blocks and are deterministic', () => {
     const make = () => {
       const hm = new Heightmap(8, 8, -3.6, -3.6);

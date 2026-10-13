@@ -487,7 +487,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // ---- rock (one mesh)
   const rock = new VoxelBatch(32);
   if (flags.has('voxel')) rockColumns(hm, rock, rng, RAMPS.rock);
-  else boulderColumns(hm, rock, rng);
+  else boulderColumns(hm, rock, rng, { lite: q === 'low' });
   const rockMat = track(surfaceMaterial(flags.has('voxel') ? texRock : cachedTexture('boulder-earth', () => paintBoulder(5, 32, RAMPS.boulder)), undefined, true));
   group.add(mesh(rock.build(), rockMat));
 

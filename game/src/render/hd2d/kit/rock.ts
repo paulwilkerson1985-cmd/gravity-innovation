@@ -30,6 +30,11 @@ export interface BoulderOptions {
   /** No bevel along the bottom edges (sits on something; saves 12 of 44 triangles). */
   flatBottom?: boolean;
   /**
+   * Cheap "pillow" boulder (18 triangles): straight sides, only the top rim bevelled. Reads
+   * the same from the battle camera for blocks seen mostly from above; implies a flat bottom.
+   */
+  topOnly?: boolean;
+  /**
    * Skip faces fully hidden by neighbours, in LOCAL axes: [+x, -x, +y, -y, +z, -z].
    * The bottom (-y) is skipped by default.
    */
@@ -106,6 +111,31 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
     }
   };
 
+  if (o.topOnly) {
+    // Rings: bottom (y = -h), shoulder (y = h - c), top (inset by c). Corners jitter as units.
+    const side = new Map<string, V3>();
+    const sj = (sx: number, sz: number): V3 => { const k = `${sx}${sz}`; if (!side.has(k)) side.set(k, [(rng.next() - 0.5) * 2 * j, (rng.next() - 0.5) * j, (rng.next() - 0.5) * 2 * j]); return side.get(k)!; };
+    const ring = (y: number, sy: number, inset: number, jit: (sx: number, sz: number) => V3) => ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sz]) => {
+      const cn: Corner = { s: [sx, sy, sz], d: jit(sx, sz), v: [[0, 0, 0], [0, 0, 0], [0, 0, 0]] };
+      return { cn, p: [sx * (h[0] - inset), y, sz * (h[2] - inset)] as V3 };
+    });
+    const B = ring(-h[1], -1, 0, (sx, sz) => { const d = sj(sx, sz); return [d[0], 0, d[2]]; });
+    const M = ring(h[1] - c, 1, 0, sj);
+    const T = ring(h[1], 1, c, (sx, sz) => { const d = sj(sx, sz); return [d[0] * 0.7, -rng.next() * tj, d[2] * 0.7]; });
+    // Ring edges: 0→1 is -z, 1→2 is +x, 2→3 is +z, 3→0 is -x.
+    const sideFace = [5, 0, 4, 1];
+    for (let e = 0; e < 4; e++) {
+      const a = e, b = (e + 1) % 4;
+      const axis = e % 2 === 0 ? 2 : 0;
+      const ua = axis === 2 ? 0 : 2;
+      const wFace = 2 * h[ua]!, hFace = 2 * h[1] - c;
+      if (!skip[sideFace[e]!]) emit([B[a]!, B[b]!, M[b]!, M[a]!], axis, (p) => [p[ua]! + h[ua]!, p[1] + h[1], wFace, -hFace], 1);
+      emit([M[a]!, M[b]!, T[b]!, T[a]!], axis, () => [0, 0, -1, K_TOP * Math.sqrt(topK / 1.3)], 1);
+    }
+    emit(T, 1, (p) => [p[0] + h[0] - c, h[2] - c - p[2], 2 * (h[0] - c), 2 * (h[2] - c)], topK);
+    return;
+  }
+
   // Main faces.
   for (const a of AX) for (const sa of [1, -1]) {
     const fi = a * 2 + (sa > 0 ? 0 : 1);
@@ -173,6 +203,8 @@ export interface BoulderWallOptions {
    * what shows in the crevices between rounded boulders, like the dark gaps of dry-stone walls.
    */
   core?: number;
+  /** Cheap top-bevel-only boulders for every block (low tier). Buried top blocks always use them. */
+  lite?: boolean;
 }
 
 /**
@@ -186,6 +218,7 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
   const pSplit = o.split ?? 0.55, pMerge = o.merge ?? 0.12, pTall = o.tall ?? 0.12;
   const bulge = o.bulge ?? 0.0;
   const core = o.core ?? 0.3;
+  const lite = o.lite ?? false;
   const [sLo, sHi] = o.shade ?? [0.84, 1.14];
   const tints = (o.tints ?? ['#ffffff']).map((t) => new THREE.Color(t));
   const used = new Set<string>();
@@ -233,6 +266,7 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
         boulder(batch, [(bx0 + bx1) / 2 + jx, y0 + sy / 2, (bz0 + bz1) / 2 + jz], [sx, sy, sz], shadeOf(), rng, {
           skip: skipFor(bx0, bx1),
           flatBottom: true,
+          topOnly: lite || !exposed,
           aoBottom: l === 0 ? 0.42 : 0.6,
           topK: blockTop ? 1.48 : 1.18,
           jitter: 0.02 + rng.next() * 0.02,

@@ -13,7 +13,7 @@
 // invisible material, so it still casts a real (rig-animated) shadow into the shadow map.
 import * as THREE from 'three';
 import { VERT_BODY, VERT_HEAD, type CreatureUniforms } from '../creatures/material';
-import { postFlags } from './pipeline';
+import { detectQuality, postFlags } from './pipeline';
 
 /** Lighting the toon shader applies (world space). Usually derived from the arena's light rig. */
 export interface SpriteLight {
@@ -41,7 +41,8 @@ export interface SpriteOptions {
   inScene?: boolean;
   /**
    * Bake at 2× and downsample with a detail-preserving filter (default 2): eyes, mouths and
-   * shines survive on small kin, edges stay 1 texel. 1 = direct bake (cheaper).
+   * shines survive on small kin, edges stay 1 texel. 1 = direct bake (cheaper). Default: 2 on
+   * the high tier, 1 on low.
    */
   supersample?: 1 | 2;
   /** Snap vertex colours to a palette extracted from the mesh (default true). */
@@ -335,7 +336,8 @@ export class SpriteSubject {
 
   constructor(readonly mesh: THREE.Mesh, readonly opts: SpriteOptions = {}) {
     this.px = opts.pxPerTexel ?? 1;
-    this.ss = opts.supersample ?? (postFlags().has('ss1') ? 1 : 2);
+    // 2× bake on the high tier only: the low tier (phones) keeps the cheap 1:1 bake.
+    this.ss = opts.supersample ?? (postFlags().has('ss1') || detectQuality() === 'low' ? 1 : 2);
     this.lift = opts.lift ?? 0;
     this.toon = toonMaterial(opts.rig);
     if (opts.palette ?? !postFlags().has('nosnap')) {
