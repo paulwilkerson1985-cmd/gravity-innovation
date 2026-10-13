@@ -29,6 +29,8 @@ export const RAMPS = {
   rail: ['#4d120e', '#7a1d15', '#a8291c', '#cc3b26', '#e65c38', '#f78a55'],
   rug: ['#173a2a', '#1f5238', '#2b6c47', '#3f8a58', '#62a86a', '#a6cf86'],
   ember: ['#4a0f08', '#8a1f0c', '#d2400f', '#ff7a1e', '#ffb444', '#fff0a0'],
+  /** Earthy yellow-brown boulder rock (kit/rock.ts walls; less red than `rock`). */
+  boulder: ['#2a1d15', '#43301f', '#5d452c', '#77593a', '#906d48', '#a88358', '#bf9a6c'],
   // ---- outdoor kit ramps (kit/*): grounds, foliage, water, sky
   sand: ['#6e5236', '#8f6f48', '#ad8c5c', '#c6a670', '#d9be88', '#e8d4a2', '#f4e6c0'],
   grass: ['#1e3a1c', '#2a5224', '#386a2c', '#4b8434', '#649e3e', '#84b74c', '#a9cc62'],

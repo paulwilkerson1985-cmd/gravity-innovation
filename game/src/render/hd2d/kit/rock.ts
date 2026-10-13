@@ -164,7 +164,7 @@ export interface BoulderWallOptions {
   tall?: number;
   /** How far boulders bulge past their cell (default 0.05) — closes gaps between neighbours. */
   bulge?: number;
-  /** Tint brightness range, low tiers → top tier (default [0.74, 1.08]). */
+  /** Tint brightness range, low tiers → top tier (default [0.84, 1.14]). */
   shade?: [number, number];
   /** Per-boulder hue drift: a list of tint colours picked at random (default white). */
   tints?: THREE.ColorRepresentation[];
@@ -186,7 +186,7 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
   const pSplit = o.split ?? 0.55, pMerge = o.merge ?? 0.12, pTall = o.tall ?? 0.12;
   const bulge = o.bulge ?? 0.0;
   const core = o.core ?? 0.3;
-  const [sLo, sHi] = o.shade ?? [0.74, 1.08];
+  const [sLo, sHi] = o.shade ?? [0.84, 1.14];
   const tints = (o.tints ?? ['#ffffff']).map((t) => new THREE.Color(t));
   const used = new Set<string>();
   const covered = (i: number, j: number, top: number) => hm.get(i, j) >= top - 0.01;
@@ -234,7 +234,7 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
           skip: skipFor(bx0, bx1),
           flatBottom: true,
           aoBottom: l === 0 ? 0.42 : 0.6,
-          topK: blockTop ? 1.32 : 1.12,
+          topK: blockTop ? 1.48 : 1.18,
           jitter: 0.02 + rng.next() * 0.02,
           topJitter: blockTop ? 0.06 : 0.02,
         });

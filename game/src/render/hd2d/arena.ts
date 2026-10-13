@@ -488,7 +488,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const rock = new VoxelBatch(32);
   if (flags.has('voxel')) rockColumns(hm, rock, rng, RAMPS.rock);
   else boulderColumns(hm, rock, rng);
-  const rockMat = track(surfaceMaterial(flags.has('voxel') ? texRock : cachedTexture('boulder', () => paintBoulder(5, 32)), undefined, true));
+  const rockMat = track(surfaceMaterial(flags.has('voxel') ? texRock : cachedTexture('boulder-earth', () => paintBoulder(5, 32, RAMPS.boulder)), undefined, true));
   group.add(mesh(rock.build(), rockMat));
 
   // ---- floor: one textured grid with baked AO toward the walls
