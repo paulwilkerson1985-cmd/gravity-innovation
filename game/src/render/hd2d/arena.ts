@@ -573,7 +573,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // ---- rock (one mesh)
   const rock = new VoxelBatch(voxel ? 32 : 64);
   if (voxel) rockColumns(hm, rock, rng, RAMPS.rock);
-  else boulderColumns(hm, rock, rng, { lite: q === 'low', shade: [0.74, 1.0], topK: 1.75 });
+  else boulderColumns(hm, rock, rng, { lite: q === 'low', shade: [0.74, 1.0], topK: 1.75, deep: 0.75 });
   // A dark pebble skirt along the wall foot (≤ 0.4 units out onto the floor).
   {
     const per = q === 'high' ? 3 : 1;

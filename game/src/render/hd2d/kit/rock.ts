@@ -33,8 +33,8 @@ export interface BoulderOptions {
   /** No bevel along the bottom edges (sits on something). */
   flatBottom?: boolean;
   /**
-   * Outward bulge of the side faces at mid height (world units; default 12% of the smallest
-   * half-extent, ≤ 0.05): convex, lumpy sides instead of flat slabs. Not on the cheap version.
+   * Outward bulge of the side faces at mid height (world units; default 15% of the smallest
+   * half-extent, ≤ 0.06): convex, lumpy sides instead of flat slabs. Not on the cheap version.
    */
   bulge?: number;
   /**
@@ -178,7 +178,7 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   }
   if (flat && !skip[3]) emit(foot, 1, () => facet(K_BOTTOM), 1);
   // Sides: one band, or two around a bulging, extra-jittered middle ring (lumpy, convex rock).
-  const bul = lite ? 0 : o.bulge ?? Math.min(0.05, minH * 0.12);
+  const bul = lite ? 0 : o.bulge ?? Math.min(0.06, minH * 0.15);
   const sideRange: [number, number] = [foot[0]!.p[1], r1[0]!.p[1]];
   if (bul > 0) {
     const ym = sideRange[0] + (sideRange[1] - sideRange[0]) * (0.4 + rng.next() * 0.15);
@@ -216,6 +216,11 @@ export interface BoulderWallOptions {
    * what shows in the crevices between rounded boulders, like the dark gaps of dry-stone walls.
    */
   core?: number;
+  /**
+   * Share of top stones that run two cells deep when the row behind them has the same height
+   * (default 0): a ledge top becomes one wide lit shelf of big stones instead of two rows of tops.
+   */
+  deep?: number;
   /** Cheap top-bevel-only boulders for every block (low tier). Buried top blocks always use them. */
   lite?: boolean;
 }
@@ -230,7 +235,7 @@ export interface BoulderWallOptions {
  */
 export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: BoulderWallOptions = {}) {
   const baseY = o.baseY ?? 0;
-  const pSplit = o.split ?? 0.2, pMerge = o.merge ?? 0.45, pTall = o.tall ?? 0.55;
+  const pSplit = o.split ?? 0.2, pMerge = o.merge ?? 0.45, pTall = o.tall ?? 0.55, pDeep = o.deep ?? 0;
   const bulge = o.bulge ?? -0.04;
   const core = o.core ?? 0.1;
   const lite = o.lite ?? false;
@@ -327,25 +332,39 @@ export function boulderColumns(hm: Heightmap, batch: VoxelBatch, rng: Rng, o: Bo
       }
       const top = tall || blockTop;
       const openTop = tall ? upTop : topLevel;
+      // Deep stones: a front-row top stone swallows the same-height row behind it.
+      const ca = Math.floor((sx0 - hm.x0) / CELL + 1e-3), cb = Math.floor((sx1 - hm.x0) / CELL - 1e-3);
+      let deep = top && front && pDeep > 0 && j > 0 && rng.chance(pDeep);
+      for (let i = ca; deep && i <= cb; i++) if (Math.abs(hm.get(i, j - 1) - hm.get(i, j)) > 0.01) deep = false;
+      let backD = back;
+      if (deep) {
+        for (let ll = l; ll <= (tall ? l + 1 : l); ll++) {
+          const k = `${j - 1},${ll}`;
+          if (!occupied.has(k)) occupied.set(k, []);
+          occupied.get(k)!.push([sx0, sx1]);
+        }
+        backD = false;
+        for (let i = ca; i <= cb; i++) if (!covered(i, j - 2, (openTop - baseY) / LEVEL)) backD = true;
+      }
       const sideR = sx1 >= xB - 1e-3 && (rightOpen || (tall && !covered(i1, j, (openTop - baseY) / LEVEL)));
       const sideL = sx0 <= xA + 1e-3 && (leftOpen || (tall && !covered(i0 - 1, j, (openTop - baseY) / LEVEL)));
       const exposed = exposedRow || sideR || sideL;
       const y1 = (tall ? upTop : yTop) + (top ? (rng.next() - 0.5) * 0.03 : 0);
       const sy = y1 - y0 + (top ? 0 : 0.04);
-      const sx = sx1 - sx0 + bulge * 2, sz = CELL + bulge * 2;
-      const jz = (rng.next() - 0.5) * 0.04;
+      const sx = sx1 - sx0 + bulge * 2, sz = (deep ? 2 : 1) * CELL + bulge * 2;
+      const jz = (rng.next() - 0.5) * 0.04 - (deep ? CELL / 2 : 0);
       const base = tints[rng.int(tints.length)]!;
       let shade = sLo + (sHi - sLo) * tierLight + (rng.next() - 0.5) * 0.06;
       if (rng.chance(0.03)) shade *= 0.9;
       boulder(batch, [(sx0 + sx1) / 2, y0 + sy / 2, (z0 + z1) / 2 + jz], [sx, sy, sz], base.clone().multiplyScalar(shade), rng, {
-        skip: [!sideR, !sideL, false, true, !front, !back],
+        skip: [!sideR, !sideL, false, true, !front, !backD],
         // Rounded feet: the V between stacked stones is a dark crevice line.
         flatBottom: lite || !exposed,
         topOnly: lite || !exposed,
         aoBottom: l === 0 ? 0.3 : 0.45,
         topK: top ? topKTop : 1.18,
-        jitter: 0.025 + rng.next() * 0.025,
-        topJitter: top ? 0.035 : 0.02,
+        jitter: 0.035 + rng.next() * 0.035,
+        topJitter: top ? 0.05 : 0.025,
       });
     }
     if (core > 0) {
