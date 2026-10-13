@@ -1,6 +1,6 @@
 // Mossy Meadow flower field: the meadow set (meadow.ts) dressed with dense flower beds in
 // varied colours, butterflies and drifting petals, a warm low afternoon sun from the back-right
-// and a windmill on a low shelf at the back.
+// and a gazebo on a low shelf at the back.
 import { buildMeadowSet, meadowGrade } from './meadow';
 import type { ArenaDef } from './index';
 

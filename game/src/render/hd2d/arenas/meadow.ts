@@ -30,7 +30,7 @@ export const MEADOW_RAMPS = {
   bark: ['#1f140e', '#2e1e14', '#41291b', '#553723', '#6b472d', '#82593a', '#9a6e4b'],
   wood: ['#2c1a10', '#432817', '#5c3820', '#764b2b', '#8f6037', '#a87645', '#c08f58'],
   stone: ['#2a2c31', '#3e4148', '#555960', '#6e7279', '#888c91', '#a3a6a8', '#c0c1bf'],
-  chalk: ['#a69f8c', '#cfc8b3', '#ece6d3', '#fbf7ea'],
+  chalk: ['#8f8a7a', '#aaa492', '#c4bea9', '#d8d2bd'],
   sky: ['#6fa7d8', '#86b8e0', '#9dc8e6', '#b5d6e9', '#cde3ea', '#e2eee6'],
   far: ['#4f7a73', '#5d8a7c', '#6d9984', '#7fa78d', '#93b598', '#a9c3a6'],
 } as const satisfies Record<string, Ramp>;
@@ -121,7 +121,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
       lv = Math.min(lv, z > 6 ? 2 : 1); // low front ledge lets the camera in
       if (x > frontGap.x0 && x < frontGap.x1) lv = 0;
     }
-    if (flowers && z < -4.6 && x > 1.5 && x < 9) lv = Math.min(lv, 2); // a low shelf for the windmill
+    if (flowers && z < -4.6 && x > 1.5 && x < 9) lv = Math.min(lv, 2); // a low shelf for the gazebo
     const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
     const n = cl - Math.floor(cl);
     if (lv > 0) lv = Math.max(1, lv + (n > 0.88 ? 1 : n < 0.08 ? -1 : 0));
@@ -207,7 +207,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   for (const [x, z, s, w] of backTrees) tree(x, z, s, w);
   // A continuous canopy wall behind the trees closes the top of the frame (and reads as the forest).
   for (let x = -16; x <= 16; x += 2.6) {
-    if (flowers && x > -1 && x < 9.5) continue; // open sky behind the windmill
+    if (flowers && x > -1 && x < 9.5) continue; // open sky over the field
     fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: new THREE.Color(0.42, 0.5, 0.52) });
   }
   // Bushes on the terraces, tall grass and tufts around the clearing edge.
@@ -287,38 +287,27 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     stone.rotBox([x + s * 0.8, s * 0.2, z + s * 0.4], [s * 0.7, s * 0.45, s * 0.6], rng.next() * 3, new THREE.Color(0.95, 0.95, 0.95), rng);
   }
 
-  // Flower field: a windmill on the low back shelf (tower + cap; sails turn as their own mesh).
-  let sails: THREE.Mesh | null = null;
+  // Flower field: a white gazebo with a red roof on the low back shelf.
   if (flowers) {
-    const mx = 5.0, mz = -7.2, my = topAt(mx, mz);
-    const plaster = new THREE.Color('#efe6d2');
+    const gx = 5.6, gz = -5.6, gy = topAt(gx, gz);
+    const white = new THREE.Color('#f2ead8'), red = rampColor(PETALS.red, 2).multiplyScalar(1.7);
+    const H = 1.9, S = 1.15;
+    wood.box([gx - S - 0.1, gy, gz - S - 0.1], [gx + S + 0.1, gy + 0.16, gz + S + 0.1], white.clone().multiplyScalar(0.85), rng, { aoBottom: 0.7 });
+    for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      wood.box([gx + dx * S - 0.09, gy + 0.16, gz + dz * S - 0.09], [gx + dx * S + 0.09, gy + 0.16 + H, gz + dz * S + 0.09], white, rng, { aoBottom: 0.75 });
+    }
+    // Low railings on three sides (open toward the clearing), a bench inside.
+    for (const [ax, az, bx, bz] of [[-S, -S, S, -S], [-S, -S, -S, S], [S, -S, S, S]] as const) {
+      wood.box([gx + Math.min(ax, bx) - 0.04, gy + 0.62, gz + Math.min(az, bz) - 0.04], [gx + Math.max(ax, bx) + 0.04, gy + 0.7, gz + Math.max(az, bz) + 0.04], white, rng);
+    }
+    wood.box([gx - 0.7, gy + 0.16, gz - 0.9], [gx + 0.7, gy + 0.5, gz - 0.55], new THREE.Color(0.75, 0.62, 0.5), rng);
+    // Roof: eave beam ring + stepped pyramid + finial.
+    wood.box([gx - S - 0.2, gy + 0.16 + H, gz - S - 0.2], [gx + S + 0.2, gy + 0.3 + H, gz + S + 0.2], white, rng);
     for (let k = 0; k < 5; k++) {
-      const w = 1.5 - k * 0.12, y0 = my + k * 0.9;
-      wood.box([mx - w / 2, y0, mz - w / 2], [mx + w / 2, y0 + 0.9, mz + w / 2], plaster.clone().multiplyScalar(0.95 + (k % 2) * 0.05), rng, { aoBottom: 0.8 });
+      const w = S + 0.3 - k * 0.3;
+      wood.box([gx - w, gy + 0.3 + H + k * 0.2, gz - w], [gx + w, gy + 0.5 + H + k * 0.2, gz + w], red.clone().multiplyScalar(1 - k * 0.04), rng, { aoBottom: 0.6 });
     }
-    const capY = my + 4.5;
-    for (let k = 0; k < 4; k++) {
-      const w = 1.5 - k * 0.32;
-      wood.box([mx - w / 2 - 0.1, capY + k * 0.28, mz - w / 2 - 0.1], [mx + w / 2 + 0.1, capY + (k + 1) * 0.28, mz + w / 2 + 0.1], rampColor(PETALS.red, 2).multiplyScalar(1.6), rng);
-    }
-    wood.box([mx - 0.3, my, mz + 0.62], [mx + 0.3, my + 1.0, mz + 0.8], new THREE.Color(0.55, 0.45, 0.4), rng); // door
-    wood.box([mx - 0.22, my + 2.4, mz + 0.62], [mx + 0.22, my + 2.85, mz + 0.72], new THREE.Color(0.4, 0.42, 0.55), rng); // window
-    // Sails are built in the local YZ plane (rotBox can tilt about X), spun about local X, and the
-    // hub is turned to face the camera.
-    const sb = new VoxelBatch(32);
-    for (let a = 0; a < 4; a++) {
-      const ang = (a / 4) * Math.PI * 2 + 0.3;
-      const c = Math.cos(ang), s2 = Math.sin(ang);
-      sb.rotBox([0, s2 * 1.3, c * 1.3], [0.08, 0.12, 2.5], 0, new THREE.Color(0.75, 0.68, 0.62), rng, -ang);
-      sb.rotBox([0.03, s2 * 1.5 + c * 0.3, c * 1.5 - s2 * 0.3], [0.03, 0.5, 2.0], 0, new THREE.Color(1.2, 1.17, 1.1), rng, -ang);
-    }
-    sb.box([-0.12, -0.18, -0.18], [0.12, 0.18, 0.18], new THREE.Color(0.6, 0.55, 0.5), rng);
-    sails = mkMesh(sb.build(), extra[extra.push(surfaceMaterial(cachedTexture('od-wood', () => paintEarth(52, R.wood, 32, { roots: 0, pebbles: 0, strata: 2.2 })), undefined, true)) - 1] as THREE.Material);
-    const hub = new THREE.Group();
-    hub.position.set(mx, capY - 0.35, mz + 0.95);
-    hub.rotation.y = -Math.PI / 2;
-    hub.add(sails);
-    group.add(hub);
+    wood.box([gx - 0.06, gy + 1.3 + H, gz - 0.06], [gx + 0.06, gy + 1.65 + H, gz + 0.06], new THREE.Color('#e0b040').multiplyScalar(1.3), rng);
   }
 
   const texBark = cachedTexture('od-bark', () => paintBark(51, R.bark));
@@ -348,9 +337,9 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
 
   // ---- sun: back-left, through the leaves (dapple cookie), warm; sky-blue/green fill
   const target = new THREE.Vector3(0, 0, 0.3);
-  const cookie = dappleCookie(flowers ? 9 : 4, { holes: flowers ? 0.34 : 0.44, edge: flowers ? 0.6 : 0.42 });
+  const cookie = dappleCookie(flowers ? 9 : 4, { holes: flowers ? 0.3 : 0.44, edge: flowers ? 0.6 : 0.42 });
   extra.push(cookie);
-  const sunFrom = flowers ? new THREE.Vector3(0.75, 0.62, -0.6) : new THREE.Vector3(-0.55, 1.0, -0.7);
+  const sunFrom = flowers ? new THREE.Vector3(0.7, 0.85, -0.6) : new THREE.Vector3(-0.55, 1.0, -0.7);
   const { key, spriteLight } = sunRig(group, {
     target, from: sunFrom, distance: 34, angle: 0.4,
     color: flowers ? '#ffcf8a' : '#fff0c4', intensity: flowers ? 6.0 : 6.2, cookie,
@@ -389,7 +378,6 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   // Soft light pools where the shafts land.
   const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 2.4, 1.8] as [number, number, number, number]), flowers ? '#8a6a40' : '#6a6a40');
   group.add(pools);
-  if (sails) { const s = sails; updates.push((t) => { s.rotation.x = t * 0.35; }); }
 
   return {
     group,
