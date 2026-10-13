@@ -16,8 +16,8 @@ import type { ArenaBuildOptions, ArenaDef } from './index';
 import { particleSystem } from '../kit/particles';
 import { boulder } from '../kit/rock';
 import {
-  Foliage, SpriteAtlas, apron, backdrop, disposeGroup, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
-  paintBark, paintButterfly, paintCanopy, paintEarth, paintFlower, paintSky, paintTreeLine, paintTuft, paintTurf, rampColor, sunRig, terraces,
+  Foliage, SpriteAtlas, apron, backdrop, clusterMap, disposeGroup, foreground, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  paintBark, paintButterfly, paintCanopy, paintEarth, paintFlower, paintSky, paintTreeLine, paintTuft, paintTurf, rampColor, sunRig, terraces, trunk,
   type RgbaTile,
 } from './outdoorKit';
 
@@ -180,6 +180,8 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   for (let k = 0; k < 3; k++) atlas.add('canopy', 88, 74, (p) => paintCanopy(p, new Rng(100 + k), leafRamp, { clumps: 8 }));
   for (let k = 0; k < 2; k++) atlas.add('canopyWide', 104, 60, (p) => paintCanopy(p, new Rng(140 + k), leafRamp, { clumps: 9, flat: 0.95 }));
   for (let k = 0; k < 3; k++) atlas.add('bush', 46, 32, (p) => paintCanopy(p, new Rng(200 + k), R.leaf, { clumps: 6 }));
+  // The far forest wall: crowns painted from the cool, light haze ramp (aerial perspective).
+  for (let k = 0; k < 2; k++) atlas.add('canopyFar', 88, 64, (p) => paintCanopy(p, new Rng(160 + k), R.far, { clumps: 8 }));
   for (let k = 0; k < 4; k++) atlas.add('tuft', 16, 13, (p) => paintTuft(p, new Rng(300 + k), R.grass, 9));
   for (let k = 0; k < 3; k++) atlas.add('tall', 20, 26, (p) => paintTuft(p, new Rng(320 + k), R.grass, 14, 1.3));
   // Grass lip hanging over terrace edges.
@@ -225,7 +227,8 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     const mott = macro(flowers ? 17 : 16);
     const ap = apron({
       x0: -40, x1: 40, z0: zf - 0.02, z1: zf + 34, y: FRONT_LV * LEVEL, map: texTurf, tileTexels: 32,
-      shade: (x, z) => (0.84 - 0.3 * THREE.MathUtils.smoothstep(z, zf, zf + 10)) * (0.86 + 0.28 * mott(x * 0.6, z * 0.6)),
+      // A darkening lip toward the camera (no big mottled blotches: the turf clusters carry it).
+      shade: (x, z) => (0.8 - 0.36 * THREE.MathUtils.smoothstep(z, zf, zf + 7)) * (0.95 + 0.1 * mott(x * 0.6, z * 0.6)),
     });
     extra.push(ap.material as THREE.Material);
     group.add(ap);
@@ -242,20 +245,11 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   // ---- wood: tree trunks, stump, log, fence, signpost (one bark mesh, one plank mesh)
   const bark = new VoxelBatch(32);
   const wood = new VoxelBatch(32);
-  const trunk = (x: number, z: number, h: number, w = 0.62) => {
+  const trunkAt = (x: number, z: number, h: number, r: number) => {
     const y = topAt(x, z) - 0.05;
     const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2);
-    // Octagonal, slightly tapering trunk (a box and a 45° box in two tiers), not a square post.
-    const lo = h * 0.45;
-    for (const [y0, y1, ww] of [[y, y + lo, w], [y + lo - 0.02, y + h, w * 0.86]] as const) {
-      bark.rotBox([x, (y0 + y1) / 2, z], [ww, y1 - y0, ww], 0, tint, rng);
-      bark.rotBox([x, (y0 + y1) / 2, z], [ww * 0.94, y1 - y0, ww * 0.94], Math.PI / 4, tint.clone().multiplyScalar(0.94), rng);
-    }
-    // Root flare and a branch stub.
-    for (const [dx, dz] of [[-1, 0], [1, 0], [0, 1], [0, -1]] as const) if (rng.chance(0.75)) bark.box([x + dx * w * 0.45 - 0.14, y, z + dz * w * 0.45 - 0.14], [x + dx * w * 0.45 + 0.14, y + 0.18 + rng.next() * 0.15, z + dz * w * 0.45 + 0.14], tint.clone().multiplyScalar(0.9), rng, { aoBottom: 0.5 });
-    const side = rng.chance(0.5) ? 1 : -1;
-    bark.rotBox([x + side * w * 0.8, y + h * 0.62, z], [0.9, 0.18, 0.18], 0, tint, rng, side * 0.0);
-    return y + h;
+    // A round, tapering trunk with a root flare spreading over the turf and branch stubs.
+    return trunk(bark, [x, y, z], h, r, rng, { flare: 1.0, roots: 4 + rng.int(2), taper: 0.6, tint })[1];
   };
   /**
    * A tree: trunk + 2–3 canopy billboards. `scale` grows the whole tree. The canopies cast no
@@ -263,10 +257,10 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
    * reaches the battle floor); the trunks throw the long shadow streaks.
    */
   const tree = (x: number, z: number, scale = 1, wide = false) => {
-    const top = trunk(x, z, 2.1 * scale, 0.5 + 0.18 * scale);
+    const top = trunkAt(x, z, 1.8 * scale, 0.24 + 0.08 * scale);
     const sprite = wide ? 'canopyWide' : 'canopy';
     const k = TEXEL * scale;
-    fol.add(atlas.get(sprite, rng), [x + (rng.next() - 0.5) * 0.4, top - 1.0 * scale, z + 0.2], 'billboard', { scale: k, sway: 0.03, flip: rng.chance(0.5), shadow: false });
+    fol.add(atlas.get(sprite, rng), [x + (rng.next() - 0.5) * 0.4, top - 1.15 * scale, z + 0.2], 'billboard', { scale: k, sway: 0.03, flip: rng.chance(0.5), shadow: false });
     fol.add(atlas.get('canopy', rng), [x + (rng.chance(0.5) ? 1 : -1) * 1.1 * scale, top - 0.2 * scale, z - 0.3], 'billboard', { scale: k * 0.8, sway: 0.035, flip: rng.chance(0.5), tint: new THREE.Color(0.88, 0.9, 0.9), shadow: false });
     if (scale > 1.05) fol.add(atlas.get('canopy', rng), [x, top + 1.2 * scale, z - 0.6], 'billboard', { scale: k * 0.75, sway: 0.04, flip: rng.chance(0.5), tint: new THREE.Color(0.94, 0.96, 0.94), shadow: false });
   };
@@ -280,15 +274,15 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   // field the far canopy is lower and sunnier, so the gazebo still reads against it.)
   for (let x = -16; x <= 16; x += 2.6) {
     const open = flowers && x > -1 && x < 9.5;
-    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: open ? new THREE.Color(0.62, 0.68, 0.6) : new THREE.Color(0.48, 0.56, 0.56), shadow: false });
+    fol.add(atlas.get('canopyFar', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: open ? new THREE.Color(0.9, 0.94, 0.9) : new THREE.Color(0.8, 0.88, 0.92), shadow: false });
   }
   // Bushes on the terraces, tall grass and tufts around the clearing edge.
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 10; i++) {
     const a = rng.next() * Math.PI * 2;
     const r = 1.08 + rng.next() * 0.5;
     const x = Math.cos(a) * 7.0 * r, z = 0.2 + Math.sin(a) * 4.5 * r;
     if (z > 3.2 || Math.abs(x) > 14) continue;
-    fol.add(atlas.get('bush', rng), [x, topAt(x, z), z], 'billboard', { scale: TEXEL * (0.9 + rng.next() * 0.4), sway: 0.02, flip: rng.chance(0.5) });
+    fol.add(atlas.get('bush', rng), [x, topAt(x, z), z], 'billboard', { scale: TEXEL * (0.8 + rng.next() * 0.35), sway: 0.02, flip: rng.chance(0.5) });
   }
   for (let i = 0; i < (q === 'high' ? 150 : 110); i++) {
     const a = rng.next() * Math.PI * 2;
@@ -309,9 +303,11 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
       const a = -Math.PI * 1.05 + (bed / 7) * Math.PI * 1.1 + (rng.next() - 0.5) * 0.4;
       const r = 1.0 + rng.next() * 0.55;
       x = Math.cos(a) * 6.6 * r; z = 0.2 + Math.sin(a) * 4.4 * r;
-      if (rng.chance(0.35)) { x = (rng.next() - 0.5) * 22; z = 3.8 + rng.next() * 2.6; }
+      let drift = bed;
+      // The front bank: drifts in bands along x (each a few metres of one colour).
+      if (rng.chance(0.35)) { x = (rng.next() - 0.5) * 22; z = 3.8 + rng.next() * 2.6; drift = Math.floor((x + 11) / 3.1); }
       if (nearStage(x, z, 2.3) || poolR(x, z) < 1.1) continue;
-      const key = petalKeys[(bed + (rng.chance(0.15) ? 1 : 0)) % petalKeys.length]!;
+      const key = petalKeys[(drift + (rng.chance(0.08) ? 1 : 0)) % petalKeys.length]!;
       fol.add(atlas.get(`flowers-${key}`), [x, topAt(x, z), z], 'billboard', { sway: 0.05, flip: rng.chance(0.5), scale: TEXEL * (0.85 + rng.next() * 0.3) });
     } else {
       const a = rng.next() * Math.PI * 2, r = 0.95 + rng.next() * 0.5;
@@ -405,6 +401,16 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     group.add(mkMesh(b.build(), m));
   }
 
+  // Phone foreground: the front bank and the apron under a portrait camera get patches of tall
+  // grass, bushes and flower drifts, shading off toward the camera (a dressed, darker lip).
+  {
+    const zf = hm.z0 + hm.nz * CELL;
+    const keys = flowers ? ['flowers-yellow', 'flowers-white', 'flowers-violet', 'flowers-pink', 'tall'] : ['tall', 'tall', 'tuft', 'flowers-white', 'flowers-yellow'];
+    foreground(fol, {
+      sprites: keys, area: [-15, 5.6, 6, zf + 7], patches: q === 'high' ? 34 : 24, perPatch: [3, 7], rng,
+      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1, k: 0.55, scale: [0.95, 1.25],
+    });
+  }
   // Foliage (all sprites): one mesh.
   const folMesh = fol.build(atlasTex, { upNormal: 0.55 });
   group.add(folMesh);
@@ -505,47 +511,66 @@ function paintMeadowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
     }
     return d;
   };
+  // Clods of dirt and clumps of grass: one flat shade per 2–4-texel cluster (lit top edge,
+  // shaded underside), 4 shades each — clean clusters at mid-distance, never per-texel static.
+  // Texture rows run along world z, which the camera foreshortens ~2×: clusters twice as tall in
+  // texels read as round clumps on screen (not horizontal bricks).
+  const clod = clusterMap(t.w, t.h, 3, 501, { aspect: 1.8 });
+  const clump = clusterMap(t.w, t.h, 3, 502, { aspect: 2.2 });
   for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
     const X = wx(x), Z = wz(y);
+    const k = y * t.w + x;
     const n = nA(x, y), m = mac(X, Z);
     const e = Math.hypot(X / rx, (Z - 0.1) / rz) + (m - 0.5) * 0.35 + (nB(x, y) - 0.5) * 0.22;
     const p = pathD(X, Z) / 0.75 + (n - 0.5) * 0.5;
     const dirtK = Math.max(1.12 - e, 1.0 - p) * 4; // >0 inside
-    const edge = dirtK > -0.6 && dirtK < 0.6;
-    const isDirt = dirtK > 0 && !(edge && hash2(x, y, 2) < 0.5 - dirtK * 0.8);
+    // The dirt/grass border follows whole grass clumps (a ragged, clumpy edge, no texel dither).
+    const isDirt = dirtK + (clump.v[k]! - 0.5) * 1.1 > 0;
     if (isDirt) {
-      // Trodden dirt: lighter in the worn centre, blotchy, with grit — calmer on the battle
-      // floor itself (broad soft mottling, little grit) so the kin read against it.
+      // Trodden dirt: lighter in the worn centre, clods with a lit top and a dark underside —
+      // calmer on the battle floor itself (softer clods, fewer rims) so the kin read against it.
       const calm = 1 - THREE.MathUtils.smoothstep(poolR(X, Z), 0.7, 1.15);
-      let v = 2.4 + (n - 0.5) * (2.4 - calm * 1.1) + Math.min(1, dirtK * 0.25) * 0.9 + (m - 0.5) * (0.6 + calm * 0.5);
-      if (hash2(x, y, 3) < 0.06 - calm * 0.045) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
-      t.band(x, y, R.dirt, v);
+      const cv = clod.v[k]!;
+      let v = 2.9 + (n - 0.5) * 1.2 + Math.min(1, dirtK * 0.25) * 0.8 + (m - 0.5) * (0.7 + calm * 0.4) + (cv - 0.5) * (1.3 - calm * 0.6);
+      // Only the darker clods show a shaded underside, only the lighter ones a lit lip.
+      if (clod.lo[k] && cv < 0.35 - calm * 0.15) v -= 0.85;
+      else if (clod.hi[k] && cv > 0.72 + calm * 0.15) v += 0.6;
+      t.set(x, y, R.dirt[Math.max(1, Math.min(5, Math.round(v)))]!);
     } else {
-      // Grass: two-tone mottling + blade flecks (light tip over a dark root texel).
-      let v = 2.2 + (n - 0.5) * 2.6 + (m - 0.5) * 1.4 - (edge ? 0.6 : 0);
-      const h = hash2(x, y, 1);
-      if (h < 0.11) v += 1.6;
-      else if (hash2(x, y - 1, 1) < 0.11) v -= 1.1;
-      t.band(x, y, R.grass, v);
+      // Grass: clumps in 4 shades, darker toward the dirt edge.
+      const edge = dirtK > -0.9 ? 0.5 : 0;
+      const gv = clump.v[k]!;
+      let v = 2.7 + (n - 0.5) * 1.6 + (m - 0.5) * 1.4 - edge + (gv - 0.5) * 1.5;
+      if (clump.lo[k] && gv < 0.55) v -= 0.9;
+      else if (clump.hi[k] && gv > 0.5) v += 0.8;
+      t.set(x, y, R.grass[Math.max(1, Math.min(5, Math.round(v)))]!);
     }
   }
-  // Pebbles on the dirt, clover and tiny flowers in the grass, fallen leaves.
-  for (let i = 0; i < 900; i++) {
+  // Pebbles round the rim of the battle floor (2×2 with a lit corner and a dark one).
+  for (let i = 0; i < 300; i++) {
     const x = rng.int(t.w), y = rng.int(t.h);
     const X = wx(x), Z = wz(y);
-    const inClearing = Math.hypot(X / rx, (Z - 0.1) / rz) < 1.0;
-    if (inClearing) {
-      if (i % 3 || poolR(X, Z) < 1.05) continue; // pebbles only round the rim of the battle floor
-      const s = R.stone;
-      t.set(x, y, s[4]!); t.set(x + 1, y, s[3]!); t.set(x, y + 1, s[2]!); t.set(x + 1, y + 1, s[1]!);
-      if (rng.chance(0.4)) t.set(x - 1, y, s[5]!);
-    } else if (rng.chance(flowers ? 0.7 : 0.35)) {
-      const pet = (Object.values(PETALS) as Ramp[])[rng.int(7)]!;
-      t.set(x, y, pet[4]!); t.set(x - 1, y, pet[3]!); t.set(x + 1, y, pet[3]!); t.set(x, y - 1, pet[4]!); t.set(x, y + 1, pet[2]!);
-      t.set(x, y, flowers ? '#f6d64a' : pet[4]!);
-    } else {
-      const leaf = rng.chance(0.5) ? R.leafWarm : R.grass;
-      t.set(x, y, leaf[6]!); t.set(x + 1, y, leaf[5]!); t.set(x + 1, y + 1, leaf[4]!);
+    if (Math.hypot(X / rx, (Z - 0.1) / rz) > 1.0 || poolR(X, Z) < 1.05) continue;
+    const s = R.stone;
+    t.set(x, y, s[5]!); t.set(x + 1, y, s[4]!); t.set(x, y + 1, s[3]!); t.set(x + 1, y + 1, s[2]!);
+    t.set(x + 1, y + 2, R.dirt[1]!); t.set(x + 2, y + 1, R.dirt[1]!);
+  }
+  // Flowers in DRIFTS: patches of one colour (a few in the clearing's grass, many in the field),
+  // each a loose cluster of 5-texel heads — colour fields, not confetti.
+  const keys = (flowers ? ['yellow', 'white', 'pink', 'violet', 'orange', 'blue', 'red'] : ['white', 'yellow', 'violet']) as (keyof typeof PETALS)[];
+  const drifts = flowers ? 46 : 14;
+  for (let d = 0; d < drifts; d++) {
+    const cx = rng.int(t.w), cy = rng.int(t.h);
+    const X = wx(cx), Z = wz(cy);
+    if (Math.hypot(X / rx, (Z - 0.1) / rz) < 1.05 || poolR(X, Z) < 1.2) continue;
+    const pet = PETALS[keys[d % keys.length]!];
+    const r = (flowers ? 10 : 7) + rng.int(flowers ? 12 : 6);
+    for (let f = 0; f < r * (flowers ? 1.6 : 1.0); f++) {
+      const a = rng.next() * Math.PI * 2, rr = Math.sqrt(rng.next()) * r;
+      const x = Math.round(cx + Math.cos(a) * rr * 1.4), y = Math.round(cy + Math.sin(a) * rr);
+      if (!t.inside(x, y) || Math.hypot(wx(x) / rx, (wz(y) - 0.1) / rz) < 1.0) continue;
+      t.set(x - 1, y, pet[3]!); t.set(x + 1, y, pet[3]!); t.set(x, y - 1, pet[4]!); t.set(x, y + 1, pet[1]!);
+      t.set(x, y, flowers && f % 3 === 0 ? '#f6d64a' : pet[4]!);
     }
   }
   if (trainer) paintTrodden(t, wx, wz);

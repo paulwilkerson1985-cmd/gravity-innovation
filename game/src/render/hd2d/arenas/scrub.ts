@@ -14,8 +14,8 @@ import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
 import { BATTLE_POOL, nearStage, paintTrodden, poolR } from './meadow';
 import {
-  Foliage, SpriteAtlas, apron, backdrop, bandIndex, disposeGroup, glints, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
-  paintBark, paintEarth, paintMesas, paintTuft, paintTwigs, sunRig, type RgbaTile, type V3,
+  Foliage, SpriteAtlas, apron, backdrop, clusterMap, disposeGroup, foreground, glints, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  paintBark, paintClouds, paintEarth, paintMesas, paintSky, paintTuft, paintTwigs, putRgb, rgb, sunRig, type RgbaTile, type V3,
 } from './outdoorKit';
 
 export const SCRUB_RAMPS = {
@@ -115,7 +115,7 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
     const ap = apron({
       x0: -40, x1: 40, z0: zf - 0.3, z1: zf + 34, y: FRONT_LV * LEVEL - 0.06, tileTexels: 64,
       map: cachedTexture('od-scrub-apron', () => paintEarth(84, S.earth, 64, { roots: 4, pebbles: 26, strata: 0.15 })),
-      shade: (x, z) => (0.7 - 0.25 * THREE.MathUtils.smoothstep(z, zf, zf + 9)) * (0.82 + 0.3 * mott(x * 0.5, z * 0.5)),
+      shade: (x, z) => (0.7 - 0.3 * THREE.MathUtils.smoothstep(z, zf, zf + 7)) * (0.94 + 0.12 * mott(x * 0.5, z * 0.5)),
     });
     extra.push(ap.material as THREE.Material);
     group.add(ap);
@@ -172,6 +172,14 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   }
   // A few dry tufts along the drop edge (silhouetted against the sky).
   for (let x = -7; x < 7; x += 0.7 + rng.next() * 0.8) fol.add(atlas.get('dry', rng), [x, topAt(x, EDGE_Z + 0.3), EDGE_Z + 0.3], 'billboard', { sway: 0.07, flip: rng.chance(0.5) });
+  // Phone foreground: dry grass and scrub patches on the front ledge and the soil below it.
+  {
+    const zf = hm.z0 + hm.nz * CELL;
+    foreground(fol, {
+      sprites: ['dry', 'tallDry', 'tallDry', 'scrub'], area: [-15, 4.4, 6, zf + 7], patches: q === 'high' ? 30 : 20, perPatch: [3, 6], rng,
+      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL - 0.06 : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && !(z < 2.6 && Math.abs(x) < 4.6), k: 0.6, sway: 0.06,
+    });
+  }
   // Normals bent well up: backlit tufts still catch the sky and the low key on their tips.
   const folMesh = fol.build(atlasTex, { upNormal: 0.75 });
   group.add(folMesh);
@@ -254,29 +262,21 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
   };
 }
 
-/** Sunset sky on a backdrop tile: flat bands bending round a low sun, the sun disc, thin wisps. */
+/**
+ * Sunset sky on a backdrop tile: a SMOOTH gradient (violet zenith → rose → gold horizon) with a
+ * warm halo round the low sun, a few long, hand-shaped clouds lit from below on the sun side
+ * (violet bodies, hot gold undersides), and the sun disc. No banding.
+ */
 function paintSunsetSky(t: RgbaTile, sunY: number, sunX: number) {
   const S = SCRUB_RAMPS;
-  const n = S.sky.length;
   const horizon = sunY + 26;
-  for (let y = 0; y < t.h; y++) {
-    const v = Math.min(1, Math.max(0, y / horizon)) ** 1.15 * (n - 1);
-    for (let x = 0; x < t.w; x++) {
-      const d = Math.hypot(x - sunX, (y - sunY) * 1.5);
-      t.set(x, y, S.sky[bandIndex(Math.min(n - 1, v + Math.max(0, 1 - d / 150) * 2.2), x, y, n, 0.06)]!);
-    }
-  }
-  // Long thin wisps: lit warm undersides near the sun, violet away from it.
-  const r = new Rng(93);
-  for (let k = 0; k < 16; k++) {
-    const cy = Math.round(sunY - 30 + r.int(48)), cx = r.int(t.w), len = 50 + r.int(140);
-    for (let i = 0; i < len; i++) {
-      const x = cx + i, near = Math.max(0, 1 - Math.abs(x - sunX) / 220);
-      const base = Math.max(1, Math.min(n - 2, Math.round((cy / horizon) * (n - 1)) - 1));
-      t.set(x, cy, S.sky[base]!);
-      if (i > 4 && i < len - 6) t.set(x + 3, cy + 1, S.sky[Math.min(n - 1, base + 1 + Math.round(near * 2))]!);
-    }
-  }
+  paintSky(t, S.sky, 0, horizon * 1.08, { glow: { x: sunX, y: sunY, r: 150, color: '#ffd890', k: 0.75 } });
+  // Below the horizon line the backdrop is hidden by the mesas; continue the last colour.
+  for (let y = Math.floor(horizon * 1.08); y < t.h; y++) for (let x = 0; x < t.w; x++) putRgb(t, x, y, rgb(S.sky[S.sky.length - 1]!), 4);
+  paintClouds(t, {
+    seed: 93, count: 5, size: [40, 90], rows: [sunY - 40, sunY + 4], flat: 0.22, stretch: 3, ramp: ['#4a3062', '#6e3c6c', '#9a4c6c', '#c8645e', '#ec9060'],
+    light: [0.15, 1], baseShade: -1.2, avoid: (x) => Math.abs(x - sunX) < 40,
+  });
   for (let y = -9; y <= 9; y++) for (let x = -9; x <= 9; x++) {
     const d = x * x + y * y;
     if (d <= 81) t.set(sunX + x, sunY + y, d > 60 ? '#ffe8b0' : '#fff8e2');
@@ -294,19 +294,29 @@ function paintScrubFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number)
   const rng = new Rng(99);
   const nA = noiseField(64, 64, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]);
   const mac = macro(29);
+  // Hard-baked earth in clods and dry grass in clumps: one flat shade per 2–4-texel cluster
+  // (taller in texels: the floor is foreshortened), 4 shades — clean clusters, no static.
+  const clod = clusterMap(t.w, t.h, 3, 601, { aspect: 1.8 });
+  const clump = clusterMap(t.w, t.h, 3, 602, { aspect: 2.2 });
   for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
     const X = wx(x), Z = wz(y);
+    const k = y * t.w + x;
     const n = nA(x, y), m = mac(X, Z);
     const e = Math.hypot(X / 5.6, (Z - 0.1) / 3.6);
     const calm = 1 - THREE.MathUtils.smoothstep(poolR(X, Z), 0.7, 1.2);
-    let v = 2.6 + (n - 0.5) * (2.0 - calm * 0.9) + (m - 0.5) * 1.1 + Math.max(0, 1 - e) * 0.6;
-    // Dry grass creeping in toward the tiers.
-    if (e > 1.0 && hash2(x, y, 5) < Math.min(0.6, (e - 1.0) * 1.2) * (0.6 + n)) {
-      t.band(x, y, S.dry, 2.5 + (n - 0.5) * 3 + (hash2(x, y, 6) < 0.15 ? 1.5 : 0));
+    // Dry grass creeping in toward the tiers, whole clumps at a time.
+    const gv = clump.v[k]!;
+    if (e > 1.0 && gv < Math.min(0.7, (e - 1.0) * 1.4) * (0.6 + n)) {
+      let g = 3.0 + (n - 0.5) * 1.6 + (gv - 0.5) * 1.6;
+      if (clump.lo[k]) g -= 1; else if (clump.hi[k] && gv > 0.3) g += 0.9;
+      t.set(x, y, S.dry[Math.max(1, Math.min(5, Math.round(g)))]!);
       continue;
     }
-    if (hash2(x, y, 3) < 0.05 - calm * 0.035) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
-    t.band(x, y, S.earth, v);
+    const cv = clod.v[k]!;
+    let v = 2.8 + (n - 0.5) * (1.2 - calm * 0.5) + (m - 0.5) * 1.1 + Math.max(0, 1 - e) * 0.6 + (cv - 0.5) * (1.3 - calm * 0.6);
+    if (clod.lo[k] && cv < 0.35 - calm * 0.15) v -= 0.85;
+    else if (clod.hi[k] && cv > 0.72 + calm * 0.15) v += 0.6;
+    t.set(x, y, S.earth[Math.max(1, Math.min(5, Math.round(v)))]!);
   }
   // ---- cracks: branching, tapering random walks
   const crackDark = S.crack[0], crackMid = S.crack[1];

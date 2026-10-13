@@ -12,8 +12,8 @@ import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
 import { MEADOW_RAMPS, nearStage, paintTrodden } from './meadow';
 import {
-  Foliage, SpriteAtlas, backdrop, dappleCookie, disposeGroup, glints, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
-  paintCanopy, paintEarth, paintSilhouette, paintSky, paintTuft, paintTurf, paintVine, sunRig, terraces, type RgbaTile, type V3,
+  Foliage, SpriteAtlas, backdrop, clusterMap, disposeGroup, foreground, glints, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  paintCanopy, paintEarth, paintSilhouette, paintSky, paintTuft, paintTurf, paintVine, sunRig, terraces, type RgbaTile, type SpriteCanvas, type V3,
 } from './outdoorKit';
 
 export const HOLLOW_RAMPS = {
@@ -56,21 +56,21 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   const hm = new Heightmap(32, 35, X0, Z0);
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
-    const wob = Math.sin(x * 1.3 + z * 0.7) * 0.35 + Math.sin(z * 2.1 - x * 0.4) * 0.25 + Math.sin(x * 0.45 - z * 0.8 + 1.7) * 0.3;
-    // Organic clearing: an ellipse SDF with a wobbling rim (no rectangle), rising in half and
-    // full steps; the front stays low so the camera sees in.
+    // A ROUND bowl: an ellipse SDF with a slow, low-frequency wobble of its rim (no per-cell
+    // noise), rising in a few tiers of VARIED depth — wide mossy shelves and tall rock faces,
+    // their boundaries drifting with the angle so the tiers widen, narrow and merge.
+    const ang = Math.atan2(z - 0.2, x);
+    const wob = 0.28 * Math.sin(3 * ang + 1.3) + 0.16 * Math.sin(5 * ang + 0.4) + 0.12 * Math.sin(x * 0.7 - z * 0.5);
     const e = Math.hypot(x / 6.3, (z - 0.2) / 4.0);
-    const d = (e - 1) * 5.2 + wob;
+    const d = (e - 1) * 5.0 + wob;
+    const sh = 0.4 * Math.sin(2 * ang + 0.7) + 0.25 * Math.sin(4 * ang + 2.1);
+    const bounds = [0, 1.1 + sh, 2.5 + sh * 1.3, 3.5 + sh, 5.0 + sh * 0.7, 6.4];
+    const levels = [1.5, 2.5, 4, 5, 6.5, 8];
     let lv = 0;
-    if (d > 0) lv = 1 + 0.5 * Math.floor(d / 0.7) + (d > 2.6 ? Math.floor((d - 2.6) / 0.9) : 0);
-    if (z > 3.4) lv = Math.min(lv, z > 5.6 ? 2 : 1);
+    bounds.forEach((b, k) => { if (d > b) lv = levels[k]!; });
+    if (z > 3.4) lv = Math.min(lv, z > 5.6 ? 2 : 1.5);
     // The passage: low ground climbing gently out toward the meadow behind the arch.
     if (x > GAP.x0 && x < GAP.x1 && z < -2.6) lv = Math.min(lv, z > GAP.z - 1.4 ? 0 : 1 + Math.floor((GAP.z - 1.4 - z) / 2.4));
-    if (lv > 0 && lv < 8) {
-      const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
-      const n = cl - Math.floor(cl);
-      lv = Math.max(1, lv + (n > 0.8 ? 0.5 : n < 0.1 ? -0.5 : 0));
-    }
     hm.set(i, j, Math.min(lv, 9));
   }
   const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
@@ -89,20 +89,26 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   for (let k = 0; k < 3; k++) atlas.add('tuft', 14, 11, (p) => paintTuft(p, new Rng(650 + k), MEADOW_RAMPS.grass, 8));
   for (let k = 0; k < 2; k++) atlas.add('bush', 46, 32, (p) => paintCanopy(p, new Rng(660 + k), MEADOW_RAMPS.leaf, { clumps: 6 }));
   for (let k = 0; k < 2; k++) atlas.add('canopy', 88, 74, (p) => paintCanopy(p, new Rng(670 + k), MEADOW_RAMPS.leaf, { clumps: 8 }));
+  // Moss cushions that spill over the shelf lips, and tangled roots hanging down the faces.
+  for (let k = 0; k < 3; k++) atlas.add('cushion', 34, 16, (p) => paintCanopy(p, new Rng(680 + k), H.moss, { clumps: 5, flat: 0.55 }));
+  for (let k = 0; k < 3; k++) atlas.add('roots', 13, 26 + k * 6, (p) => paintRoots(p, new Rng(690 + k), MEADOW_RAMPS.bark), [6.5, 0]);
   const atlasTex = atlas.texture();
   extra.push(atlasTex);
   const fol = new Foliage(atlas);
 
   // ---- rock walls (stone sides, moss tops, moss drips)
   const texRock = cachedTexture('od-boulder-hollow', () => paintBoulder(71, 32, H.rock));
-  const texMoss = cachedTexture('od-moss-hollow', () => paintTurf(72, H.moss, 32, { lo: 1.8, hi: 4.6, flecks: 0.1 }));
+  // Calm moss caps (4 close shades, few tips): the stone faces carry the texture, not the moss.
+  const texMoss = cachedTexture('od-moss-hollow', () => paintTurf(72, H.moss, 32, { lo: 2.6, hi: 4.6, flecks: 0.04 }));
   // Rocky grotto walls: chunky rounded boulders (rock kit) under rounded moss caps with long
   // hanging moss — no flat earth slabs. The moss tops come from the organic terraces (lips,
   // diagonal corners), sitting just over the boulder tops.
   const rock = new VoxelBatch(32);
-  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#eef4ea', '#f4f2e6'], shade: [0.82, 1.2], core: 0.22, lite: q === 'low' });
+  // Bigger, longer stones (merged and 2-tall more often): rock faces, not a grid of equal boxes.
+  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#eef4ea', '#f4f2e6'], shade: [0.82, 1.2], core: 0.22, lite: q === 'low', merge: 0.55, tall: 0.75, split: 0.12 });
   const tops = new VoxelBatch(32);
-  terraces(hm, new VoxelBatch(32), tops, rng, { topK: 1.0, jitter: 0.2, lip: 0.15, baseY: 0.03, sides: false, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(9), chance: 1, long: 1.1 } });
+  // Moss caps with a deep rounded lip and LONG moss hanging over every exposed edge (overhangs).
+  terraces(hm, new VoxelBatch(32), tops, rng, { topK: 1.0, jitter: 0.12, lip: 0.2, baseY: 0.03, sides: false, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(9), chance: 1, long: 1.5 } });
   // The arch over the passage: a lintel of boulders spanning the wall, with a ragged underside.
   for (let x = GAP.x0 - 0.45; x < GAP.x1 + 0.45; x += CELL * 0.85) {
     const sag = (hash2(Math.round(x * 3), 1, 3) < 0.5 ? 1 : 0) * 0.3;
@@ -188,12 +194,29 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
     if (hm.get(i, j + 1) >= v || z < -9 || Math.abs(x) > 12) continue;
     fol.add(atlas.get('vine', rng), [x + (rng.next() - 0.5) * 0.6, v * LEVEL, z + 0.03], 'billboard', { sway: 0.03, flip: rng.chance(0.5), tint: new THREE.Color(0.85, 0.9, 0.85) });
   }
+  // Moss cushions on the shelf lips (hanging over the edge toward the camera) and roots dangling
+  // down the rock faces below them.
+  for (let j = 1; j < hm.nz - 1; j++) for (let i = 1; i < hm.nx - 1; i++) {
+    const v = hm.get(i, j), below = hm.get(i, j + 1);
+    if (v < 1.5 || v > 7 || below >= v - 0.4) continue;
+    const x = hm.cx(i) + (rng.next() - 0.5) * 0.5, z = hm.cz(j) + CELL / 2 - 0.08;
+    if (z < -10 || Math.abs(x) > 12.5 || (x > GAP.x0 - 0.5 && x < GAP.x1 + 0.5 && z < -2.5)) continue;
+    const h = hash2(i, j, 21);
+    if (h < 0.12) fol.add(atlas.get('cushion', rng), [x, v * LEVEL + 0.02, z + 0.06], 'billboard', { scale: TEXEL * (0.9 + rng.next() * 0.35), sway: 0.01, flip: rng.chance(0.5), tint: new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2) });
+    else if (h > 0.84 && v - Math.max(0, below) > 1.2) fol.add(atlas.get('roots', rng), [x, v * LEVEL - 0.05, z + 0.05], 'billboard', { sway: 0.015, flip: rng.chance(0.5), tint: new THREE.Color(0.85, 0.85, 0.85) });
+  }
   for (let k = 0; k < 70; k++) {
     const a = rng.next() * Math.PI * 2, r = 0.82 + rng.next() * 0.3;
     const x = Math.cos(a) * 6.2 * r, z = 0.1 + Math.sin(a) * 4.0 * r;
     if (nearStage(x, z, 1.8) || Math.hypot((x - POOL.x) / POOL.rx, (z - POOL.z) / POOL.rz) < 1.1) continue;
     fol.add(atlas.get(rng.chance(0.55) ? 'fern' : 'tuft', rng), [x, topAt(x, z), z], 'billboard', { sway: 0.04, flip: rng.chance(0.5), tint: new THREE.Color(1, 1, 1).multiplyScalar(0.8 + rng.next() * 0.25) });
   }
+  // Phone foreground: ferns, moss cushions and grass on the low front ledge under a portrait
+  // camera, shading off toward the lens.
+  foreground(fol, {
+    sprites: ['fern', 'fern', 'tuft', 'cushion'], area: [-14, 4.2, 6, 13], patches: q === 'high' ? 30 : 20, perPatch: [3, 6], rng,
+    y: (x, z) => topAt(x, z), keep: (x, z) => !nearStage(x, z, 2.2), k: 0.55,
+  });
   // Outside: bright meadow beyond the arch (bushes, a tree, grass) — sunlit, so it glows.
   for (let k = 0; k < 10; k++) {
     const x = GAP.x0 - 1 + rng.next() * (GAP.x1 - GAP.x0 + 2), z = -8 - rng.next() * 4;
@@ -218,14 +241,16 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   // rim (leaf-dapple gobo) onto the kin, with a lit focal pool where they stand; a dim cool fill.
   const stage = new THREE.Vector3(0.1, 0, 0.1);
   const sunFrom = new THREE.Vector3(-0.42, 1.0, -0.5);
-  const cookie = dappleCookie(57, { holes: 0.5, edge: 0.5 });
-  extra.push(cookie);
   const { key, spriteLight } = sunRig(group, {
-    target: stage, from: sunFrom, distance: 30, angle: 0.15,
-    color: '#ffeec4', intensity: 7.5, cookie,
-    sky: '#b8d0c4', ground: '#3e3a2c', hemi: 1.75,
-    fill: '#c8d8d0', fillIntensity: 0.45, quality: q,
+    target: stage, from: sunFrom, distance: 30, angle: 0.36, penumbra: 0.25, shadowRadius: 2,
+    color: '#ffeabc', intensity: 9, cookie: null,
+    sky: '#a8c4b8', ground: '#36342a', hemi: 1.5,
+    fill: '#c0d4cc', fillIntensity: 0.4, quality: q,
   });
+  // Leaf-dapple gobo: ONE clear bright pool where the kin stand (a gap in the canopy above),
+  // small hard-edged flecks around it, the walls falling off into green shade.
+  const gob = gobo(key, { kind: 'leaves', seed: 57, pool: { x: 0.15, z: 0.0, ru: 3.6, rv: 2.4, angle: Math.atan2(-2.0, 2.8), soft: 0.28 }, outside: 0.3, shade: 0.18, cover: 0.5, scale: 3.0 });
+  extra.push(gob);
   if (q === 'high') {
     const bounce = new THREE.PointLight(new THREE.Color('#9fe0c8'), 2.0, 5, 1.6);
     bounce.position.set(5.8, 1.0, 0.6);
@@ -268,28 +293,53 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   };
 }
 
+/** Tangled roots hanging from a ledge: 3–4 wavy strands, thick at the top, splitting into hairs. */
+function paintRoots(p: SpriteCanvas, rng: Rng, ramp: Ramp) {
+  const n = ramp.length;
+  for (let k = 0; k < 4; k++) {
+    let x = 2 + rng.next() * (p.w - 4);
+    const len = p.h * (0.5 + rng.next() * 0.5);
+    for (let y = 0; y < len; y++) {
+      x += Math.sin(y * 0.3 + k * 2) * 0.45 + (rng.next() - 0.5) * 0.4;
+      const t = y / len;
+      p.set(x, y, ramp[Math.round(1 + (1 - t) * 2 + (k % 2))]!);
+      if (t < 0.3) p.set(x + 1, y, ramp[Math.min(n - 1, 4)]!);
+      if (rng.chance(0.06) && t > 0.3) { let bx = x; for (let s = 0; s < 4; s++) { bx += k % 2 ? 1 : -1; p.set(bx, y + s, ramp[2]!); } }
+    }
+  }
+}
+
 function paintHollowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number) => number, trainer: boolean) {
   const H = HOLLOW_RAMPS;
   const rng = new Rng(97);
   const nA = noiseField(64, 64, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]);
   const nB = noiseField(64, 64, rng, [[16, 0.6], [32, 0.4]]);
   const mac = macro(17);
+  // Packed earth in clods and moss in clumps (one flat shade per 2–4-texel cluster, taller in
+  // texels since the floor is foreshortened): clean clusters, no per-texel grit.
+  const clod = clusterMap(t.w, t.h, 3, 701, { aspect: 1.8 });
+  const clump = clusterMap(t.w, t.h, 3, 702, { aspect: 2.0 });
   for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
     const X = wx(x), Z = wz(y);
+    const k = y * t.w + x;
     const n = nA(x, y), m = mac(X, Z), fine = nB(x + 17, y + 5);
     const e = Math.hypot(X / 5.6, (Z - 0.2) / 3.6);
     const pd = Math.hypot((X - POOL.x) / POOL.rx, (Z - POOL.z) / POOL.rz);
-    // Moss creeps in from the walls in clumps (dithered edge); wet dark rim around the pool;
-    // worn, lighter packed earth in the middle; darker toward the walls (AO).
+    // Moss creeps in from the walls in whole clumps; wet dark rim around the pool; worn, lighter
+    // packed earth in the middle; darker toward the walls (AO).
     const moss = (e - 0.9) * 3 + (n - 0.5) * 1.8 + (m - 0.5) * 1.1;
-    if (moss > 0.35 && hash2(x >> 1, y >> 1, 6) < Math.min(1, moss - 0.15)) {
-      t.band(x, y, H.moss, 2.4 + (n - 0.5) * 2.4 + (fine - 0.5) * 1.6 - Math.max(0, e - 1.1) * 1.2);
+    const gv = clump.v[k]!;
+    if (moss > 0.35 && gv < Math.min(1, moss - 0.15)) {
+      let g = 3.0 + (n - 0.5) * 1.4 + (gv - 0.5) * 1.4 - Math.max(0, e - 1.1) * 1.2;
+      if (clump.lo[k] && gv < 0.5) g -= 0.9; else if (clump.hi[k] && gv > 0.45) g += 0.8;
+      t.set(x, y, H.moss[Math.max(1, Math.min(5, Math.round(g)))]!);
       continue;
     }
-    let v = 2.4 + (n - 0.5) * 2.6 + (m - 0.5) * 0.9 + (fine - 0.5) * 1.2 + Math.max(0, 0.9 - e) * 0.8 - Math.max(0, e - 0.95) * 1.6;
+    const cv = clod.v[k]!;
+    let v = 2.8 + (n - 0.5) * 1.3 + (m - 0.5) * 0.9 + (fine - 0.5) * 0.4 + (cv - 0.5) * 1.2 + Math.max(0, 0.9 - e) * 0.8 - Math.max(0, e - 0.95) * 1.6;
     if (pd < 1.45) v -= (1.45 - pd) * 3.2;
-    if (hash2(x, y, 3) < 0.06) v += hash2(x, y, 4) < 0.55 ? -1 : 1; // grit
-    t.band(x, y, H.floor, v, 0.2);
+    if (clod.lo[k] && cv < 0.35) v -= 0.85; else if (clod.hi[k] && cv > 0.72) v += 0.6;
+    t.set(x, y, H.floor[Math.max(0, Math.min(5, Math.round(v)))]!);
   }
   const inClearing = (cx: number, cy: number, k = 1.05) => Math.hypot(wx(cx) / 6, wz(cy) / 4) < k;
   // Flat stones set into the floor (lit top-left rim, dark lower rim).
