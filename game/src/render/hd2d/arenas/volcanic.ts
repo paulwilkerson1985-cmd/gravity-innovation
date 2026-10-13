@@ -217,8 +217,8 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
 
   // ---- heightmap
   const X0 = -13.5, Z0 = -12.6;
-  // 25 rows: the front ledge runs on under the portrait (phone) camera, no void below it.
-  const hm = new Heightmap(30, 25, X0, Z0);
+  // 31 rows: the front ledge runs on past the bottom of the portrait (phone) camera.
+  const hm = new Heightmap(30, 31, X0, Z0);
   const floorHalfX = 5.4, floorFront = 3.6, floorBack = -3.0;
   const river = { z: -4.25, half: 0.75 };      // lava river behind the floor
   const fall = { x0: -4.6, x1: -2.6, z: -6.25 }; // lavafall notch in the back wall
@@ -256,7 +256,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
 
   // ---- basalt walls (one mesh)
   const rock = new VoxelBatch(32);
-  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#f4ece6', '#fff2e8'], shade: [0.95, 1.2], core: 0.08, lite: q === 'low' });
+  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#f4ece6', '#fff2e8'], shade: [0.95, 1.2], topK: 1.32, core: 0.08, lite: q === 'low' });
   // Glowing seams and crystals (glow mesh, filled further below).
   const glow = new VoxelBatch(16);
   basaltWall(rock, glow, rng, [[fall.x0, fall.x1], [fall2.x0, fall2.x1]]);
@@ -564,7 +564,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
  */
 function basaltWall(rock: VoxelBatch, glow: VoxelBatch, rng: Rng, falls: [number, number][]) {
   const inFall = (x: number) => falls.some(([a, b]) => x > a - 0.1 && x < b + 0.1);
-  const crack = hdr('#ff5a14', 1.7), crackDim = hdr('#c2300c', 1.2);
+  const crack = hdr('#ff6a1a', 2.3), crackDim = hdr('#d23a0e', 1.5);
   for (let row = 0; row < 3; row++) {
     let x = -14.6 + rng.next() * 0.4;
     let prevFront = -6.3;
@@ -585,9 +585,9 @@ function basaltWall(rock: VoxelBatch, glow: VoxelBatch, rng: Rng, falls: [number
       });
       // A glowing crack in the joint to the left, low on the wall (the lava behind the rock).
       if (row === 0 && !inFall(x) && rng.chance(0.62)) {
-        const ch = 0.35 + rng.next() * 1.3, zf = Math.max(front, prevFront) + 0.03;
-        glow.box([x - 0.025, -0.1, zf], [x + 0.025, ch * 0.6, zf + 0.04], crack, rng);
-        glow.box([x - 0.02, ch * 0.6, zf], [x + 0.02, ch, zf + 0.04], crackDim, rng);
+        const ch = 0.5 + rng.next() * 1.8, zf = Math.max(front, prevFront) + 0.03;
+        glow.box([x - 0.035, -0.1, zf], [x + 0.035, ch * 0.55, zf + 0.04], crack, rng);
+        glow.box([x - 0.025, ch * 0.55, zf], [x + 0.025, ch, zf + 0.04], crackDim, rng);
       }
       // A thin horizontal fissure across a column face, near the foot.
       if (row === 0 && !inFall(cx) && rng.chance(0.3)) {
