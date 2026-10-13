@@ -11,6 +11,7 @@ import { addLights, backdrop, makeSky } from '../render/diorama';
 import { PAD_COLORS, battlePad, battleSpots, frameBattle, fitKinScale, kinHeight, placeSpots } from './battleStage';
 import { ORB_COLORS, burst, makeOrb, orbCelebrate, orbLockFx, orbShakeFx } from '../render/fx';
 import { orbIcon } from '../ui/icons';
+import { effTag, moveInfoBox, wireMoveInfo, type MoveInfoData } from '../ui/pixel/moveInfo';
 import { ambient, moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
 import { animClock, ease, tween, wait } from '../render/anim';
@@ -495,23 +496,26 @@ export class BattleScene extends BaseScene {
       void this.submit({ type: 'move', index: -1 });
       return;
     }
-    this.setMenu('moves', me.moves.map((m, i) => {
+    const infos: MoveInfoData[] = me.moves.map((m) => {
       const data = getMove(m.id);
-      const mult = data.category === 'attack' ? typeMultiplier(data.type, foe.types) : 1;
-      // Effectiveness hint against the foe on the field (attacks only).
-      // Long word on roomy screens, a compact ×2 / ×½ on narrow ones (CSS picks).
-      const eff = (cls: string, title: string, long: string, short: string) => h('span', { class: `eff ${cls}`, title },
-        h('span', { class: 'eff-long' }, long), h('span', { class: 'eff-short' }, short));
-      const tag = mult > 1 ? eff('eff-up', 'Super effective', mult > 2 ? 'Super ×4' : 'Super', mult > 2 ? '×4' : '×2')
-        : mult < 1 ? eff('eff-down', 'Not very effective', 'Weak', mult < 0.5 ? '×¼' : '×½') : null;
+      return {
+        name: data.name, type: data.type, pp: m.pp, maxPp: m.maxPp, power: data.power, category: data.category,
+        mult: data.category === 'attack' ? typeMultiplier(data.type, foe.types) : undefined,
+      };
+    });
+    const info = moveInfoBox();
+    this.setMenu('moves', [...me.moves.map((m, i) => {
+      const data = getMove(m.id);
+      // Effectiveness hint against the foe on the field (attacks only) rides beside the name;
+      // PP / type / power live in the info box (and a short meta line on phones).
       return h('button', {
         class: 'btn btn-move', style: `--c:${TYPE_COLORS[data.type]}`, 'data-testid': `move-${i}`, 'data-pick': i + 1, disabled: m.pp <= 0,
         title: `${data.type} · ${data.blurb}`, 'aria-label': `${data.name}, ${data.type}, ${data.category === 'attack' ? `power ${data.power}` : 'status move'}, ${m.pp} of ${m.maxPp} PP`,
         onclick: () => this.submit({ type: 'move', index: i }),
-      }, h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name)),
-      // The effectiveness tag rides on the meta line, so the move name keeps the full width.
-      h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `${data.power} pow` : 'Status'} · ${m.pp} PP`, tag));
-    }), () => this.showMain());
+      }, h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name), effTag(infos[i]!.mult)),
+      h('span', { class: 'mmeta' }, `${data.type} · ${m.pp}/${m.maxPp} PP`, effTag(infos[i]!.mult)));
+    }), info], () => this.showMain());
+    wireMoveInfo(this.menu, info, infos);
     this.text.textContent = 'Choose a move.';
   }
 
@@ -543,7 +547,7 @@ export class BattleScene extends BaseScene {
         onclick: () => this.submit({ type: 'catch', orb: id }),
         title: `${ORBS[id].name} · ${have} left${canCatch ? ` · about ${Math.round(p * 100)}% to catch` : ''}`,
       }, h('span', { class: 'mname' }, orbIcon(id, 'orb-ico'), h('span', { class: 'mn' }, ORBS[id].name)),
-      h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${have}`), canCatch ? ` · ≈${Math.round(p * 100)}%` : ''));
+      h('span', { class: 'mmeta' }, h('b', { class: 'mcount' }, `×${have}`), canCatch ? ` · ${Math.round(p * 100)}%` : ''));
     });
   }
 

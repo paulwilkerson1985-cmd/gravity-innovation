@@ -1,3 +1,5 @@
+import './pixel/skin';
+import './icons';
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void) | undefined>;
 type Child = Node | string | null | undefined | false;
 

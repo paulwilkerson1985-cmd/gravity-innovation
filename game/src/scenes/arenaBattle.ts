@@ -18,6 +18,7 @@ import { SEAT_COLORS, SEAT_DARK, buildArena, frameBattleCamera, type ArenaSet } 
 import { battleSpots, fitKinScale, kinHeight, placeSpots } from './battleStage';
 import { TurnCollector, curtainBefore, curtainBeforePlayback, type ArenaMode, type LocalMatchSetup, type MatchSummary, type Seat } from './arenaFlow';
 import { abtn, curtain, pips, seatTag } from './arenaUi';
+import { moveInfoBox, wireMoveInfo, type MoveInfoData } from '../ui/pixel/moveInfo';
 import { ERROR_TEXT, MAX_TIMEOUTS, type RoomView, type ServerMessage } from '../net/protocol';
 import { endOnline, existingClient } from '../net/session';
 import type { ArenaClient, NetStatus } from '../net/client';
@@ -441,6 +442,12 @@ export class ArenaBattleScene extends BaseScene {
       return;
     }
     this.text.textContent = `${this.who(seat)}Choose a move for ${me.name}.`;
+    // Same move list as the adventure: moves + a PP / TYPE info box (ui/pixel/moveInfo).
+    const infos: MoveInfoData[] = me.moves.map((m) => {
+      const d = getMove(m.id);
+      return { name: d.name, type: d.type, pp: m.pp, maxPp: m.maxPp, power: d.power, category: d.category };
+    });
+    const info = moveInfoBox();
     this.setMenu('moves', [...me.moves.map((m, i) => {
       const data = getMove(m.id);
       return abtn([h('span', { class: 'mname' }, h('span', { class: 'mn' }, data.name)), h('span', { class: 'mmeta' }, `${data.category === 'attack' ? `${data.power} pow` : 'Status'} · ${m.pp} PP`)], {
@@ -448,7 +455,8 @@ export class ArenaBattleScene extends BaseScene {
         title: `${data.type} · ${data.blurb} (${m.pp}/${m.maxPp} PP)`,
         onclick: () => this.choose(seat, { type: 'move', index: i }),
       });
-    }), this.backBtn(seat)]);
+    }), info, this.backBtn(seat)]);
+    wireMoveInfo(this.menu, info, infos);
   }
 
   private showParty(seat: Seat, forced: boolean) {

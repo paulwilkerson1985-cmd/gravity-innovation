@@ -1,37 +1,97 @@
-// Chunky stroke icons (24×24, currentColor) for menus. Inline SVG so they never depend on
-// emoji fonts and stay crisp at any size.
-const PATHS = {
-  party: '<circle cx="8.5" cy="9" r="3.5"/><circle cx="16" cy="8" r="2.8"/><path d="M2.5 20c0-3.6 2.7-6 6-6s6 2.4 6 6"/><path d="M14.5 13.6c.5-.2 1-.3 1.5-.3 3 0 5.5 2.1 5.5 5.7"/>',
-  bestiary: '<path d="M4 4.5h6.5a2 2 0 0 1 2 2V20a1.6 1.6 0 0 0-1.6-1.6H4z"/><path d="M20 4.5h-6.5a2 2 0 0 0-1 .3"/><path d="M12.5 20a1.6 1.6 0 0 1 1.6-1.6H20V4.5"/><circle cx="7.5" cy="10" r="1.4"/>',
-  bag: '<path d="M5 9h14l-1.2 11H6.2z"/><path d="M9 9V7a3 3 0 0 1 6 0v2"/><path d="M9.5 14h5"/>',
-  box: '<rect x="3.5" y="4" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M10 4v6M14 4v6"/><path d="M9.5 15h5"/>',
-  shop: '<path d="M4 10v10h16V10"/><path d="M3 10l2-6h14l2 6c0 1.4-1.1 2.3-2.4 2.3S16.3 11.4 16.3 10c0 1.4-1.1 2.3-2.4 2.3S11.6 11.4 11.6 10c0 1.4-1 2.3-2.3 2.3S7 11.4 7 10c0 1.4-1.1 2.3-2.3 2.3S3 11.4 3 10z"/><path d="M10 20v-4.5h4V20"/>',
-  save: '<path d="M5 4h11l3.5 3.5V20H5z"/><path d="M8 4v5h7V4"/><rect x="8" y="13" width="8" height="5" rx="1"/>',
-  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.6M12 18.6v2.6M21.2 12h-2.6M5.4 12H2.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8M18.5 18.5l-1.8-1.8M7.3 7.3 5.5 5.5"/><circle cx="12" cy="12" r="6.6"/>',
-  export: '<path d="M12 3.5v11"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4 15.5V20h16v-4.5"/>',
-  import: '<path d="M12 15V4"/><path d="M7.5 8 12 3.5 16.5 8"/><path d="M4 15.5V20h16v-4.5"/>',
-  quit: '<path d="M10 4H5v16h5"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/>',
-  arena: '<path d="M5 19 15 9"/><path d="M15 9l2-5 3 3-5 2"/><path d="M19 19 9 9"/><path d="M9 9 7 4 4 7l5 2"/><path d="M4 17l3 3M20 17l-3 3"/>',
-  play: '<path d="M8 5v14l11-7z"/>',
-  star: '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.8z"/>',
-  up: '<path d="M6 14l6-6 6 6"/>',
-  down: '<path d="M6 10l6 6 6-6"/>',
-  crown: '<path d="M4 18h16M5 15 3.5 7l5 4L12 5l3.5 6 5-4L19 15z"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>',
-  minus: '<path d="M5 12h14"/>',
-  heart: '<path d="M12 20s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.6-7.5 10-7.5 10z"/>',
-  lock: '<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+// Pixel-art icons for menus (12×12 grids, drawn as crisp SVG rects). '#' = currentColor,
+// 'o' = currentColor at 40% (a second tone), so one icon works on any button colour.
+// Displayed at 2 CSS px per pixel (24px) to match the pixel font scale.
+import { gridSvg } from './pixel/skin';
+
+const ICONS = {
+  party: [
+    '............', '..##....##..', '.#..#..#..#.', '.#..#..#..#.', '..##....##..', '............',
+    '.####..####.', '#....##....#', '#....##....#', '#....##....#', '............', '............'],
+  bestiary: [
+    '............', '.#####.####.', '.#ooo#.#..#.', '.#o#o#.#..#.', '.#ooo#.#..#.', '.#...#.#..#.',
+    '.#...#.#..#.', '.#...#.#..#.', '.#####.####.', '......#.....', '............', '............'],
+  bag: [
+    '............', '....####....', '...#....#...', '...#....#...', '.##########.', '.#oooooooo#.',
+    '.#o######o#.', '.#oo#oo#oo#.', '.#oooooooo#.', '.##########.', '............', '............'],
+  box: [
+    '............', '.##########.', '.#oo#oo#oo#.', '.##########.', '.#........#.', '.#..####..#.',
+    '.#........#.', '.#........#.', '.##########.', '............', '............', '............'],
+  shop: [
+    '............', '.##########.', '#o#o#o#o#o##', '##########o#', '.#........#.', '.#.##..##.#.',
+    '.#.##..##.#.', '.#.##.....#.', '.#.##.....#.', '.##########.', '............', '............'],
+  save: [
+    '............', '.#########..', '.#.#ooo#.#..', '.#.#ooo#..#.', '.#.#####..#.', '.#........#.',
+    '.#.######.#.', '.#.#....#.#.', '.#.#....#.#.', '.##########.', '............', '............'],
+  settings: [
+    '............', '.....##.....', '..#.####.#..', '...######...', '..###..###..', '.###....###.',
+    '.###....###.', '..###..###..', '...######...', '..#.####.#..', '.....##.....', '............'],
+  export: [
+    '............', '.....##.....', '.....##.....', '.....##.....', '..#..##..#..', '...#.##.#...',
+    '....####....', '.....##.....', '.#........#.', '.#........#.', '.##########.', '............'],
+  import: [
+    '............', '.....##.....', '....####....', '...#.##.#...', '..#..##..#..', '.....##.....',
+    '.....##.....', '.....##.....', '.#........#.', '.#........#.', '.##########.', '............'],
+  quit: [
+    '............', '.#####......', '.#...#......', '.#...#..#...', '.#...#...#..', '.#...######.',
+    '.#...#...#..', '.#...#..#...', '.#...#......', '.#####......', '............', '............'],
+  arena: [
+    '............', '.#........#.', '..#......#..', '...#....#...', '....#..#....', '.....##.....',
+    '.....##.....', '....#..#....', '..##....##..', '.##......##.', '.#........#.', '............'],
+  play: [
+    '............', '...#........', '...##.......', '...###......', '...####.....', '...#####....',
+    '...####.....', '...###......', '...##.......', '...#........', '............', '............'],
+  star: [
+    '............', '.....##.....', '.....##.....', '....####....', '############', '.##########.',
+    '..########..', '...######...', '..###..###..', '..##....##..', '.#........#.', '............'],
+  up: [
+    '............', '............', '............', '.....##.....', '....####....', '...######...',
+    '..###..###..', '.###....###.', '.##......##.', '............', '............', '............'],
+  down: [
+    '............', '............', '............', '.##......##.', '.###....###.', '..###..###..',
+    '...######...', '....####....', '.....##.....', '............', '............', '............'],
+  crown: [
+    '............', '............', '.#...##...#.', '.##..##..##.', '.###.##.###.', '.##########.',
+    '.##o####o##.', '.##########.', '.##########.', '............', '.##########.', '............'],
+  plus: [
+    '............', '............', '.....##.....', '.....##.....', '.....##.....', '.##########.',
+    '.##########.', '.....##.....', '.....##.....', '.....##.....', '............', '............'],
+  minus: [
+    '............', '............', '............', '............', '............', '.##########.',
+    '.##########.', '............', '............', '............', '............', '............'],
+  heart: [
+    '............', '............', '..##....##..', '.####..####.', '.##########.', '.##########.',
+    '..########..', '...######...', '....####....', '.....##.....', '............', '............'],
+  lock: [
+    '............', '....####....', '...#....#...', '...#....#...', '...#....#...', '.##########.',
+    '.##########.', '.####oo####.', '.####oo####.', '.##########.', '............', '............'],
 } as const;
 
-export type IconName = keyof typeof PATHS;
+export type IconName = keyof typeof ICONS;
+
+function iconMarkup(name: IconName, cls: string): string {
+  const rows = ICONS[name];
+  let rects = '';
+  rows.forEach((row, y) => {
+    let x = 0;
+    while (x < row.length) {
+      const c = row[x]!;
+      let n = 1;
+      while (x + n < row.length && row[x + n] === c) n++;
+      if (c === '#') rects += `<rect x="${x}" y="${y}" width="${n}" height="1"/>`;
+      else if (c === 'o') rects += `<rect x="${x}" y="${y}" width="${n}" height="1" fill-opacity=".4"/>`;
+      x += n;
+    }
+  });
+  return `<svg class="${cls}" viewBox="0 0 12 12" aria-hidden="true" fill="currentColor" shape-rendering="crispEdges">${rects}</svg>`;
+}
 
 export function icon(name: IconName, cls = 'ico'): SVGSVGElement {
   const wrap = document.createElement('span');
-  wrap.innerHTML = `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${PATHS[name]}</svg>`;
+  wrap.innerHTML = iconMarkup(name, cls);
   return wrap.firstElementChild as SVGSVGElement;
 }
 
-/** The gold coin glyph used next to money amounts. */
+/** The gold coin glyph used next to money amounts (a pixel coin, see .coin in style.css). */
 export function coin(): HTMLElement {
   const el = document.createElement('span');
   el.className = 'coin';
@@ -41,38 +101,48 @@ export function coin(): HTMLElement {
 
 // ---------------------------------------------------------------- orb icons
 // Orbs are lantern-buds (see render/fx.ts): a pointed faceted pod in leafy sepals with a
-// glowing tip. Tiers: Orb (coral, green sepals), Bright Orb (sky blue + gold halo ring),
-// Star Orb (gold pod in a white 4-point star collar). Drawn as inline SVG so they stay crisp.
+// glowing tip. Tiers: Orb (coral, green sepals), Bright Orb (sky blue + gold halo band),
+// Star Orb (gold pod in a white star collar). Drawn as pixel art (11×13) so they sit with the
+// pixel font; a 7×8 "pip" version marks party slots on the battle info boxes.
 
 export type OrbIconTier = 'orb' | 'bright' | 'star';
 
-const ORB_ICON: Record<OrbIconTier, { body: string; shade: string; light: string; tip: string; collar: string; collarDark: string }> = {
-  orb: { body: '#ff4d6d', shade: '#d62c55', light: '#ff9aab', tip: '#fff1a8', collar: '#4cc35a', collarDark: '#2f8f44' },
-  bright: { body: '#3d9bff', shade: '#2266d8', light: '#9ad6ff', tip: '#ffd23f', collar: '#4cc35a', collarDark: '#2f8f44' },
-  star: { body: '#ffc93d', shade: '#e8901e', light: '#fff0a0', tip: '#ff7ad0', collar: '#ffffff', collarDark: '#d8def5' },
+const ORB_COLORS: Record<OrbIconTier, Record<string, string>> = {
+  orb: { b: '#ff4d6d', s: '#c42a50', L: '#ffa0b0', t: '#fff1a8', c: '#4cc35a', C: '#2a8a40', r: '#4cc35a' },
+  bright: { b: '#3d9bff', s: '#2160c8', L: '#a6dcff', t: '#ffd23f', c: '#4cc35a', C: '#2a8a40', r: '#ffc93d' },
+  star: { b: '#ffc93d', s: '#d8861a', L: '#fff2a8', t: '#ff7ad0', c: '#ffffff', C: '#c9cfe8', r: '#ffc93d' },
+};
+const FAINT = { b: '#9a93a8', s: '#6f6880', L: '#c9c3d4', t: '#d9d4e2', c: '#8a8498', C: '#6a6478', r: '#8a8498' };
+
+const ORB_GRID: Record<OrbIconTier, string[]> = {
+  orb: [
+    '.....k.....', '....ktk....', '.....k.....', '....kbk....', '...kLbsk...', '..kLbbbsk..', '..kLbbbsk..',
+    '.kLbbbbbsk.', 'kckbbbbbkCk', 'kcckbbbkCCk', '.kccckCCCk.', '..kcccCCk..', '...kkkkk...'],
+  bright: [
+    '.....k.....', '....ktk....', '.....k.....', '....kbk....', '...kLbsk...', '..kLbbbsk..', 'kkrrrrrrrkk',
+    '.kLbbbbbsk.', 'kckbbbbbkCk', 'kcckbbbkCCk', '.kccckCCCk.', '..kcccCCk..', '...kkkkk...'],
+  star: [
+    '.....k.....', '....ktk....', '.....k.....', '....kbk....', '...kLbsk...', '..kLbbbsk..', '..kLbbbsk..',
+    'kk.kbbbsk.k', 'kcckbbbskCk', '.kcckbskCk.', '..kcckCCk..', '.kcck.kCCk.', '.kkk...kkk.'],
 };
 
-/** SVG markup (24×24 viewBox) for an orb tier. Pure string — safe to call outside the DOM. */
+const PIP = ['...k...', '..ktk..', '.kLbsk.', '.kbbsk.', 'kckbkCk', '.kccCk.', '..kkk..'];
+
+const INK = '#2a2238';
+
+/** SVG markup for an orb tier (pixel art). Pure string — safe to call outside the DOM. */
 export function orbIconSvg(tier: OrbIconTier): string {
-  const c = ORB_ICON[tier];
-  const ink = '#1d1838';
-  const collar = tier === 'star'
-    ? `<path d="M12 12.5 3 9.6 8.4 15.6 5.6 21.2 12 18.4 18.4 21.2 15.6 15.6 21 9.6Z" fill="${c.collar}" stroke="${ink}" stroke-width="1.4" stroke-linejoin="round"/>`
-    : `<path d="M12 15.5 4.2 11.4 6.6 18.6Z" fill="${c.collar}" stroke="${ink}" stroke-width="1.3" stroke-linejoin="round"/>`
-      + `<path d="M12 15.5 19.8 11.4 17.4 18.6Z" fill="${c.collarDark}" stroke="${ink}" stroke-width="1.3" stroke-linejoin="round"/>`;
-  const front = tier === 'star' ? '' : `<path d="M12 22 8.2 15.4 12 13.6 15.8 15.4Z" fill="${c.collar}" stroke="${ink}" stroke-width="1.3" stroke-linejoin="round"/>`;
-  const ring = tier === 'bright'
-    ? { back: `<path d="M3.6 12.4C4.6 9.6 19.6 7.6 20.4 9.6" fill="none" stroke="#b57b12" stroke-width="2" stroke-linecap="round"/>`,
-      front: `<path d="M20.4 9.6C21.2 11.8 4.6 15.4 3.6 12.4" fill="none" stroke="${ink}" stroke-width="3.4" stroke-linecap="round"/><path d="M20.4 9.6C21.2 11.8 4.6 15.4 3.6 12.4" fill="none" stroke="#ffc93d" stroke-width="1.8" stroke-linecap="round"/>` }
-    : { back: '', front: '' };
-  return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
-    + ring.back + collar
-    + `<path d="M12 1.8 17.4 9.4Q18.6 15.6 12 18.6 5.4 15.6 6.6 9.4Z" fill="${c.body}" stroke="${ink}" stroke-width="1.5" stroke-linejoin="round"/>`
-    + `<path d="M12 2.6 12 18 15.8 16.2Q17.8 13.6 16.8 9.6Z" fill="${c.shade}"/>`
-    + `<path d="M12 3.4 8.4 9.6 9.6 13.8 12 9.8Z" fill="${c.light}"/>`
-    + ring.front + front
-    + `<path d="M12 .6 13.6 3.2 12 5.6 10.4 3.2Z" fill="${c.tip}" stroke="${ink}" stroke-width="1" stroke-linejoin="round"/>`
-    + `</svg>`;
+  const pal = { k: INK, ...ORB_COLORS[tier] };
+  const rows = ORB_GRID[tier];
+  let rects = '';
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const c = row[x]!;
+      const fill = (pal as Record<string, string>)[c];
+      if (fill) rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${fill}"/>`;
+    }
+  });
+  return `<svg viewBox="0 0 11 13" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" aria-hidden="true">${rects}</svg>`;
 }
 
 /** An inline orb icon element. */
@@ -86,20 +156,50 @@ export function orbIcon(tier: OrbIconTier, cls = 'orb-svg'): HTMLElement {
 
 const ORB_TIER_COLOR: Record<OrbIconTier, string> = { orb: '#ff4d6d', bright: '#3d9bff', star: '#ffc93d' };
 
+// Item icons (bag / shop): 12×12 pixel art, keyed like the item ids.
+const ITEM_GRID: Record<string, string[]> = {
+  tonic: ['....kkkk....', '....kwwk....', '.....kk.....', '....kbbk....', '...kbbbbk...', '..kLbbbbsk..', '..kLbbbbsk..', '..kLbbbbsk..', '..kLbbbbsk..', '..kbbbbbsk..', '...kkkkkk...', '............'],
+  remedy: ['............', '........kkk.', '......kkbbk.', '.....kbbbsk.', '....kbbbbk..', '...kbbsbbk..', '..kbbsbbk...', '..kbsbbk....', '.kbsbkk.....', '.kskk.......', 'kk..........', '............'],
+  'revive-seed': ['.....kk.....', '....kbbk....', '...kbkkbk...', '....kk......', '...kkkkk....', '..kLbbbbk...', '.kLbbbbbsk..', '.kLbbbbbsk..', '.kbbbbbbsk..', '..kbbbbsk...', '...kkkkk....', '............'],
+};
+const ITEM_COLORS: Record<string, Record<string, string>> = {
+  tonic: { b: '#5fd36b', s: '#2e9a44', L: '#b8f5bd', w: '#c98a4a' },
+  'mega-tonic': { b: '#3d9bff', s: '#2160c8', L: '#a6dcff', w: '#c98a4a' },
+  'full-tonic': { b: '#ffc93d', s: '#d8861a', L: '#fff2a8', w: '#c98a4a' },
+  remedy: { b: '#4cc35a', s: '#2a8a40' },
+  'revive-seed': { b: '#ff9a3d', s: '#c8641a', L: '#ffe08a' },
+};
+
+function itemSvg(id: string): string | null {
+  const grid = ITEM_GRID[id] ?? (id.endsWith('tonic') ? ITEM_GRID.tonic : undefined);
+  const pal = ITEM_COLORS[id];
+  if (!grid || !pal) return null;
+  return gridSvg(grid, { k: INK, ...pal }, 1);
+}
+
 /**
- * CSS that re-skins the existing orb icon hooks (`.item-ico.ico-<tier>` in the bag/shop and
- * `i.orb-ico` in the battle Catch menu, keyed by its inline --c colour) with the bud SVGs.
+ * CSS that skins the orb/item icon hooks (`.item-ico.ico-<id>` in the bag/shop, `i.orb-ico` in
+ * the battle Catch menu keyed by its inline --c colour, `.pdot` party pips) with pixel art.
  */
 export function orbIconCss(): string {
-  const url = (t: OrbIconTier) => `url("data:image/svg+xml,${encodeURIComponent(orbIconSvg(t))}")`;
-  const reset = 'border:0;border-radius:0;box-shadow:none;background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:contain;';
+  const url = (svg: string) => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  const reset = 'border:0;border-radius:0;box-shadow:none;background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:contain;image-rendering:pixelated;';
   let css = '';
-  for (const t of Object.keys(ORB_ICON) as OrbIconTier[]) {
-    const id = t === 'orb' ? 'orb' : t;
-    css += `.item-ico.ico-${id}{${reset}background-image:${url(t)};}`;
-    css += `.item-ico.ico-${id}::after{content:none;display:none;}`;
-    css += `i.orb-ico[style*="${ORB_TIER_COLOR[t]}"]{${reset}background-image:${url(t)};width:18px;height:18px;vertical-align:-3px;}`;
+  for (const t of Object.keys(ORB_COLORS) as OrbIconTier[]) {
+    css += `.item-ico.ico-${t}{${reset}background-image:${url(orbIconSvg(t))};}`;
+    css += `.item-ico.ico-${t}::before,.item-ico.ico-${t}::after{content:none;display:none;}`;
+    css += `i.orb-ico[style*="${ORB_TIER_COLOR[t]}"]{${reset}background-image:${url(orbIconSvg(t))};}`;
   }
+  for (const id of ['tonic', 'mega-tonic', 'full-tonic', 'remedy', 'revive-seed']) {
+    const svg = itemSvg(id);
+    if (svg) css += `.item-ico.ico-${id}{${reset}background-image:${svg};}.item-ico.ico-${id}::before,.item-ico.ico-${id}::after{content:none;display:none;}`;
+  }
+  const pip = (faint: boolean) => {
+    const pal: Record<string, string> = { k: INK, ...(faint ? FAINT : ORB_COLORS.orb) };
+    return gridSvg(PIP, pal, 1);
+  };
+  css += `.pdot{${reset}background-image:${pip(true)};}.pdot.on{background-image:${pip(false)};}`;
+  css += `.arena-pip{${reset}background-image:${pip(false)};}.arena-pip.out{background-image:${pip(true)};opacity:1;}`;
   return css;
 }
 

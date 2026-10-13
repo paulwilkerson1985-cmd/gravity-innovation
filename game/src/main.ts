@@ -53,4 +53,5 @@ installHooks(game);
 const sceneParam = (params.get('scene') ?? 'title') as SceneName;
 const sceneArgs: Record<string, unknown> = {};
 for (const [k, v] of params) if (!['scene', 'seed', 'debug'].includes(k)) sceneArgs[k] = v;
-void game.goto(sceneParam, sceneArgs);
+// The pixel font is tiny; wait for it so the first layout (text paging, camera framing) measures real glyphs.
+void (document.fonts?.load('20px "Orbkin Pixel"') ?? Promise.resolve()).catch(() => undefined).then(() => game.goto(sceneParam, sceneArgs));

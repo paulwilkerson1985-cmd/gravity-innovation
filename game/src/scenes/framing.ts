@@ -119,7 +119,7 @@ export function layoutMode(w: number, h: number): LayoutMode {
 
 /** Big screens zoom the whole HTML UI (style.css: `.scene-ui { zoom }`); keep in sync. */
 export function uiZoom(w: number, h: number): number {
-  return w >= 1600 && h >= 900 ? 1.35 : 1;
+  return w >= 1600 && h >= 900 ? 1.5 : 1;
 }
 
 /**
