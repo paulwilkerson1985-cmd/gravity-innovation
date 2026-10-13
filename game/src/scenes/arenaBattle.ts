@@ -667,10 +667,15 @@ export class ArenaBattleScene extends BaseScene {
     view.root.position.copy(this.spot(seat));
     view.faceTowards(seat === this.near ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
     if (seat === this.near) {
-      // Same 3/4 back view as the adventure battle; flat kin turn further, and a little extra light.
-      view.root.rotation.y -= 0.55;
-      const bb = view.mesh.geometry.boundingBox;
-      if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
+      if (this.hd2d) {
+        // HD-2D: a clean side / 3-4 profile facing the far kin across the screen.
+        view.root.rotation.y = this.hd2d.partnerYaw(view.speciesId);
+      } else {
+        // Same 3/4 back view as the adventure battle; flat kin turn further, and a little extra light.
+        view.root.rotation.y -= 0.55;
+        const bb = view.mesh.geometry.boundingBox;
+        if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
+      }
     }
     view.setAmbientLift(seat === this.near ? 0.3 : 0.16);
     if (this.hd2d) { this.hd2d.fitKin(view, seat === this.near); this.hd2d.attachKin(view, seat === this.near); } else fitKinScale(view, seat === this.near ? 0 : 1);

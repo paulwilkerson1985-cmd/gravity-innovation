@@ -431,7 +431,9 @@ export class BattleScene extends BaseScene {
     if (this.hd2d) {
       // HD-2D: the trainer never leaves — they step back to their post behind the foe kin.
       const [from, to] = this.hd2d.trainerPath(entering);
+      this.hd2d.setTrainerWalking(true);
       await tween(entering ? 520 : 480, (k) => fig.position.lerpVectors(from, to, ease.inOut(k)));
+      this.hd2d.setTrainerWalking(false);
       return;
     }
     const on = this.spots[1].clone();
@@ -668,10 +670,15 @@ export class BattleScene extends BaseScene {
         view.faceTowards(e.side === 0 ? this.spots[1] : this.spots[0].clone().add(new THREE.Vector3(2, 0, 3)));
         // Turn your own kin a little toward the camera: a readable 3/4 back view, not a rear end.
         if (e.side === 0) {
-          view.root.rotation.y -= 0.55;
-          // Flat kin (rays) read as a sliver edge-on: turn them further to show their top/side.
-          const bb = view.mesh.geometry.boundingBox;
-          if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
+          if (this.hd2d) {
+            // HD-2D: a clean side / 3-4 profile facing the foe across the screen (near eye shows).
+            view.root.rotation.y = this.hd2d.partnerYaw(e.species);
+          } else {
+            view.root.rotation.y -= 0.55;
+            // Flat kin (rays) read as a sliver edge-on: turn them further to show their top/side.
+            const bb = view.mesh.geometry.boundingBox;
+            if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
+          }
           // Lit a touch brighter than the foe, so a brown kin never melts into a brown pad.
           view.setAmbientLift(0.3);
         }
@@ -830,6 +837,16 @@ export class BattleScene extends BaseScene {
   /** Brief camera shake for big hits. */
   private shake(amount: number) {
     if (animClock.instant) return;
+    const hd = this.hd2d;
+    if (hd) {
+      // HD-2D: shake in whole internal pixels (view offset), so the pixel grid never smears.
+      const a0 = Math.max(1, Math.round(amount * 28));
+      void tween(260, (k) => {
+        const a = k >= 1 ? 0 : a0 * (1 - k);
+        hd.shake(Math.sin(k * 40) * a, Math.cos(k * 33) * a * 0.6);
+      });
+      return;
+    }
     const cam = this.camera;
     const base = cam.position.clone();
     void tween(260, (k) => {

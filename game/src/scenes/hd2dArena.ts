@@ -1,11 +1,14 @@
 // HD-2D staging for the Arena (PvP) scenes behind `?gfx=hd2d`: the stadium set, the post
 // pipeline, sprite-ified kin, and BOTH hotseat/online players as figures — each stands behind
-// their own kin (the near seat seen from the back, bottom-left; the far seat behind the foe,
-// upper-right). `setNear(seat)` swaps everything for the hotseat per-seat perspective.
-// The arena scenes keep all their flow and UI; they only branch on this stage.
+// their own kin (the near seat behind-left of its kin, seen from the back; the far seat one
+// step behind the far kin). `setNear(seat)` swaps everything for the hotseat per-seat
+// perspective. Same sprite staging rules as the adventure stage (scenes/hd2dBattle.ts): the
+// near kin in a side / 3-4 profile facing across the screen, clear floor between each player
+// and their kin, sprites baked from a near-side view with a fixed texel density.
 import * as THREE from 'three';
 import type { Game } from '../game/game';
 import type { CreatureView } from '../render/creature';
+import { tween, ease } from '../render/anim';
 import { Hd2dPipeline, detectQuality, installPipeline, type Quality } from '../render/hd2d/pipeline';
 import { SpriteBaker, type SpriteSubject } from '../render/hd2d/sprite';
 import { Figure, HERO_LOOK } from '../render/hd2d/characters';
@@ -13,31 +16,15 @@ import { buildStadiumArena, stadiumGrade, type StadiumRig } from '../render/hd2d
 import type { PersonLook } from '../render/trainer';
 import { layoutMode } from './framing';
 import type { Seat } from './arenaFlow';
+import { HD2D_CAMERA, KIN_SIZE, PERSON_SCALE, figureSpriteOptions, floorBasis, kinSpriteOptions, partnerTurn, poseFlatKin, sideYaw, stageOf } from './hd2dBattle';
 
-/** Per-layout camera (same language as the adventure stage). */
-const CAMERA = {
-  wide: { elev: 0.6, yaw: -0.06, fov: 32, person: 0.15, mine: [0.38, 0.7], foe: [0.6, 0.53] },
-  portrait: { elev: 0.7, yaw: -0.4, fov: 34, person: 0.14, mine: [0.4, 0.525], foe: [0.62, 0.34] },
-  land: { elev: 0.7, yaw: -0.08, fov: 30, person: 0.18, mine: [0.3, 0.68], foe: [0.52, 0.44] },
-} as const;
-
-const KIN_SIZE = [1.3, 1.2] as const;
-const PERSON_SCALE = 1.55;
+const STAGE_K = [1, 1, 1.07, 1.15] as const;
 
 /** Two distinct, original player outfits in the seat colours. */
 export function seatLook(seat: Seat, color: string, dark: string): PersonLook {
   return seat === 0
     ? { ...HERO_LOOK, top: color, accent: dark, hatColor: '#ffffff', hat: 'cap', prop: 'pack' }
     : { ...HERO_LOOK, skin: '#e8b48a', hair: '#2a1d1a', top: color, accent: dark, bottom: '#2a2d44', hat: 'beanie', hatColor: '#ffcf3f', prop: 'scarf' };
-}
-
-function contactShadow(target: THREE.Object3D): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.CircleGeometry(0.32, 14), new THREE.MeshBasicMaterial({ color: 0x0d0a18, transparent: true, opacity: 0.38, depthWrite: false }));
-  m.rotation.x = -Math.PI / 2;
-  m.renderOrder = -0.5;
-  m.onBeforeRender = () => { m.position.set(target.position.x, target.position.y + 0.015, target.position.z); m.updateMatrixWorld(); };
-  m.frustumCulled = false;
-  return m;
 }
 
 function face(o: THREE.Object3D, target: THREE.Vector3) {
@@ -56,6 +43,9 @@ export class Hd2dArenaStage {
   readonly figures: Figure[] = [];
   private near: Seat;
   private extra: Figure[] = [];
+  /** Footprint radius of the kin on each SPOT (0 = near spot, 1 = far spot). */
+  private radius: [number, number] = [0.5, 0.5];
+  private moveId = 0;
 
   constructor(private game: Game, private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, private opts: { near: Seat; colors: readonly [string, string]; darks: readonly [string, string]; players?: boolean }) {
     this.quality = detectQuality();
@@ -79,26 +69,52 @@ export class Hd2dArenaStage {
         this.addFigure(f);
         this.figures.push(f);
       }
-      this.placeFigures();
+      this.placeFigures(false);
     }
     (window as unknown as { __hd2d?: unknown }).__hd2d = this;
   }
 
   /** Add a figure (e.g. the winner on the podium) as a sprite. */
   addFigure(f: Figure) {
-    this.baker.add(f.mesh, { rig: f.uniforms, lift: 0.05 });
-    if (this.pipeline.settings.staticShadows) { f.mesh.castShadow = false; this.scene.add(contactShadow(f.mesh)); }
+    this.baker.add(f.mesh, figureSpriteOptions(f, { lift: 0.05 }));
     if (!this.figures.includes(f)) this.extra.push(f);
   }
 
-  private placeFigures() {
+  /** Near player: behind-left of the near kin with clear floor; far player: behind the far kin. */
+  private posts(): [THREE.Vector3, THREE.Vector3] {
+    const { right, toward } = floorBasis(this.camera);
+    const nearPost = this.spots[0].clone().addScaledVector(right, -(this.radius[0] + 0.6)).addScaledVector(toward, 0.35);
+    nearPost.y = this.rig.people[0].y;
+    const farPost = this.rig.people[1].clone();
+    const d = farPost.clone().sub(this.spots[1]).setY(0);
+    const need = this.radius[1] + 0.75;
+    if (d.length() < need) farPost.addScaledVector(d.lengthSq() > 1e-6 ? d.normalize() : toward.clone().negate(), need - d.length());
+    return [nearPost, farPost];
+  }
+
+  private placeFigures(animate: boolean) {
     if (!this.figures.length) return;
     const other = (this.near === 0 ? 1 : 0) as Seat;
     const n = this.figures[this.near]!, fr = this.figures[other]!;
-    n.mesh.position.copy(this.rig.people[0]);
-    face(n.mesh, this.spots[1]);
-    fr.mesh.position.copy(this.rig.people[1]);
-    face(fr.mesh, this.rig.people[0].clone().add(new THREE.Vector3(0, 0, 1)));
+    const [np, fp] = this.posts();
+    const id = ++this.moveId;
+    const look = () => {
+      face(n.mesh, this.spots[1]);
+      // The far player faces the camera, turned a little toward the near side (face reads).
+      const { right, toward } = floorBasis(this.camera);
+      const d = toward.multiplyScalar(Math.cos(0.38)).addScaledVector(right, -Math.sin(0.38));
+      fr.mesh.rotation.set(0, Math.atan2(d.x, d.z), 0);
+    };
+    if (!animate) { n.mesh.position.copy(np); fr.mesh.position.copy(fp); look(); return; }
+    const a0 = n.mesh.position.clone(), b0 = fr.mesh.position.clone();
+    n.walking = fr.walking = true;
+    void tween(200, (k) => {
+      if (id !== this.moveId) return;
+      const e = ease.inOut(k);
+      n.mesh.position.lerpVectors(a0, np, e);
+      fr.mesh.position.lerpVectors(b0, fp, e);
+      look();
+    }).then(() => { if (id === this.moveId) n.walking = fr.walking = false; });
   }
 
   /** Hotseat perspective: `seat` comes to the front (its kin, ring colour and player). */
@@ -106,16 +122,21 @@ export class Hd2dArenaStage {
     this.near = seat;
     const other = (seat === 0 ? 1 : 0) as Seat;
     this.rig.setColors(this.opts.colors[seat], this.opts.colors[other]);
-    this.placeFigures();
+    this.placeFigures(false);
   }
 
   figureMesh(seat: Seat): THREE.Mesh | null { return this.figures[seat]?.mesh ?? null; }
 
+  /** Yaw for the near kin: a side / 3-4 profile facing the far kin across the screen. */
+  partnerYaw(speciesId?: string): number { return sideYaw(this.camera, partnerTurn(speciesId)); }
+
   attachKin(view: CreatureView, near: boolean) {
     this.detachKin(view);
-    this.kin.set(view, this.baker.add(view.mesh, { rig: view.uniforms, emissiveFrom: view.material, lift: near ? 0.1 : 0.04 }));
-    if (this.pipeline.settings.staticShadows) view.mesh.castShadow = false;
-    else (view.shadow.material as THREE.MeshBasicMaterial).opacity *= 0.7;
+    poseFlatKin(view, this.camera);
+    const sub = this.baker.add(view.mesh, kinSpriteOptions(view, { lift: near ? 0.1 : 0.04 }));
+    sub.setLightRim(view.dark ? 0.35 : 0);
+    this.kin.set(view, sub);
+    view.shadow.visible = false; // the sprite's own pixel contact shadow replaces the blob
   }
 
   detachKin(view: CreatureView) {
@@ -123,19 +144,23 @@ export class Hd2dArenaStage {
     if (s) { this.baker.remove(s); this.kin.delete(view); }
   }
 
-  /** Normalise a kin's size for the arena (root scale). */
-  fitKin(view: CreatureView, near: boolean, k0 = 1) {
+  /** Normalise a kin's size for the arena (root scale); returns its footprint radius. */
+  fitKin(view: CreatureView, near: boolean, k0 = 1): number {
     const g = view.mesh.geometry;
     g.computeBoundingBox();
     const bb = g.boundingBox!;
     const size = Math.max(bb.max.y - bb.min.y, 0.8 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) * view.baseScale;
-    const k = (KIN_SIZE[near ? 0 : 1] / size) * Math.pow(size / 1.1, 0.5) * k0;
-    view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.55, 1.7));
+    const k = (KIN_SIZE[near ? 0 : 1] * STAGE_K[stageOf(view.speciesId)]! / size) * Math.pow(size / 1.1, 0.5) * k0;
+    view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.5, 1.7));
+    const r = 0.5 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * view.baseScale * view.root.scale.x;
+    this.radius[near ? 0 : 1] = r;
+    this.placeFigures(true);
+    return r;
   }
 
   /** Elevated 3/4 battle camera; the image slides so the kin land on the layout targets. */
   frame(w: number, h: number) {
-    const c = CAMERA[layoutMode(w, h)];
+    const c = HD2D_CAMERA[layoutMode(w, h)];
     const cam = this.camera;
     cam.fov = c.fov; cam.aspect = w / h; cam.near = 0.5; cam.far = 120;
     const dir = new THREE.Vector3(Math.sin(c.yaw) * Math.cos(c.elev), Math.sin(c.elev), Math.cos(c.yaw) * Math.cos(c.elev));
@@ -151,6 +176,9 @@ export class Hd2dArenaStage {
     const tx = ((c.mine[0] + c.foe[0]) / 2) * w, ty = ((c.mine[1] + c.foe[1]) / 2) * h;
     cam.setViewOffset(w, h, (a[0] + b[0]) / 2 - tx, (a[1] + b[1]) / 2 - ty, w, h);
     cam.updateProjectionMatrix();
+    cam.updateMatrixWorld();
+    if (!this.figures.some((f) => f.walking)) this.placeFigures(false);
+    for (const v of this.kin.keys()) poseFlatKin(v, cam);
     this.afterFrame(dist);
   }
 
@@ -158,7 +186,7 @@ export class Hd2dArenaStage {
   afterFrame(dist: number) {
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 14; this.scene.fog.far = dist + 50; }
     this.pipeline.setSize();
-    this.rig.setPixelSize(this.quality === 'high' ? 2 : 1.5);
+    this.rig.setPixelSize(this.quality === 'high' ? 1 : 1.5);
   }
 
   update(t: number) {

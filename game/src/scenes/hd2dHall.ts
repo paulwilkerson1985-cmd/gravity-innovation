@@ -9,6 +9,7 @@ import type { ArenaRig } from '../render/hd2d/arena';
 import { buildSummitArena, summitGrade } from '../render/hd2d/arenas/summit';
 import type { CreatureView } from '../render/creature';
 import type { Figure } from '../render/hd2d/characters';
+import { figureSpriteOptions, kinSpriteOptions } from './hd2dBattle';
 
 export class Hd2dHallStage {
   readonly quality: Quality;
@@ -32,13 +33,13 @@ export class Hd2dHallStage {
   }
 
   addKin(v: CreatureView) {
-    this.baker.add(v.mesh, { rig: v.uniforms, emissiveFrom: v.material, lift: 0.08 });
-    if (this.pipeline.settings.staticShadows) v.mesh.castShadow = false;
+    const s = this.baker.add(v.mesh, kinSpriteOptions(v, { lift: 0.08 }));
+    s.setLightRim(v.dark ? 0.35 : 0);
+    v.shadow.visible = false; // the sprite stands on its own pixel contact shadow
   }
 
   addFigure(f: Figure) {
-    this.baker.add(f.mesh, { rig: f.uniforms, lift: 0.06 });
-    if (this.pipeline.settings.staticShadows) f.mesh.castShadow = false;
+    this.baker.add(f.mesh, figureSpriteOptions(f, { lift: 0.06 }));
     this.figures.push(f);
   }
 
@@ -46,7 +47,7 @@ export class Hd2dHallStage {
   afterFrame(dist: number) {
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 10; this.scene.fog.far = dist + 40; }
     this.pipeline.setSize();
-    this.rig.setPixelSize(this.quality === 'high' ? 2 : 1.5);
+    this.rig.setPixelSize(this.quality === 'high' ? 1 : 1.5);
   }
 
   update(t: number) {
