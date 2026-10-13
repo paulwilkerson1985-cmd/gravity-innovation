@@ -30,27 +30,27 @@ export const LIGHT_PRESETS: Record<LightPreset, PresetSpec> = {
   daylight: {
     elev: 0.95, azim: -0.6, key: '#fff1d6', keyI: 2.6, sky: '#cfe4ff', ground: '#6a5a3a', hemiI: 1.6, fill: '#ffe2c0', fillI: 0.5, soft: 2,
     background: '#9cc8e8', fog: '#cfe3e0',
-    grade: { gain: [1.02, 1.0, 0.97], shadowTint: '#2a3050', highTint: '#fff2cc', saturation: 1.02, contrast: 1.05, splitAmount: 0.1, vignette: 0.32 },
+    grade: { gain: [1.02, 1.0, 0.97], shadowTint: '#2a3050', highTint: '#fff2cc', saturation: 0.82, contrast: 1.05, splitAmount: 0.1, vignette: 0.16, exposure: 1.12 },
   },
   sunset: {
     elev: 0.32, azim: -1.1, key: '#ffb070', keyI: 2.8, sky: '#ffc8a0', ground: '#4a2a3a', hemiI: 1.5, fill: '#ff9a80', fillI: 0.55, soft: 3,
     background: '#f0a070', fog: '#e8a080',
-    grade: { gain: [1.06, 0.98, 0.9], shadowTint: '#3a1f40', highTint: '#ffd090', saturation: 0.98, contrast: 1.07, splitAmount: 0.18, vignette: 0.42 },
+    grade: { gain: [1.06, 0.98, 0.9], shadowTint: '#3a1f40', highTint: '#ffd090', saturation: 0.78, contrast: 1.05, splitAmount: 0.14, vignette: 0.2, exposure: 1.2 },
   },
   overcast: {
     elev: 1.2, azim: 0.3, key: '#e4e8ec', keyI: 1.1, sky: '#d8e0e8', ground: '#5a5a58', hemiI: 2.0, fill: '#dfe4e8', fillI: 0.45, soft: 6,
     background: '#a8b4c0', fog: '#b8c2cc',
-    grade: { gain: [0.99, 1.0, 1.02], shadowTint: '#2a3038', highTint: '#f0f2f0', saturation: 0.85, contrast: 1.03, splitAmount: 0.08, vignette: 0.36 },
+    grade: { gain: [0.99, 1.0, 1.02], shadowTint: '#2a3038', highTint: '#f0f2f0', saturation: 0.78, contrast: 1.04, splitAmount: 0.08, vignette: 0.18, exposure: 1.15 },
   },
   moonlight: {
     elev: 0.8, azim: 0.7, key: '#9fb4ff', keyI: 1.6, sky: '#5a6aa8', ground: '#1a1830', hemiI: 1.3, fill: '#7080c0', fillI: 0.35, soft: 3,
     background: '#0c1024', fog: '#1a2040',
-    grade: { gain: [0.94, 0.98, 1.08], shadowTint: '#141030', highTint: '#cfe0ff', saturation: 0.88, contrast: 1.08, splitAmount: 0.16, vignette: 0.5, exposure: 1.1 },
+    grade: { gain: [0.94, 0.98, 1.08], shadowTint: '#141030', highTint: '#cfe0ff', saturation: 0.8, contrast: 1.06, splitAmount: 0.14, vignette: 0.22, exposure: 1.3 },
   },
   cave: {
     elev: 0.75, azim: -0.3, key: '#ffd7a0', keyI: 2.2, sky: '#ffd9b0', ground: '#3a2116', hemiI: 1.7, fill: '#ffb98a', fillI: 1.1, soft: 3,
     background: '#120a07', fog: '#2a160d',
-    grade: { gain: [1.03, 1.0, 0.93], shadowTint: '#3a1f2e', highTint: '#ffe2a8', saturation: 0.92, contrast: 1.06, splitAmount: 0.14, vignette: 0.42 },
+    grade: { gain: [1.03, 1.0, 0.93], shadowTint: '#3a1f2e', highTint: '#ffe2a8', saturation: 0.82, contrast: 1.06, splitAmount: 0.14, vignette: 0.22, exposure: 1.15 },
   },
 };
 
@@ -66,6 +66,8 @@ export function presetGrade(p: LightPreset): Grade {
   if (s.splitAmount !== undefined) g.splitAmount = s.splitAmount;
   if (s.vignette !== undefined) g.vignette = s.vignette;
   if (s.exposure !== undefined) g.exposure = s.exposure;
+  // Open, dusty frames: a soft, wide vignette (depth comes from local darkening).
+  g.vignetteSoft = 0.7;
   return g;
 }
 

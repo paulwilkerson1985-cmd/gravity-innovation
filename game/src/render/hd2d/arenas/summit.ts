@@ -16,17 +16,18 @@ import {
   paintIron, paintMarble, paintSky, paintSlabs, radialTexture, shade, skyPlane, snowfall, swayMaterial, TEXEL, type V3,
 } from './nightKit';
 import type { ArenaDef } from './index';
+import { glints } from './outdoorKit';
 
 /** Cold night grade: blue-violet shadows, warm (firelit) highlights, a firm vignette. */
 export function summitGrade(): Grade {
   return {
-    lift: new THREE.Vector3(0.006, 0.004, 0.016), gamma: new THREE.Vector3(1.0, 1.0, 0.99), gain: new THREE.Vector3(1.03, 1.0, 0.99),
-    saturation: 0.96, contrast: 1.08,
-    shadowTint: new THREE.Color('#2a2448'), highTint: new THREE.Color('#ffe2b8'), splitAmount: 0.15,
-    vignette: 0.5, vignetteSoft: 0.55,
+    lift: new THREE.Vector3(0.006, 0.004, 0.016), gamma: new THREE.Vector3(1.07, 1.07, 1.06), gain: new THREE.Vector3(1.03, 1.0, 0.99),
+    saturation: 0.82, contrast: 1.06,
+    shadowTint: new THREE.Color('#2a2448'), highTint: new THREE.Color('#ffe2b8'), splitAmount: 0.13,
+    vignette: 0.22, vignetteSoft: 0.7,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
     dither: 2.0,
-    exposure: 1.12,
+    exposure: 1.78,
   };
 }
 
@@ -347,10 +348,16 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
   group.add(litMesh(glow.build(), track(new THREE.MeshBasicMaterial({ vertexColors: true })), false, false));
 
   // ---- fire
-  const flames = billboards(track(paintFlames(4, 12, 16)), 4, 1, [12 * TEXEL, 16 * TEXEL], flamePts, { fps: 9, gain: 2.3 });
+  const flames = billboards(track(paintFlames(4, 12, 16)), 4, 1, [12 * TEXEL, 16 * TEXEL], flamePts, { fps: 9, gain: 1.5 });
   track(flames.mesh.geometry); track(flames.material);
   group.add(flames.mesh);
   updates.push(flames.update);
+  // An additive glow quad (stepped pixel halo) round every fire, flickering with it.
+  const halo = glints(braziers.map(([x, y, z]) => [x, y + 1.3, z] as [number, number, number]), 1.5, '#ff9a48', 1.1);
+  track(halo.points.geometry); track(halo.points.material as THREE.Material);
+  group.add(halo.points);
+  const haloBase = (halo.points.material as THREE.PointsMaterial).color.clone();
+  updates.push((t) => { (halo.points.material as THREE.PointsMaterial).color.copy(haloBase).multiplyScalar(0.75 + 0.45 * flicker(t, 1.1)); });
 
   // ---- outside: pixel night sky with the moon and snowy peaks, falling snow past the windows
   const skyTex = track(paintSky({
@@ -372,7 +379,7 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
   // ---- light: one far, cold moon spot (parallel-ish → window patches through real shadows)
   const focus = opts.hall ? new THREE.Vector3(0.1, 0, -0.6) : new THREE.Vector3(0.2, 0, -1.2);
   const moonColor = new THREE.Color('#c4d2ff');
-  const key = new THREE.SpotLight(moonColor, 6.0, 0, 0.3, 0.25, 0);
+  const key = new THREE.SpotLight(moonColor, 7.6, 0, 0.3, 0.25, 0);
   key.position.copy(focus).addScaledVector(L.moonDir, -42);
   key.target.position.copy(focus);
   key.castShadow = !flags.has('noshadow');
@@ -383,7 +390,7 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
   key.shadow.camera.near = 28;
   key.shadow.camera.far = 60;
   group.add(key, key.target);
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#9296c4'), new THREE.Color('#2e2230'), 1.45);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#a8a8d0'), new THREE.Color('#463434'), 2.6);
   group.add(hemi);
   const fill = new THREE.DirectionalLight(new THREE.Color('#b0a0c8'), 0.8);
   fill.position.set(2, 6, 12);
@@ -399,7 +406,8 @@ export function buildSummitArena(opts: SummitOptions = {}): ArenaRig {
       fireLights.push(p);
     }
   }
-  const pools = lightPools(braziers.map(([x, y, z]) => ({ x, z: z + 0.15, y: y + 0.02, sx: 4.2, sz: 3.4, color: new THREE.Color(0.85, 0.46, 0.2) })), radialTexture('255,170,90'));
+  // Baked warm pools under every fire (flickering with it).
+  const pools = lightPools(braziers.map(([x, y, z]) => ({ x, z: z + 0.15, y: y + 0.02, sx: 4.6, sz: 3.8, color: new THREE.Color(1.1, 0.6, 0.26) })), radialTexture('255,170,90'));
   track(pools.mesh.geometry); track(pools.material);
   group.add(pools.mesh);
   updates.push((t) => {

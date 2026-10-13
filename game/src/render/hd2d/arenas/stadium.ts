@@ -14,18 +14,19 @@ import {
   NIGHT, Pieces, bannerGeometry, billboards, lightPools, litMesh, paintBanner, paintBlock, paintIron, paintSky, radialTexture,
   shade, skyPlane, swayMaterial, TEXEL, type Billboards,
 } from './nightKit';
-import type { ArenaDef } from './index';
+import type { ArenaDef, CameraPreset, LayoutName } from './index';
+import { bandIndex } from './outdoorKit';
 
 /** Stadium grade: neutral-cool floodlight whites, violet dusk shadows, a touch of saturation. */
 export function stadiumGrade(): Grade {
   return {
     lift: new THREE.Vector3(0.008, 0.004, 0.02), gamma: new THREE.Vector3(1.0, 1.0, 1.0), gain: new THREE.Vector3(1.02, 1.0, 0.98),
-    saturation: 1.04, contrast: 1.07,
-    shadowTint: new THREE.Color('#2c2350'), highTint: new THREE.Color('#fff0d8'), splitAmount: 0.13,
-    vignette: 0.42, vignetteSoft: 0.55,
+    saturation: 0.8, contrast: 1.05,
+    shadowTint: new THREE.Color('#2c2350'), highTint: new THREE.Color('#fff0d8'), splitAmount: 0.12,
+    vignette: 0.2, vignetteSoft: 0.7,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
     dither: 2.0,
-    exposure: 1.08,
+    exposure: 1.22,
   };
 }
 
@@ -49,54 +50,73 @@ export interface StadiumRig extends ArenaRig {
 const FIELD = { x0: -7.4, x1: 7.6, z0: -5.2, z1: 5.5 };
 const STAND = { x: 8.25, z: -6.0, cell: 0.75, rise: 0.5, base: 1.15, rows: 9 };
 
-/** Turf with mowing stripes and white markings, texel-matched (16 texels per unit). */
-function paintField(): THREE.CanvasTexture {
+/** Court ramps: raked sand (dark → light) and the kerb / inlay stone. */
+const SAND: readonly string[] = ['#5e4a3a', '#76604a', '#8e7858', '#a68e66', '#bca476', '#cfb888', '#e0cb9e'];
+const KERB: readonly string[] = ['#3a3644', '#4e4a58', '#66616c', '#7e7982', '#98939a', '#b2adb0'];
+
+/**
+ * An original stone-edged sand court, texel-matched (16 texels per unit): raked sand posterised
+ * into bands (clustered dither only at band edges), worn and compacted where kin and trainers
+ * stand and between them, a kerb of cut stone slabs round the edge, and set-stone inlays
+ * (border line, halfway line, centre ring with six ticks, corner marks at the trainer posts) —
+ * no grass, no stripes, no chalk.
+ */
+function paintCourt(): THREE.CanvasTexture {
   const W = Math.round((FIELD.x1 - FIELD.x0) / TEXEL), H = Math.round((FIELD.z1 - FIELD.z0) / TEXEL);
-  const ramp = NIGHT.turf;
-  const rng = new Rng(61);
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d')!;
   const img = ctx.createImageData(W, H);
-  const rgb = ramp.map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)] as const);
-  const line = [232, 236, 228] as const, lineDim = [196, 204, 196] as const;
-  const BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-  const put = (x: number, y: number, p: readonly [number, number, number]) => { const i = (y * W + x) * 4; img.data[i] = p[0]; img.data[i + 1] = p[1]; img.data[i + 2] = p[2]; img.data[i + 3] = 255; };
-  // World (x, z) of texel (px, py): canvas top = far side (−z).
+  const hex = (h: string) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)] as const;
+  const sand = SAND.map(hex), kerb = KERB.map(hex);
+  const put = (x: number, y: number, p: readonly [number, number, number]) => { if (x < 0 || y < 0 || x >= W || y >= H) return; const i = (y * W + x) * 4; img.data[i] = p[0]; img.data[i + 1] = p[1]; img.data[i + 2] = p[2]; img.data[i + 3] = 255; };
+  const h2 = (x: number, y: number, s: number) => { const v = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
   const wx = (px: number) => FIELD.x0 + (px + 0.5) * TEXEL, wz = (py: number) => FIELD.z0 + (py + 0.5) * TEXEL;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const stripe = Math.floor(x / 24) % 2;
-    const n = Math.sin(x * 0.31 + y * 0.17) * 0.3 + Math.sin(x * 0.07 - y * 0.11) * 0.4 + (rng.next() - 0.5) * 0.9;
-    const v = 3.1 + stripe * 0.9 + n * 0.6;
-    const d = (BAY[(y & 3) * 4 + (x & 3)]! + 0.5) / 16;
-    const i = Math.max(0, Math.min(ramp.length - 1, Math.floor(v) + (v - Math.floor(v) > d ? 1 : 0)));
-    put(x, y, rgb[i]!);
-  }
-  const mark = (x: number, y: number) => { if (x >= 0 && y >= 0 && x < W && y < H) put(x, y, (x + y) % 7 === 0 ? lineDim : line); };
+  const wear = (X: number, Z: number) => {
+    let k = 0;
+    for (const [sx, sz, r] of [[-1.3, 1.0, 1.25], [1.5, -1.0, 1.25], [-2.6, 2.0, 0.9], [2.85, -2.0, 0.9]] as const) k = Math.max(k, 1 - Math.hypot(X - sx, (Z - sz) * 1.2) / r);
+    // The lane between the kin.
+    const t = Math.max(0, Math.min(1, ((X + 1.3) * 2.8 + (Z - 1.0) * -2.0) / (2.8 * 2.8 + 2.0 * 2.0)));
+    k = Math.max(k, 0.6 * (1 - Math.hypot(X - (-1.3 + 2.8 * t), Z - (1.0 - 2.0 * t)) / 0.9));
+    return Math.max(0, k);
+  };
   const cx = (0.1 - FIELD.x0) / TEXEL, cz = (0 - FIELD.z0) / TEXEL;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const e = Math.min(x - 6, y - 6, W - 7 - x, H - 7 - y);
-    if (e >= 0 && e < 2) mark(x, y); // boundary
-    if (Math.abs(x - cx) < 1 && e >= 0) mark(x, y); // halfway line
+    const e = Math.min(x, y, W - 1 - x, H - 1 - y);
+    if (e < 9) {
+      // Kerb: cut stone slabs (18–26 texels long) with dark joints and a lit inner lip.
+      const along = e === x || e === W - 1 - x ? y : x;
+      const slab = Math.floor((along + (e === y ? 0 : 7)) / 22);
+      const joint = (along + (e === y ? 0 : 7)) % 22 === 0 || e === 0;
+      let v = 2.6 + (h2(slab, e === y || e === H - 1 - y ? 1 : 2, 3) - 0.5) * 1.2 + (h2(x >> 1, y >> 1, 4) - 0.5) * 0.7;
+      if (e === 8) v += 1.4; else if (e === 7) v += 0.6; else if (e <= 1) v -= 0.8;
+      put(x, y, kerb[joint ? 0 : bandIndex(v, x, y, KERB.length, 0.18)]!);
+      continue;
+    }
+    const X = wx(x), Z = wz(y);
+    const n = Math.sin(x * 0.11 + y * 0.07) * 0.3 + Math.sin(x * 0.031 - y * 0.05 + 1.3) * 0.4 + (h2(x >> 2, y >> 2, 1) - 0.5) * 0.5;
+    let v = 3.3 + n;
+    // Raked furrows along x (broken), fading where the sand is trodden.
+    const w = wear(X, Z);
+    if (y % 5 === 0 && h2(x >> 3, y, 2) > 0.25) v -= 0.55 * (1 - w);
+    if (y % 5 === 1 && h2(x >> 3, y - 1, 2) > 0.25) v += 0.35 * (1 - w);
+    // Trodden: compacted darker clumps, a few scuffs, polished light spots.
+    if (w > 0) { const cl = h2(x >> 1, y >> 1, 5); if (cl < w * 0.75) v -= 0.7 * w; else if (cl > 0.92) v += 0.6; }
+    if (e < 11) v -= (11 - e) * 0.25; // the sand banks up dark against the kerb
+    let col = sand[bandIndex(v, x, y, SAND.length)]!;
+    // Set-stone inlays (2 texels, chipped where worn).
     const r = Math.hypot(x - cx, y - cz);
-    if (Math.abs(r - 26) < 1) mark(x, y); // centre circle
-    // Corner arcs.
-    for (const [ax, ay] of [[6, 6], [W - 7, 6], [6, H - 7], [W - 7, H - 7]] as const) if (Math.abs(Math.hypot(x - ax, y - ay) - 12) < 0.8) mark(x, y);
-    // Trainer boxes around both people posts.
+    const inlay = (e >= 14 && e < 16) || (Math.abs(x - cx) < 1 && e >= 16 && (r > 30 || r < 0)) || Math.abs(r - 28) < 1;
+    const tick = r > 10 && r < 15 && Math.abs(((Math.atan2(y - cz, x - cx) / (Math.PI / 3)) % 1 + 1) % 1 - 0.5) > 0.45;
+    const ring = r <= 9.5 && r > 7.6;
+    if ((inlay || tick || ring) && h2(x, y, 7) > w * 0.6) col = kerb[(y - Math.round(cz)) < 0 && ring ? 4 : 3]!;
+    // Corner marks at the trainer posts (stone L's).
     for (const [px, pz] of [[-2.6, 2.0], [2.85, -2.0]] as const) {
       const bx = (px - FIELD.x0) / TEXEL, by = (pz - FIELD.z0) / TEXEL;
       const dx = Math.abs(x - bx), dy = Math.abs(y - by);
-      if ((Math.abs(dx - 13) < 1 && dy <= 10) || (Math.abs(dy - 10) < 1 && dx <= 13)) mark(x, y);
+      if (((Math.abs(dx - 13) < 1 && dy > 6 && dy <= 10) || (Math.abs(dy - 10) < 1 && dx > 9 && dx <= 13)) && h2(x, y, 9) > 0.15) col = kerb[3]!;
     }
-    void wx; void wz;
-  }
-  // Centre emblem: an orb (ring, band, lit cap) in the middle.
-  for (let y = -10; y <= 10; y++) for (let x = -10; x <= 10; x++) {
-    const r = Math.hypot(x, y);
-    const px = Math.round(cx + x), py = Math.round(cz + y);
-    if (r <= 9.5 && r > 7.5) put(px, py, line);
-    else if (r <= 7.5 && Math.abs(y) <= 1) put(px, py, line);
-    else if (r <= 7.5 && y < -1) put(px, py, x + y < -6 ? [255, 255, 255] : [214, 220, 214]);
+    put(x, y, col);
   }
   ctx.putImageData(img, 0, 0);
   const tex = pixelTexture(c);
@@ -128,25 +148,28 @@ function paintRing(size = 44): THREE.CanvasTexture {
 }
 
 /**
- * Spectator sprite sheet: 4 frames (idle, clap | arms up, hop) × 6 looks, 12 × 16 texels each,
+ * Spectator sprite sheet: 4 frames (idle, clap | arms up, hop) × 8 looks, 12 × 16 texels each,
  * with a 1-texel dark outline. Shirts are key magenta (tinted per spectator in the shader).
+ * Looks vary skin, hair, hats, trousers and the idle pose (arms down, crossed, chin on hand, waving).
  */
+const CROWD_ROWS = 8;
 function paintCrowdSheet(): THREE.CanvasTexture {
-  const FW = 12, FH = 16, frames = 4, rows = 6;
+  const FW = 12, FH = 16, frames = 4, rows = CROWD_ROWS;
   const c = document.createElement('canvas');
   c.width = FW * frames; c.height = FH * rows;
   const ctx = c.getContext('2d')!;
   const img = ctx.createImageData(c.width, c.height);
   const hex = (h: string) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)] as const;
-  const SKIN = ['#ffd9b3', '#e8b48a', '#c98c5a', '#8a5a3a', '#f2c6a0', '#a8714a'].map(hex);
-  const HAIR = ['#3a2418', '#1d1830', '#c8822e', '#6b3f22', '#e8d8b0', '#2a1d48'].map(hex);
-  const HAT = [null, '#ffd23f', null, '#43d36b', null, '#ffffff'] as const;
-  const KEY = [255, 0, 255] as const, KEYD = [180, 0, 180] as const, PANTS = hex('#2b2d45'), SHOE = hex('#15131f'), DARK = hex('#15111f');
+  const SKIN = ['#ffd9b3', '#e8b48a', '#c98c5a', '#8a5a3a', '#f2c6a0', '#a8714a', '#d8a074', '#6e4630'].map(hex);
+  const HAIR = ['#3a2418', '#1d1830', '#c8822e', '#6b3f22', '#e8d8b0', '#2a1d48', '#9a3a22', '#1a1414'].map(hex);
+  const HAT = [null, '#ffd23f', null, '#43d36b', null, '#ffffff', '#e04a3a', null] as const;
+  const PANTSV = ['#2b2d45', '#3a3028', '#2b2d45', '#4a4a58', '#26324a', '#2b2d45', '#5a4a3a', '#30283a'].map(hex);
+  const KEY = [255, 0, 255] as const, KEYD = [180, 0, 180] as const, SHOE = hex('#15131f'), DARK = hex('#15111f');
   for (let row = 0; row < rows; row++) for (let f = 0; f < frames; f++) {
     const grid: (readonly [number, number, number] | null)[][] = Array.from({ length: FH }, () => Array<null>(FW).fill(null));
     const s = (x: number, y: number, p: readonly [number, number, number]) => { if (x >= 1 && y >= 1 && x < FW - 1 && y < FH - 1) grid[y]![x] = p; };
     const up = f === 3 ? -1 : 0; // the hop frame lifts the whole body
-    const skin = SKIN[row]!, hair = HAIR[row]!;
+    const skin = SKIN[row]!, hair = HAIR[row]!, PANTS = PANTSV[row]!;
     const ox = 1, oy = 1 + up;
     // Legs (seated: knees forward) and shoes.
     for (let x = 3; x <= 6; x++) { s(ox + x, oy + 11, PANTS); s(ox + x, oy + 12, PANTS); }
@@ -162,8 +185,12 @@ function paintCrowdSheet(): THREE.CanvasTexture {
     if (hat) { const hc = hex(hat); for (let x = 2; x <= 7; x++) s(ox + x, oy + 1, hc); for (let x = 3; x <= 6; x++) s(ox + x, oy, hc); }
     s(ox + 4, oy + 3, DARK); s(ox + 6, oy + 3, DARK); // eyes
     if (f >= 2) { s(ox + 5, oy + 5, DARK); } // cheering: open mouth
-    // Arms.
-    if (f === 0) { for (let y = 7; y <= 9; y++) { s(ox + 1, oy + y, KEYD); s(ox + 8, oy + y, KEYD); } s(ox + 1, oy + 10, skin); s(ox + 8, oy + 10, skin); }
+    // Arms (the idle pose varies by look: arms down, crossed, chin on a hand, one arm waving).
+    const pose = row % 4;
+    if (f === 0 && pose === 1 && row >= 4) { for (let x = 2; x <= 7; x++) s(ox + x, oy + 8, KEYD); s(ox + 2, oy + 8, skin); s(ox + 7, oy + 8, skin); }
+    else if (f === 0 && pose === 2 && row >= 4) { for (let y = 7; y <= 9; y++) s(ox + 1, oy + y, KEYD); s(ox + 1, oy + 10, skin); s(ox + 7, oy + 6, KEYD); s(ox + 7, oy + 5, skin); }
+    else if (f === 0 && pose === 3 && row >= 4) { for (let y = 7; y <= 9; y++) s(ox + 1, oy + y, KEYD); s(ox + 1, oy + 10, skin); for (let y = 3; y <= 6; y++) s(ox + 8 + (y < 5 ? 1 : 0), oy + y, KEYD); s(ox + 9, oy + 2, skin); }
+    else if (f === 0) { for (let y = 7; y <= 9; y++) { s(ox + 1, oy + y, KEYD); s(ox + 8, oy + y, KEYD); } s(ox + 1, oy + 10, skin); s(ox + 8, oy + 10, skin); }
     else if (f === 1) { s(ox + 1, oy + 7, KEYD); s(ox + 8, oy + 7, KEYD); s(ox + 4, oy + 8, skin); s(ox + 5, oy + 8, skin); s(ox + 1, oy + 8, KEYD); s(ox + 8, oy + 8, KEYD); }
     else if (f === 2) { for (let y = 2; y <= 6; y++) { s(ox + 1, oy + y, KEYD); s(ox + 8, oy + y, KEYD); } s(ox + 1, oy + 1, skin); s(ox + 8, oy + 1, skin); }
     else { for (let y = 1; y <= 6; y++) { s(ox + 1 - (y < 3 ? 1 : 0), oy + y, KEYD); s(ox + 8 + (y < 3 ? 1 : 0), oy + y, KEYD); } s(ox, oy, skin); s(ox + 9, oy, skin); }
@@ -208,7 +235,7 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
 
   // ---- field + apron (track)
   {
-    const tex = track(paintField());
+    const tex = track(paintCourt());
     const g = new THREE.PlaneGeometry(FIELD.x1 - FIELD.x0, FIELD.z1 - FIELD.z0);
     g.rotateX(-Math.PI / 2);
     g.translate((FIELD.x0 + FIELD.x1) / 2, 0, (FIELD.z0 + FIELD.z1) / 2);
@@ -259,17 +286,21 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
         ? (x < 0 ? [x0, x0 + 0.28, z0 + 0.06, z0 + C - 0.06] : [x0 + C - 0.28, x0 + C, z0 + 0.06, z0 + C - 0.06])
         : [x0 + 0.06, x0 + C - 0.06, z0, z0 + 0.28];
       paint.aabb([sx0, top, sz0], [sx1, top + 0.2, sz1], tint, rng);
-      if (rng.chance(q === 'high' ? 0.86 : 0.6)) {
+      // Empty seats: patchy, more of them high up in the neutral sections.
+      const occ = (q === 'high' ? 0.84 : 0.6) * (sec === 1 && row > 4 ? 0.55 : 1) * (0.85 + 0.3 * Math.abs(Math.sin(x * 1.7 + z * 0.9)));
+      if (rng.chance(Math.min(0.95, occ))) {
         const back = side ? [x < 0 ? x0 + 0.22 : x0 + C - 0.22, z] : [x, z0 + 0.22];
         crowd.push({
-          at: new THREE.Vector3(back[0]!, top + 0.06, back[1]!), row: rng.int(6), seed: rng.next(), scale: 0.7 + rng.next() * 0.1,
-          jump: 0.12 + rng.next() * 0.1, tint: new THREE.Color(rng.pick(shirtPool)),
+          at: new THREE.Vector3(back[0]!, top + 0.06, back[1]!), row: rng.int(CROWD_ROWS), seed: rng.next(), scale: 0.68 + rng.next() * 0.12,
+          jump: 0.12 + rng.next() * 0.1, tint: new THREE.Color(rng.pick(shirtPool)).multiplyScalar(0.8 + rng.next() * 0.3),
+          // Rows darken toward the back of the bowl (out of the floodlights).
+          shade: 1.05 - row * 0.055,
         });
       }
     }
   }
   const sheet = track(paintCrowdSheet());
-  const fans: Billboards = billboards(sheet, 4, 6, [12 * TEXEL, 16 * TEXEL], crowd, { fps: 5, gain: 0.8, split: true });
+  const fans: Billboards = billboards(sheet, 4, CROWD_ROWS, [12 * TEXEL, 16 * TEXEL], crowd, { fps: 5, gain: 0.85, split: true });
   track(fans.mesh.geometry); track(fans.material);
   group.add(fans.mesh);
   let cheerUntil = 0, now = 0, hype = 0.1;
@@ -406,7 +437,7 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
   key.shadow.camera.near = 8;
   key.shadow.camera.far = 40;
   group.add(key, key.target);
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#a49ad8'), new THREE.Color('#2a2440'), 1.45);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#b0a8e0'), new THREE.Color('#4a4050'), 2.1);
   group.add(hemi);
   const fill = new THREE.DirectionalLight(new THREE.Color('#ffe2cc'), 0.9);
   fill.position.copy(heads[1]!).add(new THREE.Vector3(0, 0, 6));
@@ -460,6 +491,9 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
   };
 }
 
+/** Stadium framing over the shared battle camera: a little lower and closer (the court fills the frame). */
+export const STADIUM_CAMERA: Partial<Record<LayoutName, Partial<CameraPreset>>> = { wide: { elev: 0.5, person: 0.2 }, land: { elev: 0.58 } };
+
 export const ARENA: ArenaDef = {
   id: 'stadium',
   label: 'Arena stadium',
@@ -469,6 +503,7 @@ export const ARENA: ArenaDef = {
   background: '#0c0a22',
   fog: '#241a40',
   fogRange: [12, 45],
+  camera: STADIUM_CAMERA,
 };
 
 /**

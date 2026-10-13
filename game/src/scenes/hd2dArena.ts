@@ -12,7 +12,7 @@ import { tween, ease } from '../render/anim';
 import { Hd2dPipeline, detectQuality, installPipeline, type Quality } from '../render/hd2d/pipeline';
 import { SpriteBaker, type SpriteSubject } from '../render/hd2d/sprite';
 import { Figure, HERO_LOOK } from '../render/hd2d/characters';
-import { buildStadiumArena, stadiumGrade, type StadiumRig } from '../render/hd2d/arenas/stadium';
+import { STADIUM_CAMERA, buildStadiumArena, stadiumGrade, type StadiumRig } from '../render/hd2d/arenas/stadium';
 import type { PersonLook } from '../render/trainer';
 import { layoutMode } from './framing';
 import type { Seat } from './arenaFlow';
@@ -160,7 +160,7 @@ export class Hd2dArenaStage {
 
   /** Elevated 3/4 battle camera; the image slides so the kin land on the layout targets. */
   frame(w: number, h: number) {
-    const c = HD2D_CAMERA[layoutMode(w, h)];
+    const c = { ...HD2D_CAMERA[layoutMode(w, h)], ...STADIUM_CAMERA[layoutMode(w, h)] };
     const cam = this.camera;
     cam.fov = c.fov; cam.aspect = w / h; cam.near = 0.5; cam.far = 120;
     const dir = new THREE.Vector3(Math.sin(c.yaw) * Math.cos(c.elev), Math.sin(c.elev), Math.cos(c.yaw) * Math.cos(c.elev));

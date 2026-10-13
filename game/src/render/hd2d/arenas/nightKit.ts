@@ -353,6 +353,7 @@ attribute vec3 aCenter;
 attribute vec2 aCorner;
 attribute vec4 aInfo;   // x: seed, y: row (variant), z: scale, w: jump height when excited
 attribute vec3 aTint;
+attribute float aShade;  // per-sprite brightness (e.g. crowd rows darken toward the back)
 uniform float uTime;
 uniform float uFps;
 uniform float uFrames;
@@ -362,7 +363,9 @@ uniform float uSplit;   // 1: idle frames in the first half, excited frames in t
 uniform vec2 uSize;
 varying vec2 vUv;
 varying vec3 vTint;
+varying float vShade;
 void main() {
+  vShade = aShade;
   float span = uSplit > 0.5 ? uFrames * 0.5 : uFrames;
   float excited = (uSplit > 0.5 && fract(aInfo.x * 3.71) < uHype) ? 1.0 : 0.0;
   float speed = uFps * (uSplit > 0.5 ? mix(0.3, 1.0, excited) : 1.0) * (0.75 + 0.5 * fract(aInfo.x * 7.13));
@@ -381,6 +384,7 @@ uniform sampler2D tMap;
 uniform float uGain;
 varying vec2 vUv;
 varying vec3 vTint;
+varying float vShade;
 void main() {
   vec4 c = texture2D(tMap, vUv);
   if (c.a < 0.5) discard;
@@ -389,7 +393,7 @@ void main() {
   vec3 col = c.rgb;
   float isKey = step(c.g, 0.05) * step(0.3, c.r) * step(abs(c.r - c.b), 0.05);
   col = mix(col, vTint * mix(0.55, 1.0, step(0.75, c.r)), isKey);
-  gl_FragColor = vec4(col * uGain, 1.0);
+  gl_FragColor = vec4(col * uGain * vShade, 1.0);
 }`;
 
 export interface Billboards {
@@ -405,9 +409,10 @@ export interface Billboards {
  * take the per-sprite tint (shirt colours), dark magenta a shaded tint. `split`: the first half
  * of the frames loop slowly (idle), the second half fast with a hop for the `hype` fraction.
  */
-export function billboards(sheet: THREE.Texture, frames: number, rows: number, size: [number, number], items: { at: THREE.Vector3; row: number; scale?: number; jump?: number; tint?: THREE.Color; seed: number }[], o: { fps?: number; gain?: number; split?: boolean } = {}): Billboards {
+export function billboards(sheet: THREE.Texture, frames: number, rows: number, size: [number, number], items: { at: THREE.Vector3; row: number; scale?: number; jump?: number; tint?: THREE.Color; shade?: number; seed: number }[], o: { fps?: number; gain?: number; split?: boolean } = {}): Billboards {
   const n = items.length;
   const center = new Float32Array(n * 4 * 3), corner = new Float32Array(n * 4 * 2), info = new Float32Array(n * 4 * 4), tint = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2);
+  const shadeA = new Float32Array(n * 4);
   const index: number[] = [];
   const cs = [[-0.5, 0], [0.5, 0], [0.5, 1], [-0.5, 1]] as const;
   const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]] as const;
@@ -420,6 +425,7 @@ export function billboards(sheet: THREE.Texture, frames: number, rows: number, s
       info.set([it.seed, it.row, it.scale ?? 1, it.jump ?? 0], v * 4);
       const c = it.tint ?? new THREE.Color(1, 1, 1);
       tint.set([c.r, c.g, c.b], v * 3);
+      shadeA[v] = it.shade ?? 1;
     }
     const b = i * 4;
     index.push(b, b + 1, b + 2, b, b + 2, b + 3);
@@ -431,6 +437,7 @@ export function billboards(sheet: THREE.Texture, frames: number, rows: number, s
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setAttribute('aInfo', new THREE.BufferAttribute(info, 4));
   g.setAttribute('aTint', new THREE.BufferAttribute(tint, 3));
+  g.setAttribute('aShade', new THREE.BufferAttribute(shadeA, 1));
   g.setIndex(index);
   const material = new THREE.ShaderMaterial({
     vertexShader: BB_VERT, fragmentShader: BB_FRAG,
