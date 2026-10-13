@@ -6,8 +6,8 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, Heightmap, LEVEL, TEXEL, VoxelBatch, lightBeams, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
-import { boulderColumns, rubblePile } from '../kit/rock';
-import { paintBoulder } from '../textures';
+import { boulder, boulderColumns, rubblePile } from '../kit/rock';
+import { paintBoulder, type Ramp } from '../textures';
 import type { SpriteLight } from '../sprite';
 import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
@@ -21,17 +21,27 @@ export const ARENA: ArenaDef = {
   match: [{ route: 'ridge', hotspot: 'vent-cave' }],
   build: (o) => buildVolcanicArena({ seed: o.seed, quality: o.quality, trainer: o.trainerBattle }),
   grade: volcanicGrade,
-  background: '#2a161c',
-  fog: '#4a2a30',
+  background: '#140c09',
+  fog: '#2e1a12',
   fogRange: [10, 40],
+  // Higher, pulled back: the basalt wall takes ≤ 40% of the frame, the ash floor reads as an
+  // open stage in front of the lava river.
+  camera: {
+    wide: { elev: 0.72, person: 0.17 },
+    land: { elev: 0.8, person: 0.13 },
+    portrait: { elev: 0.6 },
+  },
 };
+
+/** Dark basalt (no violet): warm near-black greys, dusty grey-brown highlights. */
+const BASALT: Ramp = ['#1a1412', '#2a201b', '#3b2e27', '#4f3e34', '#665243', '#806955', '#9d846c'];
 
 export function volcanicGrade(): Grade {
   return makeGrade({
-    lift: new THREE.Vector3(0.012, 0.0, 0.01), gain: new THREE.Vector3(1.04, 0.98, 0.94), gamma: new THREE.Vector3(1.1, 1.1, 1.1),
-    saturation: 0.8, contrast: 1.06,
-    shadowTint: new THREE.Color('#2c1a3a'), highTint: new THREE.Color('#ffc890'), splitAmount: 0.14,
-    vignette: 0.16, exposure: 1.56,
+    lift: new THREE.Vector3(0.01, 0.004, 0.0), gain: new THREE.Vector3(1.05, 0.98, 0.9), gamma: new THREE.Vector3(1.08, 1.08, 1.08),
+    saturation: 0.86, contrast: 1.08,
+    shadowTint: new THREE.Color('#24140e'), highTint: new THREE.Color('#ffc890'), splitAmount: 0.14,
+    vignette: 0.16, exposure: 1.5,
   });
 }
 
@@ -201,7 +211,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   const updates: ((t: number) => void)[] = [];
   const pixelers: ((px: number) => void)[] = [];
 
-  const texBasalt = cachedTexture('basalt-boulder-warm', () => paintBoulder(13, 32, RAMPS2.basalt));
+  const texBasalt = cachedTexture('basalt-boulder-dark2', () => paintBoulder(13, 32, BASALT));
   const texAsh = cachedTexture('ash-light', () => paintAsh(17, 64));
   const texSlag = cachedTexture('slag-warm', () => paintRockOn(19, RAMPS2.slag, 32));
 
@@ -227,10 +237,10 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
       if (d > 0) lv = 1 + Math.floor(d / 1.5) + (d > 3 ? Math.floor((d - 3) / 1.1) : 0);
       if (x > 1 && d > 0) lv += Math.floor((x - 1) / 7); // the right side climbs higher
     }
-    // The back wall recedes in ledges (lit tops between rock faces) instead of one sheer wall.
-    if (z < -6.3) lv = Math.max(lv, 6 + Math.floor((-6.3 - z + Math.sin(x * 0.9) * 0.35) / 0.95) + (Math.abs(x) > 6 ? 1 : 0));
     if (x < -9.5) lv = Math.max(lv, 7 + Math.floor((-9.5 - x) * 0.6));
     if (x > 9.5) lv = Math.max(lv, 6 + Math.floor((x - 9.5) * 0.6));
+    // The back wall (z < -6.3) is built by hand from basalt columns (basaltWall below).
+    if (z < -6.3) lv = 0;
     // The river runs the full width; terraces stop at its banks.
     if (Math.abs(z - river.z) < river.half + 0.15 && Math.abs(x) < 9.6) lv = 0;
     // The lavafall notch: open from the river up to the back wall.
@@ -246,7 +256,10 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
 
   // ---- basalt walls (one mesh)
   const rock = new VoxelBatch(32);
-  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#f0e8f4', '#fff0ec'] });
+  boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#f4ece6', '#fff2e8'], shade: [0.95, 1.2], core: 0.08, lite: q === 'low' });
+  // Glowing seams and crystals (glow mesh, filled further below).
+  const glow = new VoxelBatch(16);
+  basaltWall(rock, glow, rng, [[fall.x0, fall.x1], [fall2.x0, fall2.x1]]);
   // Baked falloff: the lava glow fades with height and distance from the river/pool, so the
   // upper walls sink into cool purple shadow and the eye goes to the molten floor of the cave.
   const fx = (fall.x0 + fall.x1) / 2;
@@ -267,11 +280,13 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     // look toward the molten river, pool or falls glow orange, scaled by the falloff field.
     const [dx, dz] = lavaDir(x, z);
     const facing = Math.max(0, nx * dx + nz * dz);
-    const rim = k * (ny > 0.5 ? 0.75 : facing * (0.6 + 0.4 * Math.max(0, ny + 0.3)) * 1.25);
-    // Far from any lava (high, back corners) the shadow cools toward violet; elsewhere warm grey.
+    // Undersides and overhangs over the lava catch its bounce: the hottest rims of all.
+    const under = ny < -0.2 ? Math.min(1, k * 2.2) * 1.4 : 0;
+    const rim = k * (ny > 0.5 ? 0.6 : facing * (0.6 + 0.4 * Math.max(0, ny + 0.3)) * 1.35) + under;
+    // Far from any lava (high, back) the basalt sinks toward a dark warm grey.
     const far = (1 - Math.min(1, k * 3)) * Math.min(1, Math.max(0, y - 2) / 4);
-    const base = (ny > 0.5 ? 1.25 : 1.06) * (1 + 0.2 * Math.min(1, Math.max(0, y) / 5));
-    return [up * base * (1 + rim * 1.9 - far * 0.08), up * base * (1 + rim * 0.75 - far * 0.08), up * base * (1 - rim * 0.12 + far * 0.08)];
+    const base = (ny > 0.5 ? 1.2 : 1.0) * (1 + 0.12 * Math.min(1, Math.max(0, y) / 5));
+    return [up * base * (1 + rim * 2.0 - far * 0.12), up * base * (1 + rim * 0.72 - far * 0.13), up * base * (1 - rim * 0.15 - far * 0.12)];
   }), track(surfaceMaterial(texBasalt, undefined, true))));
 
   // ---- ash floor: sinks into the river channel and the pool; scorched + lava-lit near them
@@ -288,7 +303,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     const g = floorGrid(hm, texAsh, 64, {
       res: 2,
       heightAt: (x, z) => (inRiver(x, z) || fallD(x, z) === 0 ? -0.5 : poolD(x, z) < 1.05 ? -0.45 : 0),
-      tintAt: (x, z) => { const k = glowAt(x, z); return [0.77 + k * 1.7, 0.73 + k * 0.72, 0.73 - k * 0.05]; },
+      tintAt: (x, z) => { const k = glowAt(x, z); return [0.84 + k * 1.6, 0.78 + k * 0.66, 0.7 - k * 0.12]; },
       aoK: 0.9,
     });
     group.add(mk(g, track(surfaceMaterial(texAsh)), false, true));
@@ -339,7 +354,6 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
 
   // ---- cooled-lava rubble, banks, vents (slag mesh) + glowing seams/crystals (glow mesh)
   const slag = new VoxelBatch(32);
-  const glow = new VoxelBatch(16);
   const chunk = (x: number, z: number, s: number, y = 0, seam = false) => {
     slag.rotBox([x, y + s * 0.38, z], [s * (0.9 + rng.next() * 0.5), s * 0.8, s * (0.8 + rng.next() * 0.5)], rng.next() * Math.PI, grey(0.9 + rng.next() * 0.35), rng, (rng.next() - 0.5) * 0.35);
     if (seam) glow.rotBox([x, y + s * 0.1, z], [s * 1.05, 0.05, s * 0.4], rng.next() * Math.PI, hdr('#ff6a1a', 2.2), rng);
@@ -393,8 +407,8 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
       const d = 0.05 + rng.next() * 0.3;
       // Lean out of the wall: tilt about the axis perpendicular to the outward direction.
       const dir = V(Math.cos(a) * 0.55, 1, Math.sin(a) * 0.55);
-      orientedBox(glow, V(x + Math.cos(a) * d, h * 0.38, z + Math.sin(a) * d), V(0.18, h, 0.18), dir, hdr(c, 0.85 + rng.next() * 0.5), rng, rng.next());
-      if (i % 3 === 0) orientedBox(glow, V(x + Math.cos(a) * d, h * 0.7, z + Math.sin(a) * d), V(0.07, h * 0.5, 0.07), dir, hdr('#fff4e0', 1.6), rng, 0.4);
+      orientedBox(glow, V(x + Math.cos(a) * d, h * 0.38, z + Math.sin(a) * d), V(0.18, h, 0.18), dir, hdr(c, 0.55 + rng.next() * 0.35), rng, rng.next());
+      if (i % 3 === 0) orientedBox(glow, V(x + Math.cos(a) * d, h * 0.7, z + Math.sin(a) * d), V(0.07, h * 0.5, 0.07), dir, hdr('#ffb060', 1.0), rng, 0.4);
     }
     crystalPools.push([x + Math.cos(out) * 0.5, z + Math.sin(out) * 0.5, c]);
   }
@@ -481,9 +495,9 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   group.add(key, key.target);
   // Readable, lava-lit exposure: a strong warm hemisphere (smoky mauve sky, molten ground) and a
   // soft top light; the lava rims are baked into the rock (no front underlight).
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#ccb6ac'), new THREE.Color('#a04a2a'), 3.0);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#b09a88'), new THREE.Color('#a8502a'), 2.8);
   group.add(hemi);
-  const top = new THREE.DirectionalLight(new THREE.Color('#e0c8c0'), 1.7);
+  const top = new THREE.DirectionalLight(new THREE.Color('#e6cdb4'), 1.6);
   top.position.set(-2, 9, 7);
   group.add(top, top.target);
   if (q === 'high') {
@@ -504,26 +518,27 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   updates.push(rays.update);
 
   const lowK = q === 'high' ? 1 : 0.55;
-  const steamEmit = vents.map((v) => ({ min: V(v.x - 0.15, v.y + 0.3, v.z - 0.15), max: V(v.x + 0.15, v.y + 0.4, v.z + 0.15), vmin: V(-0.04, 0.8, -0.04), vmax: V(0.08, 1.2, 0.04), count: Math.round(11 * lowK), life: [2.5, 4] as [number, number], size: [0.26, 0.4] as [number, number] }));
-  steamEmit.push({ min: V(-9, ly + 0.2, river.z - 0.5), max: V(9, ly + 0.4, river.z + 0.5), vmin: V(-0.05, 0.3, -0.1), vmax: V(0.15, 0.5, 0.05), count: Math.round(10 * lowK), life: [2.5, 4], size: [0.28, 0.45] });
-  const steam = particles({ kind: 'steam', emitters: steamEmit, colorA: hdr('#bcaeb0', 0.95), colorB: hdr('#ff9050', 1.0), accel: V(0.08, 0.05, 0.03), wiggle: 0.45, grow: [0.7, 3.0], opacity: 0.5 }, rng);
+  // Fine 1–2 px embers only (no steam discs, no blooming bokeh): rising off the river, the pool,
+  // the falls' splash and the vents, plus a few drifting over the floor.
+  const ventEmit = vents.map((v) => ({ min: V(v.x - 0.15, v.y + 0.3, v.z - 0.15), max: V(v.x + 0.15, v.y + 0.4, v.z + 0.15), vmin: V(-0.08, 0.5, -0.06), vmax: V(0.1, 0.9, 0.06), count: Math.round(6 * lowK), life: [1.2, 2.2] as [number, number], size: [0.018, 0.03] as [number, number] }));
   const embers = particles({
     kind: 'ember',
     emitters: [
-      { min: V(-9, ly, river.z - 0.6), max: V(9, ly + 0.2, river.z + 0.6), vmin: V(-0.15, 0.5, -0.1), vmax: V(0.2, 1.3, 0.25), count: Math.round(70 * lowK), life: [2.5, 5], size: [0.035, 0.06] },
-      { min: V(pool.x - 1, ly, pool.z - 0.7), max: V(pool.x + 1, ly + 0.2, pool.z + 0.7), vmin: V(-0.2, 0.5, -0.1), vmax: V(0.1, 1.2, 0.1), count: Math.round(22 * lowK), life: [2, 4], size: [0.035, 0.06] },
-      { min: V(-5, 0, -3), max: V(5, 1.5, 3.5), vmin: V(-0.05, 0.12, -0.05), vmax: V(0.1, 0.3, 0.05), count: Math.round(26 * lowK), life: [4, 7], size: [0.03, 0.05] },
+      { min: V(-9, ly, river.z - 0.6), max: V(9, ly + 0.2, river.z + 0.6), vmin: V(-0.15, 0.4, -0.1), vmax: V(0.2, 1.0, 0.25), count: Math.round(80 * lowK), life: [2, 3.6], size: [0.018, 0.032] },
+      { min: V(pool.x - 1, ly, pool.z - 0.7), max: V(pool.x + 1, ly + 0.2, pool.z + 0.7), vmin: V(-0.2, 0.4, -0.1), vmax: V(0.1, 0.9, 0.1), count: Math.round(26 * lowK), life: [1.6, 3], size: [0.018, 0.032] },
+      { min: V(-5, 0.5, -3), max: V(5, 2.0, 3.5), vmin: V(-0.05, 0.1, -0.05), vmax: V(0.1, 0.25, 0.05), count: Math.round(10 * lowK), life: [3, 5], size: [0.016, 0.026] },
       // Splash where the falls land: sparks thrown up and out.
-      { min: V(fx - 0.6, ly + 0.1, fall.z + 0.2), max: V(fx + 0.6, ly + 0.3, fall.z + 0.6), vmin: V(-0.5, 0.9, 0.0), vmax: V(0.5, 1.8, 0.5), count: Math.round(14 * lowK), life: [0.8, 1.6], size: [0.04, 0.07] },
+      { min: V(fx - 0.6, ly + 0.1, fall.z + 0.2), max: V(fx + 0.6, ly + 0.3, fall.z + 0.6), vmin: V(-0.5, 0.8, 0.0), vmax: V(0.5, 1.5, 0.5), count: Math.round(18 * lowK), life: [0.7, 1.4], size: [0.02, 0.034] },
+      ...ventEmit,
     ],
-    colorA: hdr('#ffd25a', 2.6), colorB: hdr('#ff4a10', 1.6), accel: V(0.05, -0.02, 0.03), wiggle: 0.35,
+    colorA: hdr('#ffd25a', 1.35), colorB: hdr('#ff5a14', 1.05), accel: V(0.05, -0.02, 0.03), wiggle: 0.35,
   }, rng);
-  for (const p of [steam, embers]) { group.add(p.points); track(p); updates.push(p.update); pixelers.push(p.setPixelSize); }
+  group.add(embers.points); track(embers); updates.push(embers.update); pixelers.push(embers.setPixelSize);
 
   const spriteLight: SpriteLight = {
     keyDir: key.position.clone().sub(key.target.position).normalize(),
     keyColor: new THREE.Color('#ff9a5a').multiplyScalar(0.62),
-    sky: new THREE.Color('#8a6aa0').multiplyScalar(0.5),
+    sky: new THREE.Color('#9a8070').multiplyScalar(0.5),
     ground: new THREE.Color('#ff6a30').multiplyScalar(0.7),
     rim: new THREE.Color('#ffb070').multiplyScalar(0.7),
   };
@@ -539,6 +554,58 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     setPixelSize(px) { for (const p of pixelers) p(px); },
     dispose() { disposeGroup(group, disposables); },
   };
+}
+
+/**
+ * The back wall: irregular dark basalt columns in three receding rows (taller toward the back
+ * and the sides, craggy chipped tops), a few big masses at the foot, and glowing lava cracks in
+ * the joints near the bottom (glow batch). Columns in front of each fall stand a little back so
+ * the lava pours out of a recess. Everything stays behind z = -6.3.
+ */
+function basaltWall(rock: VoxelBatch, glow: VoxelBatch, rng: Rng, falls: [number, number][]) {
+  const inFall = (x: number) => falls.some(([a, b]) => x > a - 0.1 && x < b + 0.1);
+  const crack = hdr('#ff5a14', 1.7), crackDim = hdr('#c2300c', 1.2);
+  for (let row = 0; row < 3; row++) {
+    let x = -14.6 + rng.next() * 0.4;
+    let prevFront = -6.3;
+    const z0 = -6.3 - row * 1.15;
+    while (x < 14.6) {
+      const w = 0.42 + rng.next() * 0.5 + (row > 0 ? 0.15 : 0);
+      const cx = x + w / 2;
+      const nz = Math.sin(cx * 0.55 + row * 1.7) * 0.6 + Math.sin(cx * 1.9 + 0.4) * 0.35;
+      let hgt = 2.6 + row * 1.1 + nz + rng.next() * 0.8 + Math.max(0, Math.abs(cx) - 6) * 0.22;
+      if (row === 0 && rng.chance(0.12)) hgt *= 0.6; // a broken stump
+      const back = inFall(cx) && row === 0 ? 0.35 : 0;
+      const front = z0 - rng.next() * 0.22 - back;
+      const d = 1.0 + rng.next() * 0.5;
+      const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.82 + rng.next() * 0.3);
+      boulder(rock, [cx, hgt / 2 - 0.4, front - d / 2], [w * 1.03, hgt + 0.8, d], tint, rng, {
+        ry: (rng.next() - 0.5) * 0.16, jitter: 0.03, topJitter: 0.18, flatBottom: true, topK: 1.25, aoBottom: 0.35,
+        skip: [false, false, false, true, false, row > 0],
+      });
+      // A glowing crack in the joint to the left, low on the wall (the lava behind the rock).
+      if (row === 0 && !inFall(x) && rng.chance(0.62)) {
+        const ch = 0.35 + rng.next() * 1.3, zf = Math.max(front, prevFront) + 0.03;
+        glow.box([x - 0.025, -0.1, zf], [x + 0.025, ch * 0.6, zf + 0.04], crack, rng);
+        glow.box([x - 0.02, ch * 0.6, zf], [x + 0.02, ch, zf + 0.04], crackDim, rng);
+      }
+      // A thin horizontal fissure across a column face, near the foot.
+      if (row === 0 && !inFall(cx) && rng.chance(0.3)) {
+        const y = 0.15 + rng.next() * 0.6;
+        glow.box([x + 0.06, y, front + 0.01], [x + w * (0.4 + rng.next() * 0.5), y + 0.04, front + 0.05], crackDim, rng);
+      }
+      prevFront = front;
+      x += w;
+    }
+  }
+  // Big basalt masses slumped at the wall foot (away from the falls).
+  for (const mx of [-10.2, -7.2, -0.6, 2.4, 7.6, 10.8]) {
+    if (inFall(mx)) continue;
+    const s = 1.1 + rng.next() * 0.7;
+    boulder(rock, [mx + (rng.next() - 0.5) * 0.4, s * 0.38, -6.3 - s * 0.3], [s * 1.4, s, s * 1.0], new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2), rng, {
+      ry: (rng.next() - 0.5) * 0.5, topJitter: 0.14, topK: 1.3, aoBottom: 0.35,
+    });
+  }
 }
 
 function mk(g: THREE.BufferGeometry, m: THREE.Material, cast = true, receive = true): THREE.Mesh {
