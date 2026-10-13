@@ -54,10 +54,13 @@ export interface SpriteLight {
   /** Contact / drop shadow colour (default a warm dark). */
   contact?: THREE.ColorRepresentation;
   /**
-   * How far the sprite key swings toward the camera (0 = the physical key; default 0.6), so a
-   * back-lit set still shows lit faces on the sprites (the rim keeps the real back light).
+   * How far the sprite key swings toward a classic sprite light (above, a little in front, on
+   * the key's side; 0 = the physical key; default 0.75), so a back-lit set still shows lit faces
+   * on the sprites (the rim keeps the real back light).
    */
   front?: number;
+  /** Brightness of the sprite light (default 1). */
+  spriteGain?: number;
 }
 
 export interface SpriteOptions {
@@ -214,6 +217,7 @@ uniform vec3 uGround;
 uniform vec3 uRim;
 uniform vec3 uShadeTint;
 uniform vec3 uHiTint;
+uniform float uLitGain;
 uniform mat3 uViewToWorld;
 uniform vec3 uEmissive;
 uniform float uLift;
@@ -244,10 +248,17 @@ void main() {
   // Undersides never take the highlight or the base: they face the dim ground.
   if (nw.y < -0.55) k = min(k, 0.68);
   vec3 tint = k > 1.1 ? uHiTint : k > 0.9 ? vec3(1.0) : k > 0.5 ? uShadeTint : uShadeTint * uShadeTint;
+  // The set's light, mostly neutralised (a sprite keeps its own palette, the set only tints it):
+  // warm cave light no longer turns blue jeans grey.
   vec3 lit = uSky * 0.55 + uKeyCol * 1.35;
+  lit = mix(vec3(dot(lit, vec3(0.2126, 0.7152, 0.0722))), lit, 0.35) * uLitGain * 0.92;
   vec3 c = base * (lit * k * tint + uLift);
   // A touch of ground bounce in the shadow bands (warm floors warm the undersides).
   if (k < 0.9) c += base * uGround * 0.18;
+  // Extra chroma, like a hand-picked sprite ramp: the sprites pop off the (graded, hazy) set
+  // the way hand-drawn sprites do (the post grade and bloom take some of it back).
+  float cl = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = max(vec3(0.0), mix(vec3(cl), c, 1.35));
   // Rim: silhouette faces turned toward the key light get a thin bright edge.
   vec2 kd = normalize(uKeyDir.xy + vec2(1e-4));
   float rim = step(0.55, 1.0 - n.z) * step(0.35, dot(normalize(n.xy + vec2(1e-4)), kd));
@@ -386,7 +397,7 @@ void main() {
     }
     float m = luma(nb);
     vec3 deep = max(vec3(0.0), mix(vec3(m), nb, 1.35)) * 0.26;
-    vec3 o = mix(deep, uOutline, 0.45);
+    vec3 o = mix(deep, uOutline, 0.62);
     gl_FragColor = vec4(mix(o, uOutline, step(0.2, uFlash)), 1.0);
     return;
   }
@@ -461,6 +472,7 @@ export function toonMaterial(rig?: CreatureUniforms): THREE.ShaderMaterial {
       uRim: { value: new THREE.Color(0, 0, 0) },
       uShadeTint: { value: new THREE.Vector3(0.9, 0.9, 1.12) },
       uHiTint: { value: new THREE.Vector3(1.08, 1.03, 0.9) },
+      uLitGain: { value: 1 },
       uViewToWorld: { value: new THREE.Matrix3() },
       uEmissive: { value: new THREE.Color(0, 0, 0) },
       uLift: { value: 0 },
@@ -708,8 +720,11 @@ export class SpriteSubject {
     tmpQ.copy(cam.quaternion).invert();
     const L = tmpV.copy(light.keyDir).normalize();
     const kr = L.dot(rightCam);
-    const frontal = new THREE.Vector3().addScaledVector(rightCam, kr * 0.6).addScaledVector(UP, 0.8).addScaledVector(towardCam, 0.7).normalize();
-    (u.uKeyDir!.value as THREE.Vector3).copy(L).lerp(frontal, light.front ?? 0.6).normalize().applyQuaternion(tmpQ);
+    // Classic sprite light: from above, a little in front, and from the side the set's key is
+    // on (left by default) — one lit side and one shaded side on every sprite.
+    const side = kr > 0.15 ? 1 : -1;
+    const frontal = new THREE.Vector3().addScaledVector(rightCam, side * 0.62).addScaledVector(UP, 0.72).addScaledVector(towardCam, 0.42).normalize();
+    (u.uKeyDir!.value as THREE.Vector3).copy(L).lerp(frontal, light.front ?? 0.75).normalize().applyQuaternion(tmpQ);
     (u.uKeyCol!.value as THREE.Color).copy(light.keyColor);
     (u.uSky!.value as THREE.Color).copy(light.sky);
     (u.uGround!.value as THREE.Color).copy(light.ground);
@@ -720,6 +735,7 @@ export class SpriteSubject {
     (u.uViewToWorld!.value as THREE.Matrix3).setFromMatrix4(cam.matrixWorld);
     (u.uEmissive!.value as THREE.Color).copy(this.opts.emissiveFrom?.emissive ?? new THREE.Color(0, 0, 0));
     u.uLift!.value = this.lift;
+    u.uLitGain!.value = light.spriteGain ?? 1;
   }
 
   /**
