@@ -112,15 +112,19 @@ export interface Grade {
    * ACES in the highlights (fire and sunlit panes roll to yellow/white). Default 0.7; the cave 0.85.
    */
   toneHue?: number;
-  /** Bloom threshold (linear HDR luminance) and strength. Defaults 0.9 / 0.35. */
+  /**
+   * Bloom: threshold (linear HDR luminance), strength, and the cap on how far above the
+   * threshold a pixel contributes (soft knee: only the excess blooms). Defaults 0.6 / 0.45 / 2.
+   */
   bloomThreshold?: number;
   bloomStrength?: number;
+  bloomCap?: number;
 }
 
 /** Defaults of the optional Grade fields. */
 export const GRADE_DEFAULTS = {
-  bottomShade: 0, bottomShadeHeight: 0.22, shadowDesat: 0.3, toneHue: 0.7, bloomThreshold: 0.9, bloomStrength: 0.35,
-} as const satisfies Required<Pick<Grade, 'bottomShade' | 'bottomShadeHeight' | 'shadowDesat' | 'toneHue' | 'bloomThreshold' | 'bloomStrength'>>;
+  bottomShade: 0, bottomShadeHeight: 0.22, shadowDesat: 0.3, toneHue: 0.7, bloomThreshold: 0.6, bloomStrength: 0.45, bloomCap: 2,
+} as const satisfies Required<Pick<Grade, 'bottomShade' | 'bottomShadeHeight' | 'shadowDesat' | 'toneHue' | 'bloomThreshold' | 'bloomStrength' | 'bloomCap'>>;
 
 export function warmCaveGrade(): Grade {
   return {
@@ -149,7 +153,7 @@ const GradeShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
     uRes: { value: new THREE.Vector2(1, 1) },
-    uExposure: { value: 1 }, uToneHue: { value: 0 }, uToneHi: { value: new THREE.Vector2(0.3, 0.8) },
+    uExposure: { value: 1 }, uToneHue: { value: 0 }, uToneHi: { value: new THREE.Vector2(0.6, 1.0) },
     uLift: { value: new THREE.Vector3() }, uGamma: { value: new THREE.Vector3(1, 1, 1) }, uGain: { value: new THREE.Vector3(1, 1, 1) },
     uSat: { value: 1 }, uContrast: { value: 1 }, uShadowDesat: { value: 0 }, uDesatRange: { value: new THREE.Vector2(0.0, 0.36) },
     uShadowTint: { value: new THREE.Vector3(1, 1, 1) }, uHighTint: { value: new THREE.Vector3(1, 1, 1) }, uSplit: { value: 0 },
@@ -188,15 +192,11 @@ const GradeShader = {
       const mat3 OUT = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
       return OUT * rrtOdt(IN * c);
     }
-    // Hue-preserving filmic: the ACES curve on luminance, chroma ratios kept; channels that
-    // would exceed 1 roll toward white (bright light desaturates instead of clipping in hue).
+    // Hue-preserving filmic: the ACES curve on luminance, chroma ratios kept (may leave gamut).
     vec3 acesLuma(vec3 c) {
       float l = dot(c, LUMA);
       float t = max(rrtOdt(vec3(max(l, 0.0))).x, 0.0);
-      vec3 o = c * (t / max(l, 1e-5));
-      float m = max(o.r, max(o.g, o.b));
-      if (m > 1.0) o = mix(vec3(t), o, clamp((1.0 - t) / max(m - t, 1e-4), 0.0, 1.0));
-      return o;
+      return c * (t / max(l, 1e-5));
     }
     vec3 srgb(vec3 c) {
       c = clamp(c, 0.0, 1.0);
@@ -229,11 +229,14 @@ const GradeShader = {
       c *= pow(max(1.0 - uVig * v, 0.0), 1.4);
       // Exposure + filmic tone map (mix of per-channel ACES and hue-preserving ACES), sRGB.
       c *= uExposure / 0.6;
-      // Hue-preserving in the shadows and mids (no crushed, clipped channels there); plain
-      // per-channel ACES in the highlights, where its roll toward yellow/white is what makes
-      // fire, lava and sunlit panes read hot.
+      // Hue-preserving in the shadows, mids and warm highlights (no crushed, clipped channels;
+      // sunlit floor keeps its colour); plain per-channel ACES for the very brightest values and
+      // wherever the hue-preserving result leaves the gamut (saturated fire, lava, panes), where
+      // its roll toward yellow/white is what makes them read hot.
       float tl = rrtOdt(vec3(max(dot(c, LUMA), 0.0))).x;
-      c = mix(acesChannels(c), acesLuma(c), uToneHue * (1.0 - smoothstep(uToneHi.x, uToneHi.y, tl)));
+      vec3 hp = acesLuma(c);
+      float over = max(hp.r, max(hp.g, hp.b));
+      c = mix(acesChannels(c), hp, uToneHue * (1.0 - smoothstep(uToneHi.x, uToneHi.y, tl)) * (1.0 - smoothstep(0.98, 1.2, over)));
       c = srgb(c);
       // Lift / gamma / gain (ASC-CDL-like).
       c = max(vec3(0.0), c * uGain + uLift * (1.0 - c));
@@ -258,6 +261,32 @@ const GradeShader = {
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
     }`,
 };
+
+/**
+ * Bloom high pass with a soft, capped knee: what passes is the brightness ABOVE the threshold
+ * (not the whole colour, as in three's LuminosityHighPassShader), capped at `uCap`. A sunlit
+ * patch just over the threshold glows faintly; a window pane 5× over it no longer hazes half
+ * the frame.
+ */
+const BLOOM_HIGHPASS = /* glsl */ `
+  uniform sampler2D tDiffuse;
+  uniform float luminosityThreshold;
+  uniform float smoothWidth;
+  uniform float uCap;
+  varying vec2 vUv;
+  void main() {
+    vec4 texel = texture2D(tDiffuse, vUv);
+    float v = luminance(texel.xyz);
+    float k = clamp(v - luminosityThreshold, 0.0, uCap);
+    gl_FragColor = vec4(texel.rgb * (k / max(v, 1e-4)), 1.0);
+  }`;
+
+function softKnee(bloom: UnrealBloomPass, cap: number) {
+  const u = bloom.highPassUniforms as Record<string, THREE.IUniform>;
+  u.uCap = { value: cap };
+  bloom.materialHighPassFilter.fragmentShader = BLOOM_HIGHPASS;
+  bloom.materialHighPassFilter.needsUpdate = true;
+}
 
 /** Phone tier: the same bloom from a mip chain at half the usual resolution (¼ of the frame). */
 class LowBloomPass extends UnrealBloomPass {
@@ -305,6 +334,7 @@ export class Hd2dPipeline {
       this.bloom = quality === 'high'
         ? new UnrealBloomPass(new THREE.Vector2(size.x, size.y), st, 0.5, th)
         : new LowBloomPass(new THREE.Vector2(size.x, size.y), st, 0.45, th);
+      softKnee(this.bloom, grade.bloomCap ?? GRADE_DEFAULTS.bloomCap);
       this.composer.addPass(this.bloom);
     }
     // One pass does tone mapping, sRGB output and the grade (no separate OutputPass).
