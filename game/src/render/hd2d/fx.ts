@@ -36,6 +36,8 @@ export const FX_RAMPS = {
   rock: ['#000000', '#33221a', '#5e4330', '#8e6c4c', '#bf9b72'],
   dust: ['#000000', '#7d6a58', '#a99178', '#cfbb9e', '#ebe0ca'],
   smoke: ['#000000', '#251c22', '#3e3238', '#5c4e50', '#7a6c68'],
+  /** Sea foam: blue-grey shadow, pale cyan, white body, white crest. */
+  foam: ['#000000', '#4f7fa8', '#9fd2ec', '#e6f7ff', '#ffffff'],
   wind: ['#000000', '#4fa6cc', '#a6e2f4', '#ffffff'],
   /** Neutral greys, tinted per element by the quad colour. */
   star: ['#000000', '#8c8c8c', '#d0d0d0', '#ffffff'],
@@ -455,7 +457,7 @@ function paintStar(f: number, n: number): PixelTile {
 
 // ------------------------------------------------------------------ flipbook atlas
 
-export type BookId = 'flame' | 'flameS' | 'fireball' | 'splash' | 'orb' | 'leaf' | 'vine' | 'spark' | 'chip' | 'boulder' | 'spike' | 'dust' | 'smoke' | 'slash' | 'swirl' | 'star';
+export type BookId = 'flame' | 'flameS' | 'fireball' | 'splash' | 'orb' | 'leaf' | 'vine' | 'spark' | 'chip' | 'boulder' | 'spike' | 'dust' | 'smoke' | 'foam' | 'slash' | 'swirl' | 'star';
 
 interface BookSpec { w: number; h: number; frames: number; paint: (f: number, n: number) => PixelTile }
 const BOOKS: Record<BookId, BookSpec> = {
@@ -472,6 +474,7 @@ const BOOKS: Record<BookId, BookSpec> = {
   spike: { w: 16, h: 32, frames: 6, paint: paintSpike },
   dust: { w: 16, h: 16, frames: 6, paint: (f, n) => paintPuff(f, n, FX_RAMPS.dust) },
   smoke: { w: 16, h: 16, frames: 6, paint: (f, n) => paintPuff(f, n, FX_RAMPS.smoke) },
+  foam: { w: 16, h: 16, frames: 6, paint: (f, n) => paintPuff(f, n, FX_RAMPS.foam) },
   slash: { w: 24, h: 12, frames: 6, paint: paintSlash },
   swirl: { w: 32, h: 40, frames: 8, paint: paintSwirl },
   star: { w: 32, h: 32, frames: 6, paint: paintStar },
@@ -901,6 +904,58 @@ export function impactGlow(scene: THREE.Scene, ground: THREE.Vector3, color: THR
   };
 }
 
+/**
+ * A dithered decal ON the floor in normal blend (it darkens / tints what is under it): the wet
+ * ring a wave leaves, a scorch. `ring` > 0 makes an annulus peaking at that fraction of the
+ * radius; `set(k)` scales its opacity (0..1), `dispose()` removes it. renderOrder 4 (under FX
+ * and sprites, over the floor and the sprite contact shadows).
+ */
+const DECAL_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAmt;
+  uniform float uRing;
+  varying vec2 vUv;
+  ${BAYER_GLSL}
+  void main() {
+    float r = length(vUv - 0.5) * 2.0;
+    if (r > 1.0) discard;
+    float f = uRing > 0.0 ? 1.0 - abs(r - uRing) / max(1e-3, 1.0 - uRing) : 1.0 - r * r;
+    f = clamp(f, 0.0, 1.0);
+    float q = floor(f * uAmt * 3.0 + bayer4(gl_FragCoord.xy)) / 3.0;
+    if (q <= 0.0) discard;
+    gl_FragColor = vec4(uColor, min(0.85, q));
+  }`;
+const decalPool: THREE.ShaderMaterial[] = [];
+function takeDecal(): THREE.ShaderMaterial {
+  return decalPool.pop() ?? markPersistent(new THREE.ShaderMaterial({
+    vertexShader: GLOW_VERT, fragmentShader: DECAL_FRAG,
+    uniforms: { uColor: { value: new THREE.Color() }, uAmt: { value: 0 }, uRing: { value: 0 } },
+    transparent: true, depthWrite: false, depthTest: true, fog: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+  }));
+}
+export function groundDecal(scene: THREE.Scene, ground: THREE.Vector3, color: THREE.ColorRepresentation, radius: number, o: { ring?: number } = {}) {
+  const m = takeDecal();
+  (m.uniforms.uColor!.value as THREE.Color).set(color);
+  m.uniforms.uAmt!.value = 0;
+  m.uniforms.uRing!.value = o.ring ?? 0;
+  const mesh = new THREE.Mesh(discGeo, m);
+  mesh.renderOrder = 4;
+  mesh.frustumCulled = false;
+  mesh.userData.fx = true;
+  mesh.position.copy(ground).add(new THREE.Vector3(0, 0.025, 0));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.scale.setScalar(radius * 2);
+  scene.add(mesh);
+  return {
+    mesh,
+    set(k: number) { m.uniforms.uAmt!.value = Math.max(0, k); },
+    /** Grow/shrink the decal (world radius). */
+    radius(r: number) { mesh.scale.setScalar(r * 2); },
+    dispose() { if (!mesh.parent) return; scene.remove(mesh); decalPool.push(m); },
+  };
+}
+
 // ------------------------------------------------------------------ warm-up
 
 let holder: THREE.Scene | null = null;
@@ -917,6 +972,7 @@ export function warmPixelFx(gl: THREE.WebGLRenderer, target: THREE.Scene, camera
     }
     const g = impactGlow(holder, new THREE.Vector3(), '#fff', 1);
     g.set(1);
+    groundDecal(holder, new THREE.Vector3(), '#000', 1).set(1);
   }
   gl.compile(holder, camera, target);
 }

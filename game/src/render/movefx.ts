@@ -11,7 +11,7 @@ import type { MoveElement } from '../engine/types';
 import { Particles, animate, flash, flatShape, fxMesh, fxSeed, groundRing, rnd } from './particles';
 import { markPersistent } from './materials';
 import { hd2dRequested } from './hd2d/pipeline';
-import { FlipBatch, PixelPoints, impactGlow, type BookId } from './hd2d/fx';
+import { FlipBatch, PixelPoints, groundDecal, impactGlow, type BookId } from './hd2d/fx';
 
 export interface MoveFxOptions {
   /** Move power (40 / 65 / 95 in the data); picks weak / normal / strong variants. Default 65. */
@@ -749,12 +749,15 @@ async function flamePx(c: Ctx) {
     },
   });
   // Impact: star under the target, a ring of flame tongues open toward the camera (bigger ones
-  // behind), rising embers, a fire-lit floor and wall.
+  // behind), embers thrown out and rising, and the fire LIGHTS the ground: a warm pool (with a
+  // hot core) that swells over ~300 ms, a scorch left on the floor as it dies.
   const R = reach(c);
   const star = pixelStar(c, '#ffb02e', 1.8, k);
   const fire = new FlipBatch(c.scene, 28, 'normal', 5);
-  const rise = new PixelPoints(c.scene, 70, 'add');
-  const light = impactGlow(c.scene, c.ground, '#ff6a20', 1.0 * R, c.camera);
+  const rise = new PixelPoints(c.scene, 120, 'add');
+  const scorch = groundDecal(c.scene, c.ground, '#2a1208', 0.55 * R);
+  const light = impactGlow(c.scene, c.ground, '#ff7a28', 1.35 * R, c.camera);
+  const core = impactGlow(c.scene, c.ground, '#ffc858', 0.62 * R);
   const life = 0.62;
   const fwd = camFwdXZ(c);
   openArc(c, 8 + c.tier * 2, 0.2).forEach((a, i) => {
@@ -769,14 +772,29 @@ async function flamePx(c: Ctx) {
     const p = c.ground.clone().addScaledVector(fwd, d * R).add(V(-fwd.z * side * R, 0, fwd.x * side * R));
     fire.add('flame', p, { anchor: 'bottom', loop: true, frame0: side ? 2 : 6, life, fadeIn: 0.06, fadeOut: 0.22, scale: k * 2, glow: 1.1, flip: side > 0 });
   }
+  // Sparks thrown outward on ballistic arcs (fewer toward the camera, so the target stays clear).
+  for (let i = 0; i < 18 + c.tier * 8; i++) {
+    const a = rnd(0, TAU);
+    const d = V(Math.cos(a), 0, Math.sin(a));
+    const sp = d.dot(fwd) < -0.3 ? 0.45 : 1;
+    rise.emit(c.ground.clone().add(V(d.x * 0.2 * R, rnd(0.2, 0.6) * R, d.z * 0.2 * R)), V(d.x * rnd(1.4, 3.2) * sp, rnd(1.6, 3.4), d.z * rnd(1.4, 3.2) * sp).multiplyScalar(Math.sqrt(R)), { color: embers[i % 4]!, size: i % 3 === 0 ? 2 : 1, life: rnd(0.45, 0.8), gravity: -7, drag: 0.4, glow: 1.7 });
+  }
   const tail = (async () => {
-    await animate(680, (kk, dt) => {
+    // 900 ms: the ground light swells over the first ~300 ms, holds while the fire burns and
+    // dies with it; the scorch fades in under it and outlasts the flames a little.
+    await animate(900, (kk, dt) => {
+      const t = kk * 0.9;
       const flick = 1 + Math.sin(kk * 70) * 0.12 + Math.sin(kk * 43) * 0.08;
-      light.set((kk < 0.1 ? kk / 0.1 : kk > 0.62 ? Math.max(0, 1 - (kk - 0.62) / 0.38) : 1) * flick);
-      if (kk < 0.72) for (let j = 0; j < 2; j++) if (rnd() < 0.7) rise.emit(ringPos(c, rnd(0, TAU), rnd(0.05, 0.4) * R, rnd(0, 0.5) * R), V(rnd(-0.25, 0.25), rnd(1.2, 2.6), rnd(-0.25, 0.25)), { color: embers[Math.floor(rnd(0, 4))]!, size: rnd() < 0.35 ? 2 : 1, life: rnd(0.35, 0.6), drag: 0.8, glow: 1.6 });
-      fire.step(dt); star.step(dt); rise.step(dt);
+      const up = THREE.MathUtils.smoothstep(t, 0, 0.3), down = 1 - THREE.MathUtils.smoothstep(t, 0.55, 0.85);
+      light.set(up * down * flick * 1.7);
+      core.set(up * down * flick * 1.3);
+      scorch.set(Math.min(1, t / 0.3) * 0.75 * (1 - THREE.MathUtils.smoothstep(t, 0.7, 0.9)));
+      if (t < 0.5) for (let j = 0; j < 2; j++) if (rnd() < 0.7) rise.emit(ringPos(c, rnd(0, TAU), rnd(0.05, 0.4) * R, rnd(0, 0.5) * R), V(rnd(-0.25, 0.25), rnd(1.2, 2.6), rnd(-0.25, 0.25)), { color: embers[Math.floor(rnd(0, 4))]!, size: rnd() < 0.35 ? 2 : 1, life: rnd(0.35, 0.6), drag: 0.8, glow: 1.6 });
+      if (t < 0.7) fire.step(dt); else if (fire.mesh.parent) fire.dispose();
+      star.step(dt); rise.step(dt);
     });
-    fire.dispose(); star.dispose(); light.dispose();
+    if (fire.mesh.parent) fire.dispose();
+    star.dispose(); light.dispose(); core.dispose(); scorch.dispose();
     // A wisp of smoke as the fire dies.
     const smoke = new FlipBatch(c.scene, 4, 'normal', 5);
     for (let i = 0; i < 3; i++) smoke.add('smoke', ringPos(c, rnd(0, TAU), 0.15 * R, (0.55 + i * 0.12) * R), { vel: V(rnd(-0.1, 0.1), 0.6, rnd(-0.1, 0.1)), scale: k, fps: 10, delay: i * 0.06 });
@@ -822,13 +840,18 @@ async function tidePx(c: Ctx) {
     const p = c.ground.clone().addScaledVector(fwd, 0.08 * R).add(V(-fwd.z * side * 0.5 * R, 0, fwd.x * side * 0.5 * R));
     crown.add('splash', p, { anchor: 'bottom', scale: k * 2, fps: 14, frame0: 1, flip: side > 0, delay: 0.04, fadeOut: 0.14 });
   }
-  const drops = new PixelPoints(c.scene, 80, 'normal', 6);
+  // A chunky white foam crown boiling round the base (open toward the camera; bigger behind).
+  const froth = new FlipBatch(c.scene, 16, 'normal', 6);
+  openArc(c, 8, 0.1).forEach((a, i) => froth.add('foam', ringPos(c, a, 0.3 * R, 0.02), { anchor: 'bottom', scale: k * 2, fps: 11, frame0: i % 2, flip: i % 2 === 1, delay: 0.02 + (i % 3) * 0.02, fadeOut: 0.15, vel: V(Math.cos(a) * 0.5, 0.3, Math.sin(a) * 0.5) }));
+  for (const side of [-1, 1]) froth.add('foam', c.ground.clone().addScaledVector(fwd, 0.22 * R).add(V(-fwd.z * side * 0.28 * R, 0, fwd.x * side * 0.28 * R)), { anchor: 'bottom', scale: k * 3, fps: 10, flip: side > 0, delay: 0.03, fadeOut: 0.16 });
+  // Droplets on high ballistic arcs, thrown outward (fewer toward the camera).
+  const drops = new PixelPoints(c.scene, 120, 'normal', 6);
   const cols = ['#ffffff', '#c4f2ff', '#48c6f0', '#2378d2'];
-  for (let i = 0; i < Math.round(26 * c.P); i++) {
+  for (let i = 0; i < Math.round(44 * c.P); i++) {
     const a = rnd(0, TAU);
     const d = V(Math.cos(a), 0, Math.sin(a));
     if (d.dot(fwd) < -0.6) d.multiplyScalar(0.4); // fewer droplets flying at the camera
-    drops.emit(c.centre.clone().add(V(0, 0.15 * R, 0)), V(d.x * rnd(0.8, 2.2), rnd(2.2, 4.2), d.z * rnd(0.8, 2.2)).multiplyScalar(Math.sqrt(R)), { color: cols[i % 4]!, size: i % 3 === 0 ? 1 : 2, life: rnd(0.45, 0.7), gravity: -10 });
+    drops.emit(c.centre.clone().add(V(0, 0.15 * R, 0)), V(d.x * rnd(1.0, 2.6), rnd(2.6, 4.8), d.z * rnd(1.0, 2.6)).multiplyScalar(Math.sqrt(R)), { color: cols[i % 4]!, size: i % 3 === 0 ? 1 : 2, life: rnd(0.55, 0.85), gravity: -10 });
   }
   const foam = new PixelPoints(c.scene, 40, 'normal', 6);
   for (let i = 0; i < 24; i++) {
@@ -836,9 +859,23 @@ async function tidePx(c: Ctx) {
     foam.emit(ringPos(c, a, 0.3 * R, 0.03), V(Math.cos(a) * 0.9 * R, 0, Math.sin(a) * 0.9 * R), { color: i % 3 ? '#ffffff' : '#c4f2ff', size: 2, life: rnd(0.3, 0.45), drag: 3 });
   }
   void groundRing(c.scene, c.ground.clone().add(V(0, 0.04, 0)), '#bfe6ff', 1.05 * R, 460, 'normal', 60);
+  // The water marks the ground: a dark wet patch and a ring of wet sand spreading outward,
+  // fading over ~1.2 s; a brief blue-white flash of light on the floor and the wall behind.
+  const wet = groundDecal(c.scene, c.ground, '#16283c', 0.5 * R);
+  const wetRing = groundDecal(c.scene, c.ground, '#1c3550', 0.5 * R, { ring: 0.78 });
+  const flashLight = impactGlow(c.scene, c.ground, '#d8f2ff', 1.2 * R, c.camera);
+  flashLight.set(1);
   const tail = (async () => {
-    await animate(620, (_kk, dt) => { crown.step(dt); star.step(dt); drops.step(dt); foam.step(dt); });
-    crown.dispose(); star.dispose();
+    await animate(1200, (kk, dt) => {
+      const t = kk * 1.2;
+      flashLight.set(Math.max(0, 1 - t / 0.18));
+      wet.set(Math.min(1, t / 0.12) * 0.8 * (1 - THREE.MathUtils.smoothstep(t, 0.6, 1.2)));
+      wetRing.radius((0.5 + 0.7 * THREE.MathUtils.smoothstep(t, 0, 0.5)) * R);
+      wetRing.set(Math.min(1, t / 0.15) * 0.9 * (1 - THREE.MathUtils.smoothstep(t, 0.45, 1.15)));
+      if (t < 0.62) { crown.step(dt); froth.step(dt); star.step(dt); } else if (crown.mesh.parent) { crown.dispose(); froth.dispose(); star.dispose(); }
+      drops.step(dt); foam.step(dt);
+    });
+    crown.dispose(); froth.dispose(); star.dispose(); flashLight.dispose(); wet.dispose(); wetRing.dispose();
     await finish(drops, foam);
   })();
   await wait(240);
