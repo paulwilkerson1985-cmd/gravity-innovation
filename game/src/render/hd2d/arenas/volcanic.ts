@@ -285,7 +285,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     const rim = k * (ny > 0.5 ? 0.6 : facing * (0.6 + 0.4 * Math.max(0, ny + 0.3)) * 1.35) + under;
     // Far from any lava (high, back) the basalt sinks toward a dark warm grey.
     const far = (1 - Math.min(1, k * 3)) * Math.min(1, Math.max(0, y - 2) / 4);
-    const base = (ny > 0.5 ? 1.2 : 1.0) * (1 + 0.12 * Math.min(1, Math.max(0, y) / 5));
+    const base = (ny > 0.5 ? 1.3 : 1.2) * (1 + 0.12 * Math.min(1, Math.max(0, y) / 5));
     return [up * base * (1 + rim * 2.0 - far * 0.12), up * base * (1 + rim * 0.72 - far * 0.13), up * base * (1 - rim * 0.15 - far * 0.12)];
   }), track(surfaceMaterial(texBasalt, undefined, true))));
 
