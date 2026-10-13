@@ -206,7 +206,10 @@ const GradeShader = {
       // Tilt-shift (linear HDR): a sharp band around the action, a 1–2 px disc blur toward the
       // top (far wall) and bottom (foreground ledge) edges.
       float y = vUv.y;
-      float r = uTiltTop * smoothstep(uFocusTop, 1.0, y) + uTiltBottom * (1.0 - smoothstep(0.0, uFocusBottom, y));
+      // The top ramp is squared: mid-back props (shelves, lodge) stay readable, the full radius
+      // is reached only toward the far top edge.
+      float rt = smoothstep(uFocusTop, 1.0, y);
+      float r = uTiltTop * rt * rt + uTiltBottom * (1.0 - smoothstep(0.0, uFocusBottom, y));
       vec3 c = texture2D(tDiffuse, vUv).rgb;
       if (r > 0.25) {
         vec2 px = r / uRes;
