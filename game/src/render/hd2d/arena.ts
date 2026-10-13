@@ -789,8 +789,9 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   group.add(mesh(props.build(), track(surfaceMaterial(texSteel))));
 
   // ---- two windows high in the back-left wall (emissive, capped below the bloom wash)
-  const win = { x: -5.4, y: 3.55, z: cliffZ - 0.08, w: 2.2, h: 1.4 };
-  const win2 = { x: -2.0, y: 3.75, z: cliffZ - 0.08, w: 1.5, h: 1.2 };
+  // Right of the foe's HUD box (top left of the screen), so both read whole in the UI.
+  const win = { x: -3.0, y: 3.4, z: cliffZ - 0.08, w: 2.0, h: 1.3 };
+  const win2 = { x: 0.0, y: 3.6, z: cliffZ - 0.08, w: 1.4, h: 1.15 };
   const glow = new VoxelBatch(16);
   glow.append(glowProps);
   const frame = new VoxelBatch(32);
@@ -804,7 +805,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   addWindow(win.x, win.y, win.z, win.w, win.h);
   addWindow(win2.x, win2.y, win2.z, win2.w, win2.h);
   // Ember crystals: tapered hex-prism clusters seated in the wall foot and on a ledge (bloom).
-  for (const [x, y, z, n] of [[-6.2, 0, 1.3, 4], [6.25, 0, 2.9, 3], [-0.6, LEVEL, -3.85, 5]] as const) crystalCluster(glow, [x, y, z], n, rng);
+  for (const [x, y, z, n] of [[-6.2, 0, 1.3, 4], [6.25, 0, 2.9, 3], [-1.6, LEVEL, -3.85, 5]] as const) crystalCluster(glow, [x, y, z], n, rng);
   const glowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: true, fog: false }));
   group.add(mesh(glow.build(), glowMat, false, false));
   group.add(mesh(frame.build(), track(surfaceMaterial(texBoards))));
@@ -817,7 +818,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // Window → floor, down-right toward the camera: the big window lights the player's side, the
   // small one the foe's (nearly parallel shafts).
   const winPos = new THREE.Vector3(win.x, win.y, win.z), win2Pos = new THREE.Vector3(win2.x, win2.y, win2.z);
-  const poolA = new THREE.Vector3(-2.0, 0, -0.4), poolB = new THREE.Vector3(1.2, 0, -1.6);
+  const poolA = new THREE.Vector3(-0.6, 0, 0.4), poolB = new THREE.Vector3(2.5, 0, -1.3);
   const keyDir = poolA.clone().sub(winPos).normalize(), key2Dir = poolB.clone().sub(win2Pos).normalize();
   const key = new THREE.SpotLight(keyColor, 150, 0, 0.24, 0.5, 1.2);
   key.position.copy(winPos).addScaledVector(keyDir, -2.2);
