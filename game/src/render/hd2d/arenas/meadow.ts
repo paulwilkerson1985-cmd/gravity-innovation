@@ -14,8 +14,9 @@ import { cachedTexture, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
 import { particleSystem } from '../kit/particles';
+import { boulder } from '../kit/rock';
 import {
-  Foliage, SpriteAtlas, backdrop, dappleCookie, disposeGroup, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  Foliage, SpriteAtlas, apron, backdrop, disposeGroup, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
   paintBark, paintButterfly, paintCanopy, paintEarth, paintFlower, paintSilhouette, paintSky, paintTuft, paintTurf, rampColor, sunRig, terraces,
   type RgbaTile,
 } from './outdoorKit';
@@ -50,21 +51,33 @@ export type MeadowVariant = 'clearing' | 'flowers';
 
 export function meadowGrade(warm = false): Grade {
   return {
-    lift: new THREE.Vector3(0.012, 0.014, 0.004), gamma: new THREE.Vector3(1.0, 1.0, 1.0),
-    gain: warm ? new THREE.Vector3(1.05, 1.0, 0.9) : new THREE.Vector3(1.02, 1.02, 0.95),
-    saturation: 0.8, contrast: 1.05,
-    shadowTint: new THREE.Color(warm ? '#3a2a3e' : '#1d3436'), highTint: new THREE.Color(warm ? '#ffdca0' : '#fff0c0'), splitAmount: 0.12,
-    // Dusty and open: light vignette; depth from local darkening (foreground, wall-foot AO).
-    vignette: 0.18, vignetteSoft: 0.7,
+    lift: new THREE.Vector3(0.006, 0.012, 0.02), gamma: new THREE.Vector3(1.0, 1.0, 1.0),
+    gain: warm ? new THREE.Vector3(1.07, 1.0, 0.86) : new THREE.Vector3(1.05, 1.01, 0.9),
+    saturation: 0.84, contrast: 1.1,
+    // Warm sunlit highs against cool blue-green shade (the reference's light/shade split).
+    shadowTint: new THREE.Color(warm ? '#2c2a4e' : '#173448'), highTint: new THREE.Color(warm ? '#ffd28a' : '#ffe2a0'), splitAmount: 0.2,
+    // A deeper vignette pulls the eye to the lit pool on the battle floor.
+    vignette: 0.32, vignetteSoft: 0.62,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
     dither: 2.0,
-    exposure: warm ? 1.52 : 1.36,
+    exposure: warm ? 1.5 : 1.42,
+    shadowDesat: 0.2,
   };
 }
 
 /** Kin and people spots (shared convention, docs/HD2D.md). */
 const SPOTS: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-1.3, 0, 1.0), new THREE.Vector3(1.5, 0, -1.0)];
 const PEOPLE: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-2.5, 0, 1.9), new THREE.Vector3(2.75, 0, -1.95)];
+/** Level of the front bank where the set meets its apron. */
+const FRONT_LV = 2;
+/** The battle floor's lit pool / calm zone: an ellipse along the kin line (world). */
+export const BATTLE_POOL = { x: 0.1, z: 0.0, ru: 3.7, rv: 2.5, angle: Math.atan2(-2.0, 2.8) };
+/** 0 at the battle centre → 1 at the rim of the calm zone (and beyond). */
+export function poolR(x: number, z: number, k = 1): number {
+  const p = BATTLE_POOL, ca = Math.cos(p.angle), sa = Math.sin(p.angle);
+  const X = x - p.x, Z = z - p.z;
+  return Math.hypot((X * ca + Z * sa) / (p.ru * k), (-X * sa + Z * ca) / (p.rv * k));
+}
 
 /** Keep props off the battle floor: true when (x, z) is within `r` of a kin/person spot or the line between the kin. */
 export function nearStage(x: number, z: number, r = 1.6): boolean {
@@ -155,6 +168,8 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
     const n = cl - Math.floor(cl);
     if (lv > 0) lv = Math.max(1, lv + (n > 0.86 ? 0.5 : n < 0.1 ? -0.5 : 0));
+    // The last rows meet the apron (phones see far past the stage): one flat bank at FRONT_LV.
+    if (z > hm.z0 + (hm.nz - 2) * CELL) lv = FRONT_LV;
     hm.set(i, j, Math.min(lv, 4));
   }
   const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
@@ -203,6 +218,18 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   tops.shade(nearShade); sides.shade(nearShade);
   group.add(mkMesh(sides.build(), extra[extra.push(surfaceMaterial(texEarth, undefined, true)) - 1] as THREE.Material));
   group.add(mkMesh(tops.build(), extra[extra.push(surfaceMaterial(texTurf, undefined, false)) - 1] as THREE.Material));
+  // Apron: the front bank's turf runs on far past the near frustum (portrait phones look down
+  // past the stage); same texture and UVs as the terrace tops, darkening toward the camera.
+  {
+    const zf = hm.z0 + hm.nz * CELL;
+    const mott = macro(flowers ? 17 : 16);
+    const ap = apron({
+      x0: -40, x1: 40, z0: zf - 0.02, z1: zf + 34, y: FRONT_LV * LEVEL, map: texTurf, tileTexels: 32,
+      shade: (x, z) => (0.84 - 0.3 * THREE.MathUtils.smoothstep(z, zf, zf + 10)) * (0.86 + 0.28 * mott(x * 0.6, z * 0.6)),
+    });
+    extra.push(ap.material as THREE.Material);
+    group.add(ap);
+  }
 
   // ---- ground: one painted texture (clearing dirt, grass, path, flowers, chalk ring)
   const ground = groundMesh({
@@ -225,14 +252,18 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     bark.rotBox([x + side * w * 0.8, y + h * 0.62, z], [0.9, 0.18, 0.18], 0, tint, rng, side * 0.0);
     return y + h;
   };
-  /** A tree: trunk + 2–3 canopy billboards. `scale` grows the whole tree. */
+  /**
+   * A tree: trunk + 2–3 canopy billboards. `scale` grows the whole tree. The canopies cast no
+   * shadow-map shadow (the key's leaf gobo paints their dapple instead, so the low sun still
+   * reaches the battle floor); the trunks throw the long shadow streaks.
+   */
   const tree = (x: number, z: number, scale = 1, wide = false) => {
     const top = trunk(x, z, 2.1 * scale, 0.5 + 0.18 * scale);
     const sprite = wide ? 'canopyWide' : 'canopy';
     const k = TEXEL * scale;
-    fol.add(atlas.get(sprite, rng), [x + (rng.next() - 0.5) * 0.4, top - 1.0 * scale, z + 0.2], 'billboard', { scale: k, sway: 0.03, flip: rng.chance(0.5) });
-    fol.add(atlas.get('canopy', rng), [x + (rng.chance(0.5) ? 1 : -1) * 1.1 * scale, top - 0.2 * scale, z - 0.3], 'billboard', { scale: k * 0.8, sway: 0.035, flip: rng.chance(0.5), tint: new THREE.Color(0.88, 0.9, 0.9) });
-    if (scale > 1.05) fol.add(atlas.get('canopy', rng), [x, top + 1.2 * scale, z - 0.6], 'billboard', { scale: k * 0.75, sway: 0.04, flip: rng.chance(0.5), tint: new THREE.Color(0.94, 0.96, 0.94) });
+    fol.add(atlas.get(sprite, rng), [x + (rng.next() - 0.5) * 0.4, top - 1.0 * scale, z + 0.2], 'billboard', { scale: k, sway: 0.03, flip: rng.chance(0.5), shadow: false });
+    fol.add(atlas.get('canopy', rng), [x + (rng.chance(0.5) ? 1 : -1) * 1.1 * scale, top - 0.2 * scale, z - 0.3], 'billboard', { scale: k * 0.8, sway: 0.035, flip: rng.chance(0.5), tint: new THREE.Color(0.88, 0.9, 0.9), shadow: false });
+    if (scale > 1.05) fol.add(atlas.get('canopy', rng), [x, top + 1.2 * scale, z - 0.6], 'billboard', { scale: k * 0.75, sway: 0.04, flip: rng.chance(0.5), tint: new THREE.Color(0.94, 0.96, 0.94), shadow: false });
   };
   // Back row on the high terraces, sides, and two framing trees at the front corners.
   const backTrees: [number, number, number, boolean][] = flowers
@@ -244,7 +275,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   // field the far canopy is lower and sunnier, so the gazebo still reads against it.)
   for (let x = -16; x <= 16; x += 2.6) {
     const open = flowers && x > -1 && x < 9.5;
-    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: open ? new THREE.Color(0.62, 0.68, 0.6) : new THREE.Color(0.48, 0.56, 0.56) });
+    fol.add(atlas.get(rng.chance(0.5) ? 'canopyWide' : 'canopy', rng), [x + rng.next(), 4.2 + rng.next() * 1.4, -12.8 + rng.next() * 0.6], 'billboard', { scale: TEXEL * 1.6, sway: 0.02, flip: rng.chance(0.5), tint: open ? new THREE.Color(0.62, 0.68, 0.6) : new THREE.Color(0.48, 0.56, 0.56), shadow: false });
   }
   // Bushes on the terraces, tall grass and tufts around the clearing edge.
   for (let i = 0; i < 14; i++) {
@@ -258,7 +289,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     const a = rng.next() * Math.PI * 2;
     const r = 0.8 + Math.pow(rng.next(), 1.6) * 0.55;
     const x = Math.cos(a) * 7.0 * r, z = 0.2 + Math.sin(a) * 4.5 * r;
-    if (nearStage(x, z, 1.9) || z > 6.5) continue;
+    if (nearStage(x, z, 2.3) || poolR(x, z) < 1.05 || z > 6.5) continue;
     if (topAt(x, z) > LEVEL * 1.5 && rng.chance(0.6)) continue; // keep the bank faces readable
     const tall = rng.chance(flowers ? 0.25 : 0.45);
     fol.add(atlas.get(tall ? 'tall' : 'tuft', rng), [x, topAt(x, z), z], 'billboard', { sway: tall ? 0.09 : 0.05, flip: rng.chance(0.5), tint: new THREE.Color(1, 1, 1).multiplyScalar(0.85 + rng.next() * 0.25) });
@@ -274,13 +305,13 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
       const r = 1.0 + rng.next() * 0.55;
       x = Math.cos(a) * 6.6 * r; z = 0.2 + Math.sin(a) * 4.4 * r;
       if (rng.chance(0.35)) { x = (rng.next() - 0.5) * 22; z = 3.8 + rng.next() * 2.6; }
-      if (nearStage(x, z, 1.9)) continue;
+      if (nearStage(x, z, 2.3) || poolR(x, z) < 1.1) continue;
       const key = petalKeys[(bed + (rng.chance(0.15) ? 1 : 0)) % petalKeys.length]!;
       fol.add(atlas.get(`flowers-${key}`), [x, topAt(x, z), z], 'billboard', { sway: 0.05, flip: rng.chance(0.5), scale: TEXEL * (0.85 + rng.next() * 0.3) });
     } else {
       const a = rng.next() * Math.PI * 2, r = 0.95 + rng.next() * 0.5;
       x = Math.cos(a) * 7.0 * r; z = 0.2 + Math.sin(a) * 4.5 * r;
-      if (nearStage(x, z, 1.9) || z > 6) continue;
+      if (nearStage(x, z, 2.3) || poolR(x, z) < 1.1 || z > 6) continue;
       fol.add(atlas.get(`flowers-${rng.pick(['white', 'yellow', 'violet'] as const)}`), [x, topAt(x, z), z], 'billboard', { sway: 0.05, flip: rng.chance(0.5) });
     }
   }
@@ -315,13 +346,27 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     wood.box([1.45, y, fenceZ - 0.05], [7.6, y + 0.12, fenceZ + 0.05], new THREE.Color(1.05, 1.05, 1.05), rng);
   }
   const signX = flowers ? -4.6 : -6.6, signZ = flowers ? 4.4 : 3.6;
-  wood.box([signX - 0.07, 0, signZ - 0.07], [signX + 0.07, 1.35, signZ + 0.07], new THREE.Color(0.9, 0.9, 0.9), rng);
-  wood.rotBox([signX + 0.15, 1.15, signZ], [0.95, 0.32, 0.06], -0.25, new THREE.Color(1.1, 1.08, 1.0), rng);
-  wood.rotBox([signX - 0.05, 0.75, signZ + 0.05], [0.7, 0.24, 0.06], 0.35, new THREE.Color(1.0, 0.98, 0.95), rng);
-  for (const [x, z, s] of [[-6.4, 1.2, 0.35], [6.6, -1.6, 0.42], [-4.6, -3.4, 0.3], [3.6, 3.6, 0.28], [7.1, 0.6, 0.25]] as const) {
-    stone.rotBox([x, s * 0.35, z], [s * 1.4, s * 0.8, s * 1.1], rng.next() * 3, new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2), rng);
-    stone.rotBox([x + s * 0.8, s * 0.2, z + s * 0.4], [s * 0.7, s * 0.45, s * 0.6], rng.next() * 3, new THREE.Color(0.95, 0.95, 0.95), rng);
-  }
+  const signY = topAt(signX, signZ);
+  wood.box([signX - 0.07, signY, signZ - 0.07], [signX + 0.07, signY + 1.35, signZ + 0.07], new THREE.Color(0.9, 0.9, 0.9), rng);
+  wood.rotBox([signX + 0.15, signY + 1.15, signZ], [0.95, 0.32, 0.06], -0.25, new THREE.Color(1.1, 1.08, 1.0), rng);
+  wood.rotBox([signX - 0.05, signY + 0.75, signZ + 0.05], [0.7, 0.24, 0.06], 0.35, new THREE.Color(1.0, 0.98, 0.95), rng);
+  // Mossy rock clumps (rounded, irregular kit boulders, not boxes) round the clearing's rim.
+  const clump = (x: number, z: number, s: number, n = 3) => {
+    const y = topAt(x, z);
+    for (let k = 0; k < n; k++) {
+      const a = rng.next() * Math.PI * 2, d = k === 0 ? 0 : s * (0.7 + rng.next() * 0.5);
+      const r = s * (k === 0 ? 1 : 0.45 + rng.next() * 0.35);
+      boulder(stone, [x + Math.cos(a) * d, y + r * 0.32, z + Math.sin(a) * d * 0.8], [r * 1.5, r * 0.95, r * 1.2], new THREE.Color(1, 1, 1).multiplyScalar(0.85 + rng.next() * 0.25), rng, {
+        ry: rng.next() * 3, rx: (rng.next() - 0.5) * 0.25, rz: (rng.next() - 0.5) * 0.25, aoBottom: 0.45, topK: 1.4,
+      });
+    }
+  };
+  for (const [x, z, sz] of [[-6.4, 1.2, 0.36], [6.6, -1.6, 0.42], [-4.6, -3.4, 0.3], [7.1, 0.6, 0.26]] as const) clump(x, z, sz);
+  // Framing at the bottom corners of the desktop view: a rock clump and a bush on each side.
+  clump(flowers ? -6.6 : -5.9, 4.9, 0.5, 4);
+  clump(7.6, 4.4, 0.44, 3);
+  fol.add(atlas.get('bush', rng), [flowers ? -7.6 : -7.1, topAt(-7.3, 5.2), 5.2], 'billboard', { scale: TEXEL * 1.25, sway: 0.02 });
+  fol.add(atlas.get('bush', rng), [8.4, topAt(8.4, 4.9), 4.9], 'billboard', { scale: TEXEL * 1.15, sway: 0.02, flip: true });
 
   // Flower field: a white gazebo with a red roof on the low back shelf.
   if (flowers) {
@@ -373,32 +418,34 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   extra.push(back.mesh.material as THREE.Material);
   group.add(back.mesh);
 
-  // ---- sun: back-left, through the leaves (dapple cookie), warm; sky-blue/green fill
-  const target = new THREE.Vector3(0, 0, 0.3);
-  const cookie = dappleCookie(flowers ? 9 : 4, { holes: flowers ? 0.26 : 0.36, edge: flowers ? 0.62 : 0.5 });
-  extra.push(cookie);
-  const sunFrom = flowers ? new THREE.Vector3(0.7, 0.85, -0.6) : new THREE.Vector3(-0.55, 1.0, -0.7);
+  // ---- sun: ONE strong warm key, low (≈ 32°) from the back-left (flower field: back-right)
+  // through the leaves, so trees and props throw long shadows toward the camera; a world-space
+  // gobo puts a lit pool on the battle floor and leaf dapple everywhere else (darker toward the
+  // set's edges). Cool, weak sky fill: warm highlights against blue-green shade.
+  const target = new THREE.Vector3(0.1, 0, 0.0);
+  const sunFrom = flowers ? new THREE.Vector3(0.8, 0.62, -0.45) : new THREE.Vector3(-0.8, 0.62, -0.45);
   const { key, spriteLight } = sunRig(group, {
-    target, from: sunFrom, distance: 34, angle: 0.4,
-    color: flowers ? '#ffd8a0' : '#fff2cc', intensity: flowers ? 8.6 : 7.6, cookie,
-    sky: flowers ? '#ffd9b0' : '#cfe6ff', ground: flowers ? '#5a5a2a' : '#3e5a2a', hemi: flowers ? 1.6 : 1.75,
-    fill: flowers ? '#ffc890' : '#fff6e0', fillIntensity: 0.55, quality: q,
+    target, from: sunFrom, distance: 34, angle: 0.44, penumbra: 0.25, shadowRadius: 2,
+    color: flowers ? '#ffcf8a' : '#ffe2a8', intensity: flowers ? 12.5 : 12, cookie: null,
+    sky: flowers ? '#a8b8e0' : '#9cc0e8', ground: flowers ? '#4a4228' : '#2c4224', hemi: flowers ? 1.35 : 1.3,
+    fill: flowers ? '#c8c8ff' : '#b8dcff', fillIntensity: 0.25, quality: q,
   });
+  const gob = gobo(key, { kind: 'leaves', seed: flowers ? 9 : 4, pool: { ...BATTLE_POOL, soft: 0.3 }, outside: 0.42, shade: 0.16, cover: flowers ? 0.38 : 0.46, scale: 3.4 });
+  extra.push(gob);
 
   // ---- light shafts through the canopy gaps + pollen motes
   const dir = sunFrom.clone().normalize().negate();
   const beams: BeamSpec[] = [];
-  // Three shafts through the canopy gaps, of UNEQUAL width and spacing (a broad main shaft, a
-  // thin one close beside it, a medium one further off) — never a comb of identical beams.
-  const gaps: [number, number, number, number, number][] = flowers
-    ? [[9.6, 4.9, -4.8, 0.5, 1.7], [8.1, 5.3, -5.6, 0.2, 0.65], [5.0, 5.0, -6.2, 0.35, 1.1]]
-    : [[-7.0, 4.9, -5.2, 0.5, 1.8], [-5.5, 5.2, -5.9, 0.2, 0.7], [-2.2, 5.0, -5.6, 0.35, 1.2]];
-  for (const [x, y, z, w0, w1] of gaps) {
-    const s = new THREE.Vector3(x, y, z);
-    const len = (y / -dir.y) * (0.94 + rng.next() * 0.06);
-    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w0, w1] });
+  // Three shafts of UNEQUAL width (a broad main shaft, a thin one, a medium one) from canopy
+  // gaps, landing in and around the lit pool — never a comb of identical beams.
+  const lands: [number, number, number, number, number][] = flowers
+    ? [[0.7, 0.3, 5.0, 0.5, 1.9], [-1.1, -0.9, 5.3, 0.2, 0.7], [3.3, -1.7, 5.0, 0.35, 1.2]]
+    : [[-0.5, 0.5, 5.0, 0.5, 1.9], [1.3, -0.7, 5.3, 0.2, 0.7], [-3.1, -1.5, 5.0, 0.35, 1.2]];
+  for (const [x, z, h, w0, w1] of lands) {
+    const end = new THREE.Vector3(x, 0, z);
+    beams.push({ start: end.clone().addScaledVector(dir, -h / -dir.y), end, width: [w0, w1] });
   }
-  const rays = lightBeams(beams, flowers ? '#ffd8a0' : '#fff2c4', flowers ? 0.22 : 0.24);
+  const rays = lightBeams(beams, flowers ? '#ffd090' : '#ffe8b0', flowers ? 0.26 : 0.28);
   extra.push(rays.mesh.geometry, rays.mesh.material as THREE.Material);
   group.add(rays.mesh);
   updates.push(rays.update);
@@ -411,8 +458,12 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   extra.push(pollen);
   group.add(pollen.points);
   updates.push(pollen.update);
-  // Soft-rect light pools where the shafts land (sized by the shaft).
-  const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 1.2 + b.width[1] * 1.1, 0.9 + b.width[1] * 0.75] as [number, number, number, number]), flowers ? '#8a6a40' : '#6a6a40');
+  // A faint warm glow over the lit pool (the key carries it; this only lifts it), plus small
+  // soft patches where the shafts land.
+  const pools = lightPools([
+    [BATTLE_POOL.x, BATTLE_POOL.z, BATTLE_POOL.ru * 2.1, BATTLE_POOL.rv * 2.1],
+    ...beams.map((b) => [b.end.x, b.end.z, 0.9 + b.width[1] * 0.9, 0.7 + b.width[1] * 0.6] as [number, number, number, number]),
+  ], flowers ? '#5a4024' : '#4a4424', 1.4);
   group.add(pools);
 
   return {
@@ -457,9 +508,11 @@ function paintMeadowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
     const edge = dirtK > -0.6 && dirtK < 0.6;
     const isDirt = dirtK > 0 && !(edge && hash2(x, y, 2) < 0.5 - dirtK * 0.8);
     if (isDirt) {
-      // Trodden dirt: lighter in the worn centre, blotchy, with grit.
-      let v = 2.4 + (n - 0.5) * 2.4 + Math.min(1, dirtK * 0.25) * 0.9 + (m - 0.5) * 0.6;
-      if (hash2(x, y, 3) < 0.06) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
+      // Trodden dirt: lighter in the worn centre, blotchy, with grit — calmer on the battle
+      // floor itself (broad soft mottling, little grit) so the kin read against it.
+      const calm = 1 - THREE.MathUtils.smoothstep(poolR(X, Z), 0.7, 1.15);
+      let v = 2.4 + (n - 0.5) * (2.4 - calm * 1.1) + Math.min(1, dirtK * 0.25) * 0.9 + (m - 0.5) * (0.6 + calm * 0.5);
+      if (hash2(x, y, 3) < 0.06 - calm * 0.045) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
       t.band(x, y, R.dirt, v);
     } else {
       // Grass: two-tone mottling + blade flecks (light tip over a dark root texel).
@@ -476,7 +529,7 @@ function paintMeadowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
     const X = wx(x), Z = wz(y);
     const inClearing = Math.hypot(X / rx, (Z - 0.1) / rz) < 1.0;
     if (inClearing) {
-      if (i % 3) continue;
+      if (i % 3 || poolR(X, Z) < 1.05) continue; // pebbles only round the rim of the battle floor
       const s = R.stone;
       t.set(x, y, s[4]!); t.set(x + 1, y, s[3]!); t.set(x, y + 1, s[2]!); t.set(x + 1, y + 1, s[1]!);
       if (rng.chance(0.4)) t.set(x - 1, y, s[5]!);
