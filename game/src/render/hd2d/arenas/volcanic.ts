@@ -226,7 +226,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   const poly = polygonSdf(POLY);
   const floorD = (x: number, z: number) => poly(x, z) - (Math.sin(x * 1.1 + z * 0.7 + 1.3) * 0.22 + Math.sin(z * 1.9 - x * 0.6) * 0.14);
   const DEPTH = 0.66;
-  const TIERS: TerraceTier[] = [{ d: 0, y: 1.0 }, { d: 1.5, y: 2.0 }, { d: 3.0, y: 3.0 }, { d: 4.5, y: 4.0 }, { d: 6.0, y: 9.0, course: 0.6 }];
+  const TIERS: TerraceTier[] = [{ d: 0, y: 1.0 }, { d: 1.5, y: 2.0 }, { d: 3.0, y: 3.0 }, { d: 4.5, y: 4.0 }, { d: 6.0, y: 9.0, course: 0.8, length: 1.0 }];
   const LIP_Z = 4.8, APRON_Y = -0.8;
   // The mid-ground ledge: a raised basalt pier jutting out of the back terraces, level with the
   // second terrace; the fall pours off its front face into the floor pool.

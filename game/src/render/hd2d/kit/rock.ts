@@ -869,8 +869,11 @@ export function isoLines(f: (x: number, z: number) => number, level: number, bou
   });
 }
 
-/** One tier of a coursed terrace: its riser's face at signed distance `d`, its top at height `y`. */
-export interface TerraceTier { d: number; y: number; course?: number }
+/**
+ * One tier of a coursed terrace: its riser's face at signed distance `d`, its top at height `y`;
+ * optional course height and stone length for this riser (e.g. bigger stones on a tall wall).
+ */
+export interface TerraceTier { d: number; y: number; course?: number; length?: number }
 
 export interface CoursedTerraceOptions extends CourseOptions {
   /** Plan rectangle to build in [x0, z0, x1, z1]. */
@@ -901,7 +904,7 @@ export function coursedTerrace(batch: VoxelBatch, dist: (x: number, z: number) =
     const paths = isoLines(dist, t.d, o.bounds, o.step ?? 0.2);
     out.push(paths);
     o.onTier?.(k, paths);
-    for (const p of paths) courseWall(batch, p, yPrev, t.y, rng, { ...o, course: t.course ?? o.course });
+    for (const p of paths) courseWall(batch, p, yPrev, t.y, rng, { ...o, course: t.course ?? o.course, length: t.length ?? o.length });
     if (!o.pebbles) return;
     // Ledge pebbles: between the top course's back and the next riser's face.
     const ledge = (k + 1 < tiers.length ? tiers[k + 1]!.d : t.d + 1.2) - t.d;

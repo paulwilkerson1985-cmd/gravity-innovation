@@ -560,16 +560,17 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const DEPTH = 0.62;
   // Two terraces of two courses each (1.2 units), then the tall cave wall (the window wall at
   // the back) rising past the top of the frame.
-  const TIERS: TerraceTier[] = [{ d: 0, y: 1.2 }, { d: 1.3, y: 2.4 }, { d: 2.6, y: 7.2 }];
+  const TIERS: TerraceTier[] = [{ d: 0, y: 1.2 }, { d: 1.3, y: 2.4 }, { d: 2.6, y: 7.2, course: 0.8, length: 0.95 }];
   const ly = TIERS[0]!.y; // lodge shelf top
   const lodge = { x0: 2.2, x1: 13, z0: -6.6, z1: -3.1 };
   const stair = { x0: 2.75, x1: 3.95, foot: -1.45, n: 5 };
   const winWallZ = -6.6; // the back terrace wall (TIERS[2] at the back edge)
   const inLodge = (x: number, z: number) => x > lodge.x0 + 0.3 && z < lodge.z1 - 0.3;
   // Windows high in the back wall (right of the foe's HUD box, top left of the screen).
-  const win = { x: -3.0, y: 3.65, z: winWallZ - 0.02, w: 2.0, h: 1.2 };
-  const win2 = { x: -0.3, y: 3.75, z: winWallZ - 0.02, w: 1.4, h: 1.05 };
-  const inWindow = (x: number, y: number) => [win, win2].some((w) => Math.abs(x - w.x) < w.w / 2 + 0.25 && Math.abs(y - w.y) < w.h / 2 + 0.2);
+  // Panes sit just proud of the wall face; only stones centred inside an opening are left out.
+  const win = { x: -3.0, y: 3.65, z: winWallZ + 0.08, w: 2.0, h: 1.2 };
+  const win2 = { x: -0.3, y: 3.75, z: winWallZ + 0.08, w: 1.4, h: 1.05 };
+  const inWindow = (x: number, y: number) => [win, win2].some((w) => Math.abs(x - w.x) < w.w / 2 && Math.abs(y - w.y) < w.h / 2);
   const stairCut = (x: number, z: number) => x > stair.x0 - 0.15 && x < stair.x1 + 0.15 && z > lodge.z1 - 0.4 && z < lodge.z1 + 0.3;
   // Ground behind a wall steps up only once well inside its stones (the grid ramp stays hidden).
   const groundY = (x: number, z: number) => {
@@ -603,7 +604,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     pebbles: { batch: stone, perUnit: q === 'high' ? 0.45 : 0.25, tint: '#d8d6d2' },
   });
   // Behind the lodge: the cave wall rises over the lodge's back wall.
-  courseWall(rock, [[lodge.x0 - 0.2, lodge.z0 - 0.35], [17, lodge.z0 - 0.35]], ly, 7.2, rng, { ...course, ends: false });
+  courseWall(rock, [[lodge.x0 - 0.2, lodge.z0 - 0.35], [17, lodge.z0 - 0.35]], ly, 7.2, rng, { ...course, course: 0.8, length: 0.95, ends: false });
   rock.shade(fore);
   // Upper courses catch the window light and the bounce off the lit floor (no black band); low
   // courses sit in a little warm shade.
@@ -754,7 +755,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     for (let i = 0; i <= cols; i++) { const x = cx - w / 2 + (w * i) / cols; frame.box([x - 0.07, cy - hh / 2 - 0.07, cz], [x + 0.07, cy + hh / 2 + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
     for (let j = 0; j <= rows; j++) { const y = cy - hh / 2 + (hh * j) / rows; frame.box([cx - w / 2 - 0.07, y - 0.07, cz], [cx + w / 2 + 0.07, y + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
     // Reveal: a recessed stone surround filling the bay the course stones left open.
-    const rv = new THREE.Color(1, 1, 1).multiplyScalar(0.62);
+    const rv = new THREE.Color(1, 1, 1).multiplyScalar(0.78);
     rock2.box([cx - w / 2 - 0.3, cy - hh / 2 - 0.25, cz - 0.4], [cx + w / 2 + 0.3, cy - hh / 2 - 0.02, cz + 0.22], rv.clone().multiplyScalar(1.3), rng, { skip: [false, false, false, true, false, true], topK: 1.3 });
     rock2.box([cx - w / 2 - 0.3, cy + hh / 2 + 0.02, cz - 0.4], [cx + w / 2 + 0.3, cy + hh / 2 + 0.25, cz + 0.1], rv, rng, { skip: [false, false, false, false, false, true] });
     for (const sx of [-1, 1]) rock2.box([cx + sx * (w / 2 + 0.02) - (sx > 0 ? 0 : 0.28), cy - hh / 2 - 0.02, cz - 0.4], [cx + sx * (w / 2 + 0.02) + (sx > 0 ? 0.28 : 0), cy + hh / 2 + 0.02, cz + 0.08], rv, rng, { skip: [false, false, true, true, false, true] });
