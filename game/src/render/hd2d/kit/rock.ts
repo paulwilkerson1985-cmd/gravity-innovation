@@ -63,6 +63,25 @@ export interface BoulderOptions {
    * reads lit top-left → shadowed bottom-right like a hand-shaded stone. 0 = off.
    */
   form?: number;
+  /**
+   * Coursed-stone look (coursedTerrace / courseWall): side and top faces use the bevel shader's
+   * "stone face" code — a crisp, slightly ragged 1–2 texel seam around the face at ≈45% albedo,
+   * a darker underside band, a mid front and a lit top band — and the plan chamfers stay small,
+   * so every stone reads as one rounded, top-lit block.
+   */
+  course?: boolean;
+  /**
+   * Multiplier on the top cap and the shallow top bevel (the shoulder gets 60% of it): a warm,
+   * brighter lit top (e.g. '#ffe6c0' × 1.1). Default none.
+   */
+  topTint?: THREE.Color;
+  /** Plan-view chamfer of the vertical edges, × the chamfer (default [0.5, 2.7]; coursed [0, 0.2]: square ends, the shader draws the seam). */
+  /**
+   * Brightness multiplier of the two top-edge bevel bands (default 1). Course stones under
+   * another course use ~0.7: their lip is a soft line, not a lit stripe across the wall.
+   */
+  bevelK?: number;
+  cutRange?: [number, number];
 }
 
 /** Direction of the baked form gradient (world): upper left, toward the camera. */
@@ -77,14 +96,16 @@ const K_TOP = 1.42, K_SHOULDER = 1.1, K_SIDE = 0.86, K_BOTTOM = 0.4;
 const rockFace = (u: number, v: number, w: number, hh: number): Face4 => [u, v, -(w + 2), hh];
 /** Bevel-shader code for a bevel facet: no seam, brightness × k. */
 const facet = (k: number): Face4 => [0, 0, -1, k];
+/** Bevel-shader code for a coursed stone face (arena.ts addBevel): (u, v, -(W + 1000), ±H). */
+const stoneFace = (u: number, v: number, w: number, hh: number): Face4 => [u, v, -(w + 1000), hh];
 
 // Ring corners in order around the block (seen from +y), and the face the ring edge after
 // corner k runs along: (-,-)→(+,-) is -z (5), (+,-)→(+,+) +x (0), (+,+)→(-,+) +z (4), (-,+)→(-,-) -x (1).
 const RING = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
 const FACE_AFTER = [5, 0, 4, 1] as const;
 
-/** A ring vertex: local undistorted position, its corner (shared jitter), AO, top-drop and chip weights. */
-type RV = { p: V3; k: number; ao: number; dy: number; cw: number };
+/** A ring vertex: local undistorted position, its corner (shared jitter), AO, top-drop and chip weights, top-tint weight. */
+type RV = { p: V3; k: number; ao: number; dy: number; cw: number; tt?: number };
 
 /**
  * One craggy boulder: rings (foot, shoulder, two narrow top-edge bevel rings, faceted top cap),
@@ -104,20 +125,25 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   const skip = o.skip ?? [false, false, false, true, false, false];
   const lite = !!o.topOnly;
   const flat = lite || !!o.flatBottom;
+  const crs = !!o.course;
+  const sideCode = crs ? stoneFace : rockFace;
   const T = batch.tileTexels, tile = TEXEL * T;
   // Texture variant: a 64-texel atlas holds four 32² variants (textures.ts paintBoulderAtlas);
   // each stone starts in one of them. Smaller tiles: any texel offset.
   const pick = () => (T >= 64 ? (rng.int(2) * 32 + rng.int(10)) / T : rng.int(T) / T);
   const offU = pick(), offV = pick();
   const m = new THREE.Matrix4().compose(new THREE.Vector3(...center), new THREE.Quaternion().setFromEuler(new THREE.Euler(o.rx ?? 0, o.ry ?? 0, o.rz ?? 0)), new THREE.Vector3(1, 1, 1));
-  const kTop = K_TOP * Math.sqrt(topK / 1.3);
+  const bevK = o.bevelK ?? 1;
+  const kTop = K_TOP * Math.sqrt(topK / 1.3) * bevK;
   const formK = o.form ?? 0.16;
   // The form gradient's direction in LOCAL axes (the stone may be rotated).
   const formL = FORM_DIR.clone().applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(o.rx ?? 0, o.ry ?? 0, o.rz ?? 0)).invert());
   // Plan-view chamfer of the vertical edges, its own size per corner (none on the cheap
   // version: 4-vertex rings) — an irregular octagon, never a rounded square.
   const cv = lite ? 0 : c;
-  const cutMul = RING.map(() => 0.5 + rng.next() * 2.2);
+  const [cutLo, cutHi] = o.cutRange ?? (crs ? [0, 0.2] : [0.5, 2.7]);
+  const cutMul = RING.map(() => cutLo + rng.next() * (cutHi - cutLo));
+  const topTint = o.topTint;
   // Per corner: column jitter (x, z) and a drop of the top rings — tilted, uneven tops.
   const colJ = RING.map(() => [(rng.next() - 0.5) * 2 * j, (rng.next() - 0.5) * 2 * j] as const);
   const drop = RING.map(() => -rng.next() * tj + (rng.next() - 0.5) * j);
@@ -162,7 +188,9 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
     const W = verts.map(world);
     const col = verts.map((q) => {
       const f = formK ? 1 + formK * Math.max(-1, Math.min(1, (q.p[0] / h[0]) * formL.x * 0.8 + (q.p[1] / h[1]) * formL.y + (q.p[2] / h[2]) * formL.z * 0.8)) : 1;
-      return tint.clone().multiplyScalar(q.ao * k * f);
+      const c = tint.clone().multiplyScalar(q.ao * k * f);
+      if (topTint && q.tt) c.multiply(new THREE.Color(1, 1, 1).lerp(topTint, q.tt));
+      return c;
     });
     const uv = verts.map((q) => uvOf(q.p, axis));
     const fa = verts.map(faceAttr);
@@ -192,7 +220,7 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
       if (isCut || kind !== 'side') { emit(quad, axis, () => facet(isCut ? kCut : kFace), 1); continue; }
       const ua = axis === 0 ? 2 : 0;
       const wFace = 2 * h[ua]!, hFace = Math.max(TEXEL, yt - yb);
-      emit(quad, axis, (v) => rockFace(v.p[ua]! + h[ua]!, v.p[1] - yb, wFace, -hFace), 1);
+      emit(quad, axis, (v) => sideCode(v.p[ua]! + h[ua]!, v.p[1] - yb, wFace, -hFace), 1);
     }
   };
 
@@ -202,8 +230,8 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   const cutAt = (inset: number) => (cv <= 0 ? 0 : Math.max(eps, cv - inset * 0.5));
   const yTop = h[1];
   const r1 = ring(yTop - c, 0, cv, at, 0.6, 1);
-  const r2 = ring(yTop - c * 0.29, c * 0.29, cutAt(c * 0.29), at, 0.85, 1);
-  const r3 = ring(yTop, c, cutAt(c), at, 1, 1);
+  const r2 = ring(yTop - c * 0.29, c * 0.29, cutAt(c * 0.29), at, 0.85, 1).map((v) => ({ ...v, tt: 0.6 }));
+  const r3 = ring(yTop, c, cutAt(c), at, 1, 1).map((v) => ({ ...v, tt: 1 }));
   let foot: RV[];
   if (flat) foot = ring(-h[1], 0, cv, ab, 0);
   else {
@@ -216,6 +244,8 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   if (flat && !skip[3]) emit(foot, 1, () => facet(K_BOTTOM), 1);
   // Sides: one band, or two around a creased, extra-jittered middle ring (faceted rock).
   const bul = lite ? 0 : o.bulge ?? Math.min(0.025, minH * 0.05);
+  // Coursed stones: the small vertical-edge chamfers read as part of the seam.
+  const kSideCut = crs ? 0.55 : K_SIDE;
   const sideRange: [number, number] = [foot[0]!.p[1], r1[0]!.p[1]];
   if (bul > 0) {
     const ym = sideRange[0] + (sideRange[1] - sideRange[0]) * (0.35 + rng.next() * 0.3);
@@ -223,17 +253,17 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
       const e = (rng.next() - 0.45) * bul * 2.2; // creases: each ring vertex pushed in or out
       return { ...v, p: [v.p[0] * (1 + e / Math.max(h[0], 1e-3)), v.p[1], v.p[2] * (1 + e / Math.max(h[2], 1e-3))] as V3 };
     });
-    band(foot, mid, 'side', 1, K_SIDE, sideRange);
-    band(mid, r1, 'side', 1, K_SIDE, sideRange);
-  } else band(foot, r1, 'side', 1, K_SIDE);
-  band(r1, r2, 'top', K_SHOULDER, K_SHOULDER * 0.96);
+    band(foot, mid, 'side', 1, kSideCut, sideRange);
+    band(mid, r1, 'side', 1, kSideCut, sideRange);
+  } else band(foot, r1, 'side', 1, kSideCut);
+  band(r1, r2, 'top', K_SHOULDER * bevK, K_SHOULDER * 0.96 * bevK);
   band(r2, r3, 'top', kTop, kTop * 0.95);
   if (skip[2]) return;
-  const topCode = (v: RV): Face4 => rockFace(v.p[0] + h[0] - c, h[2] - c - v.p[2], 2 * (h[0] - c), 2 * (h[2] - c));
+  const topCode = (v: RV): Face4 => sideCode(v.p[0] + h[0] - c, h[2] - c - v.p[2], 2 * (h[0] - c), 2 * (h[2] - c));
   if (lite) { emit(r3, 1, topCode, topK); return; }
   // Faceted top: a fan around a raised (or sunk) centre, a little off-centre.
   const peak = o.peak ?? c * (-0.3 + rng.next() * 1.2);
-  const ctr: RV = { p: [(rng.next() - 0.5) * h[0] * 0.5, yTop + peak, (rng.next() - 0.5) * h[2] * 0.5], k: 0, ao: at, dy: 0, cw: 0 };
+  const ctr: RV = { p: [(rng.next() - 0.5) * h[0] * 0.5, yTop + peak, (rng.next() - 0.5) * h[2] * 0.5], k: 0, ao: at, dy: 0, cw: 0, tt: 1 };
   const cAvg = drop.reduce((a, b) => a + b, 0) / 4 - chipDrop.reduce((a, b) => a + b, 0) / 8;
   ctr.p[1] += cAvg;
   for (let s = 0; s < r3.length; s++) emit([ctr, r3[s]!, r3[(s + 1) % r3.length]!], 1, topCode, topK);
@@ -618,4 +648,347 @@ export function clusterBump(i: number, j: number, ph: number, clusters: number):
   const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233 + ph) * 43758.5453;
   const nn = cl - Math.floor(cl);
   return nn > 1 - clusters ? 1 : nn < clusters * 0.6 ? -1 : 0;
+}
+
+// ------------------------------------------------------------------ coursed terraces
+
+/** A plan-view polyline [x, z][]. */
+export type Path2 = [number, number][];
+
+export interface CourseOptions {
+  /** Target course (stone) height in world units (default 0.6); a wall gets 1+ whole courses. */
+  course?: number;
+  /** Nominal stone length along the wall (default 1.35 × the course height: chunky, near-square stones). */
+  length?: number;
+  /** Stone depth into the wall (default 0.62). */
+  depth?: number;
+  /** Size jitter of length / depth (default 0.12 = ±12%; keep ≤ 0.15). */
+  sizeJitter?: number;
+  /** Yaw jitter in radians (default 0.06): stones stay aligned to the edge. */
+  yaw?: number;
+  /** Open seam between neighbouring stones and courses, world units (default 2 texels). */
+  gap?: number;
+  /** Stone tint(s) (default white); each stone picks one, ± toneJitter value (default 0.12), ± hueJitter hue (0.03). */
+  tint?: THREE.ColorRepresentation | THREE.ColorRepresentation[];
+  toneJitter?: number;
+  hueJitter?: number;
+  /** Warm multiplier for the lit tops (default '#ffe8c8' × 1.12 ≈ +25% with the top facets). */
+  topTint?: THREE.ColorRepresentation;
+  /** Brightness of the top cap relative to the front (default 1.25). */
+  topK?: number;
+  /** Brightness of the recessed core that shows in the seams, × the tint (default 0.45: brown, never black). */
+  core?: number;
+  /** Silhouette jitter per corner, world units (default 0.03): never a perfect cuboid. */
+  jitter?: number;
+  /** Each course sits this much behind the one below (batter, default 0.03). */
+  setback?: number;
+  /** Cheap top-bevel-only stones (low tier). */
+  lite?: boolean;
+  /** Keep a stone? (centre of its front face, world) — stair cuts, doors, window bays. */
+  keep?: (x: number, z: number, y: number) => boolean;
+  /** Which side of the path the face looks at: 1 (default) = normal (-dz, dx), so a path walked toward +x faces +z (the camera); -1 = the other side. */
+  face?: 1 | -1;
+  /** Draw the end faces of the run (default true). */
+  ends?: boolean;
+}
+
+/** Arc-length parametrisation of a plan polyline. */
+function pathSampler(path: Path2) {
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) cum.push(cum[i - 1]! + Math.hypot(path[i]![0] - path[i - 1]![0], path[i]![1] - path[i - 1]![1]));
+  const total = cum[cum.length - 1]!;
+  const at = (s: number): [number, number] => {
+    const t = Math.max(0, Math.min(total, s));
+    let i = 1;
+    while (i < cum.length - 1 && cum[i]! < t) i++;
+    const a = path[i - 1]!, b = path[i]!, seg = cum[i]! - cum[i - 1]!;
+    const f = seg > 1e-9 ? (t - cum[i - 1]!) / seg : 0;
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  };
+  return { total, at };
+}
+
+/**
+ * A coursed stone wall along a plan polyline from y0 to y1: whole courses of one height each
+ * (≈ `course`), stones of about one length (±12%) laid in running bond, aligned to the path with
+ * ≤ 0.06 rad of yaw jitter, each a rounded, top-lit course stone (boulder(…, { course: true }))
+ * with a warm bright top, a mid front, a dark underside and a ~45% seam; a brown core sits just
+ * behind the faces so every open seam reads soft brown, not black. The face lies ON the path;
+ * stones extend `depth` behind it. Returns the number of stones.
+ */
+export function courseWall(batch: VoxelBatch, path: Path2, y0: number, y1: number, rng: Rng, o: CourseOptions = {}): number {
+  if (path.length < 2 || y1 - y0 < 0.05) return 0;
+  const { total, at } = pathSampler(path);
+  if (total < 0.2) return 0;
+  const nC = Math.max(1, Math.round((y1 - y0) / (o.course ?? 0.6)));
+  const ch = (y1 - y0) / nC;
+  const L = o.length ?? ch * 1.35;
+  const depth = o.depth ?? 0.62;
+  const sj = o.sizeJitter ?? 0.12;
+  const yawJ = o.yaw ?? 0.06;
+  const gap = o.gap ?? TEXEL * 2;
+  const tints = (Array.isArray(o.tint) ? o.tint : [o.tint ?? '#ffffff']).map((t) => new THREE.Color(t));
+  const toneJ = o.toneJitter ?? 0.12, hueJ = o.hueJitter ?? 0.03;
+  const topTint = new THREE.Color(o.topTint ?? '#ffe8c8').multiplyScalar(o.topTint ? 1 : 1.12);
+  const topK = o.topK ?? 1.25;
+  const coreK = o.core ?? 0.45;
+  const jit = o.jitter ?? 0.03;
+  const setback = o.setback ?? 0.03;
+  const face = o.face ?? 1;
+  const ends = o.ends ?? true;
+  const lite = !!o.lite;
+  let count = 0;
+  for (let ci = 0; ci < nC; ci++) {
+    // Running bond: odd courses start half a stone in.
+    const segs: [number, number][] = [];
+    let x = 0;
+    if (ci % 2 === 1 && total > L * 1.2) { const w = L * (0.45 + rng.next() * 0.15); segs.push([0, w]); x = w; }
+    while (x < total - 1e-3) {
+      const w = L * (1 + (rng.next() - 0.5) * 2 * sj);
+      let xe = Math.min(total, x + w);
+      if (total - xe < 0.55 * L) xe = total - x <= 1.6 * L ? total : (x + total) / 2;
+      segs.push([x, xe]);
+      x = xe;
+    }
+    const yc0 = y0 + ci * ch;
+    const isTop = ci === nC - 1;
+    segs.forEach(([sa, sb], si) => {
+      const pa = at(sa), pb = at(sb);
+      const tx = pb[0] - pa[0], tz = pb[1] - pa[1], len = Math.hypot(tx, tz);
+      if (len < 0.12) return;
+      const nx = (-tz / len) * face, nz = (tx / len) * face; // face normal (toward the open side)
+      const mx = (pa[0] + pb[0]) / 2, mz = (pa[1] + pb[1]) / 2;
+      if (o.keep && !o.keep(mx, mz, yc0 + ch / 2)) return;
+      const d = depth * (1 + (rng.next() - 0.5) * 2 * sj * 0.6);
+      const back = ci * setback + (rng.next() - 0.5) * 0.03;
+      const cx = mx - nx * (d / 2 + back), cz = mz - nz * (d / 2 + back);
+      const sy = ch - gap + (isTop ? (rng.next() - 0.5) * 0.03 : 0);
+      const base = tints[rng.int(tints.length)]!;
+      const tint = base.clone().multiplyScalar(1 + (rng.next() - 0.5) * 2 * toneJ);
+      const hue = (rng.next() - 0.5) * 2 * hueJ;
+      tint.r *= 1 + hue; tint.b *= 1 - hue;
+      const first = si === 0, last = si === segs.length - 1;
+      boulder(batch, [cx, yc0 + gap / 2 + sy / 2, cz], [len - gap, sy, d], tint, rng, {
+        ry: Math.atan2(nx, nz) + (rng.next() - 0.5) * 2 * yawJ,
+        course: true, topTint: isTop ? topTint : undefined, topK: isTop ? topK : topK * 0.92, bevelK: isTop ? 1 : 0.68,
+        chamfer: Math.max(TEXEL, Math.min(0.085, sy * 0.17)),
+        jitter: jit, topJitter: isTop ? 0.02 : 0.03, bulge: Math.min(0.035, sy * 0.07), chips: rng.chance(0.15) ? 1 : 0,
+        peak: (rng.next() - 0.2) * 0.03, form: 0.2, aoBottom: ci === 0 ? 0.55 : 0.72,
+        flatBottom: ci === 0, topOnly: lite,
+        // Hidden: the back, the bottom, interior end faces (their seams show the core), and the
+        // top cap of lower courses (the course above covers it; the lit bevel lip stays).
+        skip: [!(ends && last), !(ends && first), !isTop, true, false, true],
+      });
+      count++;
+    });
+  }
+  // Recessed brown core just behind the faces (deepest setback included): what the seams show.
+  const coreTint = tints[0]!.clone().multiplyScalar(coreK);
+  const off = 0.09 + setback * nC;
+  const T = TEXEL * batch.tileTexels;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]!, b = path[i]!;
+    const tx = b[0] - a[0], tz = b[1] - a[1], len = Math.hypot(tx, tz);
+    if (len < 1e-4) continue;
+    const nx = (-tz / len) * face, nz = (tx / len) * face;
+    const A: V3 = [a[0] - nx * off, y0, a[1] - nz * off], B: V3 = [b[0] - nx * off, y0, b[1] - nz * off];
+    const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+    if (o.keep && !o.keep(mx, mz, (y0 + y1) / 2)) continue;
+    const [P, Q] = face === 1 ? [A, B] : [B, A]; // counter-clockwise seen from the face side
+    const u0 = (P[0] + P[2]) / T, u1 = (Q[0] + Q[2]) / T, v0 = y0 / T, v1 = (y1 - 0.02) / T;
+    batch.quad(P, Q, [Q[0], y1 - 0.02, Q[2]], [P[0], y1 - 0.02, P[2]], [nx, 0, nz], [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], coreTint, [0.8, 0.8, 1, 1], true);
+  }
+  return count;
+}
+
+/**
+ * Iso-lines of `f` at `level` inside `bounds` [x0, z0, x1, z1] (marching squares on a `step`
+ * grid, saddles resolved by the cell centre), chained into polylines and lightly smoothed.
+ * Each chain is oriented so its default course-wall face (CourseOptions.face = 1) looks toward
+ * decreasing `f` — the floor side of a signed distance.
+ */
+export function isoLines(f: (x: number, z: number) => number, level: number, bounds: [number, number, number, number], step = 0.2): Path2[] {
+  const [x0, z0, x1, z1] = bounds;
+  const nx = Math.max(2, Math.ceil((x1 - x0) / step)), nz = Math.max(2, Math.ceil((z1 - z0) / step));
+  const v = new Float32Array((nx + 1) * (nz + 1));
+  for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) v[j * (nx + 1) + i] = f(x0 + i * step, z0 + j * step) - level || 1e-6;
+  const V = (i: number, j: number) => v[j * (nx + 1) + i]!;
+  const pts = new Map<string, [number, number]>();
+  const edgePt = (key: string, ax: number, az: number, va: number, bx: number, bz: number, vb: number) => {
+    if (!pts.has(key)) { const t = va / (va - vb); pts.set(key, [ax + (bx - ax) * t, az + (bz - az) * t]); }
+    return key;
+  };
+  const segs: [string, string][] = [];
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const tl = V(i, j), tr = V(i + 1, j), br = V(i + 1, j + 1), bl = V(i, j + 1);
+    const X0 = x0 + i * step, X1 = X0 + step, Z0 = z0 + j * step, Z1 = Z0 + step;
+    const e: Record<string, string | null> = {
+      t: tl < 0 !== tr < 0 ? edgePt(`h${i},${j}`, X0, Z0, tl, X1, Z0, tr) : null,
+      r: tr < 0 !== br < 0 ? edgePt(`v${i + 1},${j}`, X1, Z0, tr, X1, Z1, br) : null,
+      b: bl < 0 !== br < 0 ? edgePt(`h${i},${j + 1}`, X0, Z1, bl, X1, Z1, br) : null,
+      l: tl < 0 !== bl < 0 ? edgePt(`v${i},${j}`, X0, Z0, tl, X0, Z1, bl) : null,
+    };
+    const live = (['t', 'r', 'b', 'l'] as const).filter((k) => e[k]);
+    if (live.length === 2) segs.push([e[live[0]!]!, e[live[1]!]!]);
+    else if (live.length === 4) {
+      const c = f(X0 + step / 2, Z0 + step / 2) - level;
+      // Cut off the two corners whose sign differs from the centre.
+      const cut = (tl < 0) !== (c < 0) ? [['l', 't'], ['r', 'b']] : [['t', 'r'], ['b', 'l']];
+      for (const [a, b] of cut) segs.push([e[a!]!, e[b!]!]);
+    }
+  }
+  // Chain segments through their shared edge points.
+  const adj = new Map<string, number[]>();
+  segs.forEach(([a, b], k) => { for (const p of [a, b]) { if (!adj.has(p)) adj.set(p, []); adj.get(p)!.push(k); } });
+  const used = new Uint8Array(segs.length);
+  const chains: Path2[] = [];
+  const walk = (start: string) => {
+    const keys = [start];
+    let cur = start;
+    for (;;) {
+      const next = (adj.get(cur) ?? []).find((k) => !used[k]);
+      if (next === undefined) break;
+      used[next] = 1;
+      const [a, b] = segs[next]!;
+      cur = a === cur ? b : a;
+      keys.push(cur);
+    }
+    if (keys.length > 2) chains.push(keys.map((k) => pts.get(k)!));
+  };
+  for (const [p, ks] of adj) if (ks.length === 1 && !used[ks[0]!]) walk(p);
+  segs.forEach(([a], k) => { if (!used[k]) walk(a); });
+  return chains.map((c) => {
+    let s = c;
+    for (let pass = 0; pass < 2; pass++) s = s.map((p, i) => (i === 0 || i === s.length - 1 ? p : [p[0] * 0.5 + (s[i - 1]![0] + s[i + 1]![0]) * 0.25, p[1] * 0.5 + (s[i - 1]![1] + s[i + 1]![1]) * 0.25]));
+    // Orient: the face normal (-dz, dx) of the middle segment must point down the gradient.
+    const m = Math.floor((s.length - 1) / 2), a = s[m]!, b = s[Math.min(s.length - 1, m + 1)]!;
+    const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
+    const nx = -dz / l, nz = dx / l;
+    const px = (a[0] + b[0]) / 2, pz = (a[1] + b[1]) / 2;
+    return f(px + nx * 0.05, pz + nz * 0.05) > f(px - nx * 0.05, pz - nz * 0.05) ? s.slice().reverse() : s;
+  });
+}
+
+/** One tier of a coursed terrace: its riser's face at signed distance `d`, its top at height `y`. */
+export interface TerraceTier { d: number; y: number; course?: number }
+
+export interface CoursedTerraceOptions extends CourseOptions {
+  /** Plan rectangle to build in [x0, z0, x1, z1]. */
+  bounds: [number, number, number, number];
+  /** Contour grid step (default 0.2). */
+  step?: number;
+  /**
+   * Loose stones on every ledge (flat dirt behind each tier's top course): the batch they go
+   * into, stones per unit of edge (default 0.5), tint and ramp (default COOL_GREY).
+   */
+  pebbles?: { batch: VoxelBatch; perUnit?: number; tint?: THREE.ColorRepresentation; ramp?: RubbleOptions['ramp'] };
+  /** Called per tier with its edge paths (e.g. to dress ledges). */
+  onTier?: (tier: number, paths: Path2[]) => void;
+}
+
+/**
+ * Coursed stone terraces from a signed distance `dist` (≤ 0 = the floor): tier k's riser is a
+ * course wall along the iso-line dist = tiers[k].d, from the previous tier's top (0 for the
+ * first) up to tiers[k].y, 2–3 courses per tier (`course`, per tier or global), stones aligned
+ * to the edge. Each tier top is a flat ledge (build it with `terraceHeight` + your ground mesh)
+ * with loose pebbles. Returns the edge paths per tier.
+ */
+export function coursedTerrace(batch: VoxelBatch, dist: (x: number, z: number) => number, tiers: TerraceTier[], rng: Rng, o: CoursedTerraceOptions): Path2[][] {
+  const out: Path2[][] = [];
+  const depth = o.depth ?? 0.62;
+  tiers.forEach((t, k) => {
+    const yPrev = k === 0 ? 0 : tiers[k - 1]!.y;
+    const paths = isoLines(dist, t.d, o.bounds, o.step ?? 0.2);
+    out.push(paths);
+    o.onTier?.(k, paths);
+    for (const p of paths) courseWall(batch, p, yPrev, t.y, rng, { ...o, course: t.course ?? o.course });
+    if (!o.pebbles) return;
+    // Ledge pebbles: between the top course's back and the next riser's face.
+    const ledge = (k + 1 < tiers.length ? tiers[k + 1]!.d : t.d + 1.2) - t.d;
+    if (ledge < depth + 0.25) return;
+    const pb = o.pebbles;
+    const base = new THREE.Color(pb.tint ?? '#ffffff');
+    for (const p of paths) {
+      const { total, at } = pathSampler(p);
+      const n = Math.round(total * (pb.perUnit ?? 0.5));
+      for (let i = 0; i < n; i++) {
+        const s = rng.next() * total, q = at(s), q2 = at(s + 0.05);
+        const tx = q2[0] - q[0], tz = q2[1] - q[1], l = Math.hypot(tx, tz) || 1;
+        const nx = (-tz / l) * (o.face ?? 1), nz = (tx / l) * (o.face ?? 1);
+        const back = depth + 0.08 + rng.next() * (ledge - depth - 0.2);
+        const x = q[0] - nx * back, z = q[1] - nz * back;
+        if (o.keep && !o.keep(x, z, t.y)) continue;
+        if (Math.abs(dist(x, z) - (t.d + back)) > 0.4) continue; // a bend folded the offset
+        const sz = 0.06 + rng.next() * 0.11;
+        boulder(pb.batch, [x, t.y + sz * 0.22, z], [sz * 1.3, sz * 0.65, sz], rampTint(base, pb.ramp, sz > 0.12 ? 0.5 : -0.2, rng), rng, {
+          ry: rng.next() * 3, chamfer: sz * 0.14, jitter: sz * 0.08, topJitter: sz * 0.14, aoBottom: 0.55, topK: 1.25, topOnly: true,
+        });
+      }
+    }
+  });
+  return out;
+}
+
+/**
+ * Ground height of a coursed terrace at signed distance `d`: 0 on the floor, tiers[k].y on the
+ * ledge of tier k. The step sits 0.65 × `depth` behind each riser face, so a ground grid (step
+ * ≤ 0.25) ramps between two vertices hidden inside the course stones.
+ */
+export function terraceHeight(d: number, tiers: TerraceTier[], depth = 0.62): number {
+  let y = 0;
+  for (const t of tiers) if (d >= t.d + depth * 0.65) y = t.y;
+  return y;
+}
+
+/** Distance from `d` forward to the next riser face of a coursed terrace (Infinity past the last). */
+export function nextRiser(d: number, tiers: TerraceTier[], depth = 0.62): number {
+  for (const t of tiers) if (d < t.d + depth * 0.65) return t.d - d;
+  return Infinity;
+}
+
+/**
+ * Signed distance to a closed plan polygon [x, z][] (negative inside, any winding, non-convex
+ * fine). Offsets (iso-lines at d > 0) round the convex corners — terrace edges that bend, not
+ * mitre.
+ */
+export function polygonSdf(poly: Path2): (x: number, z: number) => number {
+  return (x, z) => {
+    let d = Infinity, inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [ax, az] = poly[j]!, [bx, bz] = poly[i]!;
+      const ex = bx - ax, ez = bz - az, wx = x - ax, wz = z - az;
+      const t = Math.max(0, Math.min(1, (wx * ex + wz * ez) / (ex * ex + ez * ez || 1)));
+      d = Math.min(d, Math.hypot(wx - ex * t, wz - ez * t));
+      if ((az > z) !== (bz > z) && x < ax + ((z - az) * ex) / (ez || 1e-12)) inside = !inside;
+    }
+    return inside ? -d : d;
+  };
+}
+
+/**
+ * A ground grid over `bounds` [x0, z0, x1, z1] (`step` world units per quad) with per-vertex
+ * height (`height(x, z)`, e.g. terraceHeight of a coursed terrace: the floor and every ledge in
+ * ONE mesh), world-space UVs at `tileTexels` texels per tile (TEXEL density) and vertex colour
+ * from `color(x, z)` (AO, scorch…). Smooth normals.
+ */
+export function groundGrid(bounds: [number, number, number, number], step: number, tileTexels: number, height: (x: number, z: number) => number, color?: (x: number, z: number) => [number, number, number]): THREE.BufferGeometry {
+  const [x0, z0, x1, z1] = bounds;
+  const nx = Math.max(1, Math.round((x1 - x0) / step)), nz = Math.max(1, Math.round((z1 - z0) / step));
+  const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, nx, nz);
+  g.rotateX(-Math.PI / 2);
+  g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
+  const pos = g.attributes.position!, uv = g.attributes.uv!;
+  const col = new Float32Array(pos.count * 3);
+  const tile = TEXEL * tileTexels;
+  for (let k = 0; k < pos.count; k++) {
+    const x = pos.getX(k), z = pos.getZ(k);
+    pos.setY(k, height(x, z));
+    uv.setXY(k, x / tile, -z / tile);
+    col.set(color ? color(x, z) : [1, 1, 1], k * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+  return g;
 }

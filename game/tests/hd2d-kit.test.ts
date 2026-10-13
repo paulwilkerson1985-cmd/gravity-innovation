@@ -97,6 +97,63 @@ describe('hd2d kit: rock', () => {
     checkGeometry(lo.build());
   });
 
+  it('polygonSdf is negative inside, positive outside, with rounded offsets', async () => {
+    const { polygonSdf } = await import('../src/render/hd2d/kit/rock');
+    const sq = polygonSdf([[-1, -1], [1, -1], [1, 1], [-1, 1]]);
+    expect(sq(0, 0)).toBeCloseTo(-1, 5);
+    expect(sq(2, 0)).toBeCloseTo(1, 5);
+    expect(sq(2, 2)).toBeCloseTo(Math.SQRT2, 5); // corner: Euclidean, not a mitre
+  });
+
+  it('iso-lines follow the level and face down the gradient (toward the floor)', async () => {
+    const { isoLines } = await import('../src/render/hd2d/kit/rock');
+    const f = (x: number, z: number) => Math.hypot(x, z) - 2;
+    const lines = isoLines(f, 0.5, [-4, -4, 4, 4], 0.2);
+    expect(lines.length).toBe(1);
+    const c = lines[0]!;
+    expect(c.length).toBeGreaterThan(40);
+    for (const [x, z] of c) expect(Math.abs(Math.hypot(x, z) - 2.5)).toBeLessThan(0.06);
+    // Face normal (-dz, dx) of every segment points inward (decreasing f).
+    for (let i = 1; i < c.length; i++) {
+      const dx = c[i]![0] - c[i - 1]![0], dz = c[i]![1] - c[i - 1]![1];
+      const mx = (c[i]![0] + c[i - 1]![0]) / 2, mz = (c[i]![1] + c[i - 1]![1]) / 2;
+      expect(-dz * mx + dx * mz).toBeLessThan(0);
+    }
+  });
+
+  it('a course wall lays whole courses of aligned stones with a seam core, and terraces step', async () => {
+    const { courseWall, coursedTerrace, terraceHeight, groundGrid } = await import('../src/render/hd2d/kit/rock');
+    const b = new VoxelBatch(64);
+    const n = courseWall(b, [[-3, 0], [3, 0]], 0, 1.2, new Rng(4), { course: 0.6 });
+    // 2 courses of ~0.8-long stones over 6 units: ~7–9 stones per course.
+    expect(n).toBeGreaterThan(12);
+    expect(n).toBeLessThan(22);
+    const g = b.build();
+    checkGeometry(g);
+    // Stones stay aligned: nothing pokes out of the face more than the yaw jitter allows, and
+    // the face looks toward +z (the camera) for a path walked toward +x.
+    const pos = g.attributes.position!, nor = g.attributes.normal!;
+    let front = 0;
+    for (let i = 0; i < pos.count; i++) {
+      expect(pos.getZ(i)).toBeLessThan(0.12);
+      if (nor.getZ(i) > 0.8) front++;
+    }
+    expect(front).toBeGreaterThan(pos.count * 0.1);
+    const t = new VoxelBatch(64), pebbleB = new VoxelBatch(64);
+    const tiers = [{ d: 0, y: 1.2 }, { d: 1.3, y: 2.4 }];
+    const paths = coursedTerrace(t, (x, z) => Math.hypot(x, z) - 3, tiers, new Rng(5), { bounds: [-6, -6, 6, 6], pebbles: { batch: pebbleB } });
+    expect(paths.length).toBe(2);
+    expect(t.count).toBeGreaterThan(0);
+    expect(pebbleB.count).toBeGreaterThan(0);
+    checkGeometry(t.build());
+    expect(terraceHeight(-1, tiers)).toBe(0);
+    expect(terraceHeight(1.0, tiers)).toBe(1.2);
+    expect(terraceHeight(3, tiers)).toBe(2.4);
+    const gg = groundGrid([-6, -6, 6, 6], 0.5, 64, (x, z) => terraceHeight(Math.hypot(x, z) - 3, tiers));
+    expect(gg.boundingBox!.max.y).toBeCloseTo(2.4, 5);
+    expect(gg.boundingBox!.min.y).toBe(0);
+  });
+
   it('rubble is a cool-grey value ramp by default', () => {
     const b = new VoxelBatch(32);
     rubblePile(b, [0, 0, 0], new Rng(8), { radius: 1 });
