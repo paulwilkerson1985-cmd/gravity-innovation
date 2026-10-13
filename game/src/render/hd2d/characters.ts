@@ -26,10 +26,53 @@ function box(k: Kit, paint: Col, p: [number, number, number], s: [number, number
 const darker = (c: Col, k = 0.72) => new THREE.Color(c).multiplyScalar(k);
 const lighter = (c: Col, k = 0.25) => new THREE.Color(c).lerp(new THREE.Color('#ffffff'), k);
 
-/** Build a figure's geometry. Facing +Z, feet on y = 0, ~1.0 units tall (before hats). */
+/**
+ * Proportions (≈ 4.7 heads, like the reference's readable pixel people rather than chibi):
+ * the body is modelled on the original ~3-head layout and then remapped — legs stretched,
+ * torso kept — and the head + hat are built separately, shrunk and set on the taller neck.
+ */
+const LEG_K = 0.52 / 0.45; // feet → hips (0.45 → 0.52)
+const CHIN = 0.75, NEW_CHIN = 0.81, HEAD_K = 0.86;
+function bodyY(y: number): number {
+  if (y <= 0.45) return y * LEG_K;
+  return 0.52 + (y - 0.45) * ((NEW_CHIN - 0.52) / (CHIN - 0.45));
+}
+
+/** Remap a Kit build's positions and rig pivots in place. */
+function remap(g: THREE.BufferGeometry, f: (v: THREE.Vector3) => void) {
+  const v = new THREE.Vector3();
+  for (const name of ['position', 'rigA'] as const) {
+    const a = g.getAttribute(name);
+    for (let i = 0; i < a.count; i++) {
+      v.set(a.getX(i), a.getY(i), a.getZ(i));
+      f(v);
+      a.setXYZ(i, v.x, v.y, v.z);
+    }
+  }
+}
+
+function mergeKits(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const out = new THREE.BufferGeometry();
+  for (const [name, size] of [['position', 3], ['color', 3], ['rigA', 4], ['rigB', 3]] as const) {
+    const arrs = parts.map((g) => g.getAttribute(name).array as Float32Array);
+    const all = new Float32Array(arrs.reduce((n, a) => n + a.length, 0));
+    let o = 0;
+    for (const a of arrs) { all.set(a, o); o += a.length; }
+    out.setAttribute(name, new THREE.BufferAttribute(all, size));
+  }
+  for (const g of parts) g.dispose();
+  out.computeVertexNormals();
+  out.computeBoundingBox();
+  out.computeBoundingSphere();
+  return out;
+}
+
+/** Build a figure's geometry. Facing +Z, feet on y = 0, ~1.03 units tall (before hats). */
 export function buildFigureGeometry(l: PersonLook): THREE.BufferGeometry {
   const k = new Kit();
   k.jitter = 0.03;
+  const hk = new Kit();
+  hk.jitter = 0.03;
   const boot = l.shoes;
   // Legs + boots (or a robe).
   if (l.robe) {
@@ -38,9 +81,12 @@ export function buildFigureGeometry(l: PersonLook): THREE.BufferGeometry {
     k.sym((sx) => k.ball(boot, [sx * 0.07, 0.035, 0.08], [0.06, 0.04, 0.08], { detail: 0 }));
   } else {
     k.sym((sx) => {
-      k.limb(l.bottom, [sx * 0.07, 0.1, 0], [sx * 0.075, 0.44, 0], 0.052, 0.062, 6);
-      // Chunky boots with a lighter cuff: they anchor the figure on the ground.
+      k.limb(l.bottom, [sx * 0.07, 0.1, 0], [sx * 0.075, 0.44, 0], 0.05, 0.06, 6);
+      // A darker knee/shin band so the legs read as two shapes, not a block.
+      k.limb(darker(l.bottom, 0.82), [sx * 0.07, 0.15, 0.002], [sx * 0.071, 0.24, 0.002], 0.053, 0.054, 6);
+      // Chunky boots with a lighter cuff and a dark sole: they anchor the figure on the ground.
       k.ball(boot, [sx * 0.07, 0.05, 0.03], [0.065, 0.055, 0.095], { detail: 0 });
+      box(k, darker(boot, 0.45), [sx * 0.07, 0.008, 0.03], [0.12, 0.016, 0.19]);
       k.limb(lighter(boot, 0.15), [sx * 0.07, 0.09, 0], [sx * 0.07, 0.14, 0], 0.06, 0.058, 6);
     });
     k.ball(l.bottom, [0, 0.45, 0], [0.13, 0.07, 0.09], { detail: 0 });
@@ -56,22 +102,40 @@ export function buildFigureGeometry(l: PersonLook): THREE.BufferGeometry {
     k.withRig({ kind: 'nod', pivot: [sx * 0.17, 0.7, 0], amp: 0.07, phase: sx > 0 ? 0 : Math.PI, speed: 2.2 }, () => {
       k.limb(l.top, [sx * 0.17, 0.7, 0], [sx * 0.21, 0.54, 0.01], 0.052, 0.046, 6);
       k.limb(darker(l.top, 0.86), [sx * 0.21, 0.54, 0.01], [sx * 0.215, 0.43, 0.035], 0.046, 0.04, 6);
-      k.ball(l.skin, [sx * 0.215, 0.41, 0.04], 0.042, { detail: 0 });
+      k.limb(lighter(l.top, 0.3), [sx * 0.215, 0.445, 0.032], [sx * 0.215, 0.425, 0.036], 0.044, 0.043, 6); // cuff
+      k.ball(l.skin, [sx * 0.215, 0.405, 0.04], 0.044, { detail: 0 });
     });
   });
-  // Head: big, with hair mass at the back, two dark eyes and a nose dot.
+  // Collar: a lighter ring where the jacket meets the neck.
+  k.limb(lighter(l.top, 0.4), [0, 0.72, 0], [0, 0.755, 0], 0.1, 0.085, 8);
+  // Neck (stretched with the body remap).
   k.withRig({ kind: 'nod', pivot: [0, 0.76, 0], amp: 0.03, phase: 0.6, speed: 1.4 }, () => {
-    k.limb(l.skin, [0, 0.72, 0], [0, 0.79, 0], 0.045, 0.045, 6);
-    k.ball(l.skin, [0, 0.88, 0.005], [0.125, 0.13, 0.12]);
-    k.ball(l.hair, [0, 0.9, -0.03], [0.132, 0.13, 0.12]);
-    k.ball(l.hair, [0, 0.83, -0.07], [0.11, 0.08, 0.07], { detail: 0 });
-    k.sym((sx) => box(k, OUTLINE_DARK, [sx * 0.045, 0.875, 0.115], [0.022, 0.04, 0.02]));
-    k.sym((sx) => box(k, l.hair, [sx * 0.045, 0.915, 0.112], [0.04, 0.012, 0.02], [0, 0, -sx * 0.15]));
-    k.ball(darker(l.skin, 0.9), [0, 0.855, 0.122], 0.014, { detail: 0 });
-    hat(k, l);
+    k.limb(l.skin, [0, 0.72, 0], [0, 0.79, 0], 0.042, 0.042, 6);
+  });
+  // Head (own kit, shrunk below): hair mass at the back, hair tufts, two tall dark eyes with a
+  // 1-texel shine, brows, a nose dot.
+  hk.withRig({ kind: 'nod', pivot: [0, 0.76, 0], amp: 0.03, phase: 0.6, speed: 1.4 }, () => {
+    hk.ball(l.skin, [0, 0.88, 0.005], [0.125, 0.13, 0.12]);
+    hk.ball(l.hair, [0, 0.9, -0.03], [0.132, 0.13, 0.12]);
+    hk.ball(l.hair, [0, 0.83, -0.07], [0.11, 0.08, 0.07], { detail: 0 });
+    // Tufts poking out at the sides/back (read under caps and from behind).
+    hk.sym((sx) => hk.cone(l.hair, [sx * 0.115, 0.86, -0.02], [sx * 0.15, 0.8, -0.04], 0.035, 4));
+    hk.cone(darker(l.hair, 0.85), [0.02, 0.86, -0.11], [0.03, 0.78, -0.16], 0.04, 4);
+    hk.sym((sx) => box(hk, OUTLINE_DARK, [sx * 0.045, 0.872, 0.115], [0.026, 0.05, 0.02]));
+    hk.sym((sx) => box(hk, '#f4f1ea', [sx * 0.045 + 0.006, 0.885, 0.126], [0.009, 0.012, 0.004]));
+    hk.sym((sx) => box(hk, darker(l.hair, 0.8), [sx * 0.047, 0.915, 0.112], [0.045, 0.014, 0.02], [0, 0, -sx * 0.15]));
+    hk.ball(darker(l.skin, 0.88), [0, 0.85, 0.122], 0.014, { detail: 0 });
+    hat(hk, l);
   });
   prop(k, l);
-  return k.build();
+  const body = k.build(false);
+  remap(body, (v) => { v.y = bodyY(v.y); });
+  const head = hk.build(false);
+  remap(head, (v) => {
+    v.x *= HEAD_K; v.z *= HEAD_K;
+    v.y = NEW_CHIN + (v.y - CHIN) * HEAD_K;
+  });
+  return mergeKits([body, head]);
 }
 
 function hat(k: Kit, l: PersonLook) {

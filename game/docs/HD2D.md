@@ -172,6 +172,21 @@ group.add(new THREE.Mesh(rock.build(), surfaceMaterial(cachedTexture('boulder', 
 - Cost: the cave's rock went from 23k to ~78k triangles at the same frame time (SwiftShader,
   min of runs); flat bottoms + no buried blocks + front-to-back order are what make that free.
   `?post=voxel` renders the old cube rock for A/B.
+### Sprites & people (`sprite.ts`, `characters.ts`)
+- **Per-species palette**: `extractPalette(geometry)` clusters a mesh's vertex colours (distance
+  merge, ≤ `SPRITE_PALETTE_MAX` = 16, rare-but-distinct colours like eye black survive); the
+  toon pass snaps every vertex colour to it, so jitter/countershading no longer adds colours.
+- **Hue-shifted ramp**: core shadow leans cool/violet, the top-lit highlight warm.
+- **2× bake + detail-preserving downsample** (`SpriteOptions.supersample`, default 2): each
+  output texel picks an actual baked sample — the much darker one (eyes, mouths, inner lines),
+  else the much brighter one (shines), else the one nearest the mean — so small stage-1 faces
+  stay crisp and the sprite stays on palette.
+- **Outline**: exactly 1 texel (4-neighbour), a deep, slightly saturated shade of the local
+  colour pulled 45% toward `outline`; inner contours darken the local colour (×0.52) instead of
+  drawing black; a 1-texel **rim** brightens the silhouette edge facing the key light.
+- A/B: `?post=nosnap` (no palette snap), `?post=ss1` (no supersampling).
+- People are ≈ 4.7 heads (body remapped: longer legs; head + hat built in their own Kit and
+  shrunk 14%), with hair tufts, eye shines, brows, collar, cuffs, knee bands and boot soles.
 <!-- kit:end -->
 
 ## Conventions for new arenas

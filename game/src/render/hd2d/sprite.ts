@@ -13,6 +13,7 @@
 // invisible material, so it still casts a real (rig-animated) shadow into the shadow map.
 import * as THREE from 'three';
 import { VERT_BODY, VERT_HEAD, type CreatureUniforms } from '../creatures/material';
+import { postFlags } from './pipeline';
 
 /** Lighting the toon shader applies (world space). Usually derived from the arena's light rig. */
 export interface SpriteLight {
@@ -38,6 +39,68 @@ export interface SpriteOptions {
   lift?: number;
   /** Render the mesh in-scene with the toon material instead of a billboard (option b, A/B only). */
   inScene?: boolean;
+  /**
+   * Bake at 2× and downsample with a detail-preserving filter (default 2): eyes, mouths and
+   * shines survive on small kin, edges stay 1 texel. 1 = direct bake (cheaper).
+   */
+  supersample?: 1 | 2;
+  /** Snap vertex colours to a palette extracted from the mesh (default true). */
+  palette?: boolean;
+}
+
+/** Max palette entries per sprite (uniform array size). */
+export const SPRITE_PALETTE_MAX = 16;
+
+const srgbOf = (c: THREE.Color) => { const o = c.clone(); o.convertLinearToSRGB(); return o; };
+
+/**
+ * A limited palette from a mesh's vertex colours: colours closer than `tol` (sRGB distance) to
+ * an earlier, more frequent entry merge into it, then the closest pairs merge until at most
+ * `max` remain. Rare but distinct colours (eye black, eye shine, accents) survive because
+ * merging is by distance, not frequency. Linear colours out, most frequent first.
+ */
+export function extractPalette(geo: THREE.BufferGeometry, max = SPRITE_PALETTE_MAX, tol = 0.09): THREE.Color[] {
+  const col = geo.getAttribute('color');
+  if (!col) return [];
+  const counts = new Map<string, { c: THREE.Color; n: number }>();
+  const tmp = new THREE.Color();
+  for (let i = 0; i < col.count; i++) {
+    tmp.setRGB(col.getX(i), col.getY(i), col.getZ(i));
+    const s = srgbOf(tmp);
+    const k = `${Math.round(s.r * 64)},${Math.round(s.g * 64)},${Math.round(s.b * 64)}`;
+    const e = counts.get(k);
+    if (e) e.n++; else counts.set(k, { c: s, n: 1 });
+  }
+  const sorted = [...counts.values()].sort((a, b) => b.n - a.n);
+  const pal: { c: THREE.Color; n: number; sum: THREE.Color }[] = [];
+  const dist = (a: THREE.Color, b: THREE.Color) => Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+  for (const e of sorted) {
+    let best = -1, bd = tol;
+    pal.forEach((p, i) => { const d = dist(p.c, e.c); if (d < bd) { bd = d; best = i; } });
+    if (best >= 0) { const p = pal[best]!; p.n += e.n; p.sum.add(e.c.clone().multiplyScalar(e.n)); }
+    else pal.push({ c: e.c.clone(), n: e.n, sum: e.c.clone().multiplyScalar(e.n) });
+  }
+  // Representative = the weighted mean of what merged into it.
+  for (const p of pal) p.c.copy(p.sum).multiplyScalar(1 / p.n);
+  while (pal.length > max) {
+    let bi = 0, bj = 1, bd = Infinity;
+    for (let i = 0; i < pal.length; i++) for (let j = i + 1; j < pal.length; j++) {
+      const d = dist(pal[i]!.c, pal[j]!.c);
+      if (d < bd) { bd = d; bi = i; bj = j; }
+    }
+    const a = pal[bi]!, b = pal[bj]!;
+    a.c.multiplyScalar(a.n).add(b.c.clone().multiplyScalar(b.n)).multiplyScalar(1 / (a.n + b.n));
+    a.n += b.n;
+    pal.splice(bj, 1);
+  }
+  return pal.sort((a, b) => b.n - a.n).map((p) => { const c = p.c.clone(); c.convertSRGBToLinear(); return c; });
+}
+
+const paletteCache = new WeakMap<THREE.BufferGeometry, THREE.Color[]>();
+function paletteFor(geo: THREE.BufferGeometry): THREE.Color[] {
+  let p = paletteCache.get(geo);
+  if (!p) { p = extractPalette(geo); paletteCache.set(geo, p); }
+  return p;
 }
 
 const TOON_VERT = /* glsl */ `
@@ -71,9 +134,24 @@ uniform vec3 uRim;
 uniform mat3 uViewToWorld;
 uniform vec3 uEmissive;
 uniform float uLift;
+uniform vec3 uPal[${SPRITE_PALETTE_MAX}];
+uniform int uPalN;
 varying vec3 vCol;
 varying vec3 vViewPos;
 void main() {
+  // Per-species palette: snap the (jittered, countershaded) vertex colour to the mesh's own
+  // limited palette, compared in a roughly perceptual (sqrt) space.
+  vec3 base = vCol;
+  if (uPalN > 0) {
+    vec3 sv = sqrt(max(vCol, vec3(0.0)));
+    float bd = 1e9;
+    for (int i = 0; i < ${SPRITE_PALETTE_MAX}; i++) {
+      if (i >= uPalN) break;
+      vec3 d = sqrt(uPal[i]) - sv;
+      float dd = dot(d, d);
+      if (dd < bd) { bd = dd; base = uPal[i]; }
+    }
+  }
   // Flat faces from screen derivatives (the rig bends parts, so stored normals would lie).
   vec3 n = normalize(cross(dFdx(vViewPos), dFdy(vViewPos)));
   vec3 nw = normalize(uViewToWorld * n);
@@ -87,8 +165,12 @@ void main() {
   // Rim: silhouette faces turned toward the key light get a thin bright edge.
   vec2 kd = normalize(uKeyDir.xy + vec2(1e-4));
   float rim = step(0.55, 1.0 - n.z) * step(0.35, dot(normalize(n.xy + vec2(1e-4)), kd));
-  vec3 c = vCol * (light + uLift) + rim * uRim * vCol + uEmissive;
-  gl_FragColor = vec4(c, 1.0);
+  vec3 c = base * (light + uLift) + rim * uRim * base;
+  // Hue-shifted ramp: the core shadow leans cool/violet, the top-lit highlight warm — the
+  // hand-pixeled way to shade (never just darker/lighter of the same hue).
+  if (band < 0.2) c = mix(c, c * vec3(0.86, 0.84, 1.18), 0.55);
+  if (ndl > 0.78 && nw.y > 0.2) c *= vec3(1.16, 1.12, 1.0);
+  gl_FragColor = vec4(c + uEmissive, 1.0);
 }`;
 
 const BILL_VERT = /* glsl */ `
@@ -98,33 +180,83 @@ void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(
 const BILL_FRAG = /* glsl */ `
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
-uniform vec2 uTexel;
+uniform float uN;        // output texels across the sprite
+uniform float uSS;       // bake supersampling (1 or 2)
 uniform vec3 uOutline;
 uniform float uDepthEdge;
 uniform float uOpacity;
+uniform vec2 uRimDir;    // screen direction toward the key light
+uniform vec3 uRimK;      // rim multiplier
 varying vec2 vUv;
-vec4 at(vec2 o) { return texture2D(tColor, vUv + o * uTexel); }
-float dep(vec2 o) { return texture2D(tDepth, vUv + o * uTexel).r; }
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+// One OUTPUT texel (cell c): with 2× supersampling, a 2×2 block is reduced with a detail-
+// preserving pick — a much darker sample wins (eyes, mouths, inner lines), else a much brighter
+// one (eye shine, sparks), else the sample closest to the mean. Always an actual baked colour,
+// so the sprite stays on its palette.
+vec4 cell(vec2 c) {
+  if (uSS < 1.5) return texture2D(tColor, (c + 0.5) / uN);
+  vec2 b = (c + 0.25) / uN;
+  float h = 0.5 / uN;
+  vec4 s[4];
+  s[0] = texture2D(tColor, b);
+  s[1] = texture2D(tColor, b + vec2(h, 0.0));
+  s[2] = texture2D(tColor, b + vec2(0.0, h));
+  s[3] = texture2D(tColor, b + vec2(h, h));
+  float cov = 0.0;
+  vec3 sum = vec3(0.0);
+  for (int i = 0; i < 4; i++) { float a = step(0.5, s[i].a); cov += a; sum += s[i].rgb * a; }
+  if (cov < 1.5) return vec4(0.0);
+  vec3 avg = sum / cov;
+  float la = luma(avg);
+  vec3 dark = avg, bright = avg, near = avg;
+  float ld = 1e3, lb = -1.0, nd = 1e3;
+  for (int i = 0; i < 4; i++) {
+    if (s[i].a < 0.5) continue;
+    float l = luma(s[i].rgb);
+    if (l < ld) { ld = l; dark = s[i].rgb; }
+    if (l > lb) { lb = l; bright = s[i].rgb; }
+    vec3 d = s[i].rgb - avg;
+    float dd = dot(d, d);
+    if (dd < nd) { nd = dd; near = s[i].rgb; }
+  }
+  if (ld < la * 0.6) return vec4(dark, 1.0);
+  if (lb > la * 1.45 && lb > 0.35) return vec4(bright, 1.0);
+  return vec4(near, 1.0);
+}
+float cellDepth(vec2 c) {
+  if (uSS < 1.5) return texture2D(tDepth, (c + 0.5) / uN).r;
+  vec2 b = (c + 0.25) / uN;
+  float h = 0.5 / uN;
+  return min(min(texture2D(tDepth, b).r, texture2D(tDepth, b + vec2(h, 0.0)).r), min(texture2D(tDepth, b + vec2(0.0, h)).r, texture2D(tDepth, b + vec2(h, h)).r));
+}
 void main() {
-  vec4 c = texture2D(tColor, vUv);
+  vec2 c0 = floor(vUv * uN);
+  vec4 c = cell(c0);
+  vec4 r = cell(c0 + vec2(1.0, 0.0)), l = cell(c0 + vec2(-1.0, 0.0)), u = cell(c0 + vec2(0.0, 1.0)), d = cell(c0 + vec2(0.0, -1.0));
   if (c.a < 0.5) {
-    // Outside the silhouette: a 1-texel outline where any 4-neighbour is inside. The outline
-    // takes a little of the neighbour's hue (selective outlining) so it never looks pasted on.
-    vec4 r = at(vec2(1.0, 0.0)), l = at(vec2(-1.0, 0.0)), u = at(vec2(0.0, 1.0)), d = at(vec2(0.0, -1.0));
+    // Outside: a 1-texel outline wherever a 4-neighbour is inside, in a deep, slightly more
+    // saturated shade of that neighbour's colour (selective outline), pulled toward uOutline.
     float a = r.a + l.a + u.a + d.a;
-    if (a < 0.5) discard;
+    if (a < 0.5 || uOpacity < 0.5) discard;
     vec3 nb = (r.rgb * r.a + l.rgb * l.a + u.rgb * u.a + d.rgb * d.a) / a;
-    gl_FragColor = vec4(mix(uOutline, nb * 0.22, 0.35), uOpacity);
-    if (uOpacity < 0.5) discard;
+    float m = luma(nb);
+    vec3 deep = max(vec3(0.0), mix(vec3(m), nb, 1.35)) * 0.26;
+    gl_FragColor = vec4(mix(deep, uOutline, 0.45), 1.0);
     return;
   }
-  // Inside: inner contour lines where this texel lies well behind a neighbour (a near part
-  // overlapping a far one — an ear over the head, a leg in front of the belly).
-  float z = dep(vec2(0.0));
-  float zn = min(min(dep(vec2(1.0, 0.0)), dep(vec2(-1.0, 0.0))), min(dep(vec2(0.0, 1.0)), dep(vec2(0.0, -1.0))));
-  vec3 col = c.rgb;
-  if (z - zn > uDepthEdge) col = mix(col * 0.3, uOutline, 0.4);
   if (uOpacity < 0.5) discard;
+  vec3 col = c.rgb;
+  // Inner contour: this texel lies well behind a neighbour (an ear over the head, a leg over the
+  // belly) → a darker shade of the local colour, not black (keeps small faces readable).
+  float z = cellDepth(c0);
+  float zn = min(min(cellDepth(c0 + vec2(1.0, 0.0)), cellDepth(c0 + vec2(-1.0, 0.0))), min(cellDepth(c0 + vec2(0.0, 1.0)), cellDepth(c0 + vec2(0.0, -1.0))));
+  if (z - zn > uDepthEdge) col *= 0.52;
+  else {
+    // 1-texel rim on the silhouette edge that faces the key light.
+    vec2 rd = uRimDir;
+    vec4 toward = cell(c0 + vec2(rd.x > 0.38 ? 1.0 : rd.x < -0.38 ? -1.0 : 0.0, rd.y > 0.38 ? 1.0 : rd.y < -0.38 ? -1.0 : 0.0));
+    if (toward.a < 0.5) col = col * uRimK + vec3(0.03);
+  }
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -146,6 +278,8 @@ export function toonMaterial(rig?: CreatureUniforms): THREE.ShaderMaterial {
       uViewToWorld: { value: new THREE.Matrix3() },
       uEmissive: { value: new THREE.Color(0, 0, 0) },
       uLift: { value: 0 },
+      uPal: { value: Array.from({ length: SPRITE_PALETTE_MAX }, () => new THREE.Color()) },
+      uPalN: { value: 0 },
       ...(rig ? { uTime: rig.uTime, uBlink: rig.uBlink, uAct: rig.uAct } : {}),
     },
   });
@@ -195,13 +329,21 @@ export class SpriteSubject {
   private billMat: THREE.ShaderMaterial;
   private size = 0;
   private readonly px: number;
+  private readonly ss: number;
   /** Ambient lift; may be changed live. */
   lift: number;
 
   constructor(readonly mesh: THREE.Mesh, readonly opts: SpriteOptions = {}) {
     this.px = opts.pxPerTexel ?? 1;
+    this.ss = opts.supersample ?? (postFlags().has('ss1') ? 1 : 2);
     this.lift = opts.lift ?? 0;
     this.toon = toonMaterial(opts.rig);
+    if (opts.palette ?? !postFlags().has('nosnap')) {
+      const pal = paletteFor(mesh.geometry);
+      const u = this.toon.uniforms;
+      pal.forEach((c, i) => (u.uPal!.value as THREE.Color[])[i]!.copy(c));
+      u.uPalN!.value = pal.length;
+    }
     this.source = mesh.material;
     mesh.castShadow = true;
     if (opts.inScene) {
@@ -218,7 +360,10 @@ export class SpriteSubject {
       uniforms: {
         tColor: { value: this.rt.texture },
         tDepth: { value: this.rt.depthTexture },
-        uTexel: { value: new THREE.Vector2(1 / 32, 1 / 32) },
+        uN: { value: 32 },
+        uSS: { value: this.ss },
+        uRimDir: { value: new THREE.Vector2(0, 1) },
+        uRimK: { value: new THREE.Vector3(1.22, 1.18, 1.08) },
         uOutline: { value: lin(opts.outline ?? '#1a0d08') },
         uDepthEdge: { value: 0.08 },
         uOpacity: { value: 1 },
@@ -236,8 +381,8 @@ export class SpriteSubject {
     const n = Math.max(32, Math.ceil(s / 16) * 16);
     if (n === this.size) return;
     this.size = n;
-    this.rt.setSize(n, n);
-    (this.billMat.uniforms.uTexel!.value as THREE.Vector2).set(1 / n, 1 / n);
+    this.rt.setSize(n * this.ss, n * this.ss);
+    this.billMat.uniforms.uN!.value = n;
   }
 
   private applyLight(light: SpriteLight, cam: THREE.Camera) {
@@ -287,6 +432,9 @@ export class SpriteSubject {
     cam.updateMatrixWorld();
     this.billMat.uniforms.uDepthEdge!.value = Math.max(0.05, 0.12 * sphere.radius) / (cam.far - cam.near);
     this.applyLight(light, cam);
+    // Rim side: the key light direction in screen space.
+    const kv = light.keyDir.clone().applyQuaternion(tmpQ.copy(camera.quaternion).invert());
+    (this.billMat.uniforms.uRimDir!.value as THREE.Vector2).set(kv.x, kv.y).normalize();
     // Bake.
     const prevTarget = renderer.getRenderTarget();
     const prevClear = renderer.getClearColor(new THREE.Color());

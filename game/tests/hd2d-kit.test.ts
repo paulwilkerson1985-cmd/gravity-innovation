@@ -67,3 +67,33 @@ describe('hd2d kit: rock', () => {
     for (let i = 0; i < pos.count; i++) expect(Math.hypot(pos.getX(i), pos.getZ(i))).toBeGreaterThan(0.8);
   });
 });
+
+describe('hd2d kit: sprites', () => {
+  it('extracts a small palette that keeps rare distinct colours (eyes) and merges jitter', async () => {
+    const { extractPalette, SPRITE_PALETTE_MAX } = await import('../src/render/hd2d/sprite');
+    const cols: number[] = [];
+    const push = (hex: string, n: number, jit: number) => {
+      const c = new THREE.Color(hex);
+      for (let i = 0; i < n; i++) { const k = 1 + ((i % 7) - 3) * jit; cols.push(c.r * k, c.g * k, c.b * k); }
+    };
+    push('#ff7a2e', 600, 0.015); // body, ±4.5% per-face jitter
+    push('#f4e6c8', 200, 0.015); // belly
+    push('#1d1838', 6, 0);       // eyes: rare but distinct
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    const pal = extractPalette(g);
+    expect(pal.length).toBeGreaterThanOrEqual(3);
+    expect(pal.length).toBeLessThanOrEqual(SPRITE_PALETTE_MAX);
+    const eye = new THREE.Color('#1d1838');
+    expect(Math.min(...pal.map((c) => Math.hypot(c.r - eye.r, c.g - eye.g, c.b - eye.b)))).toBeLessThan(0.02);
+  });
+
+  it('people are ~4.5+ heads tall with the head on top', async () => {
+    const { buildFigureGeometry, HERO_LOOK } = await import('../src/render/hd2d/characters');
+    const g = buildFigureGeometry({ ...HERO_LOOK, hat: 'band' });
+    const bb = g.boundingBox!;
+    expect(bb.min.y).toBeGreaterThanOrEqual(-0.001);
+    expect(bb.max.y).toBeGreaterThan(1.0);
+    expect(bb.max.y).toBeLessThan(1.2);
+  });
+});
