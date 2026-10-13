@@ -11,6 +11,7 @@ import { CELL, TEXEL, type Heightmap, type VoxelBatch } from '../arena';
 import { PixelTile, cachedTexture, ditherIndex, fbm, pixelTexture, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
 import { bandIndex } from './outdoorKit';
+import { boulder } from '../kit/rock';
 
 // ------------------------------------------------------------------ grade & small helpers
 
@@ -310,6 +311,13 @@ uniform float uWaveSpeed;
 uniform float uCaps;    // open-sea whitecap density 0..1
 uniform float uGlints;  // 0/1
 uniform float uFar;     // world z where the horizon gradient (fake reflection) starts
+uniform float uChop;    // open-water texture: density of small wave-crest dashes (0 = off)
+uniform vec4 uGlit;     // sun glitter path: x at z = 0, dx per unit of -z, half-width, strength (0 = off)
+uniform vec3 uGlitCol;
+uniform vec3 uHaze;     // horizon haze colour
+uniform vec2 uHazeZ;    // haze starts at z = x, is full at z = y (y < x; equal = off)
+uniform vec4 uPool;     // sun-break pool on the water: centre x, z, radii x, z (rx 0 = off)
+uniform vec2 uPoolK;    // ramp shift outside, inside the pool
 varying vec3 vWorld;
 #include <fog_pars_fragment>
 float bayer4(vec2 p) {
@@ -347,6 +355,33 @@ void main() {
   // Fake reflection: water toward the horizon picks up the sky.
   float far = clamp((uFar - p.y) / 14.0, 0.0, 1.0);
   v += far * 1.2;
+  // Open-water texture: short wave-crest dashes (a lit top texel over a dark trough texel) that
+  // cluster along the swell and drift, so open sea never reads as a flat fill.
+  if (uChop > 0.0) {
+    vec2 q = cell + vec2(floor(uTime * 1.6 + sin(cell.y * 0.37) * 3.0), 0.0);
+    vec2 wc = floor(q / vec2(7.0, 3.0));
+    vec2 wl = q - wc * vec2(7.0, 3.0);
+    float h = hash(wc * 1.37 + 3.1);
+    float swell = 0.5 + 0.5 * sin(p.y * 1.3 + p.x * 0.21 + uTime * 0.8);
+    if (h < uChop * (0.3 + 0.7 * swell) * clamp(d / 1.5, 0.0, 1.0)) {
+      float len = 2.0 + mod(floor(h * 97.0), 4.0);
+      if (wl.y < 0.5 && wl.x < len) v += 1.1;
+      else if (wl.y < 1.5 && wl.x > 0.5 && wl.x < len + 0.5) v -= 0.7;
+    }
+  }
+  // Sun break: the water under the lit pool lifts, the rest sinks into storm shade.
+  if (uPool.z > 0.0) {
+    float pr = length((p - uPool.xy) / uPool.zw);
+    v += mix(uPoolK.x, uPoolK.y, 1.0 - smoothstep(0.7, 1.15, pr));
+  }
+  // Sun glitter path toward a low sun: the water along it lifts, sparkles blink densely.
+  float band = 0.0;
+  if (uGlit.w > 0.0) {
+    float cx = uGlit.x + uGlit.y * (-p.y);
+    float dx = (p.x - cx) / (uGlit.z * (1.0 + far * 1.5));
+    band = exp(-dx * dx) * uGlit.w * clamp(d / 1.2, 0.0, 1.0);
+    v += band * 1.2;
+  }
   int i0 = int(clamp(floor(v + b - 0.5), 0.0, 5.0));
   vec3 c = uRamp[0];
   for (int k = 1; k < 6; k++) if (k == i0) c = uRamp[k];
@@ -369,6 +404,18 @@ void main() {
     float g = hash(cell + floor(uTime * 3.0 + n * 7.0));
     if (g > 0.9965 - far * 0.006 && d > 0.6) c = uGlint;
   }
+  if (band > 0.02) {
+    float g2 = hash(cell * 1.7 + floor(uTime * 4.0 + n * 9.0));
+    if (g2 > 1.0 - band * (0.07 + far * 0.2)) c = uGlitCol;
+    else if (g2 > 1.0 - band * (0.22 + far * 0.25)) c = mix(c, uGlitCol, 0.45);
+  }
+  // Horizon haze: the far sea dissolves into the sky colour in posterised, dithered steps
+  // (no ruler-straight hard horizon line).
+  if (uHazeZ.y < uHazeZ.x) {
+    float hk = clamp((uHazeZ.x - p.y) / (uHazeZ.x - uHazeZ.y), 0.0, 1.0);
+    hk = min(1.0, floor(hk * hk * 6.0 + b) / 6.0);
+    c = mix(c, uHaze, hk);
+  }
   gl_FragColor = vec4(c, 1.0);
   #include <fog_fragment>
 }`;
@@ -387,6 +434,14 @@ export interface WaterOptions {
   /** z where the horizon reflection gradient starts (water further back gets lighter). */
   far?: number;
   fieldRes?: number; range?: number;
+  /** Open-water texture density (wave-crest dashes), 0..1. */
+  chop?: number;
+  /** Sun glitter path: x at z = 0, x drift per unit toward −z, half-width (units), strength 0..1. */
+  glitter?: { x: number; slope: number; width: number; strength: number; color?: string };
+  /** Horizon haze: blend to `color` from z = `from` (none) to z = `to` (full), to < from. */
+  haze?: { color: string; from: number; to: number };
+  /** A lit pool on the water (sun break): ellipse and ramp shifts outside / inside. */
+  pool?: { x: number; z: number; rx: number; rz: number; outside: number; inside: number };
 }
 
 /** Animated pixel water: one plane, quantised to the texel grid, with foam where it meets `land`. */
@@ -404,6 +459,11 @@ export function pixelWater(o: WaterOptions): { mesh: THREE.Mesh; update(t: numbe
       uShore: { value: null }, uRect: { value: new THREE.Vector4(o.rect.x0, o.rect.z0, o.rect.w, o.rect.d) }, uRange: { value: range },
       uSwash: { value: o.swash ?? 0 }, uDeep: { value: o.deep ?? 5 }, uWaveK: { value: o.waveK ?? 1.6 }, uWaveSpeed: { value: o.waveSpeed ?? 1.5 },
       uCaps: { value: o.caps ?? 0 }, uGlints: { value: o.glints === false ? 0 : 1 }, uFar: { value: o.far ?? -8 },
+      uChop: { value: o.chop ?? 0 },
+      uGlit: { value: new THREE.Vector4(o.glitter?.x ?? 0, o.glitter?.slope ?? 0, o.glitter?.width ?? 1, o.glitter?.strength ?? 0) },
+      uGlitCol: { value: hdr(o.glitter?.color ?? '#ffe6a0', 2.2) },
+      uHaze: { value: new THREE.Color(o.haze?.color ?? '#ffffff') }, uHazeZ: { value: new THREE.Vector2(o.haze?.from ?? 0, o.haze?.to ?? 0) },
+      uPool: { value: new THREE.Vector4(o.pool?.x ?? 0, o.pool?.z ?? 0, o.pool?.rx ?? 0, o.pool?.rz ?? 1) }, uPoolK: { value: new THREE.Vector2(o.pool?.outside ?? 0, o.pool?.inside ?? 0) },
     }]),
   });
   mat.uniforms.uShore!.value = field;
@@ -1106,4 +1166,153 @@ export function shadeVertices(g: THREE.BufferGeometry, f: (x: number, y: number,
   }
   col.needsUpdate = true;
   return g;
+}
+
+// ------------------------------------------------------------------ sea stacks (rock-kit clumps)
+
+export interface StackOptions {
+  /** Horizontal drift of the top relative to the base (lean), world units. */
+  lean?: [number, number];
+  /** Tint at the wet foot and the dry, salt-bleached top. */
+  foot?: THREE.ColorRepresentation;
+  top?: THREE.ColorRepresentation;
+  /** Boulders per ring (default 4–6 at the base, fewer up top). */
+  ring?: number;
+  /** How much the stack narrows toward the top (0..1, default 0.6). */
+  taper?: number;
+}
+
+/**
+ * A weathered sea stack / rock islet: rings of rounded, irregular rock-kit boulders that taper
+ * and lean as they rise (big wet blocks at the foot, a jumble of smaller chunks on top), each
+ * tilted and jittered — a clump of rock, never a stack of cubes. Darker and wetter low, salt-
+ * bleached on top. Emitted into `batch` (one draw call with the rest of the rock).
+ */
+export function rockStack(batch: VoxelBatch, base: THREE.Vector3, radius: number, height: number, rng: Rng, o: StackOptions = {}) {
+  const taper = o.taper ?? 0.6;
+  const foot = new THREE.Color(o.foot ?? '#c8c8c8'), top = new THREE.Color(o.top ?? '#ffffff');
+  const lean = o.lean ?? [(rng.next() - 0.5) * radius * 0.6, (rng.next() - 0.5) * radius * 0.4];
+  const rings = Math.max(2, Math.round(height / (radius * 0.62)));
+  for (let l = 0; l < rings; l++) {
+    const t = l / Math.max(1, rings - 1);
+    const r = radius * (1 - t * taper) * (0.9 + rng.next() * 0.2);
+    const cx = base.x + lean[0] * t * t, cz = base.z + lean[1] * t * t;
+    const y = base.y + (l / rings) * height;
+    const lh = (height / rings) * (1.25 + rng.next() * 0.3);
+    const n = l === rings - 1 ? 1 + rng.int(2) : Math.max(2, (o.ring ?? 5) - Math.floor(t * 3) + rng.int(2));
+    const tint = foot.clone().lerp(top, Math.min(1, t * 1.2)).multiplyScalar(0.88 + rng.next() * 0.2);
+    // Core block, then a ring of chunks bulging out of it.
+    boulder(batch, [cx, y + lh * 0.5, cz], [r * 1.5, lh, r * 1.3], tint, rng, { ry: rng.next() * Math.PI, rx: (rng.next() - 0.5) * 0.18, rz: (rng.next() - 0.5) * 0.18, aoBottom: 0.5, topK: 1.35 });
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + rng.next() * 0.8;
+      const d = r * (0.45 + rng.next() * 0.3);
+      const sz = r * (0.55 + rng.next() * 0.45);
+      const hh = lh * (0.55 + rng.next() * 0.55);
+      boulder(batch, [cx + Math.cos(a) * d, y + hh * 0.5 + (rng.next() - 0.3) * lh * 0.3, cz + Math.sin(a) * d * 0.9], [sz * (1 + rng.next() * 0.5), hh, sz], tint.clone().multiplyScalar(0.9 + rng.next() * 0.2), rng, {
+        ry: a + (rng.next() - 0.5) * 0.8, rx: (rng.next() - 0.5) * 0.35, rz: (rng.next() - 0.5) * 0.35, aoBottom: 0.45, topK: 1.4,
+      });
+    }
+  }
+  // A few fallen chunks round the foot.
+  for (let k = 0; k < 3 + rng.int(3); k++) {
+    const a = rng.next() * Math.PI * 2, d = radius * (0.9 + rng.next() * 0.5), s = radius * (0.2 + rng.next() * 0.25);
+    boulder(batch, [base.x + Math.cos(a) * d, base.y + s * 0.3, base.z + Math.sin(a) * d], [s * 1.4, s, s * 1.1], foot.clone().multiplyScalar(0.85 + rng.next() * 0.2), rng, { ry: rng.next() * 3, rx: (rng.next() - 0.5) * 0.4, aoBottom: 0.45 });
+  }
+}
+
+// ------------------------------------------------------------------ layered fog bands
+
+export interface FogBand {
+  /** Centre (world) and size of the band's vertical sheet (it faces +z, toward the camera). */
+  x: number; y: number; z: number; w: number; h: number;
+  color: string;
+  /** Peak opacity (0..1). */
+  alpha: number;
+  /** Drift speed of the wisps along x (units/s). */
+  speed?: number;
+}
+
+const FOG_VERT = /* glsl */ `
+attribute vec4 aBand;   // u (0..1 across), v (0..1 up), alpha, speed
+attribute vec3 aColor;
+varying vec4 vBand;
+varying vec3 vColor;
+varying vec3 vWorld;
+#include <fog_pars_vertex>
+void main() {
+  vBand = aBand; vColor = aColor;
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorld = wp.xyz;
+  vec4 mvPosition = viewMatrix * wp;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`;
+
+const FOG_FRAG = /* glsl */ `
+uniform float uTime;
+uniform float uTexel;
+varying vec4 vBand;
+varying vec3 vColor;
+varying vec3 vWorld;
+#include <fog_pars_fragment>
+float bayer4(vec2 p) {
+  ivec2 i = ivec2(mod(p, 4.0));
+  int idx = i.y * 4 + i.x;
+  int m[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+  return (float(m[idx]) + 0.5) / 16.0;
+}
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void main() {
+  // Pixel grid in world units on the sheet, so the wisps stay chunky texels.
+  vec2 q = floor(vec2(vWorld.x, vWorld.y) / uTexel) * uTexel;
+  float v = vBand.y;
+  // Soft-topped horizontal band: dense low, thinning upward; frayed top edge.
+  float prof = smoothstep(0.0, 0.3, v) * (1.0 - smoothstep(0.45, 1.0, v));
+  float drift = uTime * vBand.w;
+  float wisp = vnoise(vec2((q.x + drift) * 0.18, q.y * 0.9)) * 0.6 + vnoise(vec2((q.x - drift * 0.6) * 0.07, q.y * 0.35 + 3.0)) * 0.4;
+  float ends = smoothstep(0.0, 0.15, vBand.x) * (1.0 - smoothstep(0.85, 1.0, vBand.x));
+  float a = prof * ends * (0.35 + 0.9 * wisp) * vBand.z;
+  // Posterised translucency: 4 steps, ordered dither only between steps (pixel-art haze).
+  float lv = floor(a * 4.0 + bayer4(gl_FragCoord.xy)) / 4.0;
+  if (lv <= 0.0) discard;
+  gl_FragColor = vec4(vColor, min(lv, 0.85));
+  #include <fog_fragment>
+}`;
+
+/**
+ * Layered horizontal fog bands (one draw call): long vertical sheets at several depths, each a
+ * soft band — dense at its foot, frayed on top — with slowly drifting wisps and posterised,
+ * dithered translucency. Replaces round mist puffs: haze lies in layers between the land.
+ */
+export function fogBands(bands: FogBand[], texel = TEXEL * 2): { mesh: THREE.Mesh; update(t: number): void; dispose(): void } {
+  const pos: number[] = [], band: number[] = [], col: number[] = [], idx: number[] = [];
+  for (const b of bands) {
+    const base = pos.length / 3;
+    const c = new THREE.Color(b.color);
+    for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 1]] as const) {
+      pos.push(b.x + (u - 0.5) * b.w, b.y + (v - 0.5) * b.h, b.z);
+      band.push(u, v, b.alpha, b.speed ?? 0.3);
+      col.push(c.r, c.g, c.b);
+    }
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aBand', new THREE.Float32BufferAttribute(band, 4));
+  g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  const m = new THREE.ShaderMaterial({
+    vertexShader: FOG_VERT, fragmentShader: FOG_FRAG, fog: true,
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uTexel: { value: texel } }]),
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 3;
+  return { mesh, update: (t) => { m.uniforms.uTime!.value = t; }, dispose: () => { g.dispose(); m.dispose(); } };
 }

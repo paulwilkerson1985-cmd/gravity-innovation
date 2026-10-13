@@ -90,9 +90,18 @@ function collect(): ArenaDef[] {
 let registry: ArenaDef[] | null = null;
 const extra: ArenaDef[] = [];
 
+/**
+ * `?leak=1` (captures only): every arena clears to pure magenta, so a world-edge leak (the clear
+ * colour showing past the set) is trivially detectable in a screenshot.
+ */
+function leakCheck(defs: ArenaDef[]): ArenaDef[] {
+  if (typeof location === 'undefined' || new URLSearchParams(location.search).get('leak') !== '1') return defs;
+  return defs.map((d) => ({ ...d, background: '#ff00ff' }));
+}
+
 /** All registered arenas (file order, then `registerArena` calls). */
 export function arenas(): readonly ArenaDef[] {
-  registry ??= collect();
+  registry ??= leakCheck(collect());
   return [...registry, ...extra];
 }
 

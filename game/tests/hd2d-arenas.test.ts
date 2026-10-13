@@ -36,3 +36,38 @@ describe('hd2d arena registry', () => {
     }
   });
 });
+
+describe('hd2d outdoor kit: world-space gobo', () => {
+  it('cookieGround maps the cookie of a straight-down spot onto the ground under it', async () => {
+    const THREE = await import('three');
+    const { cookieGround } = await import('../src/render/hd2d/arenas/outdoorKit');
+    const key = new THREE.SpotLight(0xffffff, 1, 0, 0.4);
+    key.position.set(0, 20, 0.001);
+    key.target.position.set(0, 0, 0);
+    const S = 16;
+    const g = cookieGround(key, S);
+    const half = 20 * Math.tan(0.4);
+    // Centre texels land near the target, corner texels near ±tan(angle)·height.
+    const c = (S / 2) * S + S / 2;
+    expect(Math.hypot(g[c * 2]!, g[c * 2 + 1]!)).toBeLessThan(half * 0.2);
+    const xs = Array.from({ length: S * S }, (_, k) => g[k * 2]!);
+    expect(Math.max(...xs)).toBeGreaterThan(half * 0.85);
+    expect(Math.min(...xs)).toBeLessThan(-half * 0.85);
+  });
+
+  it('gobo lights the battle pool fully and keeps the set around it darker', async () => {
+    const THREE = await import('three');
+    const { gobo } = await import('../src/render/hd2d/arenas/outdoorKit');
+    const key = new THREE.SpotLight(0xffffff, 1, 0, 0.45);
+    key.position.set(-14, 18, -10);
+    key.target.position.set(0, 0, 0);
+    const gob = gobo(key, { kind: 'clouds', seed: 3, pool: { x: 0, z: 0, ru: 4, rv: 3, soft: 0.2 }, outside: 0.4, cover: 0, size: 32 });
+    const d = gob.texture.image.data as Uint8Array;
+    // Centre of the cookie (the target) is in the pool: full light; a corner is outside: dim.
+    const at = (px: number, py: number) => d[(py * 32 + px) * 4]!;
+    expect(at(16, 16)).toBeGreaterThan(240);
+    expect(at(1, 1)).toBeLessThan(0.5 * 255);
+    expect(key.map).toBe(gob.texture);
+    gob.dispose();
+  });
+});

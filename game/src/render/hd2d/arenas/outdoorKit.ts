@@ -379,6 +379,8 @@ export interface FoliageOpts {
   range?: number;
   /** Lean the sprite back toward −z by this angle (rad), for ground-hugging clumps. */
   lean?: number;
+  /** Cast a shadow (default true). Far backdrop foliage opts out so a low sun still reaches the stage. */
+  shadow?: boolean;
 }
 
 const FOLIAGE_VERT_HEAD = /* glsl */ `
@@ -455,7 +457,8 @@ export class Foliage {
       this.off.push(ox, oy * Math.cos(lean));
       this.uv.push(uvs[i]![0], uvs[i]![1]);
       this.par.push(o.sway ?? 0, ph, MODE[mode], y1);
-      this.rng.push(o.range ?? 0);
+      // aRange < 0 marks a sprite that casts no shadow (billboards/static never read the range).
+      this.rng.push(o.shadow === false && (mode === 'billboard' || mode === 'static') ? -1 : o.range ?? 0);
       this.col.push(tint.r, tint.g, tint.b);
       this.nor.push(0, 1, 0);
     });
@@ -496,7 +499,7 @@ export class Foliage {
     const uTime = this.uTime;
     const inject = (sh: THREE.WebGLProgramParametersWithUniforms, normals: boolean) => {
       sh.uniforms.uTime = uTime;
-      sh.vertexShader = FOLIAGE_VERT_HEAD + sh.vertexShader.replace('#include <begin_vertex>', FOLIAGE_VERT_BODY);
+      sh.vertexShader = FOLIAGE_VERT_HEAD + sh.vertexShader.replace('#include <begin_vertex>', FOLIAGE_VERT_BODY + (normals ? '' : '\nif (aRange < -0.5) transformed = vec3(0.0, -9999.0, 0.0);'));
       if (normals) {
         sh.vertexShader = sh.vertexShader.replace('#include <beginnormal_vertex>', `vec3 objectNormal = vec3(normal);
           if (aPar.z < 0.5 || aPar.z > 1.5) {
@@ -855,14 +858,14 @@ export function macro(seed: number): (x: number, z: number) => number {
 // ------------------------------------------------------------------ backdrop
 
 /** A far painted plane (sky, clouds, silhouettes); fog off. `haze` wobbles rows near its bottom. */
-export function backdrop(paint: (t: RgbaTile) => void, w: number, h: number, size: [number, number], at: V3, o: { haze?: number; yaw?: number } = {}): { mesh: THREE.Mesh; update(t: number): void } {
+export function backdrop(paint: (t: RgbaTile) => void, w: number, h: number, size: [number, number], at: V3, o: { haze?: number; yaw?: number; gain?: number } = {}): { mesh: THREE.Mesh; update(t: number): void } {
   const t = new RgbaTile(w, h);
   paint(t);
   const tex = crispTexture(t.toCanvas());
   const m = new THREE.ShaderMaterial({
-    uniforms: { map: { value: tex }, uTime: { value: 0 }, uHaze: { value: o.haze ?? 0 }, uRows: { value: h } },
+    uniforms: { map: { value: tex }, uTime: { value: 0 }, uHaze: { value: o.haze ?? 0 }, uRows: { value: h }, uGain: { value: o.gain ?? 1 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `uniform sampler2D map; uniform float uTime, uHaze, uRows; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D map; uniform float uTime, uHaze, uRows, uGain; varying vec2 vUv;
       void main(){
         vec2 uv = vUv;
         float row = floor(uv.y * uRows);
@@ -870,7 +873,7 @@ export function backdrop(paint: (t: RgbaTile) => void, w: number, h: number, siz
         uv.x += floor(sin(row * 0.9 + uTime * 3.0) * k * 2.0 + 0.5) / ${w.toFixed(1)};
         vec4 c = texture2D(map, uv);
         if (c.a < 0.5) discard;
-        gl_FragColor = vec4(c.rgb, 1.0);
+        gl_FragColor = vec4(c.rgb * uGain, 1.0);
         #include <colorspace_fragment>
       }`,
     depthWrite: true,
@@ -967,6 +970,143 @@ export function paintSilhouette(t: RgbaTile, rng: Rng, ramp: Ramp, base: number,
   }
 }
 
+// ------------------------------------------------------------------ layered land silhouettes
+
+export interface MesaOpts {
+  ramp: Ramp;
+  /** Texel row of the canyon floor line (the mesas' feet). */
+  foot: number;
+  count: number;
+  /** Cap half-width and height (texels) ranges. */
+  w: [number, number]; h: [number, number];
+  /** Aerial perspective: 0 = full colour, 1 = all haze. */
+  haze: number;
+  hazeCol: string;
+  /** Texel column of the sun (that flank is lit, its rim glows). */
+  sunX: number;
+  /** Erosion gully density. */
+  gullies: number;
+  /** A low broken ridge instead of tall mesas. */
+  ridge?: boolean;
+  /** Grass/turf ramp for a cap on the top rows (headlands), and how many rows (default 3). */
+  capRamp?: Ramp; capRows?: number;
+  /** Foam colour for a broken surf line at the foot (islands in the sea). */
+  foam?: string;
+  /** Where mesas may stand: a column filter (e.g. keep the middle of the sea open). */
+  allow?: (x: number) => boolean;
+  /** Cliff steepness (texels down per texel out; default 5.5, ridge 1.4). */
+  cliff?: number;
+  /** Tilted caps: the top drops by up to this share of the height across the cap (headlands). */
+  tilt?: number;
+}
+
+/**
+ * A row of mesas / buttes on a backdrop tile (alpha above them): flat ragged caps over steep
+ * cliff bodies and wide talus fans; horizontal strata bands running across each mesa; erosion
+ * gullies down the cliffs; the flank toward the sun lit with a hot rim along cap edges (the sun
+ * sits behind them: the fronts stay in soft shade); lower rows sink into the rising haze.
+ */
+export function paintMesas(t: RgbaTile, rng: Rng, o: MesaOpts) {
+  const W = t.w, n = o.ramp.length;
+  const H = new Float32Array(W).fill(-1);
+  const own = new Int16Array(W).fill(-1);
+  const kind = new Uint8Array(W); // 0 cap face, 1 cliff flank, 2 talus, 3 shoulder ledge face
+  const side = new Int8Array(W);
+  const mesas: { cx: number; w: number; h: number }[] = [];
+  let x = rng.next() * o.w[1];
+  while (x < W + o.w[1]) {
+    const w = o.w[0] + rng.next() * (o.w[1] - o.w[0]);
+    const h = o.h[0] + rng.next() * (o.h[1] - o.h[0]);
+    if (!o.allow || o.allow(x)) mesas.push({ cx: x, w, h });
+    x += w * (1.3 + rng.next() * (o.ridge ? 1.2 : 2.6)) + (o.ridge ? 0 : o.w[0]);
+  }
+  void o.count;
+  mesas.forEach((m, mi) => {
+    const reach = m.w + m.h * 2.4;
+    for (let i = Math.floor(m.cx - reach); i <= m.cx + reach; i++) {
+      if (i < 0 || i >= W) continue;
+      const d = Math.abs(i - m.cx);
+      // Ragged cap: a slow wander of 1–2 texels (value noise over ~8 columns), the odd notch
+      // or fallen block — never a regular crenellation.
+      const f = i / 8 + mi * 3.7, f0 = Math.floor(f), ft = f - f0;
+      const wander = hash2(f0, mi, 3) * (1 - ft) + hash2(f0 + 1, mi, 3) * ft;
+      const rag = Math.round((wander - 0.5) * 3.2) - (hash2(i >> 2, mi, 4) < 0.05 ? 1 + Math.round(hash2(i, mi, 5) * 2) : 0);
+      const cliff = (o.cliff ?? (o.ridge ? 1.4 : 5.5)) + hash2(i >> 1, mi, 6) * 2;
+      // Tilted cap: one end high (the seaward cliff), sloping down toward the other.
+      const tdir = hash2(mi, 7, 15) < 0.5 ? -1 : 1;
+      const th = o.tilt ? m.h * o.tilt * (0.5 + 0.5 * tdir * Math.max(-1, Math.min(1, (i - m.cx) / m.w))) : 0;
+      const cap = d <= m.w ? m.h - th + rag : m.h - th - (d - m.w) * cliff + rag;
+      // A stepped shoulder: a lower ledge reaching out past the cap on each side (asymmetric).
+      const sw = m.w * (o.ridge ? 1.1 : 1.35 + hash2(mi, i < m.cx ? 1 : 2, 11) * 0.6);
+      const sh = m.h * (0.55 + hash2(mi, i < m.cx ? 3 : 4, 12) * 0.15);
+      const shoulder = d <= sw ? sh + rag * 0.5 : sh - (d - sw) * cliff * 0.8 + rag;
+      const talusTop = m.h * (o.ridge ? 0.75 : 0.42);
+      const talus = talusTop - Math.max(0, d - sw * 0.85) * (o.ridge ? 0.55 : 0.75) + (hash2(i >> 2, mi, 7) - 0.5) * 2;
+      const v = Math.max(cap, shoulder, talus);
+      if (v > H[i]!) { H[i] = v; own[i] = mi; kind[i] = d <= m.w ? 0 : Math.max(cap, shoulder) >= talus ? (d <= sw && cap < shoulder ? 3 : 1) : 2; side[i] = i < m.cx ? -1 : 1; }
+    }
+  });
+  const hz = rgb(o.hazeCol);
+  const sunSide = (i: number) => (o.sunX < mesas[own[i]!]!.cx ? -1 : 1);
+  for (let i = 0; i < W; i++) {
+    if (H[i]! <= 0) continue;
+    const m = mesas[own[i]!]!;
+    const top = Math.round(o.foot - H[i]!);
+    const lit = kind[i] === 1 && side[i] === sunSide(i);
+    const away = kind[i] === 1 && !lit;
+    const gully = hash2(i, own[i]!, 8) < 0.07 * o.gullies ? 6 + hash2(i, own[i]!, 9) * m.h * 0.7 : 0;
+    const glow = Math.max(0, 1 - Math.abs(i - o.sunX) / (W * 0.35));
+    for (let y = Math.max(0, top); y < t.h; y++) {
+      const depth = y - top;
+      const capTop = o.foot - m.h;
+      // Strata: continuous bands across the mesa (absolute rows, a gentle wobble).
+      const sy = y - capTop + Math.sin(i * 0.05 + own[i]!) * 1.4;
+      const band = Math.floor(sy / 3);
+      const strata = [0, -0.6, 0.35, -0.25, -0.85, 0.2, 0.5, -0.4][((band % 8) + 8) % 8]!;
+      // Backlit: the faces toward us sit in soft shade (low on the ramp), the strata read as
+      // alternating bands; only the sun-side flank and the top edges catch the light.
+      let v = 1.7 + strata * (kind[i] === 2 ? 0.35 : 1);
+      if ((kind[i] === 0 || kind[i] === 3) && depth < 3) v += 0.8;          // cap rock / ledge lip
+      if (lit) v += 1.9 + glow * 0.8;                                        // sun-side flank
+      if (away) v -= 0.4;
+      if (kind[i] === 2) v += 0.5 + (hash2(i, y, 10) - 0.5) * 1.2;           // talus scree
+      if (gully && depth > 2 && depth < gully && kind[i] !== 2) v -= 0.9;   // erosion gully
+      if (depth === 0) v += 2.4 + glow * 1.8;                                // hot rim on every top edge
+      else if (depth === 1 && (lit || kind[i] === 0)) v += 1.1 + glow * 0.8;
+      v = Math.max(0, Math.min(n - 1, v));
+      let c = rgb(o.ramp[bandIndex(v, i, y, n, 0.16)]!);
+      const capRows = o.capRows ?? 3;
+      if (o.capRamp && depth < capRows + (hash2(i, 1, 13) < 0.4 ? 1 : 0) && kind[i] !== 2) {
+        // Turf cap: lit on top, a dark fringe row hanging over the cliff.
+        const cn = o.capRamp.length;
+        const cv = depth === 0 ? cn - 1.2 + glow : depth >= capRows ? 0.8 : cn - 2.4 - depth * 0.6 + (lit ? 0.8 : 0);
+        c = rgb(o.capRamp[bandIndex(Math.max(0, Math.min(cn - 1, cv)), i, y, cn, 0.16)]!);
+      }
+      if (o.foam && y >= o.foot - 1 && y <= o.foot && hash2(i >> 1, y, 14) < 0.55) c = rgb(o.foam);
+      // Haze: more toward the canyon floor (rising haze), posterised into 5 flat steps (dither
+      // only at step edges, so it never turns into a checker carpet).
+      const below = Math.max(0, Math.min(1, (y - top) / Math.max(8, o.foot - top + 6)));
+      const k = Math.min(1, o.haze + below * 0.3 + (y > o.foot ? 0.15 + (y - o.foot) * 0.02 : 0));
+      const kq = Math.min(1, bandIndex(k * 5, i, y, 6, 0.1) / 5);
+      const idx = (y * W + i) * 4;
+      t.data[idx] = c[0] + (hz[0] - c[0]) * kq;
+      t.data[idx + 1] = c[1] + (hz[1] - c[1]) * kq;
+      t.data[idx + 2] = c[2] + (hz[2] - c[2]) * kq;
+      t.data[idx + 3] = 255;
+    }
+  }
+  // Dead snags on a low ridge (silhouettes against the haze).
+  if (o.ridge) for (let k = 0; k < 7; k++) {
+    const i = Math.floor(rng.next() * W);
+    if (H[i]! <= 0) continue;
+    const top = Math.round(o.foot - H[i]!);
+    const hh = 6 + rng.int(8);
+    for (let y = 0; y < hh; y++) t.set(i + (y > hh * 0.6 ? 1 : 0), top - y, o.ramp[0]!);
+    t.set(i - 1, top - Math.round(hh * 0.6), o.ramp[0]!); t.set(i - 2, top - Math.round(hh * 0.6) - 1, o.ramp[0]!);
+    t.set(i + 2, top - hh + 1, o.ramp[0]!);
+  }
+}
+
 // ------------------------------------------------------------------ sun rig
 
 export interface SunSpec {
@@ -979,13 +1119,18 @@ export interface SunSpec {
   sky: THREE.ColorRepresentation; ground: THREE.ColorRepresentation; hemi: number;
   fill: THREE.ColorRepresentation; fillIntensity: number;
   quality: 'high' | 'low';
+  /** Cone penumbra (default 0.35) and shadow softness (PCFSoft radius, default 3). */
+  penumbra?: number;
+  shadowRadius?: number;
+  /** Front fill position (default (2, 6, 10)): a cool fill from the camera side. */
+  fillFrom?: THREE.Vector3;
 }
 
 /** A far SpotLight acting as the sun (cookie + soft shadows), hemisphere and a front fill. */
 export function sunRig(group: THREE.Group, s: SunSpec): { key: THREE.SpotLight; spriteLight: SpriteLight } {
   const flags = new Set((new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('post') ?? '').split(','));
   const dist = s.distance ?? 32;
-  const key = new THREE.SpotLight(new THREE.Color(s.color), s.intensity, 0, s.angle ?? 0.36, 0.35, 0);
+  const key = new THREE.SpotLight(new THREE.Color(s.color), s.intensity, 0, s.angle ?? 0.36, s.penumbra ?? 0.35, 0);
   key.position.copy(s.target).addScaledVector(s.from.clone().normalize(), dist);
   key.target.position.copy(s.target);
   if (s.cookie) key.map = s.cookie;
@@ -994,13 +1139,13 @@ export function sunRig(group: THREE.Group, s: SunSpec): { key: THREE.SpotLight; 
   key.shadow.mapSize.set(ms, ms);
   key.shadow.bias = -0.0004;
   key.shadow.normalBias = 0.03;
-  key.shadow.radius = 3;
+  key.shadow.radius = s.shadowRadius ?? 3;
   key.shadow.camera.near = dist - 16;
   key.shadow.camera.far = dist + 16;
   group.add(key, key.target);
   group.add(new THREE.HemisphereLight(new THREE.Color(s.sky), new THREE.Color(s.ground), s.hemi));
   const fill = new THREE.DirectionalLight(new THREE.Color(s.fill), s.fillIntensity);
-  fill.position.set(2, 6, 10);
+  fill.position.copy(s.fillFrom ?? new THREE.Vector3(2, 6, 10));
   group.add(fill, fill.target);
   const spriteLight: SpriteLight = {
     keyDir: key.position.clone().sub(key.target.position).normalize(),
@@ -1092,6 +1237,203 @@ export function glints(at: V3[], size: number, color: THREE.ColorRepresentation,
   points.renderOrder = 4;
   const base = m.color.clone();
   return { points, update: (t) => { m.color.copy(base).multiplyScalar(0.85 + 0.15 * Math.sin(t * 1.3)); } };
+}
+
+// ------------------------------------------------------------------ world-space gobo (key cookie)
+
+/**
+ * The world ground point (x, z on the plane y = `y`) under every texel of a SpotLight cookie:
+ * the spot's map is projected through its shadow camera (fov = 2·angle, up = +Y, looking at the
+ * target), so a gobo painted from these points lands exactly where we want it in the WORLD — a
+ * lit pool round the kin, leaf dapple or cloud shadows of a fixed world size, whatever the sun
+ * elevation (a low sun would otherwise stretch a round cookie into a long streak).
+ */
+export function cookieGround(key: THREE.SpotLight, size: number, y = 0): Float32Array {
+  key.updateMatrixWorld(true);
+  key.target.updateMatrixWorld(true);
+  const cam = new THREE.PerspectiveCamera(THREE.MathUtils.radToDeg(key.angle) * 2, 1, 0.5, 200);
+  cam.position.setFromMatrixPosition(key.matrixWorld);
+  cam.lookAt(new THREE.Vector3().setFromMatrixPosition(key.target.matrixWorld));
+  cam.updateMatrixWorld(true);
+  cam.updateProjectionMatrix();
+  const out = new Float32Array(size * size * 2);
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  for (let py = 0; py < size; py++) for (let px = 0; px < size; px++) {
+    // Canvas row 0 is the TOP of the light's view (CanvasTexture flipY).
+    const nx = ((px + 0.5) / size) * 2 - 1, ny = 1 - ((py + 0.5) / size) * 2;
+    a.set(nx, ny, -1).unproject(cam);
+    b.set(nx, ny, 1).unproject(cam);
+    const dy = b.y - a.y;
+    const t = Math.abs(dy) < 1e-6 ? 0 : (y - a.y) / dy;
+    const k = (py * size + px) * 2;
+    out[k] = a.x + (b.x - a.x) * t;
+    out[k + 1] = a.z + (b.z - a.z) * t;
+  }
+  return out;
+}
+
+/** Periodic 0..1 noise sampled at world coords (bilinear over a wrapped fbm grid of `cells` world units). */
+export function worldNoise(seed: number, cells: number, octaves: [number, number][] = [[3, 0.55], [6, 0.3], [12, 0.15]], res = 64): (x: number, z: number) => number {
+  const f = fbm(res, new Rng(seed), octaves);
+  return (x, z) => {
+    const u = ((x / cells) % 1 + 1) % 1 * res, v = ((z / cells) % 1 + 1) % 1 * res;
+    const i0 = Math.floor(u), j0 = Math.floor(v), fu = u - i0, fv = v - j0;
+    const g = (i: number, j: number) => f[((j + res) % res) * res + ((i + res) % res)]!;
+    return (g(i0, j0) * (1 - fu) + g(i0 + 1, j0) * fu) * (1 - fv) + (g(i0, j0 + 1) * (1 - fu) + g(i0 + 1, j0 + 1) * fu) * fv;
+  };
+}
+
+export interface GoboSpec {
+  /** 'leaves': sun flecks through a canopy (hard-edged); 'clouds': big soft cloud shadows. */
+  kind: 'leaves' | 'clouds';
+  seed: number;
+  /** The lit focal pool on the battle floor (world ellipse along the kin line). */
+  pool?: { x: number; z: number; ru: number; rv: number; angle?: number; soft?: number };
+  /** Light level outside the pool (0..1). */
+  outside?: number;
+  /** Light level in the dapple / cloud shade (0..1). */
+  shade?: number;
+  /** Share of the ground in shade (0..1). Default 0.45 (leaves) / 0.4 (clouds). */
+  cover?: number;
+  /** World size of one noise period (leaf clumps ≈ 3, clouds ≈ 14). */
+  scale?: number;
+  /** Cloud drift (world units / s along x, z); 0 = static. */
+  drift?: [number, number];
+  /** Cookie resolution (default 128). */
+  size?: number;
+  /** Ground plane height the gobo is painted for. */
+  y?: number;
+}
+
+/**
+ * A world-space gobo for a SpotLight key: a lit focal pool where the kin stand, leaf dapple or
+ * drifting cloud shadows elsewhere, darker away from the pool (the light falls off toward the
+ * set's edges, like the reference's sun patches). Sets `key.map`; `update(t)` drifts clouds in
+ * steps of whole cookie texels (cheap: re-composes a 128² byte texture a few times a second).
+ */
+export function gobo(key: THREE.SpotLight, s: GoboSpec): { texture: THREE.DataTexture; update(t: number): void; dispose(): void } {
+  const S = s.size ?? 128;
+  const ground = cookieGround(key, S, s.y ?? 0);
+  const leaves = s.kind === 'leaves';
+  const scale = s.scale ?? (leaves ? 3.2 : 14);
+  const nA = worldNoise(s.seed, scale, leaves ? [[2, 0.5], [4, 0.3], [8, 0.2]] : [[2, 0.6], [4, 0.28], [8, 0.12]]);
+  const nB = worldNoise(s.seed + 7, scale * 0.37, [[2, 0.6], [4, 0.4]]);
+  const cover = s.cover ?? (leaves ? 0.45 : 0.4);
+  const shade = s.shade ?? (leaves ? 0.22 : 0.42);
+  const outside = s.outside ?? 0.55;
+  const p = s.pool;
+  const ca = Math.cos(p?.angle ?? 0), sa = Math.sin(p?.angle ?? 0);
+  const data = new Uint8Array(S * S * 4);
+  const tex = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  // Linear values: `outside` / `shade` are fractions of the key's light, not sRGB greys.
+  // DataTexture rows run bottom-up (no flip): row 0 = v 0 = the BOTTOM of the light's view.
+  tex.flipY = false;
+  const poolK = new Float32Array(S * S);
+  for (let k = 0; k < S * S; k++) {
+    const x = ground[k * 2]!, z = ground[k * 2 + 1]!;
+    if (!p) { poolK[k] = 1; continue; }
+    const X = x - p.x, Z = z - p.z;
+    const u = (X * ca + Z * sa) / p.ru, v = (-X * sa + Z * ca) / p.rv;
+    const r = Math.hypot(u, v) + (nB(x, z) - 0.5) * 0.18;
+    const soft = p.soft ?? 0.35;
+    poolK[k] = 1 - THREE.MathUtils.smoothstep(r, 1 - soft, 1 + soft);
+  }
+  let last = '';
+  const compose = (t: number) => {
+    const dx = (s.drift?.[0] ?? 0) * t, dz = (s.drift?.[1] ?? 0) * t;
+    // Step the drift by ~a cookie texel so the clouds move in pixel steps.
+    const q = 0.12;
+    const ox = Math.round(dx / q) * q, oz = Math.round(dz / q) * q;
+    const tag = `${ox.toFixed(2)},${oz.toFixed(2)}`;
+    if (tag === last) return false;
+    last = tag;
+    for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+      const k = (S - 1 - py) * S + px; // ground[] is in canvas order (row 0 = top)
+      const x = ground[k * 2]! - ox, z = ground[k * 2 + 1]! - oz;
+      const n = nA(x, z) * 0.75 + nB(x, z) * 0.25;
+      // Shade where the noise is above the cover threshold; leaves cut hard, clouds soft.
+      const e = leaves ? 0.035 : 0.12;
+      const inShade = THREE.MathUtils.smoothstep(n, 1 - cover - e, 1 - cover + e);
+      const pk = poolK[k]!;
+      // In the pool the dapple thins out (a clear gap in the canopy / a sun break).
+      const dapple = 1 - inShade * (1 - shade) * (1 - pk * 0.8);
+      const v = dapple * (outside + (1 - outside) * pk);
+      const c = Math.round(255 * Math.max(0, Math.min(1, v)));
+      const o = (py * S + px) * 4;
+      data[o] = c; data[o + 1] = c; data[o + 2] = c; data[o + 3] = 255;
+    }
+    tex.needsUpdate = true;
+    return true;
+  };
+  compose(0);
+  key.map = tex;
+  return {
+    texture: tex,
+    update: (t) => { if (s.drift) compose(t); },
+    dispose: () => tex.dispose(),
+  };
+}
+
+// ------------------------------------------------------------------ apron (phone world edge)
+
+export interface ApronSpec {
+  /** World rect covered (the set's own floor ends at one of its edges). */
+  x0: number; x1: number; z0: number; z1: number;
+  /** Height: a constant, or a heightfield. */
+  y: number | ((x: number, z: number) => number);
+  /** Repeat texture (e.g. the turf/sand of the set) at `tileTexels` texels per tile, world UVs like floorGrid. */
+  map: THREE.Texture | null;
+  tileTexels: number;
+  /** Vertex brightness (multiplied into `tint`): darken toward the camera, macro mottling. */
+  shade?: (x: number, z: number) => number;
+  tint?: THREE.ColorRepresentation;
+  /** Vertices per world unit (default 0.8). */
+  res?: number;
+  /** UV v sign: floorGrid maps v = -z / tile, terrace tops too (default -1). */
+  vSign?: number;
+  /** Multiply the ambient (hemisphere) light it receives (outdoorKit floors use < 1 for contrast). */
+  ambient?: number;
+}
+
+/**
+ * A cheap ground apron (ONE draw call, receives shadows): continues a set's floor far past the
+ * near frustum so a portrait phone camera, which sees much more ground under the stage, never
+ * shows the clear colour or the underside of the island. Same texture and world UV mapping as
+ * the set's floor/terrace tops, so the join is seamless.
+ */
+export function apron(s: ApronSpec): THREE.Mesh {
+  const W = s.x1 - s.x0, D = s.z1 - s.z0;
+  const res = s.res ?? 0.8;
+  const nx = Math.max(1, Math.round(W * res)), nz = Math.max(1, Math.round(D * res));
+  const g = new THREE.PlaneGeometry(W, D, nx, nz);
+  g.rotateX(-Math.PI / 2);
+  g.translate(s.x0 + W / 2, 0, s.z0 + D / 2);
+  const pos = g.attributes.position!, uv = g.attributes.uv!;
+  const col = new Float32Array(pos.count * 3);
+  const tile = TEXEL * s.tileTexels;
+  const tint = new THREE.Color(s.tint ?? '#ffffff');
+  const vs = s.vSign ?? -1;
+  for (let k = 0; k < pos.count; k++) {
+    const x = pos.getX(k), z = pos.getZ(k);
+    pos.setY(k, typeof s.y === 'number' ? s.y : s.y(x, z));
+    uv.setXY(k, x / tile, (vs * z) / tile);
+    const f = s.shade?.(x, z) ?? 1;
+    col.set([tint.r * f, tint.g * f, tint.b * f], k * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  const m = new THREE.MeshLambertMaterial({ map: s.map, vertexColors: true });
+  if (s.ambient !== undefined && s.ambient !== 1) {
+    const k = s.ambient.toFixed(3);
+    m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>\n\treflectedLight.indirectDiffuse *= ${k};`); };
+    m.customProgramCacheKey = () => `hd2d-apron-amb${k}`;
+  }
+  const mesh = mkMesh(g, m, false, true);
+  mesh.name = 'hd2d-apron';
+  return mesh;
 }
 
 /** Concatenate non-indexed/indexed geometries with the same attributes (position/normal/uv). */
