@@ -49,7 +49,7 @@ export const HD2D_CAMERA: Record<LayoutName, CameraPreset> = {
 } as const;
 
 /** World size every kin is normalised toward ([yours, foe]), times the evolution-stage factor. */
-export const KIN_SIZE = [1.15, 1.08] as const;
+export const KIN_SIZE = [1.22, 1.1] as const;
 const STAGE_K = [1, 1, 1.07, 1.15] as const;
 /** People scale (the figure is ≈ 1.1 units → ≈ 1.87 units ≈ 1.8 kin). */
 export const PERSON_SCALE = 1.7;
@@ -239,7 +239,7 @@ export class Hd2dBattleStage {
     g.computeBoundingBox();
     const bb = g.boundingBox!;
     const size = Math.max(bb.max.y - bb.min.y, 0.8 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) * view.baseScale;
-    const k = (KIN_SIZE[side] * STAGE_K[stageOf(view.speciesId)]! / size) * Math.pow(size / 1.1, 0.5);
+    const k = (KIN_SIZE[side] * STAGE_K[stageOf(view.speciesId)]! / size) * Math.pow(size / 1.1, 0.4);
     view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.5, 1.7));
     const r = kinRadius(view);
     this.radius[side] = r;
@@ -298,7 +298,7 @@ export class Hd2dBattleStage {
   /** The foe trainer faces the camera, turned a little toward the player (their face reads). */
   private faceFront(m: THREE.Object3D) {
     const { right, toward } = floorBasis(this.camera);
-    const d = toward.multiplyScalar(Math.cos(0.38)).addScaledVector(right, -Math.sin(0.38));
+    const d = toward.multiplyScalar(Math.cos(0.18)).addScaledVector(right, -Math.sin(0.18));
     m.rotation.set(0, Math.atan2(d.x, d.z), 0);
   }
 

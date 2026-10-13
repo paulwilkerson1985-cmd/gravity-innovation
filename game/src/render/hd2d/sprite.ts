@@ -313,8 +313,9 @@ void main() {
     }
     pick = ld < la * 0.6 ? dark : lb > la * 1.45 && lb > 0.35 ? bright : near;
   } else {
-    // 4×4: the colour covering most of the cell, except a dark feature covering ≥ 3/16 (eyes,
-    // mouths, inner lines stay ≥ 1 texel) or a small bright spot alone in a dark cell (shine).
+    // 4×4: the colour covering most of the cell, except a dark feature covering ≥ 6/16 (eyes,
+    // mouths and inner lines stay ≥ 1 texel without growing into their neighbours) or a small
+    // bright spot alone in a dark cell (shine).
     float best = -1.0, ld = 1e3, lb = -1.0;
     vec3 mode = avg, dark = avg, bright = avg;
     for (int a = 0; a < 16; a++) {
@@ -337,7 +338,7 @@ void main() {
     }
     restL /= max(1.0, cov - nBright);
     pick = mode;
-    if (nDark >= 3.0) pick = dark;
+    if (nDark >= 6.0) pick = dark;
     if (nBright >= 1.0 && nBright <= 4.0 && restL < 0.1 && lb > restL * 3.0) pick = bright;
   }
   gl_FragColor = vec4(pick, 0.5 + 0.5 * zmin);
@@ -429,7 +430,7 @@ void main() {
   vec2 e = (t + 0.5 - uCenter) / uRadius;
   float r2 = dot(e, e);
   float a = 0.0;
-  if (r2 <= 0.5) a = 1.0;
+  if (r2 <= 0.68) a = 1.0;
   else if (r2 <= 1.0) a = mod(t.x + t.y, 2.0) < 0.5 ? 1.0 : 0.0;
   if (a < 0.5 && uDrop > 0.0) {
     vec2 d = t + 0.5 - uAnchor;

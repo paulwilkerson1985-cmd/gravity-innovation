@@ -102,7 +102,7 @@ export class Hd2dArenaStage {
       face(n.mesh, this.spots[1]);
       // The far player faces the camera, turned a little toward the near side (face reads).
       const { right, toward } = floorBasis(this.camera);
-      const d = toward.multiplyScalar(Math.cos(0.38)).addScaledVector(right, -Math.sin(0.38));
+      const d = toward.multiplyScalar(Math.cos(0.18)).addScaledVector(right, -Math.sin(0.18));
       fr.mesh.rotation.set(0, Math.atan2(d.x, d.z), 0);
     };
     if (!animate) { n.mesh.position.copy(np); fr.mesh.position.copy(fp); look(); return; }
@@ -150,7 +150,7 @@ export class Hd2dArenaStage {
     g.computeBoundingBox();
     const bb = g.boundingBox!;
     const size = Math.max(bb.max.y - bb.min.y, 0.8 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) * view.baseScale;
-    const k = (KIN_SIZE[near ? 0 : 1] * STAGE_K[stageOf(view.speciesId)]! / size) * Math.pow(size / 1.1, 0.5) * k0;
+    const k = (KIN_SIZE[near ? 0 : 1] * STAGE_K[stageOf(view.speciesId)]! / size) * Math.pow(size / 1.1, 0.4) * k0;
     view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.5, 1.7));
     const r = 0.5 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) * view.baseScale * view.root.scale.x;
     this.radius[near ? 0 : 1] = r;

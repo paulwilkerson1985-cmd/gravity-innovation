@@ -129,9 +129,9 @@ export function buildFigureGeometry(l: PersonLook): THREE.BufferGeometry {
     // Side tufts over the ears (read under caps and from behind).
     hk.sym((sx) => hk.cone(l.hair, [sx * 0.11, 0.9, -0.01], [sx * 0.15, 0.82, -0.03], 0.04, 4));
     hk.cone(darker(l.hair, 0.85), [0.02, 0.86, -0.11], [0.03, 0.78, -0.16], 0.04, 4);
-    // Fringe: a hair band across the forehead with three points hanging toward the brows.
-    box(hk, l.hair, [0, 0.948, 0.1], [0.2, 0.04, 0.05], [-0.25, 0, 0]);
-    for (const x of [-0.06, 0, 0.06]) hk.cone(l.hair, [x, 0.95, 0.11], [x + 0.012, 0.905, 0.122], 0.03, 4);
+    // Fringe: a hair band across the forehead with three points, ending just above the brows.
+    box(hk, l.hair, [0, 0.958, 0.098], [0.2, 0.036, 0.05], [-0.25, 0, 0]);
+    for (const x of [-0.06, 0, 0.06]) hk.cone(l.hair, [x, 0.962, 0.108], [x + 0.01, 0.936, 0.124], 0.028, 4);
     // Spiky crown: under a hat the spikes fan out from below its back rim (they stick out past
     // the hat's silhouette instead of poking through it); bare-headed, they stand on top.
     const covered = l.hat === 'cap' || l.hat === 'beanie' || l.hat === 'ranger' || l.hat === 'souwester';
@@ -139,14 +139,15 @@ export function buildFigureGeometry(l: PersonLook): THREE.BufferGeometry {
       ? [[-0.08, 0.93, -0.08, -0.16, 0.95, -0.19], [0.0, 0.94, -0.1, 0.0, 0.96, -0.23], [0.08, 0.93, -0.08, 0.16, 0.95, -0.19]]
       : [[-0.07, 0.99, -0.04, -0.12, 1.09, -0.1], [0.0, 1.0, -0.06, 0.0, 1.12, -0.14], [0.07, 0.99, -0.04, 0.12, 1.09, -0.1], [0, 0.95, -0.11, 0.02, 0.99, -0.21]];
     for (const [x, y, z, tx, ty, tz] of spikes) hk.cone(l.hair, [x, y, z], [tx, ty, tz], 0.045, 4);
-    // Face: white sclera with a 2-texel dark eye on the inner side, brow bars, a mouth.
+    // Face on a texel grid (1 texel ≈ 0.027 units), top to bottom: brow bars under the fringe,
+    // one skin row, eyes 2 texels tall (dark inner texel + white outer texel), one skin row, a
+    // 2-texel mouth. Features never touch, so the 4×4 downsample keeps them apart.
     hk.sym((sx) => {
-      box(hk, SCLERA, [sx * 0.047, 0.866, 0.113], [0.05, 0.05, 0.02]);
-      box(hk, OUTLINE_DARK, [sx * 0.04, 0.864, 0.124], [0.03, 0.056, 0.012]);
-      box(hk, darker(l.hair, 0.7), [sx * 0.05, 0.906, 0.116], [0.056, 0.02, 0.02], [0, 0, -sx * 0.12]);
+      box(hk, darker(l.hair, 0.7), [sx * 0.05, 0.925, 0.118], [0.056, 0.016, 0.02], [0, 0, -sx * 0.1]);
+      box(hk, OUTLINE_DARK, [sx * 0.035, 0.865, 0.122], [0.028, 0.05, 0.014]);
+      box(hk, SCLERA, [sx * 0.063, 0.865, 0.114], [0.028, 0.05, 0.018]);
     });
-    box(hk, '#7a3328', [0, 0.818, 0.112], [0.05, 0.02, 0.016]);
-    hk.ball(darker(l.skin, 0.86), [0, 0.845, 0.122], 0.013, { detail: 0 });
+    box(hk, '#7a3328', [0, 0.798, 0.106], [0.05, 0.02, 0.016]);
     hat(hk, l);
   });
   prop(k, l);
@@ -164,11 +165,11 @@ function hat(k: Kit, l: PersonLook) {
   switch (l.hat) {
     case 'cap':
       // Seated above the brow (the eyes and brows stay visible under the brim).
-      k.ball(l.hatColor, [0, 0.985, -0.01], [0.14, 0.075, 0.138]);
-      box(k, l.accent, [0, 0.93, 0.13], [0.2, 0.022, 0.11], [0.14, 0, 0]);
-      k.ball(darker(l.hatColor, 0.8), [0, 1.055, -0.01], 0.022, { detail: 0 });
+      k.ball(l.hatColor, [0, 1.0, -0.01], [0.14, 0.07, 0.138]);
+      box(k, l.accent, [0, 0.945, 0.13], [0.2, 0.022, 0.11], [0.14, 0, 0]);
+      k.ball(darker(l.hatColor, 0.8), [0, 1.066, -0.01], 0.022, { detail: 0 });
       // Our own orb-bud emblem on the front.
-      k.gem(l.hatColor === l.accent ? '#fff4d8' : l.accent, [0, 0.99, 0.13], [0.026, 0.03, 0.012]);
+      k.gem(l.hatColor === l.accent ? '#fff4d8' : l.accent, [0, 1.0, 0.13], [0.026, 0.03, 0.012]);
       break;
     case 'ranger':
       k.limb(l.hatColor, [0, 0.965, 0], [0, 0.985, 0], 0.17, 0.17, 10);
@@ -176,9 +177,9 @@ function hat(k: Kit, l: PersonLook) {
       k.limb(l.accent, [0, 0.985, 0], [0, 1.01, 0], 0.123, 0.12, 8);
       break;
     case 'beanie':
-      k.ball(l.hatColor, [0, 0.985, -0.015], [0.14, 0.095, 0.14]);
-      k.limb(darker(l.hatColor, 0.8), [0, 0.925, -0.015], [0, 0.96, -0.015], 0.142, 0.142, 8);
-      k.ball(l.accent, [0, 1.09, -0.015], 0.042, { detail: 0 });
+      k.ball(l.hatColor, [0, 1.005, -0.015], [0.14, 0.085, 0.14]);
+      k.limb(darker(l.hatColor, 0.8), [0, 0.94, -0.015], [0, 0.972, -0.015], 0.142, 0.142, 8);
+      k.ball(l.accent, [0, 1.1, -0.015], 0.042, { detail: 0 });
       break;
     case 'band':
       k.limb(l.hatColor, [0, 0.935, 0], [0, 0.96, 0], 0.135, 0.135, 8);
