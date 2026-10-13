@@ -228,7 +228,8 @@ export class VictoryScene extends BaseScene {
       : corners(new THREE.Vector3(sx0, 0, this.narrow ? -2.6 : -2.0), new THREE.Vector3(sx1, this.narrow ? 3.1 : 2.5, 0.9));
     this.camera.clearViewOffset();
     const dir = this.hd2d ? new THREE.Vector3(0, 0.4, 1) : new THREE.Vector3(0, 0.22, 1);
-    const dist = fitPoints(this.camera, w, hgt, pts, area, { dir, target: new THREE.Vector3((sx0 + sx1) / 2, 1.3, -0.9), fill: 0.98 });
+    const target = this.hd2d ? new THREE.Vector3((sx0 + sx1) / 2, 1.3, -0.9) : new THREE.Vector3((sx0 + sx1) / 2, 1.1, -0.5);
+    const dist = fitPoints(this.camera, w, hgt, pts, area, { dir, target, fill: 0.98 });
     if (this.hd2d) { this.hd2d.afterFrame(dist); return; }
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + 6; this.scene.fog.far = dist + 40; }
   }

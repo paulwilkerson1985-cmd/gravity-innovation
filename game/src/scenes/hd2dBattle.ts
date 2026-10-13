@@ -134,7 +134,7 @@ export const KIN_SPRITE: Record<string, SpriteOptions> = {
   // Lighter basalt crust in plates, glowing magma cracks between them, a warm pool on the floor.
   vulcrag: {
     emissive: ['#ff6a1a', '#ffd84a', FLAME.outer, FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.25,
-    minValue: 0.34, facet: 0.4, plates: { size: 0.5, width: 0.024, crack: '#ff8a30', crackGain: 1.4 },
+    minValue: 0.3, facet: 0.4, plates: { size: 0.75, width: 0.022, crack: '#ff7020', crackGain: 1.35 },
     glow: { color: '#ff6a24', radius: 1.25, intensity: 1.1 },
   },
   pyrelord: { emissive: [FLAME.outer, FLAME.mid, FLAME.core, FLAME.hot], emissiveGain: 1.1, glow: { color: '#ff8a3a', radius: 1.0, intensity: 0.55 } },
