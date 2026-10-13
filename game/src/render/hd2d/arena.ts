@@ -545,14 +545,16 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     const qx = Math.abs(x) - (floorHalfX - R), qz = floorBack + R - z;
     return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - R;
   };
-  // Few, tall ledges: one block, then two more, then the walls.
-  const TIER_LV = [0, 1, 3, 5];
+  // Few, tall ledges: on the left a two-block ledge, then the tall wall of stacked blocks; on the
+  // right (in front of the lodge) lower steps.
+  const TIER_L = [0, 2, 7, 8], TIER_R = [0, 2, 3, 5];
   const ph = rng.next() * 10;
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
     const tier = terraceLevel(sdf(x, z) - wobbleAt(x, z, ph, 0.25), 1.6, 9);
-    let lv = tier < TIER_LV.length ? TIER_LV[tier]! : 8;
-    if (tier > 0 && tier < TIER_LV.length) lv = Math.max(1, lv + clusterBump(i, j, ph, 0.06));
+    const TIER = x < 0 ? TIER_L : TIER_R;
+    let lv = tier < TIER.length ? TIER[tier]! : 8;
+    if (tier > 0 && tier < TIER.length) lv = Math.max(1, lv + clusterBump(i, j, ph, 0.06));
     // The open front: floor in the middle, a low corner ledge either side (on to the phone's edge).
     if (z > floorFront && Math.abs(x) <= floorHalfX + 0.5) lv = Math.abs(x) < 4.4 ? 0 : Math.abs(x) < 5.4 ? 1 : 2;
     if (z > floorFront && Math.abs(x) > floorHalfX + 0.5) lv = Math.min(lv, 3);
@@ -584,7 +586,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // ---- rock (one mesh)
   const rock = new VoxelBatch(voxel ? 32 : 64);
   if (voxel) rockColumns(hm, rock, rng, RAMPS.rock);
-  else boulderColumns(hm, rock, rng, { lite: q === 'low', shade: [0.8, 1.04], topK: 1.38, core: 0.13 });
+  else boulderColumns(hm, rock, rng, { lite: q === 'low', shade: [0.8, 1.04], topK: 1.2, core: 0.13, split: 0.4, merge: 0.2, toneJitter: 0.12 });
   // A dark pebble skirt along the wall foot (≤ 0.4 units out onto the floor).
   {
     const per = q === 'high' ? 3 : 1;
@@ -661,8 +663,8 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
       const y = (yTo * (s + 1)) / n;
       const lo = Math.min(a, b), hi = Math.max(a, b);
       // Bright treads, dark risers: a dark tint with a strong top multiplier.
-      const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.55 + rng.next() * 0.06);
-      const o = { skip: [false, false, false, true, false, false], aoBottom: 0.8, topK: 2.1 };
+      const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.46 + rng.next() * 0.05);
+      const o = { skip: [false, false, false, true, false, false], aoBottom: 0.8, topK: 2.0 };
       if (axis === 'z') stone.box([c0, 0, lo], [c1, y, hi], tint, rng, o);
       else stone.box([lo, 0, c0], [hi, y, c1], tint, rng, o);
     }
@@ -696,7 +698,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const rubble = (x: number, z: number, r: number) => {
     if (!clear(x, z, r * 1.1)) return;
     // A mound of many chunky stones (not one boulder): the biggest ≈ 0.55 × min(0.95, r).
-    rubblePile(stone, [x, topAt(x, z), z], rng, { radius: r * 1.25, count: 16 + rng.int(8), big: Math.min(0.95, r) * 0.6, heap: 0.8 });
+    rubblePile(stone, [x, topAt(x, z), z], rng, { radius: r * 1.1, big: Math.min(0.95, r) * 0.6, heap: 0.8, blocky: !voxel, tint: '#d2d0ce' });
   };
   rubble(-5.2, -2.6, 1.05); // left back corner of the floor
   rubble(-3.9, 4.5, 0.55); // beside the front stair foot (bottom-left framing)
@@ -853,12 +855,12 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     for (const ox of offs) {
       const s = new THREE.Vector3(w.x + ox * w.w, w.y - 0.05, w.z + 0.2);
       const len = (s.y / -dir.y) * 0.98;
-      beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w.w * 0.42, w.w * 0.42 * 1.7], gain, fade: 0.3 });
+      beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w.w * 0.5, w.w * 0.5 * 1.8], gain, fade: 0.18 });
     }
   };
   shafts(win, keyDir, [-0.22, 0.24], 1);
   shafts(win2, key2Dir, [0], 0.85);
-  const rays = lightBeams(beams, beamColor, 0.3);
+  const rays = lightBeams(beams, beamColor, 0.33);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
   if (!flags.has('norays')) group.add(rays.mesh);
   const dust = dustMotes(beams, q === 'high' ? 24 : 12, rng, new THREE.Color('#ffd9a0').multiplyScalar(0.75));
