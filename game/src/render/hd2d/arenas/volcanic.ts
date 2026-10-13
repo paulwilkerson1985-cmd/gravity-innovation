@@ -21,8 +21,8 @@ export const ARENA: ArenaDef = {
   match: [{ route: 'ridge', hotspot: 'vent-cave' }],
   build: (o) => buildVolcanicArena({ seed: o.seed, quality: o.quality, trainer: o.trainerBattle }),
   grade: volcanicGrade,
-  background: '#120a0e',
-  fog: '#3a2026',
+  background: '#2a161c',
+  fog: '#4a2a30',
   fogRange: [10, 40],
 };
 
@@ -31,7 +31,7 @@ export function volcanicGrade(): Grade {
     lift: new THREE.Vector3(0.012, 0.0, 0.01), gain: new THREE.Vector3(1.04, 0.98, 0.94),
     saturation: 1.0, contrast: 1.1,
     shadowTint: new THREE.Color('#2c1a3a'), highTint: new THREE.Color('#ffc890'), splitAmount: 0.16,
-    vignette: 0.48, exposure: 1.08,
+    vignette: 0.4, exposure: 1.12,
   });
 }
 
@@ -216,7 +216,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     return Math.exp(-Math.max(0, y) / 2.2) * Math.max(Math.exp(-dr * 0.35), Math.exp(-dp * 0.5), Math.exp(-df * 0.4));
   };
   group.add(mk(shadeVertices(rock.build(), (x, y, z) => {
-    const k = lavaGlow(x, y, z), up = 0.62 + 0.38 * Math.exp(-Math.max(0, y - 0.5) / 3.5);
+    const k = lavaGlow(x, y, z), up = 0.74 + 0.26 * Math.exp(-Math.max(0, y - 0.5) / 3.5);
     return [up * (0.85 + k * 0.5), up * (0.8 + k * 0.18), up * (0.92 - k * 0.1)];
   }), track(surfaceMaterial(texBasalt, undefined, true))));
 
@@ -366,7 +366,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 16;
   group.add(key, key.target);
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#8a7a9a'), new THREE.Color('#a4482a'), 1.5);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#9a88b0'), new THREE.Color('#b4542e'), 2.0);
   group.add(hemi);
   // Underlight: from low in front, so camera-facing faces glow red-orange while tops stay cool.
   const under = new THREE.DirectionalLight(new THREE.Color('#ff6a3a'), 1.0);
