@@ -123,9 +123,47 @@ export const ARENA: ArenaDef = {
 
 Current mapping (updated by each arena's `match`):
 
-| Battle | Arena |
-|---|---|
-| any `cave` hotspot, any other Ember Ridge battle | `cave` (quarry) |
+| Battle | Arena | File |
+|---|---|---|
+| Mossy Meadow: tall grass, any other meadow battle, Scout Pim (chalk ring) | `meadow` (forest clearing) | `arenas/meadow.ts` |
+| Mossy Meadow: flower patch | `flowers` (flower field, gazebo) | `arenas/flowers.ts` |
+| Mossy Meadow: rocky hollow (and any meadow `cave`) | `hollow` (mossy grotto + pool) | `arenas/hollow.ts` |
+| Ember Ridge: dry scrub, Hiker Brann (chalk ring) | `scrub` (sunset ridge, canyon) | `arenas/scrub.ts` |
+| Ember Ridge: steaming cave | `volcanic` | `arenas/volcanic.ts` |
+| Ember Ridge: Cinder Adept Sola, any other `cave` hotspot | `cave` (quarry) | `arenas/cave.ts` |
+| Squall Coast: dune grass, Angler Merrow, other coast battles | `coast` | `arenas/coast.ts` |
+| Squall Coast: rough shallows (any `water`) | `shallows` | `arenas/shallows.ts` |
+| Squall Coast: sea cliff, Gale Rider Tavi | `cliff` | `arenas/cliff.ts` |
+| Crown Plateau (Champion Vale) | `summit` | `arenas/summit.ts` |
+| Arena mode (`mode: 'pvp'`) | `stadium` | `arenas/stadium.ts` |
+
+### Outdoor arenas (`arenas/outdoorKit.ts`, used by meadow / flowers / hollow / scrub)
+- `SpriteAtlas` + painters (`paintCanopy`, `paintTuft`, `paintFlower`, `paintVine`,
+  `paintTwigs`, `paintButterfly`): multi-ramp RGBA pixel sprites at TEXEL density.
+- `Foliage`: ONE mesh of Y-cylindrical billboards over the atlas (alpha-tested Lambert, casts
+  shadows through a matching depth material, so canopies shade the floor). Modes: `billboard`
+  (wind sway quantised to whole texels), `static` quads (grass/moss lips), `flutter`
+  (butterflies, 3-frame wing squash), `fall` (petals). Trees, bushes, tufts, flowers, vines,
+  butterflies and petals of an arena are all one draw call.
+- `terraces(hm, sides, tops)`: stacked blocks with side faces (earth/rock) and continuous top
+  faces (turf/moss) in separate materials, plus hanging fringe quads on exposed edges.
+- `groundMesh`: one unique painted floor texture over the whole stage (no tiling; the dirt
+  clearing, paths, crack networks and the trainer chalk ring `paintChalkRing` are painted in).
+- `backdrop` (far painted plane; `haze` wobbles rows for heat shimmer), `paintSky`,
+  `paintSilhouette`; `sunRig` (far SpotLight sun with optional `dappleCookie`, hemisphere,
+  fill → `SpriteLight`); `glints` (HDR additive dots that bloom: sun, light sources);
+  `lightPools`.
+- Scrub uses the kit's `boulderColumns` / `rubblePile` / `organicTerraces` for sandstone.
+- Composition: the camera looks down ~33–42°, so a far vista only shows *below* the stage's
+  back edge line (scrub places its painted horizon at y ≈ −5 on z = −26) and tree canopies must
+  hang low (y ≈ 3.5–5 at z ≈ −6) to frame the top of the screen.
+- Perf (SwiftShader, idle wild battle): draw calls high 39–51 / low 33–43 for the whole frame;
+  `benchFrames` desktop high ≈ 230–450 ms, phone low ≈ 60–100 ms (ratios vs the cave similar;
+  the foliage billboards add < 1 ms CPU).
+- Gaps: the meadow terraces still read a bit "grass voxel"; canopies are flat billboards (no
+  parallax between clumps); portrait framing hides the scrub canyon; the hollow's arch opening
+  sits above the frame (the light motif is the shafts + pool glints, not the opening itself);
+  no dedicated FX retune per arena.
 
 ### Scene adapter: `src/scenes/hd2dBattle.ts`
 `hd2dTerrainFor(ctx)` resolves the arena from the registry; `Hd2dBattleStage` builds it, applies
