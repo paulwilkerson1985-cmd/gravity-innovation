@@ -271,4 +271,6 @@ export const ARENA: ArenaDef = {
   background: '#e07a5a',
   fog: '#c87a6a',
   fogRange: [12, 50],
+  // Flatter on phones so the sunset canyon stays in view above the shelf.
+  camera: { portrait: { elev: 0.6 }, land: { elev: 0.6 } },
 };
