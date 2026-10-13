@@ -92,11 +92,16 @@
   .menu-moves:has(.move-info) .btn-move .mmeta { display: none; }
   .battle-ui:has(.menu-moves .move-info) .textbox.bt-text, .arena-battle-ui:has(.menu-moves .move-info) .textbox.bt-text { display: none; }
 }
-/* phones: one box — moves 2×2, then [info][back]; it may grow up over the dialog */
+/* phones: one box — a FIXED 2×2 move grid (an empty 4th cell when there are 3 moves), then
+   [info][back] always on the row under the divider; it may grow up over the dialog */
 @media (max-aspect-ratio: 1/1), (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
-  .menu.bt-menu.menu-moves:has(.move-info) { height: auto; min-height: var(--menu-h); max-height: var(--pop-h); grid-auto-rows: minmax(var(--row), auto); align-content: stretch; }
-  .menu-moves:has(.move-info) > .move-info { border-top: 2px solid var(--paper-3); }
-  .menu-moves:has(.move-info) > .btn-back { grid-column: auto; border-top: 2px solid var(--paper-3); }
+  .menu.bt-menu.menu-moves:has(.move-info) { height: auto; min-height: var(--menu-h); max-height: var(--pop-h); grid-auto-rows: minmax(var(--row), auto); grid-template-rows: repeat(3, minmax(var(--row), auto)); align-content: stretch; }
+  .menu-moves:has(.move-info) > [data-testid='move-0'] { grid-area: 1 / 1; }
+  .menu-moves:has(.move-info) > [data-testid='move-1'] { grid-area: 1 / 2; }
+  .menu-moves:has(.move-info) > [data-testid='move-2'] { grid-area: 2 / 1; }
+  .menu-moves:has(.move-info) > [data-testid='move-3'] { grid-area: 2 / 2; }
+  .menu-moves:has(.move-info) > .move-info { grid-area: 3 / 1; border-top: 2px solid var(--paper-3); }
+  .menu-moves:has(.move-info) > .btn-back { grid-area: 3 / 2; grid-column: 2; border-top: 2px solid var(--paper-3); }
   .menu-moves .btn-move .mmeta { display: block; }
   .menu-moves:has(.move-info) .move-info .mi-pow { display: none; }
   .menu-moves .btn-move .mname .eff { display: none; }
@@ -269,7 +274,8 @@
 .hof-stats b { color: var(--ink); font: var(--f2); }
 .credits-roll { height: 104px; overflow: hidden; position: relative; border: 6px solid transparent; border-image: var(--fr-plate) 6 fill / 6px stretch;
   mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 16%, #000 84%, transparent); }
-.credits-inner { text-align: center; font: var(--f1); line-height: 16px; color: var(--paper); text-transform: uppercase; animation: credits 26s steps(520) infinite; padding-top: 104px; }
+/* The roll starts with its first lines in view (no empty dark box while it waits to scroll in). */
+.credits-inner { text-align: center; font: var(--f1); line-height: 16px; color: var(--paper); text-transform: uppercase; animation: credits 26s steps(520) infinite; padding-top: 10px; }
 .credits-logo { padding: 4px 0; font: var(--f2); color: var(--amber-hi); }
 @keyframes credits { from { transform: translateY(0); } to { transform: translateY(-100%); } }
 .hof-buttons { display: flex; gap: 8px; }
@@ -303,6 +309,26 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .credits-inner, .text.waiting + .text-next { animation: none; }
+}
+
+/* ============================================================================ HD-2D arena victory
+   The result card docks to the side (a compact strip on portrait) so the spotlit podium keeps
+   the frame; arenaVictory frames the podium in the space that is left. */
+@media (min-aspect-ratio: 1001/1000) {
+  .hd2d-dock .arena-win-top { position: absolute; left: max(12px, env(safe-area-inset-left)); right: calc(min(380px, 34vw) + 24px); top: max(10px, env(safe-area-inset-top)); }
+  .hd2d-dock .arena-vcard { position: absolute; right: max(10px, env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); width: min(380px, 34vw); max-height: calc(100% - 20px); overflow: auto; gap: 6px; }
+  .hd2d-dock .arena-vteams { grid-template-columns: 1fr; }
+  .hd2d-dock .arena-vactions { flex-wrap: wrap; }
+  .hd2d-dock .arena-vactions .btn-fight { flex-basis: 100%; }
+}
+@media (max-aspect-ratio: 1/1) {
+  .hd2d-dock .arena-vcard { gap: 4px; }
+  .hd2d-dock .arena-vstats { display: none; }
+  .hd2d-dock .arena-vkin { grid-template-columns: minmax(0, 1fr) auto; }
+  .hd2d-dock .arena-vkin .hpbar { display: none; }
+  .hd2d-dock .arena-vkin-name { grid-column: auto; }
+  .hd2d-dock .arena-vteam { padding: 4px 6px; gap: 2px; }
+  .hd2d-dock .arena-vactions .btn { min-height: 46px; }
 }
 @media (max-width: 360px) {
   .pdots { gap: 0; }
