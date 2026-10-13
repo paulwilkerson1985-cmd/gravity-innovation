@@ -188,17 +188,17 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
       z: -40, x: [-44, 44], y: [-22, 5], d: 7, gain: 0.92,
       paint: (t, r, toY) => {
         paintSunsetSky(t, toY(sunWorld[1]), Math.round((sunWorld[0] + 44) * 7));
-        paintMesas(t, r, { ramp: S.mesaFar, foot: toY(-9), count: 7, w: [10, 24], h: [24, 40], haze: 0.4, sunX: (sunWorld[0] + 44) * 7, gullies: 0.5, hazeCol: '#d8908a', cliff: 3.6 });
+        paintMesas(t, r, { ramp: S.mesaFar, foot: toY(-9), count: 7, w: [10, 24], h: [24, 40], haze: 0.3, sunX: (sunWorld[0] + 44) * 7, gullies: 0.5, hazeCol: '#c88088', cliff: 3.6 });
       },
     },
     {
       // Mid mesas: stronger strata, a lit sun-side flank and rim.
-      z: -25, x: [-30, 30], y: [-14, 3.5], d: 11, gain: 0.66,
-      paint: (t, r, toY) => paintMesas(t, r, { ramp: S.mesaMid, foot: toY(-6.5), count: 5, w: [12, 30], h: [30, 52], haze: 0.16, sunX: (sunWorld[0] + 30) * 11 - 120, gullies: 1, hazeCol: '#c07070', cliff: 3.2 }),
+      z: -25, x: [-30, 30], y: [-14, 3.5], d: 11, gain: 0.44,
+      paint: (t, r, toY) => paintMesas(t, r, { ramp: S.mesaMid, foot: toY(-6.5), count: 5, w: [12, 30], h: [30, 52], haze: 0.1, sunX: (sunWorld[0] + 30) * 11 - 120, gullies: 1, hazeCol: '#c07070', cliff: 3.2 }),
     },
     {
       // Near canyon rim: a low broken ridge with a few dead snags, darkest and warmest.
-      z: -15, x: [-24, 24], y: [-8, 2.6], d: 14, gain: 0.55,
+      z: -15, x: [-24, 24], y: [-8, 2.6], d: 14, gain: 0.42,
       paint: (t, r, toY) => paintMesas(t, r, { ramp: S.mesaNear, foot: toY(-3.2), count: 6, w: [18, 40], h: [10, 22], haze: 0.04, sunX: (sunWorld[0] + 24) * 14 - 160, gullies: 1.4, hazeCol: '#8a4a48', ridge: true }),
     },
   ];

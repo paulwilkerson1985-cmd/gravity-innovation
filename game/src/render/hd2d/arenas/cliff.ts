@@ -321,7 +321,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     fill: '#a8bcd8', fillIntensity: 0.4, quality: q,
   });
   const key = rig.key;
-  const gob = gobo(key, { kind: 'clouds', seed: 61, pool: { x: 0.1, z: 0, ru: 4.2, rv: 2.8, angle: Math.atan2(-2.0, 2.8), soft: 0.4 }, outside: 0.5, shade: 0.5, cover: 0.32, scale: 12, drift: [0.25, 0.1], y: 0.05 });
+  const gob = gobo(key, { kind: 'clouds', seed: 61, pool: { x: 0.1, z: 0, ru: 4.2, rv: 2.8, angle: Math.atan2(-2.0, 2.8), soft: 0.4 }, outside: 0.4, shade: 0.5, cover: 0.38, scale: 12, drift: [0.25, 0.1], y: 0.05 });
   track(gob);
   updates.push(gob.update);
   group.add(lightPools([[0.1, 0, 8.6, 5.8]], '#4a3a24', 1.2));

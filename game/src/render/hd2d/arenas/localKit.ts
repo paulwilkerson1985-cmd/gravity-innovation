@@ -1280,10 +1280,13 @@ void main() {
   float wisp = vnoise(vec2((q.x + drift) * 0.18, q.y * 0.9)) * 0.6 + vnoise(vec2((q.x - drift * 0.6) * 0.07, q.y * 0.35 + 3.0)) * 0.4;
   float ends = smoothstep(0.0, 0.15, vBand.x) * (1.0 - smoothstep(0.85, 1.0, vBand.x));
   float a = prof * ends * (0.35 + 0.9 * wisp) * vBand.z;
-  // Posterised translucency: 4 steps, ordered dither only between steps (pixel-art haze).
-  float lv = floor(a * 4.0 + bayer4(gl_FragCoord.xy)) / 4.0;
+  // Posterised translucency: flat steps of haze (painterly bands, no dither carpet); only a
+  // sparse ordered dither right at each step edge.
+  float st = a * 5.0;
+  float e = st - floor(st);
+  float lv = (floor(st) + (e > 0.85 && bayer4(gl_FragCoord.xy) < (e - 0.85) / 0.15 ? 1.0 : 0.0)) / 5.0;
   if (lv <= 0.0) discard;
-  gl_FragColor = vec4(vColor, min(lv, 0.85));
+  gl_FragColor = vec4(vColor, min(lv * 0.8, 0.7));
   #include <fog_fragment>
 }`;
 

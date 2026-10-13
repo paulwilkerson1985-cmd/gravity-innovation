@@ -245,7 +245,12 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   const trunk = (x: number, z: number, h: number, w = 0.62) => {
     const y = topAt(x, z) - 0.05;
     const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2);
-    bark.box([x - w / 2, y, z - w / 2], [x + w / 2, y + h, z + w / 2], tint, rng, { aoBottom: 0.45 });
+    // Octagonal, slightly tapering trunk (a box and a 45° box in two tiers), not a square post.
+    const lo = h * 0.45;
+    for (const [y0, y1, ww] of [[y, y + lo, w], [y + lo - 0.02, y + h, w * 0.86]] as const) {
+      bark.rotBox([x, (y0 + y1) / 2, z], [ww, y1 - y0, ww], 0, tint, rng);
+      bark.rotBox([x, (y0 + y1) / 2, z], [ww * 0.94, y1 - y0, ww * 0.94], Math.PI / 4, tint.clone().multiplyScalar(0.94), rng);
+    }
     // Root flare and a branch stub.
     for (const [dx, dz] of [[-1, 0], [1, 0], [0, 1], [0, -1]] as const) if (rng.chance(0.75)) bark.box([x + dx * w * 0.45 - 0.14, y, z + dz * w * 0.45 - 0.14], [x + dx * w * 0.45 + 0.14, y + 0.18 + rng.next() * 0.15, z + dz * w * 0.45 + 0.14], tint.clone().multiplyScalar(0.9), rng, { aoBottom: 0.5 });
     const side = rng.chance(0.5) ? 1 : -1;
@@ -429,7 +434,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     target, from: sunFrom, distance: 34, angle: 0.44, penumbra: 0.25, shadowRadius: 2,
     color: flowers ? '#ffcf8a' : '#ffe2a8', intensity: flowers ? 12.5 : 12, cookie: null,
     sky: flowers ? '#a8b8e0' : '#9cc0e8', ground: flowers ? '#4a4228' : '#2c4224', hemi: flowers ? 1.35 : 1.3,
-    fill: flowers ? '#c8c8ff' : '#b8dcff', fillIntensity: 0.25, quality: q,
+    fill: flowers ? '#c8c8ff' : '#b8dcff', fillIntensity: 0.5, quality: q,
   });
   const gob = gobo(key, { kind: 'leaves', seed: flowers ? 9 : 4, pool: { ...BATTLE_POOL, soft: 0.3 }, outside: 0.42, shade: 0.16, cover: flowers ? 0.38 : 0.46, scale: 3.4 });
   extra.push(gob);
