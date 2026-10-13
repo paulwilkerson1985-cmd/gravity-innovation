@@ -114,7 +114,8 @@ export interface Grade {
   toneHue?: number;
   /**
    * Bloom: threshold (linear HDR luminance), strength, and the cap on how far above the
-   * threshold a pixel contributes (soft knee: only the excess blooms). Defaults 0.6 / 0.45 / 2.
+   * threshold a pixel contributes (soft knee: only the excess blooms). Defaults 1.0 / 0.4 / 1.1
+   * (knee 0.22): only emitters (panes, lava, flames, FX) bloom, and they keep a defined core.
    */
   bloomThreshold?: number;
   bloomStrength?: number;
@@ -123,7 +124,7 @@ export interface Grade {
 
 /** Defaults of the optional Grade fields. */
 export const GRADE_DEFAULTS = {
-  bottomShade: 0, bottomShadeHeight: 0.22, shadowDesat: 0.3, toneHue: 0.7, bloomThreshold: 0.6, bloomStrength: 0.45, bloomCap: 2,
+  bottomShade: 0, bottomShadeHeight: 0.22, shadowDesat: 0.3, toneHue: 0.7, bloomThreshold: 1.0, bloomStrength: 0.4, bloomCap: 1.1,
 } as const satisfies Required<Pick<Grade, 'bottomShade' | 'bottomShadeHeight' | 'shadowDesat' | 'toneHue' | 'bloomThreshold' | 'bloomStrength' | 'bloomCap'>>;
 
 export function warmCaveGrade(): Grade {
@@ -276,17 +277,24 @@ const BLOOM_HIGHPASS = /* glsl */ `
   uniform float luminosityThreshold;
   uniform float smoothWidth;
   uniform float uCap;
+  uniform float uKnee;
   varying vec2 vUv;
   void main() {
     vec4 texel = texture2D(tDiffuse, vUv);
     float v = luminance(texel.xyz);
-    float k = clamp(v - luminosityThreshold, 0.0, uCap);
+    // Quadratic soft knee around the threshold (no hard edge where a lit surface crosses it),
+    // then linear, capped: a lava fall keeps a defined core with a thin halo instead of a haze.
+    float x = v - luminosityThreshold;
+    float soft = clamp(x + uKnee, 0.0, 2.0 * uKnee);
+    soft = soft * soft / (4.0 * uKnee + 1e-4);
+    float k = min(max(soft, x), uCap);
     gl_FragColor = vec4(texel.rgb * (k / max(v, 1e-4)), 1.0);
   }`;
 
-function softKnee(bloom: UnrealBloomPass, cap: number) {
+function softKnee(bloom: UnrealBloomPass, cap: number, knee: number) {
   const u = bloom.highPassUniforms as Record<string, THREE.IUniform>;
   u.uCap = { value: cap };
+  u.uKnee = { value: knee };
   bloom.materialHighPassFilter.fragmentShader = BLOOM_HIGHPASS;
   bloom.materialHighPassFilter.needsUpdate = true;
 }
@@ -335,9 +343,9 @@ export class Hd2dPipeline {
       // glows get a faint halo; the lit floor itself stays under it.
       const th = grade.bloomThreshold ?? GRADE_DEFAULTS.bloomThreshold, st = grade.bloomStrength ?? GRADE_DEFAULTS.bloomStrength;
       this.bloom = quality === 'high'
-        ? new UnrealBloomPass(new THREE.Vector2(size.x, size.y), st, 0.5, th)
-        : new LowBloomPass(new THREE.Vector2(size.x, size.y), st, 0.45, th);
-      softKnee(this.bloom, grade.bloomCap ?? GRADE_DEFAULTS.bloomCap);
+        ? new UnrealBloomPass(new THREE.Vector2(size.x, size.y), st, 0.38, th)
+        : new LowBloomPass(new THREE.Vector2(size.x, size.y), st, 0.34, th);
+      softKnee(this.bloom, grade.bloomCap ?? GRADE_DEFAULTS.bloomCap, th * 0.22);
       this.composer.addPass(this.bloom);
     }
     // One pass does tone mapping, sRGB output and the grade (no separate OutputPass).
