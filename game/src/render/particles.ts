@@ -5,6 +5,15 @@ import { GEO } from './builder';
 import { tween } from './anim';
 import { acquireFx, markPersistent, releaseFx, type FxBlend } from './materials';
 
+/**
+ * HD-2D render-order contract (`?gfx=hd2d`): sprite billboards draw at renderOrder 7, so normal
+ * FX stay at ≤ 6 (under the target sprite) and additive glows/sparks go to ≥ 8 (over it).
+ * Default renderer: 2 / 3 as before. (Read from the URL directly: no import of the HD-2D
+ * pipeline from this low-level module.)
+ */
+const HD2D = typeof location !== 'undefined' && new URLSearchParams(location.search).get('gfx') === 'hd2d';
+export function fxRenderOrder(blend: FxBlend): number { return blend === 'add' ? (HD2D ? 8 : 3) : 2; }
+
 // ------------------------------------------------------------------ deterministic rng
 
 let seed = 1;
@@ -149,7 +158,8 @@ export class Particles {
     this.mat = acquireFx(blend);
     this.mesh = new THREE.Mesh(geo, this.mat);
     this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = blend === 'add' ? 3 : 2;
+    this.mesh.renderOrder = fxRenderOrder(blend);
+    this.mesh.userData.fx = true;
     this.billboard = !!opts.billboard;
     if (this.billboard) {
       // Face the camera: stamps are written in camera space orientation each frame.
@@ -262,7 +272,8 @@ export function fxMesh(scene: THREE.Scene, geo: THREE.BufferGeometry, blend: FxB
   const mat = acquireFx(blend);
   if (tint !== undefined) mat.color.set(tint);
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = blend === 'add' ? 3 : 2;
+  mesh.renderOrder = fxRenderOrder(blend);
+  mesh.userData.fx = true;
   scene.add(mesh);
   return {
     mesh, mat,

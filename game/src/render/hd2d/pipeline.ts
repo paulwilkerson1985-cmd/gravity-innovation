@@ -16,6 +16,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { warmPrograms } from '../materials';
+import { warmPixelFx } from './fx';
 
 export type Quality = 'high' | 'low';
 
@@ -358,11 +360,28 @@ export class Hd2dPipeline {
       r.shadowMap.autoUpdate = false;
       if (this.frames < 2) r.shadowMap.needsUpdate = true;
     }
+    if (this.frames === 0 || this.frames === 30) this.warm();
     this.frames++;
     this.composer.render();
     r.toneMapping = prevTone; r.toneMappingExposure = prevExp;
     this.ms.push(performance.now() - t0);
     if (this.ms.length > 60) this.ms.shift();
+  }
+
+  /**
+   * Link the FX programs (pooled FX materials, pixel flipbooks/points/glows) against this
+   * scene's lights WITH the composer's linear render target bound — the variant they are
+   * actually drawn with — so the first attack of a battle links nothing.
+   */
+  private warm() {
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(this.composer.readBuffer);
+    try {
+      warmPrograms(r, this.scene, this.camera);
+      warmPixelFx(r, this.scene, this.camera);
+    } catch { /* warming is best-effort */ }
+    r.setRenderTarget(prev);
   }
 
   stats(): PerfStats {

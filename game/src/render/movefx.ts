@@ -10,6 +10,8 @@ import { ease, wait } from './anim';
 import type { MoveElement } from '../engine/types';
 import { Particles, animate, flash, flatShape, fxMesh, fxSeed, groundRing, rnd } from './particles';
 import { markPersistent } from './materials';
+import { hd2dRequested } from './hd2d/pipeline';
+import { FlipBatch, PixelPoints, impactGlow, type BookId } from './hd2d/fx';
 
 export interface MoveFxOptions {
   /** Move power (40 / 65 / 95 in the data); picks weak / normal / strong variants. Default 65. */
@@ -80,6 +82,8 @@ function makeCtx(scene: THREE.Scene, from: THREE.Vector3, to: THREE.Vector3, o: 
   const ground = V(to.x, Math.min(est.floor, to.y), to.z);
   const centre = ground.clone().add(V(0, h * 0.5, 0));
   let P = [0.8, 1, 1.3][tier]!;
+  // HD-2D: the diorama camera is closer; smaller FX keep the target readable.
+  if (hd2dRequested()) P *= 0.7;
   if (o.camera) P *= screenFit(o.camera, ground, h * P);
   return { scene, from: from.clone(), to: to.clone(), ground, centre, h, P, tier, camera: o.camera };
 }
@@ -648,6 +652,482 @@ async function neutral(c: Ctx) {
   return tail;
 }
 
+// ------------------------------------------------------------------ HD-2D pixel FX
+//
+// `?gfx=hd2d`: hand-pixeled flipbooks (render/hd2d/fx.ts) instead of the low-poly meshes.
+// Readability rules: everything that surrounds the target is an OPEN ARC (no tongue, jet,
+// spike or vine whose outward direction faces the camera, dot(dir, camFwd) < -0.2), the big
+// bursts sit BEHIND the target, normal-blend pieces draw at renderOrder ≤ 6 (under the target
+// sprite, which draws at 7) and only additive glows/embers at ≥ 8. Impacts add ≥ 3 scene
+// objects in one frame (capture tooling keys on it). Flame, Spark and Neutral impacts light
+// the floor and the wall behind with a dithered additive glow (no runtime lights).
+
+const TAU = Math.PI * 2;
+
+/** Whole internal px per FX texel: target on-screen height ÷ ~52 px (1 on most screens). */
+function texScale(c: Ctx): number {
+  if (!c.camera || typeof document === 'undefined') return 1;
+  const canvas = document.getElementById('view') as HTMLCanvasElement | null;
+  const H = canvas?.height || 360;
+  const a = c.ground.clone().project(c.camera), b = c.ground.clone().add(V(0, c.h, 0)).project(c.camera);
+  return THREE.MathUtils.clamp(Math.round((Math.abs(b.y - a.y) * 0.5 * H) / 52), 1, 3);
+}
+
+/** The camera's forward direction on the floor plane (into the screen). */
+function camFwdXZ(c: Ctx): THREE.Vector3 {
+  const f = V(0, 0, -1);
+  c.camera?.getWorldDirection(f);
+  f.y = 0;
+  if (f.lengthSq() < 1e-4) f.set(0, 0, -1);
+  return f.normalize();
+}
+
+/** Angles of an n-point ring around the target, minus the ones whose outward direction faces the camera. */
+function openArc(c: Ctx, n: number, offset = 0): number[] {
+  const fwd = camFwdXZ(c);
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = offset + (i / n) * TAU;
+    if (Math.cos(a) * fwd.x + Math.sin(a) * fwd.z < -0.2) continue;
+    out.push(a);
+  }
+  return out;
+}
+/** `p` pushed `d` world units along the view ray: same screen position, further from the camera. */
+function behind(c: Ctx, p: THREE.Vector3, d: number): THREE.Vector3 {
+  const f = V(0, 0, -1);
+  c.camera?.getWorldDirection(f);
+  return p.clone().addScaledVector(f, d);
+}
+const ringPos = (c: Ctx, a: number, r: number, y = 0) => c.ground.clone().add(V(Math.cos(a) * r, y, Math.sin(a) * r));
+
+/** World size of the effect around the target (target height × power tier). */
+const reach = (c: Ctx) => c.h * (c.P / 0.7);
+
+/** The impact star burst, centred on the target but just BEHIND it (depth and draw order). */
+function pixelStar(c: Ctx, tint: string, glow: number, k: number): FlipBatch {
+  const b = new FlipBatch(c.scene, 2, 'normal', 5);
+  b.add('star', behind(c, c.centre, 0.5 * c.h), { scale: k * 2, tint, glow, fps: 14 });
+  return b;
+}
+
+/** Run batches/points to completion in parallel (each removes itself). */
+async function finish(...items: { run(ms: number): Promise<void> }[]) { await Promise.all(items.map((x) => x.run(900))); }
+
+/** Fly one flipbook projectile along an arc with a pixel trail. */
+async function pixelFly(c: Ctx, book: BookId, o: { ms: number; arc: number; k: number; glow?: number; tint?: string; to?: THREE.Vector3; from?: THREE.Vector3; trail?: (pts: PixelPoints, at: THREE.Vector3, dt: number) => void; trailBlend?: 'normal' | 'add' }) {
+  const from = o.from ?? c.from, to = o.to ?? c.centre;
+  const proj = new FlipBatch(c.scene, 1, 'normal', 6);
+  const trail = o.trail ? new PixelPoints(c.scene, 90, o.trailBlend ?? 'add') : null;
+  const id = proj.add(book, from, { loop: true, life: 99, scale: o.k, glow: o.glow, tint: o.tint });
+  const p = V();
+  await animate(o.ms, (k, dt) => {
+    arcPoint(p, from, to, ease.inOut(k), o.arc);
+    proj.place(id, p);
+    proj.step(dt);
+    if (trail) { o.trail!(trail, p, dt); trail.step(dt); }
+  });
+  proj.dispose();
+  if (trail) void trail.run(600);
+}
+
+async function flamePx(c: Ctx) {
+  const k = texScale(c);
+  const embers = ['#ffd23f', '#ff9a1e', '#ff5a1e', '#fff3a0'];
+  let acc = 0;
+  await pixelFly(c, 'fireball', {
+    ms: 340, arc: 0.35, k, glow: 1.5,
+    trail: (pts, at, dt) => {
+      acc += dt;
+      while (acc > 0.014) {
+        acc -= 0.014;
+        pts.emit(at.clone().add(V(rnd(-0.06, 0.06), rnd(-0.06, 0.06), rnd(-0.06, 0.06))), V(rnd(-0.4, 0.4), rnd(0.3, 1.2), rnd(-0.4, 0.4)), { color: embers[Math.floor(rnd(0, 4))]!, size: rnd() < 0.3 ? 2 : 1, life: 0.35, drag: 1, glow: 1.6 });
+      }
+    },
+  });
+  // Impact: star under the target, a ring of flame tongues open toward the camera (bigger ones
+  // behind), rising embers, a fire-lit floor and wall.
+  const R = reach(c);
+  const star = pixelStar(c, '#ffb02e', 1.8, k);
+  const fire = new FlipBatch(c.scene, 28, 'normal', 5);
+  const rise = new PixelPoints(c.scene, 70, 'add');
+  const light = impactGlow(c.scene, c.ground, '#ff6a20', 1.0 * R, c.camera);
+  const life = 0.62;
+  const fwd = camFwdXZ(c);
+  openArc(c, 8 + c.tier * 2, 0.2).forEach((a, i) => {
+    fire.add('flame', ringPos(c, a, 0.36 * R), { anchor: 'bottom', loop: true, frame0: i * 3, life: life + rnd(0, 0.08), fadeIn: 0.05, fadeOut: 0.2, scale: k, glow: 1.15, flip: i % 2 === 1, delay: rnd(0, 0.06) });
+  });
+  openArc(c, 6, 0.75).forEach((a, i) => {
+    fire.add('flameS', ringPos(c, a, 0.18 * R), { anchor: 'bottom', loop: true, frame0: i * 5, life: life - 0.08, fadeIn: 0.04, fadeOut: 0.18, scale: k, glow: 1.2, flip: i % 2 === 0, delay: 0.03 });
+  });
+  // The pillar's crown: big tongues straight behind the target (the sprite covers their base).
+  for (const [side, d] of [[-0.22, 0.2], [0.22, 0.2], [0, 0.3]] as const) {
+    if (c.tier === 0 && side !== 0) continue;
+    const p = c.ground.clone().addScaledVector(fwd, d * R).add(V(-fwd.z * side * R, 0, fwd.x * side * R));
+    fire.add('flame', p, { anchor: 'bottom', loop: true, frame0: side ? 2 : 6, life, fadeIn: 0.06, fadeOut: 0.22, scale: k * 2, glow: 1.1, flip: side > 0 });
+  }
+  const tail = (async () => {
+    await animate(680, (kk, dt) => {
+      const flick = 1 + Math.sin(kk * 70) * 0.12 + Math.sin(kk * 43) * 0.08;
+      light.set((kk < 0.1 ? kk / 0.1 : kk > 0.62 ? Math.max(0, 1 - (kk - 0.62) / 0.38) : 1) * flick);
+      if (kk < 0.72) for (let j = 0; j < 2; j++) if (rnd() < 0.7) rise.emit(ringPos(c, rnd(0, TAU), rnd(0.05, 0.4) * R, rnd(0, 0.5) * R), V(rnd(-0.25, 0.25), rnd(1.2, 2.6), rnd(-0.25, 0.25)), { color: embers[Math.floor(rnd(0, 4))]!, size: rnd() < 0.35 ? 2 : 1, life: rnd(0.35, 0.6), drag: 0.8, glow: 1.6 });
+      fire.step(dt); star.step(dt); rise.step(dt);
+    });
+    fire.dispose(); star.dispose(); light.dispose();
+    // A wisp of smoke as the fire dies.
+    const smoke = new FlipBatch(c.scene, 4, 'normal', 5);
+    for (let i = 0; i < 3; i++) smoke.add('smoke', ringPos(c, rnd(0, TAU), 0.15 * R, (0.55 + i * 0.12) * R), { vel: V(rnd(-0.1, 0.1), 0.6, rnd(-0.1, 0.1)), scale: k, fps: 10, delay: i * 0.06 });
+    await finish(rise, smoke);
+  })();
+  await wait(260);
+  return tail;
+}
+
+async function tidePx(c: Ctx) {
+  const k = texScale(c);
+  const n = 3 + c.tier * 2;
+  const orbs = new FlipBatch(c.scene, n, 'normal', 6);
+  const drip = new PixelPoints(c.scene, 90, 'normal', 6);
+  const paths = Array.from({ length: n }, (_, i) => ({ id: -1, t0: i * 0.055, to: c.centre.clone().add(V(rnd(-0.15, 0.15), rnd(-0.15, 0.2), rnd(-0.15, 0.15)).multiplyScalar(c.h)), arc: 0.45 + i * 0.04 }));
+  const p = V();
+  let time = 0;
+  await animate(320 + (n - 1) * 55, (_kk, dt) => {
+    time += dt;
+    for (const q of paths) {
+      const lt = (time - q.t0) / 0.32;
+      if (lt < 0) continue;
+      if (q.id < 0) q.id = orbs.add('orb', c.from, { loop: true, life: 0.36 - Math.min(0, q.t0), scale: k, frame0: q.id & 3 });
+      if (lt > 1) continue;
+      arcPoint(p, c.from, q.to, lt, q.arc);
+      p.y += Math.sin(lt * Math.PI * 4) * 0.05;
+      orbs.place(q.id, p);
+      if (rnd() < 0.45) drip.emit(p.clone(), V(rnd(-0.3, 0.3), rnd(-0.2, 0.4), rnd(-0.3, 0.3)), { color: rnd() < 0.5 ? '#c4f2ff' : '#48c6f0', size: 1, life: 0.3, gravity: -6 });
+    }
+    orbs.step(dt); drip.step(dt);
+  });
+  orbs.dispose();
+  void drip.run(400);
+  // Impact: splash crown in an open arc (a tall one behind the target), droplets, foam, ripple.
+  const R = reach(c);
+  const fwd = camFwdXZ(c);
+  const star = pixelStar(c, '#bfe6ff', 1.3, k);
+  const crown = new FlipBatch(c.scene, 20, 'normal', 5);
+  openArc(c, 7 + c.tier * 2, 0.35).forEach((a, i) => crown.add('splash', ringPos(c, a, 0.34 * R), { anchor: 'bottom', scale: k, fps: 14, flip: i % 2 === 1, delay: (i % 3) * 0.03, fadeOut: 0.12 }));
+  crown.add('splash', c.ground.clone().addScaledVector(fwd, 0.18 * R), { anchor: 'bottom', scale: k * 2, fps: 13, fadeOut: 0.14 });
+  const drops = new PixelPoints(c.scene, 80, 'normal', 6);
+  const cols = ['#ffffff', '#c4f2ff', '#48c6f0', '#2378d2'];
+  for (let i = 0; i < Math.round(26 * c.P); i++) {
+    const a = rnd(0, TAU);
+    const d = V(Math.cos(a), 0, Math.sin(a));
+    if (d.dot(fwd) < -0.6) d.multiplyScalar(0.4); // fewer droplets flying at the camera
+    drops.emit(c.centre.clone().add(V(0, 0.15 * R, 0)), V(d.x * rnd(0.8, 2.2), rnd(2.2, 4.2), d.z * rnd(0.8, 2.2)).multiplyScalar(Math.sqrt(R)), { color: cols[i % 4]!, size: i % 3 === 0 ? 1 : 2, life: rnd(0.45, 0.7), gravity: -10 });
+  }
+  const foam = new PixelPoints(c.scene, 40, 'normal', 6);
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * TAU;
+    foam.emit(ringPos(c, a, 0.3 * R, 0.03), V(Math.cos(a) * 0.9 * R, 0, Math.sin(a) * 0.9 * R), { color: i % 3 ? '#ffffff' : '#c4f2ff', size: 2, life: rnd(0.3, 0.45), drag: 3 });
+  }
+  void groundRing(c.scene, c.ground.clone().add(V(0, 0.04, 0)), '#bfe6ff', 1.05 * R, 460, 'normal', 60);
+  const tail = (async () => {
+    await animate(620, (_kk, dt) => { crown.step(dt); star.step(dt); drops.step(dt); foam.step(dt); });
+    crown.dispose(); star.dispose();
+    await finish(drops, foam);
+  })();
+  await wait(240);
+  return tail;
+}
+
+async function floraPx(c: Ctx) {
+  const k = texScale(c);
+  const n = 3 + c.tier * 2;
+  const leaves = new FlipBatch(c.scene, n, 'normal', 6);
+  const dir = c.centre.clone().sub(c.from);
+  const lateral = V(-dir.z, 0, dir.x).normalize();
+  const paths = Array.from({ length: n }, (_, i) => ({ id: -1, t0: i * 0.05, side: (i % 2 ? 1 : -1) * (0.35 + (i % 3) * 0.12), to: c.centre.clone().add(V(rnd(-0.2, 0.2) * c.h, rnd(-0.15, 0.25) * c.h, 0)), arc: 0.25 + (i % 3) * 0.15 }));
+  const p = V();
+  let time = 0;
+  await animate(360 + (n - 1) * 50, (_kk, dt) => {
+    time += dt;
+    for (const q of paths) {
+      const lt = (time - q.t0) / 0.36;
+      if (lt < 0) continue;
+      if (q.id < 0) q.id = leaves.add('leaf', c.from, { loop: true, life: 0.37, scale: k * (q.side > 0 ? 2 : 1), fps: 16, frame0: q.t0 * 40 });
+      if (lt > 1) continue;
+      arcPoint(p, c.from, q.to, ease.inOut(lt), q.arc);
+      p.addScaledVector(lateral, Math.sin(lt * Math.PI) * q.side);
+      leaves.place(q.id, p);
+    }
+    leaves.step(dt);
+  });
+  leaves.dispose();
+  // Impact: thorn vines sprout in an open arc; a burst of leaves and petals.
+  const R = reach(c);
+  const star = pixelStar(c, '#eaffb0', 1.2, k);
+  const vines = new FlipBatch(c.scene, 16, 'normal', 5);
+  openArc(c, 8 + c.tier * 2, 0.1).forEach((a, i) => vines.add('vine', ringPos(c, a, (0.5 + (i % 2) * 0.1) * R), { anchor: 'bottom', scale: k, fps: 16, life: 0.66, fadeOut: 0.16, flip: i % 2 === 1, delay: (i % 4) * 0.025 }));
+  // Taller vines behind the target (its sprite covers their roots).
+  const fwdV = camFwdXZ(c);
+  for (const side of [-0.32, 0.32]) {
+    const p = c.ground.clone().addScaledVector(fwdV, 0.3 * R).add(V(-fwdV.z * side * R, 0, fwdV.x * side * R));
+    vines.add('vine', p, { anchor: 'bottom', scale: k * 2, fps: 15, life: 0.66, fadeOut: 0.16, flip: side > 0 });
+  }
+  const burst = new FlipBatch(c.scene, 14, 'normal', 6);
+  for (let i = 0; i < Math.round(10 * c.P / 0.7); i++) {
+    const a = rnd(0, TAU);
+    burst.add('leaf', c.centre, { vel: V(Math.cos(a) * rnd(1, 2.4), rnd(0.8, 2.4), Math.sin(a) * rnd(1, 2.4)).multiplyScalar(Math.sqrt(R)), gravity: -3, drag: 1.5, loop: true, fps: 14, frame0: i, life: rnd(0.45, 0.65), fadeOut: 0.15, scale: k });
+  }
+  const petals = new PixelPoints(c.scene, 40, 'normal', 6);
+  for (let i = 0; i < 18; i++) {
+    const a = rnd(0, TAU);
+    petals.emit(c.centre, V(Math.cos(a) * rnd(0.8, 2), rnd(0.5, 2.2), Math.sin(a) * rnd(0.8, 2)).multiplyScalar(Math.sqrt(R)), { color: ['#ff9ad0', '#ffd23f', '#ffffff', '#ff7ab0'][i % 4]!, size: i % 2 ? 2 : 1, life: rnd(0.4, 0.7), gravity: -2.5, drag: 1.5 });
+  }
+  const tail = (async () => {
+    await animate(560, (_kk, dt) => { vines.step(dt); star.step(dt); burst.step(dt); petals.step(dt); });
+    vines.dispose(); star.dispose();
+    await finish(burst, petals);
+  })();
+  await wait(240);
+  return tail;
+}
+
+async function sparkPx(c: Ctx) {
+  const k = texScale(c);
+  // A crackling charge at the user, then the bolt from the sky.
+  const charge = new FlipBatch(c.scene, 2, 'add', 8);
+  charge.add('spark', c.from, { scale: k, glow: 1.6, fps: 18 });
+  await animate(110, (_kk, dt) => charge.step(dt));
+  const S = c.h * c.P / 0.7;
+  const top = 3.2;
+  const bolt = cached(`bolt-${c.tier}`, (b) => {
+    for (const [w, col, ox] of [[0.26, '#ff8a1e', 0], [0.17, '#ffe14d', 0], [0.07, '#ffffff', 0]] as const) {
+      let p = V(ox, top, 0);
+      for (let i = 0; i < 8; i++) {
+        const next = V((i % 2 ? 1 : -1) * (0.18 + (i % 3) * 0.09), p.y - top / 8, 0);
+        if (i === 7) next.set(0, 0, 0);
+        const d = next.clone().sub(p);
+        b.along(GEO.box, col, p, d, d.length() + 0.04, w, 0.6);
+        p = next;
+      }
+    }
+    if (c.tier === 2) {
+      let p = V(0.6, top * 0.8, 0.2);
+      for (let i = 0; i < 6; i++) {
+        const next = V(0.6 - i * 0.1 + (i % 2 ? 0.15 : -0.1), p.y - top * 0.8 / 6, 0.2);
+        if (i === 5) next.set(0.1, 0.2, 0);
+        const d = next.clone().sub(p);
+        b.along(GEO.box, '#ffe14d', p, d, d.length() + 0.03, 0.1, 0.6);
+        p = next;
+      }
+    }
+  });
+  // The bolt lands just behind the target (normal under the sprite, additive glow over it).
+  const fwd = camFwdXZ(c);
+  const at = c.centre.clone().addScaledVector(fwd, 0.25 * c.h);
+  const f = fxMesh(c.scene, bolt, 'add', '#806020');
+  const g = fxMesh(c.scene, bolt, 'normal');
+  g.mesh.renderOrder = 5;
+  for (const m of [f.mesh, g.mesh]) { m.position.copy(at); m.scale.set(Math.max(0.8, S * 0.7), 1, Math.max(0.8, S * 0.7)); faceY(m); }
+  const crack = new PixelPoints(c.scene, 60, 'add');
+  await animate(380, (kk, dt) => {
+    const on = Math.floor(kk * 14) % 3 !== 1;
+    f.mat.opacity = on ? 0.8 : 0.15;
+    g.mat.opacity = on ? 1 : 0.25;
+    f.mesh.scale.y = g.mesh.scale.y = Math.min(1, kk * 5);
+    if (kk > 0.2 && rnd() < 0.8) crack.emit(at.clone().add(V(rnd(-0.4, 0.4) * S, rnd(-0.4, 0.4) * S, rnd(-0.3, 0.3))), V(rnd(-3, 3), rnd(-1, 3), rnd(-3, 3)), { color: rnd() < 0.5 ? '#ffffff' : '#ffe14d', size: rnd() < 0.3 ? 2 : 1, life: 0.22, drag: 2, glow: 1.6 });
+    charge.step(dt); crack.step(dt);
+  });
+  f.done(); g.done(); charge.dispose();
+  // Impact: star, crackle sparks dancing in an open ring, grit, yellow light on floor and wall.
+  const R = reach(c);
+  const star = pixelStar(c, '#fff27a', 1.9, k);
+  const jolts = new FlipBatch(c.scene, 24, 'add', 8);
+  const ring = openArc(c, 7, 0.4);
+  for (let w = 0; w < 3; w++) ring.forEach((a, i) => jolts.add('spark', ringPos(c, a + w * 0.45, 0.42 * R, (0.15 + ((i + w) % 3) * 0.28) * c.h), { scale: k, glow: 1.5, fps: 16, delay: w * 0.12 + i * 0.015 }));
+  const grit = new PixelPoints(c.scene, 40, 'normal', 6);
+  for (let i = 0; i < Math.round(14 * c.P / 0.7); i++) {
+    const a = rnd(0, TAU);
+    grit.emit(c.centre, V(Math.cos(a) * rnd(1.5, 3.5), rnd(0.5, 3), Math.sin(a) * rnd(1.5, 3.5)).multiplyScalar(Math.sqrt(R)), { color: ['#ffe14d', '#ff9a1e', '#fff6a0'][i % 3]!, size: i % 2 ? 2 : 1, life: rnd(0.3, 0.5), gravity: -5, drag: 2 });
+  }
+  const light = impactGlow(c.scene, c.ground, '#ffd84a', 0.95 * R, c.camera);
+  await animate(420, (kk, dt) => {
+    light.set((Math.floor(kk * 12) % 3 === 2 ? 0.45 : 1) * (kk > 0.6 ? 1 - (kk - 0.6) / 0.4 : 1));
+    star.step(dt); jolts.step(dt); grit.step(dt); crack.step(dt);
+  });
+  star.dispose(); light.dispose();
+  return finish(jolts, grit, crack);
+}
+
+async function terraPx(c: Ctx) {
+  const k = texScale(c);
+  const dust = ['#d9c09a', '#c4a27a', '#b39270'];
+  let acc = 0;
+  await pixelFly(c, 'boulder', {
+    ms: 380, arc: 1.1, k: k * (c.tier === 2 ? 2 : 1), trailBlend: 'normal',
+    trail: (pts, at, dt) => {
+      acc += dt;
+      while (acc > 0.03) { acc -= 0.03; pts.emit(at.clone(), V(rnd(-0.3, 0.3), rnd(-0.2, 0.3), rnd(-0.3, 0.3)), { color: dust[Math.floor(rnd(0, 3))]!, size: 2, life: 0.4, drag: 2 }); }
+    },
+  });
+  // Impact: rock spikes burst up in an open arc, the boulder shatters, dust rolls out.
+  const R = reach(c);
+  const star = pixelStar(c, '#fff2d0', 1.2, k);
+  const spikes = new FlipBatch(c.scene, 16, 'normal', 5);
+  openArc(c, 7 + c.tier * 2, 0.3).forEach((a, i) => spikes.add('spike', ringPos(c, a, (0.44 + (i % 2) * 0.08) * R), { anchor: 'bottom', scale: k, fps: 20, life: 0.64, fadeOut: 0.16, flip: i % 2 === 1, delay: (i % 3) * 0.02 }));
+  const chips = new FlipBatch(c.scene, 20, 'normal', 6);
+  for (let i = 0; i < Math.round(12 * c.P / 0.7); i++) {
+    const a = rnd(0, TAU);
+    chips.add('chip', c.centre, { vel: V(Math.cos(a) * rnd(1, 2.5), rnd(2, 4), Math.sin(a) * rnd(1, 2.5)).multiplyScalar(Math.sqrt(R)), gravity: -12, drag: 0.6, loop: true, fps: 16, frame0: i, life: rnd(0.45, 0.65), scale: k * (i % 4 === 0 ? 2 : 1) });
+  }
+  const puffs = new FlipBatch(c.scene, 12, 'normal', 5);
+  openArc(c, 9, 0.2).forEach((a, i) => puffs.add('dust', ringPos(c, a, 0.3 * R, 0.08 * R), { vel: V(Math.cos(a) * 1.4 * R, 0.15, Math.sin(a) * 1.4 * R), drag: 3.5, scale: k, fps: 11, delay: i * 0.012 }));
+  const tail = (async () => {
+    await animate(640, (_kk, dt) => { spikes.step(dt); star.step(dt); chips.step(dt); puffs.step(dt); });
+    spikes.dispose(); star.dispose();
+    await finish(chips, puffs);
+  })();
+  await wait(260);
+  return tail;
+}
+
+async function galePx(c: Ctx) {
+  const k = texScale(c);
+  const n = 1 + c.tier;
+  const blades = new FlipBatch(c.scene, n, 'normal', 6);
+  const paths = Array.from({ length: n }, (_, i) => ({ id: -1, t0: i * 0.07, to: c.centre.clone().add(V(0, (i - (n - 1) / 2) * 0.25 * c.h, 0)), from: c.from.clone().add(V(0, (i - (n - 1) / 2) * 0.15, 0)) }));
+  const p = V();
+  let time = 0;
+  await animate(300 + (n - 1) * 70, (_kk, dt) => {
+    time += dt;
+    for (const q of paths) {
+      const lt = (time - q.t0) / 0.3;
+      if (lt < 0) continue;
+      if (q.id < 0) q.id = blades.add('slash', q.from, { life: 0.31, scale: k * 2, fps: 18, flip: q.t0 > 0.1 });
+      if (lt > 1) continue;
+      blades.place(q.id, arcPoint(p, q.from, q.to, lt, 0.15));
+    }
+    blades.step(dt);
+  });
+  blades.dispose();
+  // Impact: a whirlwind funnel behind the target, leaves and gusts orbiting, a ground ripple.
+  const R = reach(c);
+  const fwd = camFwdXZ(c);
+  const star = pixelStar(c, '#e8fbff', 1.2, k);
+  const funnel = new FlipBatch(c.scene, 3, 'normal', 5);
+  funnel.add('swirl', c.ground.clone().addScaledVector(fwd, 0.12 * R), { anchor: 'bottom', loop: true, life: 0.62, fadeIn: 0.08, fadeOut: 0.2, scale: k * 2, fps: 16 });
+  const orbit = new FlipBatch(c.scene, 8, 'normal', 6);
+  const gust = new PixelPoints(c.scene, 30, 'normal', 6);
+  const seeds = Array.from({ length: 6 }, (_, i) => ({ id: orbit.add('leaf', c.ground, { loop: true, life: 0.62, fps: 16, frame0: i, scale: k, fadeOut: 0.15 }), a: (i / 6) * TAU, y: (i % 3) * 0.25, r: 0.45 + (i % 2) * 0.12 }));
+  const gseeds = Array.from({ length: 14 }, (_, i) => { gust.emit(c.ground, V(), { color: i % 3 ? '#ffffff' : '#a6e2f4', size: i % 2 ? 2 : 1, life: 0.62 }); return { a: (i / 14) * TAU, y: (i % 5) * 0.2, r: 0.5 + (i % 3) * 0.1 }; });
+  void groundRing(c.scene, c.ground.clone().add(V(0, 0.04, 0)), '#ffffff', 1.0 * R, 420);
+  const tail = (async () => {
+    let t = 0;
+    await animate(640, (_kk, dt) => {
+      t += dt;
+      const place = (s: { a: number; y: number; r: number }, speed: number) => {
+        const a = s.a - t * speed;
+        const y = ((s.y + t * 1.4) % 1.1) * c.h;
+        const r = s.r * R * (0.7 + (y / c.h) * 0.4);
+        // Orbit only behind and beside the target: points swinging to the camera side duck under it.
+        const pp = c.ground.clone().add(V(Math.cos(a) * r, y, Math.sin(a) * r));
+        if (Math.cos(a) * fwd.x + Math.sin(a) * fwd.z < -0.2) pp.addScaledVector(fwd, r * 0.8);
+        return pp;
+      };
+      seeds.forEach((s) => orbit.place(s.id, place(s, 7)));
+      gseeds.forEach((s, i) => gust.place(i, place(s, 9)));
+      funnel.step(dt); star.step(dt); orbit.step(dt); gust.step(dt);
+    });
+    funnel.dispose(); star.dispose(); orbit.dispose(); gust.dispose();
+  })();
+  await wait(280);
+  return tail;
+}
+
+async function neutralPx(c: Ctx) {
+  const k = texScale(c);
+  const R = reach(c);
+  // A white pop under the target, a gold one behind it, speed lines and grit flying out.
+  const star = new FlipBatch(c.scene, 3, 'normal', 5);
+  star.add('star', behind(c, c.centre, 0.5 * c.h), { scale: k * 2, tint: '#ffffff', glow: 1.8, fps: 14 });
+  star.add('star', behind(c, c.centre, 0.65 * c.h), { scale: k * 2, tint: '#ffd23f', glow: 1.4, fps: 12, delay: 0.05, flip: true });
+  const lines = new PixelPoints(c.scene, 50, 'add');
+  const cam = c.camera;
+  const right = V(1, 0, 0), up = V(0, 1, 0);
+  if (cam) { right.applyQuaternion(cam.quaternion); up.applyQuaternion(cam.quaternion); }
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU + 0.3;
+    const d = right.clone().multiplyScalar(Math.cos(a)).addScaledVector(up, Math.sin(a));
+    for (let s = 0; s < 4; s++) lines.emit(c.centre.clone().addScaledVector(d, (0.3 + s * 0.05) * c.h), d.clone().multiplyScalar(3.2 * R), { color: '#ffffff', size: s === 0 ? 2 : 1, life: 0.24 - s * 0.02, drag: 4, glow: 1.4 });
+  }
+  const grit = new PixelPoints(c.scene, 30, 'normal', 6);
+  for (let i = 0; i < Math.round(14 * c.P / 0.7); i++) {
+    const a = rnd(0, TAU);
+    grit.emit(c.centre, V(Math.cos(a) * rnd(1.5, 3), rnd(0.8, 3), Math.sin(a) * rnd(1.5, 3)).multiplyScalar(Math.sqrt(R)), { color: ['#ffffff', '#fff27a', '#ffd23f'][i % 3]!, size: i % 2 ? 2 : 1, life: rnd(0.35, 0.55), gravity: -5, drag: 2 });
+  }
+  const light = impactGlow(c.scene, c.ground, '#fff0c0', 0.85 * R, c.camera);
+  const tail = (async () => {
+    await animate(460, (kk, dt) => {
+      light.set(kk < 0.08 ? kk / 0.08 : Math.max(0, 1 - (kk - 0.08) / 0.92));
+      star.step(dt); lines.step(dt); grit.step(dt);
+    });
+    star.dispose(); light.dispose();
+    await finish(lines, grit);
+  })();
+  await wait(200);
+  return tail;
+}
+
+const WHIFF_BOOK: Record<string, BookId> = { Flame: 'fireball', Tide: 'orb', Flora: 'leaf', Spark: 'spark', Terra: 'boulder', Gale: 'slash', Neutral: 'spark' };
+
+/** HD-2D miss: the projectile streaks past the target's shoulder and fades; a pale whoosh. */
+async function whiffPx(c: Ctx, type: MoveElement) {
+  const k = texScale(c);
+  const [col, light] = WHIFF[type] ?? WHIFF.Neutral!;
+  const dir = c.centre.clone().sub(c.from);
+  dir.y = 0;
+  dir.normalize();
+  let lateral = V(-dir.z, 0, dir.x);
+  if (c.camera) {
+    const a = c.centre.clone().addScaledVector(lateral, c.h).project(c.camera);
+    const b = c.centre.clone().addScaledVector(lateral, -c.h).project(c.camera);
+    if (Math.abs(b.x) < Math.abs(a.x)) lateral = lateral.negate();
+  }
+  const by = c.centre.clone().addScaledVector(lateral, 0.75 * c.h).add(V(0, 0.25 * c.h, 0));
+  const past = by.clone().addScaledVector(lateral, 0.35 * c.h).addScaledVector(dir, 1.4 * c.h).add(V(0, 0.2 * c.h, 0));
+  const proj = new FlipBatch(c.scene, 2, 'normal', 6);
+  const trail = new PixelPoints(c.scene, 60, 'normal', 6);
+  const id = proj.add(WHIFF_BOOK[type] ?? 'spark', c.from, { loop: true, life: 0.6, fadeOut: 0.22, scale: k, tint: type === 'Neutral' ? '#d8d0ff' : undefined, glow: type === 'Flame' || type === 'Spark' ? 1.4 : 1 });
+  const p = V();
+  let acc = 0;
+  let swished = false;
+  await animate(600, (kk, dt) => {
+    if (kk < 0.6) arcPoint(p, c.from, by, ease.inOut(kk / 0.6), 0.35);
+    else p.lerpVectors(by, past, (kk - 0.6) / 0.4);
+    proj.place(id, p);
+    if (!swished && kk >= 0.6) { swished = true; proj.add('slash', by, { scale: k * 2, tint: '#ffffff', fps: 18, flip: lateral.x < 0 }); }
+    acc += dt;
+    while (acc > 0.02 && kk < 0.85) { acc -= 0.02; trail.emit(p.clone(), V(rnd(-0.15, 0.15), rnd(0, 0.3), rnd(-0.15, 0.15)), { color: rnd() < 0.6 ? col : light, size: rnd() < 0.4 ? 2 : 1, life: 0.3 }); }
+    proj.step(dt); trail.step(dt);
+  });
+  proj.dispose();
+  void trail.run(350);
+  await wait(80);
+}
+
+async function pixelMoveFx(c: Ctx, type: MoveElement, miss: boolean): Promise<void> {
+  if (miss) return whiffPx(c, type);
+  let tail: Promise<unknown> | void;
+  switch (type) {
+    case 'Flame': tail = await flamePx(c); break;
+    case 'Tide': tail = await tidePx(c); break;
+    case 'Flora': tail = await floraPx(c); break;
+    case 'Spark': tail = await sparkPx(c); break;
+    case 'Terra': tail = await terraPx(c); break;
+    case 'Gale': tail = await galePx(c); break;
+    default: tail = await neutralPx(c); break;
+  }
+  void tail;
+}
+
 // ------------------------------------------------------------------ entry points
 
 /**
@@ -659,6 +1139,7 @@ export async function moveFx(scene: THREE.Scene, type: MoveElement, from: THREE.
   const o = typeof opts === 'number' ? { power: opts } : opts;
   const c = makeCtx(scene, from, to, o);
   fxSeed(type.length * 97 + c.tier * 13);
+  if (hd2dRequested()) return pixelMoveFx(c, type, !!o.miss);
   if (o.miss) return whiff(c, type);
   let tail: Promise<unknown> | void;
   switch (type) {
