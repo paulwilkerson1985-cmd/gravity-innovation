@@ -10,7 +10,7 @@ import type { ArenaDef } from './index';
  * tilt-shift band that starts a little lower so the far tiers recede.
  */
 export function caveGrade(): Grade {
-  return { ...warmCaveGrade(), exposure: 1.2, saturation: 0.8, vignette: 0.18, vignetteSoft: 0.7, tiltTop: 1.8, focusTop: 0.72 };
+  return { ...warmCaveGrade(), exposure: 1.18, saturation: 0.84, vignette: 0.16, vignetteSoft: 0.7, tiltTop: 1.2, focusTop: 0.8 };
 }
 
 export const ARENA: ArenaDef = {
@@ -20,7 +20,14 @@ export const ARENA: ArenaDef = {
   build: (o) => buildCaveArena({ seed: o.seed, quality: o.quality }),
   grade: caveGrade,
   background: '#120a07',
-  // A warm mid-haze: far tiers lift into dusty air instead of sinking to black.
+  // A faint warm haze far back only: the lodge and the window wall stay crisp and readable.
   fog: '#5a3a24',
-  fogRange: [0, 18],
+  fogRange: [8, 34],
+  // A higher, pulled-back camera: the floor reads as a wide open stage (≈ 35–40% of the frame),
+  // the lodge platform and its stair sit whole in the upper right, the windows at the top left.
+  camera: {
+    wide: { elev: 0.72, person: 0.17 },
+    land: { elev: 0.8, person: 0.13 },
+    portrait: { elev: 0.6 },
+  },
 };
