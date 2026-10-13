@@ -110,6 +110,7 @@ describe('hd2d kit: rock', () => {
   it('rubble and pebbles keep out of the kin spots', () => {
     const b = new VoxelBatch(32);
     rubblePile(b, [3, 0, 0], new Rng(6), { radius: 1 });
+    rubblePile(b, [0, 0, 3.2], new Rng(9), { radius: 1, blocky: true });
     pebbles(b, [-2, -2, 2, 2], 60, new Rng(7), [{ x: 0, z: 0, r: 1 }]);
     const g = b.build();
     checkGeometry(g);

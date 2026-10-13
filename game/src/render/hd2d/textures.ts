@@ -297,14 +297,15 @@ function boulderBase(rng: Rng, size: number, ramp: Ramp): TintedTile {
     const e = pos - (Math.floor(pos) + 0.5);
     t.idx[y * size + x] = Math.abs(e) < 0.12 ? Math.floor(pos) + ((e + 0.12) / 0.24 > clusterNoise(x, y) ? 1 : 0) : Math.round(pos);
   }
-  chunks(t, rng, Math.round((size * size) / 56));
-  // Dark pits: 1–3 texel clusters two or three shades into the stone (the speckled rock look),
+  chunks(t, rng, Math.round((size * size) / 70));
+  // Dark pits: 1–4 texel clusters two or three shades into the stone (the speckled rock look),
   // never horizontal pairs (those read as grain once a top face is foreshortened).
-  for (let i = 0; i < size * size / 40; i++) {
+  for (let i = 0; i < size * size / 26; i++) {
     const x = rng.int(size), y = rng.int(size), d = rng.chance(0.3) ? -3 : -2;
     t.nudge(x, y, d);
-    if (rng.chance(0.5)) t.nudge(x, y + 1, d + 1);
-    if (rng.chance(0.25)) t.nudge(x + 1, y + 1, d + 1);
+    if (rng.chance(0.55)) t.nudge(x, y + 1, d + 1);
+    if (rng.chance(0.3)) t.nudge(x + 1, y + 1, d + 1);
+    if (rng.chance(0.2)) t.nudge(x - 1, y + 1, d + 1);
   }
   // Lit flecks: single texels, a few 2×2 clusters.
   for (let i = 0; i < size * size / 70; i++) {
@@ -326,7 +327,7 @@ function chunks(t: TintedTile, rng: Rng, count: number) {
   const { w, h } = t;
   const seeds = Array.from({ length: count }, () => ({
     x: rng.next() * w, y: rng.next() * h, wt: 0.65 + rng.next() * 0.9,
-    off: rng.chance(0.22) ? -1 : rng.chance(0.25) ? 1 : 0,
+    off: rng.chance(0.15) ? -1 : rng.chance(0.15) ? 1 : 0,
     v: (rng.next() - 0.5) * 0.2, hue: (rng.next() - 0.5) * 0.12,
   }));
   const owner = new Int16Array(w * h);
@@ -352,14 +353,14 @@ function chunks(t: TintedTile, rng: Rng, count: number) {
     let k = s.off;
     // Lit top-left, shadowed bottom-right inside the chunk.
     const l = -(rel[i * 2]! * 0.55 + rel[i * 2 + 1]! * 0.85) / R;
-    if (l > 0.5) k += 1; else if (l < -0.6) k -= 1;
+    if (l > 0.65) k += 1; else if (l < -0.7) k -= 1;
     const up = own(x, y - 1), dn = own(x, y + 1), lf = own(x - 1, y), rt = own(x + 1, y);
     const eUp = up !== o && !fused(o, up), eDn = dn !== o && !fused(o, dn);
     const eLf = lf !== o && !fused(o, lf), eRt = rt !== o && !fused(o, rt);
     if (eDn && eRt) k = s.off - 2; // mortar corner
-    else if (eDn) k = s.off - (clusterNoise(x * 2 + 5, y) < 0.7 ? 2 : 1); // crevice under the chunk
+    else if (eDn) k = s.off - (clusterNoise(x * 2 + 5, y) < 0.45 ? 2 : 1); // crevice under the chunk
     else if (eRt) k = Math.min(k, s.off - 1);
-    else if (eUp && l > -0.2) k = s.off + 2; // crisp lit top edge (the lit half of it)
+    else if (eUp && l > 0) k = s.off + 2; // crisp lit top edge (the lit half of it)
     else if (eUp || eLf) k = Math.max(k, s.off + 1);
     d[i] = k;
     const hue = s.hue, v = 1 + s.v;

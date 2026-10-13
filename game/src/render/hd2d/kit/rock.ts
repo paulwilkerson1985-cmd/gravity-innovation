@@ -57,7 +57,16 @@ export interface BoulderOptions {
    * chamfer): a faceted, chiselled top instead of a flat lid. Not on the cheap version.
    */
   peak?: number;
+  /**
+   * Strength of the per-stone form gradient baked into the vertex colours (default 0.16): the
+   * corner toward the upper-left-front is lighter, the opposite one darker, so every block face
+   * reads lit top-left → shadowed bottom-right like a hand-shaded stone. 0 = off.
+   */
+  form?: number;
 }
+
+/** Direction of the baked form gradient (world): upper left, toward the camera. */
+const FORM_DIR = new THREE.Vector3(-0.55, 0.7, 0.45).normalize();
 
 const tmp = new THREE.Vector3();
 
@@ -102,6 +111,9 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
   const offU = pick(), offV = pick();
   const m = new THREE.Matrix4().compose(new THREE.Vector3(...center), new THREE.Quaternion().setFromEuler(new THREE.Euler(o.rx ?? 0, o.ry ?? 0, o.rz ?? 0)), new THREE.Vector3(1, 1, 1));
   const kTop = K_TOP * Math.sqrt(topK / 1.3);
+  const formK = o.form ?? 0.16;
+  // The form gradient's direction in LOCAL axes (the stone may be rotated).
+  const formL = FORM_DIR.clone().applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(o.rx ?? 0, o.ry ?? 0, o.rz ?? 0)).invert());
   // Plan-view chamfer of the vertical edges, its own size per corner (none on the cheap
   // version: 4-vertex rings) — an irregular octagon, never a rounded square.
   const cv = lite ? 0 : c;
@@ -148,7 +160,10 @@ export function boulder(batch: VoxelBatch, center: V3, size: V3, tint: THREE.Col
     const e2 = new THREE.Vector3(P[2]![0] - P[0]![0], P[2]![1] - P[0]![1], P[2]![2] - P[0]![2]);
     if (e1.cross(e2).dot(new THREE.Vector3(cen[0], cen[1], cen[2])) < 0) verts = verts.slice().reverse();
     const W = verts.map(world);
-    const col = verts.map((q) => tint.clone().multiplyScalar(q.ao * k));
+    const col = verts.map((q) => {
+      const f = formK ? 1 + formK * Math.max(-1, Math.min(1, (q.p[0] / h[0]) * formL.x * 0.8 + (q.p[1] / h[1]) * formL.y + (q.p[2] / h[2]) * formL.z * 0.8)) : 1;
+      return tint.clone().multiplyScalar(q.ao * k * f);
+    });
     const uv = verts.map((q) => uvOf(q.p, axis));
     const fa = verts.map(faceAttr);
     for (let t = 1; t + 1 < verts.length; t++) {
@@ -470,6 +485,11 @@ export interface RubbleOptions {
    * grey value ramp, so a pile reads as many separate stones that catch the light differently).
    */
   ramp?: readonly (readonly [number, number, number])[];
+  /**
+   * A heap of small near-cubic blocks stacked on a jittered grid (a voxel-like mound of quarried
+   * stone) instead of tumbled stones: few rotations, mostly upright, square-ish.
+   */
+  blocky?: boolean;
 }
 
 /**
@@ -492,6 +512,7 @@ function rampTint(base: THREE.Color, ramp: RubbleOptions['ramp'], bias: number, 
  * each stone a step of a cool-grey value ramp.
  */
 export function rubblePile(batch: VoxelBatch, center: [number, number, number], rng: Rng, o: RubbleOptions) {
+  if (o.blocky) { blockyRubble(batch, center, rng, o); return; }
   const r = o.radius;
   const n = o.count ?? Math.round(8 + r * 14);
   const heap = o.heap ?? 0.5;
@@ -512,6 +533,41 @@ export function rubblePile(batch: VoxelBatch, center: [number, number, number], 
       // Chunky, blocky stones: flat facets, a small bevel, no bulge.
       chamfer: Math.max(TEXEL, Math.min(sx, sy, sz) * (0.08 + rng.next() * 0.06)), bulge: 0,
       jitter: s * 0.08, topJitter: s * 0.12, aoBottom: 0.45, topK: 1.25,
+    });
+  }
+}
+
+/**
+ * Blocky rubble: cubes of one module (≈ radius / 3.5) stacked in columns over a jittered grid,
+ * tallest in the middle, ragged at the rim, each a little offset, yawed and of its own grey;
+ * a fringe of loose single cubes and chips around the foot.
+ */
+function blockyRubble(batch: VoxelBatch, center: [number, number, number], rng: Rng, o: RubbleOptions) {
+  const r = o.radius, heap = o.heap ?? 0.6;
+  const m = Math.max(0.2, Math.min(0.5, (o.big ?? r * 0.55) * 0.8));
+  const base = new THREE.Color(o.tint ?? '#ffffff');
+  const n = Math.ceil(r / m);
+  for (let gz = -n; gz <= n; gz++) for (let gx = -n; gx <= n; gx++) {
+    const x = gx * m + (gz % 2 ? m * 0.5 : 0) + (rng.next() - 0.5) * m * 0.3, z = gz * m * 0.9 + (rng.next() - 0.5) * m * 0.3;
+    const d = Math.hypot(x, z / 0.85) / r;
+    if (d > 1 - rng.next() * 0.3) continue;
+    const cols = Math.max(1, Math.round((1 - d) * heap * r / m * 1.4 + rng.next() * 0.6));
+    for (let k = 0; k < cols; k++) {
+      const s = m * (0.8 + rng.next() * 0.4) * (1 - k * 0.06);
+      const sy = s * (0.75 + rng.next() * 0.35);
+      boulder(batch, [center[0] + x + (rng.next() - 0.5) * m * 0.2, center[1] + k * m * 0.78 + sy * 0.42, center[2] + z + (rng.next() - 0.5) * m * 0.2], [s * (0.9 + rng.next() * 0.3), sy, s * (0.85 + rng.next() * 0.3)],
+        rampTint(base, o.ramp, k > 0 ? 0.5 : -0.3, rng), rng, {
+          ry: (rng.next() - 0.5) * 0.4, rx: (rng.next() - 0.5) * 0.1, rz: (rng.next() - 0.5) * 0.1,
+          chamfer: Math.max(TEXEL * 0.8, s * 0.07), bulge: 0, jitter: s * 0.05, topJitter: s * 0.08, aoBottom: 0.35, topK: 1.5,
+          chips: rng.chance(0.4) ? 1 : 0, topOnly: k < cols - 1 && rng.chance(0.5),
+        });
+    }
+  }
+  // Loose cubes and chips around the foot.
+  for (let k = 0; k < Math.round(r * 6); k++) {
+    const a = rng.next() * Math.PI * 2, d = r * (0.85 + rng.next() * 0.55), s = m * (0.3 + rng.next() * 0.4);
+    boulder(batch, [center[0] + Math.cos(a) * d, center[1] + s * 0.35, center[2] + Math.sin(a) * d * 0.85], [s, s * 0.8, s * 0.9], rampTint(base, o.ramp, -0.4, rng), rng, {
+      ry: rng.next() * 3, chamfer: Math.max(TEXEL * 0.6, s * 0.08), jitter: s * 0.06, topJitter: s * 0.1, aoBottom: 0.45, topK: 1.3, topOnly: true,
     });
   }
 }
