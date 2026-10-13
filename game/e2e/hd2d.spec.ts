@@ -40,6 +40,30 @@ async function expectFrame(page: Page) {
   expect(stats!.nonBlack).toBeGreaterThan(stats!.samples * 0.6);
 }
 
+/** Canvas drawing buffer vs its on-screen size (device px). */
+const canvasGrid = (page: Page) => page.evaluate(() => {
+  const c = document.getElementById('view') as HTMLCanvasElement;
+  const r = c.getBoundingClientRect();
+  return { bw: c.width, bh: c.height, cssW: r.width, cssH: r.height, dpr: devicePixelRatio, iw: innerWidth, ih: innerHeight, rendering: getComputedStyle(c).imageRendering };
+});
+
+/**
+ * HD-2D integer pixel grid: every internal texel covers exactly s×s device px (s whole), the
+ * canvas covers the window, the upscale is nearest-neighbour; 1280×720 is exactly 640×360 @2×.
+ */
+async function expectPixelGrid(page: Page, desktop: boolean) {
+  const gr = await canvasGrid(page);
+  const sx = (gr.cssW * gr.dpr) / gr.bw, sy = (gr.cssH * gr.dpr) / gr.bh;
+  expect(Math.abs(sx - Math.round(sx)), `device px per texel (x) ${sx}`).toBeLessThan(0.01);
+  expect(Math.abs(sy - Math.round(sy)), `device px per texel (y) ${sy}`).toBeLessThan(0.01);
+  expect(Math.round(sx)).toBe(Math.round(sy));
+  expect(gr.cssW).toBeGreaterThanOrEqual(gr.iw - 0.01);
+  expect(gr.cssH).toBeGreaterThanOrEqual(gr.ih - 0.01);
+  expect(gr.rendering).toBe('pixelated');
+  if (desktop) expect([gr.bw, gr.bh, Math.round(sx)]).toEqual([640, 360, 2]);
+  expect((await g(page, (h) => h.perf()))!.internal).toEqual([gr.bw, gr.bh]);
+}
+
 async function playTurn(page: Page) {
   expect(await g(page, (h) => h.waitIdle(60000))).toBe(true);
   const turn = (await g(page, (h) => h.battle()))!.turn;
@@ -60,6 +84,7 @@ test('hd2d: trainer battle in the Ember Ridge cave arena', async ({ page }, info
   expect(await g(page, (h) => h.waitIdle(60000))).toBe(true);
   const perf = await g(page, (h) => h.perf());
   expect(perf, 'HD-2D pipeline active').not.toBeNull();
+  await expectPixelGrid(page, info.project.name === 'desktop');
   await expectFrame(page);
   // Everyone is on the field: both kin, the trainer behind theirs, the player behind yours.
   const subjects = (await g(page, (h) => h.layout())).subjects.map((s) => s.name).sort();
@@ -77,6 +102,7 @@ test('hd2d: wild battle in a cave hotspot uses the arena too', async ({ page }, 
   await g(page, (h) => h.setSpeed(4));
   expect(await g(page, (h) => h.waitIdle(60000))).toBe(true);
   expect((await g(page, (h) => h.perf()))!.quality).toBe('low');
+  await expectPixelGrid(page, info.project.name === 'desktop');
   await expectFrame(page);
   const subjects = (await g(page, (h) => h.layout())).subjects.map((s) => s.name).sort();
   expect(subjects).toEqual(['foe', 'mine', 'player']);
@@ -90,4 +116,9 @@ test('hd2d: without the flag the default renderer is untouched', async ({ page }
   await page.goto('/?seed=5&scene=battle&route=ridge&hotspot=hiker-brann');
   await page.waitForFunction(() => (window as unknown as { __game?: Hooks }).__game?.scene() === 'battle');
   expect(await g(page, (h) => h.perf())).toBeNull();
+  // The default ~420 px internal policy (fractional ratio, dpr capped at 2) is unchanged.
+  const gr = await canvasGrid(page);
+  const ratio = Math.min(Math.min(gr.dpr, 2), Math.max(0.35, 420 / gr.ih));
+  expect([gr.bw, gr.bh]).toEqual([Math.floor(gr.iw * ratio), Math.floor(gr.ih * ratio)]);
+  expect([gr.cssW, gr.cssH]).toEqual([gr.iw, gr.ih]);
 });

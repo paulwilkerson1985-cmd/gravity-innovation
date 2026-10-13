@@ -62,7 +62,10 @@ html, body {
 button, input, select, textarea { font: inherit; font-synthesis: none; }
 b, strong, h1, h2, h3, h4 { font-weight: 400; }
 #app { position: fixed; inset: 0; }
-#view { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; touch-action: manipulation; }
+/* The canvas upscale is always nearest-neighbour: `pixelated` is declared LAST so it wins wherever
+   it is supported (crisp-edges is only the fallback). HD-2D sets an exact inline width/height of
+   (internal px × whole device px) so every texel is s×s device px (render/renderer.ts pixelGrid). */
+#view { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: crisp-edges; image-rendering: pixelated; touch-action: manipulation; }
 #overlay { position: absolute; inset: 0; pointer-events: none; }
 .scene-ui { position: absolute; inset: 0; }
 /* Big screens: scale the whole HTML UI by a whole-ish factor so the pixel font stays crisp

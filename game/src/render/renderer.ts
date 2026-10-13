@@ -24,7 +24,11 @@ export class Renderer {
   /** Scenes whose programs were warmed, with the number of frames rendered so far. */
   private warmed = new WeakMap<THREE.Scene, number>();
 
-  /** Internal resolution policy override (HD-2D pipeline); null = the default ~420 px height. */
+  /**
+   * Internal resolution policy override (HD-2D pipeline): `height` = target internal height,
+   * `minShort` = minimum internal short side; the actual size is an integer pixel grid
+   * (see pixelGrid). null = the default ~420 px height (fractional ratio, unchanged).
+   */
   private internal: { height: number; minShort: number } | null = null;
 
   /** Change the internal-resolution policy (HD-2D tiers) and resize the drawing buffer. */
@@ -33,22 +37,56 @@ export class Renderer {
     this.resize();
   }
 
+  /**
+   * HD-2D integer pixel grid for a policy `p`: the whole-number number of DEVICE pixels per
+   * internal pixel `s` (so every texel is exactly s×s device px, no 1/2-px column alternation)
+   * and the internal (drawing-buffer) size. s = round(min(h·dpr / p.height, short·dpr / p.minShort)),
+   * so 1280×720 → 640×360 @2×, 1920×1080 → @3×, 2560×1440 → @4×; a 393×851 @2.75 phone with the
+   * low tier (300 / 270) → 270×585 @4 device px. Uses the real devicePixelRatio (no cap) so the
+   * device-px ratio is an integer on high-DPR phones too.
+   */
+  static pixelGrid(w: number, h: number, dpr: number, p: { height: number; minShort: number }): { scale: number; bw: number; bh: number } {
+    const scale = Math.max(1, Math.round(Math.min((h * dpr) / p.height, (Math.min(w, h) * dpr) / p.minShort)));
+    // Cover the window (ceil): the canvas overhangs the right/bottom edge by < 1 texel (clipped).
+    return { scale, bw: Math.max(1, Math.ceil((w * dpr) / scale - 1e-6)), bh: Math.max(1, Math.ceil((h * dpr) / scale - 1e-6)) };
+  }
+
   /** Returns true if the size changed. */
   resize(): boolean {
     const w = Math.max(1, window.innerWidth);
     const h = Math.max(1, window.innerHeight);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const p = this.internal;
-    const ratio = p
-      ? Math.min(dpr, Math.max(0.25, p.height / h, p.minShort / Math.min(w, h)))
-      : Math.min(dpr, Math.max(0.35, TARGET_INTERNAL_HEIGHT / h));
-    const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== ratio;
+    if (p) {
+      // HD-2D: the drawing buffer is the internal pixel grid itself (pixel ratio 1) and the
+      // canvas is shown at exactly bw·s / dpr CSS px, upscaled nearest-neighbour by CSS.
+      const dpr = window.devicePixelRatio || 1;
+      const { scale, bw, bh } = Renderer.pixelGrid(w, h, dpr, p);
+      const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== 1 || this.grid[0] !== bw || this.grid[1] !== bh || this.grid[2] !== scale;
+      this.width = w;
+      this.height = h;
+      this.grid = [bw, bh, scale];
+      this.gl.setPixelRatio(1);
+      this.gl.setSize(bw, bh, false);
+      this.canvas.style.width = `${(bw * scale) / dpr}px`;
+      this.canvas.style.height = `${(bh * scale) / dpr}px`;
+      return changed;
+    }
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const ratio = Math.min(dpr, Math.max(0.35, TARGET_INTERNAL_HEIGHT / h));
+    const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== ratio || this.grid[2] !== 0;
     this.width = w;
     this.height = h;
+    this.grid = [0, 0, 0];
     this.gl.setPixelRatio(ratio);
     this.gl.setSize(w, h, true);
     return changed;
   }
+
+  /** HD-2D pixel grid in effect: [buffer w, buffer h, device px per internal px]; zeros on the default path. */
+  private grid: [number, number, number] = [0, 0, 0];
+
+  /** Device px per internal px of the HD-2D grid (0 when the default policy is active). */
+  get pixelScale(): number { return this.grid[2]; }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {
     // Compile the shared material shapes against this scene's lights/fog on its first frame
