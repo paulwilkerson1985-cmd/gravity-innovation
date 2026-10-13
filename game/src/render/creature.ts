@@ -323,6 +323,27 @@ export class CreatureView {
 
   private get idleAllowed() { return !this.busy && this.acting === 0; }
 
+  /** Acting (lunge, hit, dodge, faint, appear) or recalled: HD-2D sprites re-bake every frame. */
+  get animating(): boolean { return this.acting > 0 || this.busy; }
+
+  /** Idle motion multiplier (HD-2D sprites: big enough to move whole texels); 1 = default. */
+  idleGain = 1;
+
+  /** HD-2D hit blink: true on the frames a hit sprite is hidden (the default renderer ignores it). */
+  blinkOff = false;
+
+  private darkCache: boolean | null = null;
+  /** A dark-coloured kin (mean vertex luminance low): HD-2D gives it a light inner rim. */
+  get dark(): boolean {
+    if (this.darkCache === null) {
+      const col = this.mesh.geometry.getAttribute('color');
+      let sum = 0;
+      for (let i = 0; i < (col?.count ?? 0); i++) sum += 0.2126 * col!.getX(i) + 0.7152 * col!.getY(i) + 0.0722 * col!.getZ(i);
+      this.darkCache = !!col && sum / col.count < 0.06;
+    }
+    return this.darkCache;
+  }
+
   private setShadow(lift: number, fade = 1) {
     const k = Math.max(0.55, 1 - lift * 0.9);
     this.shadow.scale.set(this.shadowBase.x * k, this.shadowBase.y * k, 1);
@@ -382,6 +403,12 @@ export class CreatureView {
         y += Math.max(0, Math.sin(tt * 1.6)) * 0.012;
         break;
       }
+    }
+    if (this.idleGain !== 1) {
+      const g = this.idleGain;
+      y = this.hover + (y - this.hover) * g;
+      sy = 1 + (sy - 1) * g;
+      pitch *= g; roll *= g;
     }
     sxz = 1 / Math.sqrt(sy);
     this.mesh.position.y = y;
@@ -486,7 +513,9 @@ export class CreatureView {
       const on = k < 0.08 || (Math.floor(k * 9) % 2 === 0 && k < 0.7);
       const f = on ? (strong ? 1 : 0.85) * (1 - k * 0.6) : 0;
       this.material.emissive.setRGB(f, f, f);
+      this.blinkOff = !on && k < 0.7;
     });
+    this.blinkOff = false;
     this.material.emissive.setRGB(0, 0, 0);
     this.inner.position.x = x0;
     this.inner.position.z = z0;
@@ -561,6 +590,7 @@ export class CreatureView {
     this.acting = 0;
     this.setShadow(this.hover);
     this.material.emissive.setRGB(0, 0, 0);
+    this.blinkOff = false;
     this.busy = false;
   }
 
