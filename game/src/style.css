@@ -877,3 +877,20 @@ h1, h2, h3, h4 { text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) {
   .arena-curtain-card, .arena-vs-side, .arena-vs-mid, .arena-win-name, .arena-timer.low, .arena-pulse { animation: none !important; }
 }
+
+/* ============================================================================ desktop readability
+   On desktop-size screens the 10px tier is too small to read comfortably: secondary text
+   (meta lines, subtitles, section labels, stat labels, notes) steps up to the 20px tier.
+   Phones keep 10px where space is tight. Tiny tags (HP/XP, chips, tile names) stay 10px. */
+@media (min-width: 1024px) and (min-height: 600px) {
+  .mmeta, .menu-sub, .stats, .footnote, .route-status, .route-next, .meta-hint, .meta-sub, .ks-h, .ks-sub, .set-group h3, .set-note,
+  .mr-blurb, .mr-meta, .mr-pp, .xp-row, .stat-grid, .tab-need, .owned, .act-why, .arena-field-label, .arena-or, .hof-stats,
+  .item-row .ir-main .small, .sc-info, .habitats .small, .arena-stat, .arena-moves-head, .arena-rule, .btn-act, .arena-server, .arena-vkin, .arena-vkos {
+    font: var(--f2);
+  }
+  .stat-grid { grid-template-columns: 110px 1fr 40px; }
+  .xp-row { grid-template-columns: 34px 1fr auto; }
+  .arena-stat { grid-template-columns: 46px 1fr 40px; }
+  .kin-row .mmeta, .kin-row .plevel { font: var(--f1); }
+  .bt-menu .mmeta { line-height: 20px; }
+}

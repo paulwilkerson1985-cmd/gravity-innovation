@@ -14,6 +14,9 @@ names or icons. Screens: `docs/screenshots/ui-pixel/`.
    tokens `--f1` (10/12), `--f2` (20/24), `--f2t` (20/20, tight boxes), `--f3`, `--f4`. Never
    `font-weight` (there is one weight; `font-synthesis: none` stops faux bold) and never
    fractional sizes. Hierarchy comes from size, case, colour and the ink shadow — not weight.
+   On desktop-size viewports (≥ 1024×600) the secondary 10px tier (meta lines, subtitles,
+   section labels, stat labels, notes) steps up to 20px for readability; tiny tags (HP/XP,
+   type chips, tile names) stay 10px.
 3. **Uppercase for labels** (names, menu entries, buttons, headings); sentence case for dialog
    and blurbs. Text on paper gets the GBA-style shadow `--tsh` (1 UI px, `--shade`).
 4. **No rounded corners, no soft shadows, no gradients on chrome.** Drop shadows are hard offsets

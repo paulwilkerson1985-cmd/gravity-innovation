@@ -308,3 +308,10 @@
   .pdots { gap: 0; }
   .arena-panel-far .hpnums { display: none; }
 }
+
+/* desktop readability (see style.css): the bigger secondary tier needs its own line height here */
+@media (min-width: 1024px) and (min-height: 600px) {
+  .btn-spot .mmeta, .bt-menu .mmeta { line-height: 20px; }
+  .route-next { font: var(--f2); }
+  .tab-need { font: var(--f1); }
+}
