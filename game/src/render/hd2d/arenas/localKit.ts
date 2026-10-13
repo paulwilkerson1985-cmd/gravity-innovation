@@ -396,6 +396,9 @@ void main() {
     float n3 = hash(floor((cell + vec2(floor(uTime * 0.6), 0.0)) / 3.0));
     float along = smoothstep(0.9 - uCaps * 0.06, 0.99, wv) * step(0.62 - uCaps * 0.25, n3);
     caps = along * smoothstep(1.5, 4.0, d) * (1.0 - far * 0.9);
+    // The shore field saturates at uRange: fade the crest-bound caps out before it, or they
+    // trace one ruler line of foam round every island far out (seen by phone cameras).
+    caps *= 1.0 - smoothstep(uRange * 0.7, uRange * 0.97, d);
   }
   float foam = max(edgeFoam, max(crest, caps));
   if (foam > b * 0.9 + 0.08) c = mix(uFoam, c, 0.12 * step(0.5, b));

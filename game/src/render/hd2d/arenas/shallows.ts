@@ -80,7 +80,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   ];
   const onStack = (x: number, z: number) => stacks.some(([sx, sz, r]) => Math.hypot(x - sx, (z - sz) * 1.1) < r * 0.95);
   const rock = new VoxelBatch(32);
-  for (const [sx, sz, r, h] of stacks) rockStack(rock, V(sx, WATER_Y - 0.7, sz), r, h + 0.7, rng, { foot: '#8e9a9c', top: '#fffdf4', taper: 0.58 });
+  for (const [sx, sz, r, h] of stacks) rockStack(rock, V(sx, WATER_Y - 0.7, sz), r, h + 0.7, rng, { foot: '#b0b8b8', top: '#ffffff', taper: 0.58 });
   // A few loose boulders at the foot of each stack, half in the water.
   for (const [sx, sz, r] of stacks.slice(0, 8)) rubblePile(rock, [sx, WATER_Y - 0.15, sz + r * 0.6], rng, { radius: r * 0.7, heap: 0.35, big: Math.min(0.6, r * 0.4) });
   group.add(mk(rock.build(), track(surfaceMaterial(texRock, undefined, true))));
@@ -159,9 +159,9 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     const dir = V(Math.cos(a), 0, Math.sin(a));
     const side = V(-dir.z, 0, dir.x).multiplyScalar(0.34);
     // A flat card on the surface, root at (x, z), slightly raised at the tip.
-    leaves.card(V(x, WATER_Y + 0.03, z), side, dir.clone().multiplyScalar(l).add(V(0, 0.05, 0)), kelp, grey(0.9 + rng.next() * 0.3), 0.2, 1, V(0, 1, 0));
+    leaves.card(V(x, WATER_Y + 0.03, z), side, dir.clone().multiplyScalar(l).add(V(0, 0.05, 0)), kelp, new THREE.Color(0.42, 0.5, 0.36).multiplyScalar(0.8 + rng.next() * 0.3), 0.2, 1, V(0, 1, 0));
   };
-  for (const [sx, sz, r] of stacks.slice(0, 7)) for (let k = 0; k < 5; k++) { const a = rng.next() * Math.PI * 2; kelpAt(sx + Math.cos(a) * (r + 0.1 + rng.next() * 0.3), sz + Math.sin(a) * (r + 0.1 + rng.next() * 0.3)); }
+  for (const [sx, sz, r] of stacks.slice(0, 7)) for (let k = 0; k < 3; k++) { const a = rng.next() * Math.PI * 2; kelpAt(sx + Math.cos(a) * (r + 0.1 + rng.next() * 0.3), sz + Math.sin(a) * (r + 0.1 + rng.next() * 0.3)); }
   for (let k = 0; k < 10; k++) {
     const d = new THREE.Vector2((rng.next() - 0.5) * 13, (rng.chance(0.5) ? 1 : -1) * (3.0 + rng.next() * 1.4));
     kelpAt(centre.x + ax.x * d.x + ac.x * d.y, centre.y + ax.y * d.x + ac.y * d.y);
@@ -189,12 +189,12 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   // shadows, drifting dark cloud shadows everywhere else, cool weak sky fill.
   const rig = sunRig(group, {
     target: V(0.3, 0, -0.1), from: V(-0.55, 0.62, -0.55), distance: 34, angle: 0.5, penumbra: 0.2, shadowRadius: 2,
-    color: '#ffd498', intensity: 13, cookie: null,
-    sky: '#8a9cb4', ground: '#2a4048', hemi: 1.25,
+    color: '#ffdcaa', intensity: 11.5, cookie: null,
+    sky: '#9aaccc', ground: '#3a5560', hemi: 1.55,
     fill: '#9ab0c8', fillIntensity: 0.35, quality: q,
   });
   const key = rig.key;
-  const gob = gobo(key, { kind: 'clouds', seed: 9, pool: { x: 0.3, z: -0.1, ru: 4.6, rv: 2.9, angle: Math.atan2(-2.0, 2.8), soft: 0.35 }, outside: 0.3, shade: 0.35, cover: 0.5, scale: 10, drift: [0.3, 0.12], y: 0.1 });
+  const gob = gobo(key, { kind: 'clouds', seed: 9, pool: { x: 0.3, z: -0.1, ru: 4.6, rv: 2.9, angle: Math.atan2(-2.0, 2.8), soft: 0.35 }, outside: 0.38, shade: 0.4, cover: 0.5, scale: 10, drift: [0.3, 0.12], y: 0.1 });
   track(gob);
   updates.push(gob.update);
   group.add(lightPools([[0.3, -0.1, 9.6, 6.2]], '#4a3a20', 1.2));

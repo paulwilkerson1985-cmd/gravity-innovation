@@ -164,13 +164,16 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
     const a = rng.next() * Math.PI * 2, r = 0.85 + Math.pow(rng.next(), 1.4) * 0.6;
     const x = Math.cos(a) * 6.6 * r, z = 0.2 + Math.sin(a) * 4.3 * r;
     if (nearStage(x, z, 1.9) || z < EDGE_Z + 0.3 || z > 6.5) continue;
+    // Keep the camera side of the battle floor open: no tufts between the kin and the lens.
+    if (z > 2.6 && Math.abs(x) < 4.6) continue;
     const kind = rng.next();
-    const sprite = kind < 0.28 ? 'scrub' : kind < 0.7 ? 'dry' : 'tallDry';
+    const sprite = kind < 0.28 ? 'scrub' : kind < 0.7 || Math.abs(x) < 5 ? 'dry' : 'tallDry';
     fol.add(atlas.get(sprite, rng), [x, topAt(x, z), z], 'billboard', { sway: sprite === 'scrub' ? 0.02 : 0.06, flip: rng.chance(0.5), tint: new THREE.Color(1, 1, 1).multiplyScalar(0.85 + rng.next() * 0.25) });
   }
   // A few dry tufts along the drop edge (silhouetted against the sky).
   for (let x = -7; x < 7; x += 0.7 + rng.next() * 0.8) fol.add(atlas.get('dry', rng), [x, topAt(x, EDGE_Z + 0.3), EDGE_Z + 0.3], 'billboard', { sway: 0.07, flip: rng.chance(0.5) });
-  const folMesh = fol.build(atlasTex, { upNormal: 0.4 });
+  // Normals bent well up: backlit tufts still catch the sky and the low key on their tips.
+  const folMesh = fol.build(atlasTex, { upNormal: 0.75 });
   group.add(folMesh);
   updates.push((t) => { fol.uTime.value = t; });
 

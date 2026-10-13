@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { Rng } from '../../../engine/rng';
 import { CELL, Heightmap, LEVEL, VoxelBatch, dustMotes, lightBeams, rockColumns, surfaceMaterial, type ArenaRig, type BeamSpec } from '../arena';
-import { boulderColumns } from '../kit/rock';
+import { boulder, boulderColumns } from '../kit/rock';
 import { paintBoulder } from '../textures';
 import type { SpriteLight } from '../sprite';
 import { postFlags, type Grade } from '../pipeline';
@@ -228,7 +228,12 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     if (Math.abs(x + 0.4) < 1.1) continue;
     const z = 4.25 + Math.sin(x * 0.7) * 0.15;
     const top = topAt(x, z + 0.3);
-    for (let k = 0; k < 2; k++) orientedBox(white, V(x, top + 0.14 + k * 0.24, z), V(0.4 + rng.next() * 0.15, 0.24, 0.32), V((rng.next() - 0.5) * 0.1, 1, 0), grey(0.55 + rng.next() * 0.15), rng, (rng.next() - 0.5) * 0.3);
+    // Rounded rock-kit fieldstones, two courses, the top course gappy (not a row of crates).
+    for (let k = 0; k < 2; k++) {
+      if (k === 1 && rng.chance(0.3)) continue;
+      const w = 0.42 + rng.next() * 0.18, h = 0.22 + rng.next() * 0.08;
+      boulder(white, [x, top + 0.12 + k * 0.22 + h * 0.3, z + (rng.next() - 0.5) * 0.06], [w, h, 0.34], grey(0.62 + rng.next() * 0.16), rng, { ry: (rng.next() - 0.5) * 0.3, rz: (rng.next() - 0.5) * 0.15, aoBottom: 0.5, topK: 1.3 });
+    }
   }
   const trunk = new VoxelBatch(32);
   const leaves = new FoliageBatch();
@@ -275,7 +280,7 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
     const lands: { z: number; x: [number, number]; y: [number, number]; d: number; o: Omit<MesaOpts, 'foot'> }[] = [
       { z: -60, x: [-64, 64], y: [-15, -4], d: 5, o: { ramp: LAND, capRamp: RAMPS2.turf, capRows: 2, count: 0, w: [30, 70], h: [10, 24], haze: 0.5, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.4, ridge: true, cliff: 2.2, allow: (x) => Math.abs(x / 5 - 64 - SUN.x * 0.86) > 10 } },
       { z: -47, x: [-50, 50], y: [-15, -2], d: 7, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [16, 44], h: [24, 50], haze: 0.32, hazeCol: HAZE_LAND, sunX: 9999, gullies: 0.8, foam: '#e6ece8', tilt: 0.45, cliff: 3.5, allow: (x) => { const wx = x / 7 - 50; return wx < -12 || wx > 34; } } },
-      { z: -34, x: [-40, 40], y: [-15, 1], d: 10, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [26, 70], h: [44, 92], haze: 0.14, hazeCol: HAZE_LAND, sunX: 9999, gullies: 1, foam: '#eef2ee', tilt: 0.5, cliff: 3, allow: (x) => { const wx = x / 10 - 40; return wx < -15 || wx > 30; } } },
+      { z: -34, x: [-40, 40], y: [-15, 1], d: 10, o: { ramp: LAND, capRamp: RAMPS2.turf, count: 0, w: [22, 52], h: [40, 84], haze: 0.14, hazeCol: HAZE_LAND, sunX: 9999, gullies: 1, foam: '#eef2ee', tilt: 0.6, cliff: 2.2, allow: (x) => { const wx = x / 10 - 40; return wx < -22 || wx > 30; } } },
     ];
     lands.forEach((L, k) => {
       const W = Math.round((L.x[1] - L.x[0]) * L.d), H = Math.round((L.y[1] - L.y[0]) * L.d);
@@ -338,9 +343,9 @@ export function buildCliffArena(opts: CliffOptions = {}): ArenaRig {
 
   // ---- fog lying in horizontal bands over the water and between the headlands
   const fog = fogBands([
-    { x: 0, y: SEA_Y + 1.0, z: -14, w: 60, h: 2.6, color: '#d8d6cc', alpha: 0.45, speed: 0.35 },
-    { x: -6, y: SEA_Y + 1.4, z: -27, w: 90, h: 3.6, color: '#d4ccbe', alpha: 0.42, speed: 0.25 },
-    { x: 10, y: SEA_Y + 2.6, z: -40, w: 110, h: 4.4, color: '#d2c8b8', alpha: 0.4, speed: 0.2 },
+    { x: 0, y: SEA_Y + 1.0, z: -14, w: 60, h: 2.6, color: '#d8d6cc', alpha: 0.38, speed: 0.35 },
+    { x: -6, y: SEA_Y + 1.4, z: -27, w: 90, h: 3.6, color: '#d4ccbe', alpha: 0.32, speed: 0.25 },
+    { x: 10, y: SEA_Y + 2.6, z: -40, w: 110, h: 4.4, color: '#d2c8b8', alpha: 0.32, speed: 0.2 },
     { x: 0, y: SEA_Y + 2.0, z: -56, w: 150, h: 5.5, color: '#cfc4b2', alpha: 0.6, speed: 0.15 },
   ]);
   track(fog);
