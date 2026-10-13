@@ -31,25 +31,34 @@ export const PROP_HUES = ['#3f7a52', '#2f5a8a', '#b3412c', '#d29a36', '#e8dcc0',
 /**
  * A bookcase/shelf unit against a wall (back toward -z unless `ry`): wood frame and shelves,
  * per shelf 2–3 runs of same-hue spines with a 1-texel gap between books, sometimes a jar or a
- * lying stack. `at` = floor centre of the unit's front-bottom edge.
+ * lying stack. `at` = floor centre of the unit's front-bottom edge. `frame: 'paint'` builds a
+ * painted metal unit instead (frame, shelves and a two-door cabinet base in the paint batch,
+ * tinted `tint`), with a lighter top rail.
  */
-export function bookcase(b: PropBatches, at: V3, rng: Rng, o: { w?: number; h?: number; d?: number; shelves?: number; hues?: readonly string[]; tint?: THREE.ColorRepresentation } = {}) {
+export function bookcase(b: PropBatches, at: V3, rng: Rng, o: { w?: number; h?: number; d?: number; shelves?: number; hues?: readonly string[]; tint?: THREE.ColorRepresentation; frame?: 'wood' | 'paint' } = {}) {
   const w = o.w ?? 1.3, h = o.h ?? 1.8, d = o.d ?? 0.45, n = o.shelves ?? 3;
   const [x, y, z] = at;
   const x0 = x - w / 2, x1 = x + w / 2, z0 = z - d, z1 = z;
+  const painted = o.frame === 'paint';
+  const fb = painted ? b.paint : b.wood;
   const wood = C(o.tint ?? '#ffffff', 0.92);
   const frame = 0.08;
   // Back panel (a little darker, but light enough that the book runs read against it), sides,
-  // top, kick plate.
-  b.wood.box([x0, y, z0], [x1, y + h, z0 + 0.06], wood.clone().multiplyScalar(0.86), rng, { skip: NO_BOTTOM });
-  for (const sx of [x0, x1 - frame]) b.wood.box([sx, y, z0], [sx + frame, y + h, z1], wood, rng, { skip: NO_BOTTOM });
-  b.wood.box([x0, y + h - frame, z0], [x1, y + h, z1], wood.clone().multiplyScalar(1.05), rng, { skip: NO_BOTTOM });
-  b.wood.box([x0 + frame, y, z0], [x1 - frame, y + 0.14, z1], wood.clone().multiplyScalar(0.8), rng, { skip: NO_BOTTOM });
+  // top, kick plate (painted: a cabinet base with two doors and a dark gap between them).
+  const base = painted ? Math.min(0.42, h * 0.24) : 0.14;
+  fb.box([x0, y, z0], [x1, y + h, z0 + 0.06], wood.clone().multiplyScalar(painted ? 0.62 : 0.86), rng, { skip: NO_BOTTOM });
+  for (const sx of [x0, x1 - frame]) fb.box([sx, y, z0], [sx + frame, y + h, z1], wood, rng, { skip: NO_BOTTOM });
+  fb.box([x0, y + h - frame, z0], [x1, y + h, z1 + (painted ? 0.03 : 0)], wood.clone().multiplyScalar(painted ? 1.25 : 1.05), rng, { skip: NO_BOTTOM });
+  fb.box([x0 + frame, y, z0], [x1 - frame, y + base, z1], wood.clone().multiplyScalar(painted ? 0.95 : 0.8), rng, { skip: NO_BOTTOM });
+  if (painted) {
+    b.paint.box([x - 0.012, y + 0.04, z1], [x + 0.012, y + base - 0.04, z1 + 0.01], wood.clone().multiplyScalar(0.45), rng);
+    for (const hx of [x - 0.08, x + 0.06]) b.paint.box([hx, y + base * 0.6, z1], [hx + 0.02, y + base * 0.75, z1 + 0.02], C('#d8d4cc'), rng);
+  }
   const hues = o.hues ?? PROP_HUES;
-  const inner = (h - 0.14 - frame) / n;
+  const inner = (h - base - frame) / n;
   for (let s = 0; s < n; s++) {
-    const sy = y + 0.14 + s * inner;
-    if (s > 0) b.wood.box([x0 + frame, sy - 0.05, z0 + 0.06], [x1 - frame, sy, z1], wood, rng, { skip: NO_BOTTOM });
+    const sy = y + base + s * inner;
+    if (s > 0 || painted) fb.box([x0 + frame, sy - 0.05, z0 + 0.06], [x1 - frame, sy, z1], wood, rng, { skip: NO_BOTTOM });
     // Runs of books: each run one hue, books of similar height; the shelf is ~80% full.
     let bx = x0 + frame + 0.02;
     const end = x1 - frame - 0.02;

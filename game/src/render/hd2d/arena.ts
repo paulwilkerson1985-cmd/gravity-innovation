@@ -521,7 +521,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const texRock = voxel ? cachedTexture('rock', () => paintRock(5, 32)) : cachedTexture('cave-boulder-atlas', () => paintBoulderAtlas(5, RAMPS.boulder));
   const texStone = voxel ? cachedTexture('stone', () => paintStone(9, 32)) : cachedTexture('cave-rubble-atlas', () => paintBoulderAtlas(9, RAMPS.rubble));
   const texDirt = cachedTexture('dirt-128b', () => paintDirt(3, 128));
-  const texPlank = cachedTexture('plank', () => paintPlanks(4, 64, 64, 8));
+  const texPlank = cachedTexture('plank-honey', () => paintPlanks(4, 64, 64, 8));
   const texBoards = cachedTexture('boards', () => paintBoards(6, 32));
   const texPlaster = cachedTexture('plaster', () => paintPlaster(8, 32));
   const texSteel = cachedTexture('paint', () => paintSteel(2, 16, RAMPS.paint));
@@ -649,7 +649,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   // ---- stairs (stone) with red stringers, rubble piles, pebbles (one stone mesh)
   const stone = new VoxelBatch(voxel ? 32 : 64);
   const metal = new VoxelBatch(16);
-  const wood = new VoxelBatch(32);
+  const wood = new VoxelBatch(64); // the 64-texel plank tile at the shared TEXEL density
   const props = new VoxelBatch(32);
   const red = rampColor(RAMPS.rail, 3).multiplyScalar(2.6); // painted red reads bright even in shade
   /**
@@ -720,18 +720,22 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   wood.box([lodge.x0, ly - 0.32, floorBack + 0.08], [lodge.x1, ly + 0.04, floorBack + 0.2], new THREE.Color(1.05, 0.98, 0.9), rng, { skip: [false, false, false, true, false, true] });
   const plaster = new VoxelBatch(32);
   const wallH = 3.1;
-  plaster.box([lodge.x0, ly, lodge.z0 - 0.3], [lodge.x1, ly + wallH, lodge.z0], new THREE.Color(1.2, 1.15, 1.08), rng, { aoBottom: 0.65 });
-  plaster.box([lodge.x1 - 0.05, ly, lodge.z0], [lodge.x1 + 0.3, ly + wallH, lodge.z1 - 0.4], new THREE.Color(1.05, 1.0, 0.95), rng, { aoBottom: 0.65 });
-  // Steel posts + header beam (only on the back wall: nothing crosses the frame).
-  const steelC = rampColor(RAMPS.steel, 4);
-  for (const x of [lodge.x0 + 0.15, (lodge.x0 + lodge.x1) / 2 + 0.3, lodge.x1 - 0.2]) {
-    metal.box([x - 0.16, ly, lodge.z0 + 0.0], [x + 0.16, ly + wallH, lodge.z0 + 0.3], steelC, rng);
+  plaster.box([lodge.x0, ly, lodge.z0 - 0.3], [lodge.x1, ly + wallH, lodge.z0], new THREE.Color(1.0, 0.97, 0.92), rng, { aoBottom: 0.65 });
+  plaster.box([lodge.x1 - 0.05, ly, lodge.z0], [lodge.x1 + 0.3, ly + wallH, lodge.z1 - 0.4], new THREE.Color(0.9, 0.87, 0.83), rng, { aoBottom: 0.65 });
+  // Steel columns + header beam (only on the back wall: nothing crosses the frame) and a dark
+  // painted wainscot along the wall foot.
+  const steelC = rampColor(RAMPS.steel, 4).multiplyScalar(1.45);
+  for (const x of [lodge.x0 + 0.25, (lodge.x0 + lodge.x1) / 2 - 0.1, lodge.x1 - 0.3]) {
+    metal.box([x - 0.24, ly, lodge.z0 + 0.0], [x + 0.24, ly + wallH, lodge.z0 + 0.34], steelC, rng);
   }
-  metal.box([lodge.x0, ly + wallH - 0.35, lodge.z0], [lodge.x1, ly + wallH, lodge.z0 + 0.32], steelC, rng);
+  metal.box([lodge.x0, ly + wallH - 0.4, lodge.z0], [lodge.x1, ly + wallH, lodge.z0 + 0.36], steelC, rng);
+  metal.box([lodge.x0, ly, lodge.z0 - 0.02], [lodge.x1, ly + 0.55, lodge.z0 + 0.04], rampColor(RAMPS.steel, 2).multiplyScalar(1.2), rng, { skip: [false, false, false, true, false, true] });
   const glowProps = new VoxelBatch(16);
   const pb: PropBatches = { wood, paint: props, glow: glowProps, stone };
   // Shelves along the back wall (kit/props.ts): big readable runs of books and jars.
-  for (let u = 0; u < 4; u++) bookcase(pb, [lodge.x0 + 3.1 + u * 1.45, ly, lodge.z0 + 0.55], rng, { w: 1.3, h: 1.6, d: 0.45 });
+  // Painted sage metal shelving with bright runs of books (cabinet bases).
+  const bookHues = ['#4fa86a', '#3f7cc8', '#d4553a', '#e8b440', '#f0e6cc', '#8a5ac0', '#e07a2a'];
+  for (let u = 0; u < 4; u++) bookcase(pb, [lodge.x0 + 2.75 + u * 1.45, ly, lodge.z0 + 0.6], rng, { w: 1.34, h: 1.55, d: 0.45, frame: 'paint', tint: '#a8b8a0', hues: bookHues });
   // Workbench at the left end: papers, a lamp (glow) and a stool.
   const benchX = lodge.x0 + 1.15, benchZ = lodge.z0 + 0.85;
   table(pb, [benchX, ly, benchZ], [1.5, 0.75, 0.72], rng);
@@ -775,13 +779,13 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   group.add(mesh(stone.build(), stoneMat));
   // Wood: a warm lift (the lodge glows in its lamplight).
   const woodMat = track(surfaceMaterial(texPlank, undefined, true));
-  woodMat.color.setRGB(1.25, 1.14, 0.97);
-  woodMat.emissive.set('#3a2010');
+  woodMat.color.setRGB(1.18, 1.1, 0.98);
+  woodMat.emissive.set('#2e1c0e');
   woodMat.emissiveMap = texPlank;
   group.add(mesh(wood.build(), woodMat));
   group.add(mesh(metal.build(), track(surfaceMaterial(texSteel, undefined, true))));
   // Plaster glows (warm lamplight and bounce from the planks) so the lodge reads at the top edge.
-  group.add(mesh(plaster.build(), track(surfaceMaterial(texPlaster, '#6a4a2e')), false, true));
+  group.add(mesh(plaster.build(), track(surfaceMaterial(texPlaster, '#3e2c1c')), false, true));
   group.add(mesh(props.build(), track(surfaceMaterial(texSteel))));
 
   // ---- two windows high in the back-left wall (emissive, capped below the bloom wash)

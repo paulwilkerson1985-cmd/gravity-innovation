@@ -26,7 +26,8 @@ export const RAMPS = {
   rockTop: ['#433025', '#604634', '#865836', '#a26d42', '#bb8350', '#d29d64'],
   stone: ['#2e2c30', '#454249', '#5d5862', '#77717a', '#928b92', '#aea6aa', '#cbc3c2'],
   wood: ['#342318', '#4c3425', '#714426', '#8e5831', '#aa6d3d', '#c5864e', '#dba264'],
-  plank: ['#432d1f', '#5f422d', '#86552d', '#a26b39', '#bb8146', '#d39a59'],
+  /** Honey floor planks: warm but not orange (lit planks read pale gold). */
+  plank: ['#46321f', '#654b31', '#89663f', '#a57f50', '#be9862', '#d6b47a'],
   steel: ['#1a1f2c', '#282f42', '#33416a', '#46588a', '#5e72a4', '#8193be'],
   /** Neutral light greys: painted metal/props whose hue comes from the vertex tint. */
   paint: ['#5c5b5d', '#777679', '#908e93', '#a9a7ab', '#c2c0c3', '#dddbdd'],
@@ -430,8 +431,11 @@ export function paintStone(seed: number, size = 32): PixelTile {
   return t;
 }
 
-/** Horizontal wooden planks: seams, staggered butt joints, grain streaks, nail heads. */
-export function paintPlanks(seed: number, w = 64, h = 64, plank = 8, ramp: Ramp = RAMPS.plank): PixelTile {
+/**
+ * Horizontal wooden planks: seams, staggered butt joints, grain streaks, nail heads and `knots`
+ * dark knots per plank row (default 1: clean, long boards).
+ */
+export function paintPlanks(seed: number, w = 64, h = 64, plank = 8, ramp: Ramp = RAMPS.plank, knots = 1): PixelTile {
   const rng = new Rng(seed);
   const t = new PixelTile(w, h, ramp);
   for (let row = 0; row * plank < h; row++) {
@@ -446,7 +450,7 @@ export function paintPlanks(seed: number, w = 64, h = 64, plank = 8, ramp: Ramp 
     for (let x = 0; x < w; x++) t.set(x, row * plank, 0); // seam
     for (let y = row * plank; y < row * plank + plank; y++) { t.set(joint, y, 0); t.set(joint + 1, y, 1); }
     t.set(joint + 3, row * plank + 3, 5); t.set(joint - 3, row * plank + 3, 5); // nails
-    for (let i = 0; i < 3; i++) t.set(rng.int(w), row * plank + 2 + rng.int(plank - 3), 1); // knots
+    for (let i = 0; i < knots; i++) t.set(rng.int(w), row * plank + 2 + rng.int(plank - 3), 1); // knots
   }
   return t;
 }
