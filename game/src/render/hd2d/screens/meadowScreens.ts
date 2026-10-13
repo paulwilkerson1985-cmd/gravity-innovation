@@ -83,11 +83,12 @@ function daisGeometry(rng: Rng): THREE.BufferGeometry {
   const white = new THREE.Color(1, 1, 1);
   octSlab(b, -0.02, 0.13, 0.82, white.clone().multiplyScalar(0.8), 1.1, 0.55);
   octSlab(b, 0.13, DAIS_TOP, 0.64, white.clone().multiplyScalar(0.98), 1.22, 0.7);
-  // Set stones round the foot (rock kit boulders: irregular, lit tops).
-  for (let k = 0; k < 9; k++) {
-    const a = (k / 9) * Math.PI * 2 + rng.next() * 0.3;
-    const r = 0.9 + rng.next() * 0.06;
-    const sz = 0.13 + rng.next() * 0.07;
+  // A few loose stones round the foot at irregular spacing (rock kit boulders: irregular, lit
+  // tops) — never an even ring, which reads as a cog.
+  for (let k = 0; k < 5; k++) {
+    const a = Math.PI * (0.15 + k * 0.42) + rng.next() * 0.5;
+    const r = 0.92 + rng.next() * 0.12;
+    const sz = 0.1 + rng.next() * 0.1;
     boulder(b, [Math.cos(a) * r, sz * 0.3, Math.sin(a) * r], [sz * 1.6, sz, sz * 1.2], white.clone().multiplyScalar(0.72 + rng.next() * 0.22), rng, { ry: -a, aoBottom: 0.5, flatBottom: true });
   }
   return b.build();

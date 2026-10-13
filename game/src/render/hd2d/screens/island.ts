@@ -757,9 +757,10 @@ export function buildIslandSet(quality: Quality, theme: IslandTheme, spots: Isla
     const dir = new THREE.Vector3(Math.sin(T.azim) * Math.cos(T.elev), Math.sin(T.elev), -Math.cos(T.azim) * Math.cos(T.elev));
     const beams: BeamSpec[] = T.beams.map(([x, z, wd]) => {
       const end = new THREE.Vector3(x, topAt(x, z), z);
-      return { start: end.clone().addScaledVector(dir, 3.0 / dir.y), end, width: [wd * 0.6, wd], fade: 0.45 };
+      // Long, wide and faint: the shafts enter from above the frame (no visible start).
+      return { start: end.clone().addScaledVector(dir, 9 / dir.y), end, width: [wd * 1.1, wd * 1.5], fade: 0.25 };
     });
-    const rays = lightBeams(beams, T.beamColor, T.beamK);
+    const rays = lightBeams(beams, T.beamColor, T.beamK * 0.55);
     const motes = dustMotes(beams, low ? 10 : 18, rng, T.beamColor);
     group.add(rays.mesh, motes.points);
     updates.push(rays.update, motes.update);

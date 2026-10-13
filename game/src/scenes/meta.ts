@@ -176,7 +176,7 @@ export abstract class MetaScene extends BaseScene {
     d = Math.max(portrait ? 6 : 5.2, d);
     const lookY = H * 0.42 + (this.hd2d ? PLINTH_TOP : 0);
     // HD-2D looks down a little more (the plinth top and the floor pool read) from a bit further.
-    if (this.hd2d) d *= 1.6;
+    if (this.hd2d) d *= portrait ? 2.1 : 1.6;
     this.camera.position.set(0, lookY + d * (this.hd2d ? 0.3 : 0.2), d);
     this.camera.lookAt(0, lookY, 0);
     if (portrait) this.camera.setViewOffset(w, hgt, 0, hgt * 0.32, w, hgt);
