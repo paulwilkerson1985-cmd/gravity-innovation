@@ -26,7 +26,7 @@ export const HOLLOW_RAMPS = {
 
 export function hollowGrade(): Grade {
   return {
-    lift: new THREE.Vector3(0.006, 0.012, 0.012), gamma: new THREE.Vector3(1.1, 1.1, 1.1), gain: new THREE.Vector3(1.03, 1.02, 0.95),
+    lift: new THREE.Vector3(0.006, 0.012, 0.012), gamma: new THREE.Vector3(1.1, 1.1, 1.1), gain: new THREE.Vector3(1.06, 1.02, 0.92),
     saturation: 0.8, contrast: 1.05,
     shadowTint: new THREE.Color('#1a2c34'), highTint: new THREE.Color('#fff0bc'), splitAmount: 0.12,
     vignette: 0.22, vignetteSoft: 0.7,
@@ -118,7 +118,7 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
     }
     tops.box([x - 0.03, ARCH_Y + 2 * LEVEL - 0.05, GAP.z - 2.05], [x + CELL * 0.85 + 0.01, ARCH_Y + 2 * LEVEL + 0.05, GAP.z - 0.2], new THREE.Color(1, 1, 1), rng);
   }
-  const nearShade = (x: number, y: number, z: number) => 1 - 0.12 * THREE.MathUtils.smoothstep(z, 3.4, 7.0);
+  const nearShade = (x: number, y: number, z: number) => 1 - 0.32 * THREE.MathUtils.smoothstep(z, 3.4, 7.5);
   tops.shade(nearShade); rock.shade(nearShade);
   // Upper walls catch the sky from the open meadow above: lighter toward the rim.
   rock.shade((x, y) => 1 + 0.22 * Math.min(1, Math.max(0, y) / 4));
@@ -214,7 +214,7 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   // Phone foreground: ferns, moss cushions and grass on the low front ledge under a portrait
   // camera, shading off toward the lens.
   foreground(fol, {
-    sprites: ['fern', 'fern', 'tuft', 'cushion'], area: [-14, 4.2, 6, 13], patches: q === 'high' ? 30 : 20, perPatch: [3, 6], rng,
+    sprites: ['fern', 'fern', 'tuft', 'cushion'], area: [-14, 3.8, 6, 13], patches: q === 'high' ? 40 : 28, perPatch: [3, 7], rng,
     y: (x, z) => topAt(x, z), keep: (x, z) => !nearStage(x, z, 2.2), k: 0.55,
   });
   // Outside: bright meadow beyond the arch (bushes, a tree, grass) — sunlit, so it glows.
@@ -243,13 +243,13 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   const sunFrom = new THREE.Vector3(-0.42, 1.0, -0.5);
   const { key, spriteLight } = sunRig(group, {
     target: stage, from: sunFrom, distance: 30, angle: 0.36, penumbra: 0.25, shadowRadius: 2,
-    color: '#ffeabc', intensity: 9, cookie: null,
-    sky: '#a8c4b8', ground: '#36342a', hemi: 1.5,
+    color: '#ffe4b0', intensity: 10, cookie: null,
+    sky: '#b0c8b8', ground: '#40382a', hemi: 1.6,
     fill: '#c0d4cc', fillIntensity: 0.4, quality: q,
   });
   // Leaf-dapple gobo: ONE clear bright pool where the kin stand (a gap in the canopy above),
   // small hard-edged flecks around it, the walls falling off into green shade.
-  const gob = gobo(key, { kind: 'leaves', seed: 57, pool: { x: 0.15, z: 0.0, ru: 3.6, rv: 2.4, angle: Math.atan2(-2.0, 2.8), soft: 0.28 }, outside: 0.3, shade: 0.18, cover: 0.5, scale: 3.0 });
+  const gob = gobo(key, { kind: 'leaves', seed: 57, pool: { x: 0.15, z: 0.0, ru: 3.6, rv: 2.4, angle: Math.atan2(-2.0, 2.8), soft: 0.28 }, outside: 0.45, shade: 0.24, cover: 0.48, scale: 3.0 });
   extra.push(gob);
   if (q === 'high') {
     const bounce = new THREE.PointLight(new THREE.Color('#9fe0c8'), 2.0, 5, 1.6);

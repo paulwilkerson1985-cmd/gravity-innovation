@@ -14,6 +14,7 @@ import { cachedTexture, type Ramp } from '../textures';
 import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
 import { particleSystem } from '../kit/particles';
+import { tube } from './localKit';
 import { boulder } from '../kit/rock';
 import {
   Foliage, SpriteAtlas, apron, backdrop, clusterMap, disposeGroup, foreground, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
@@ -216,7 +217,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   const stone = new VoxelBatch(32);
   terraces(hm, sides, tops, rng, { topK: 1.0, lip: 0.15, fringe: { foliage: fol, sprite: 'fringe', rng: new Rng(7), chance: 1, long: 1.1 }, rocks: { batch: stone, chance: 0.12 } });
   // Foreground occluders (the near ledges) sit a little darker: depth from local shade, not vignette.
-  const nearShade = (x: number, y: number, z: number) => 1 - 0.16 * THREE.MathUtils.smoothstep(z, 3.6, 7.5);
+  const nearShade = (x: number, y: number, z: number) => 1 - 0.3 * THREE.MathUtils.smoothstep(z, 3.6, 7.5);
   tops.shade(nearShade); sides.shade(nearShade);
   group.add(mkMesh(sides.build(), extra[extra.push(surfaceMaterial(texEarth, undefined, true)) - 1] as THREE.Material));
   group.add(mkMesh(tops.build(), extra[extra.push(surfaceMaterial(texTurf, undefined, false)) - 1] as THREE.Material));
@@ -284,7 +285,7 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     if (z > 3.2 || Math.abs(x) > 14) continue;
     fol.add(atlas.get('bush', rng), [x, topAt(x, z), z], 'billboard', { scale: TEXEL * (0.8 + rng.next() * 0.35), sway: 0.02, flip: rng.chance(0.5) });
   }
-  for (let i = 0; i < (q === 'high' ? 150 : 110); i++) {
+  for (let i = 0; i < (q === 'high' ? 110 : 80); i++) {
     const a = rng.next() * Math.PI * 2;
     const r = 0.8 + Math.pow(rng.next(), 1.6) * 0.55;
     const x = Math.cos(a) * 7.0 * r, z = 0.2 + Math.sin(a) * 4.5 * r;
@@ -328,12 +329,14 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
 
   // Props: stump, log, fence, signpost (bark/wood) and a few stones.
   const sx = flowers ? 5.6 : -5.9, sz = flowers ? 2.6 : -1.9;
-  bark.box([sx - 0.42, 0, sz - 0.42], [sx + 0.42, 0.55, sz + 0.42], new THREE.Color(1, 1, 1), rng, { aoBottom: 0.5 });
-  wood.box([sx - 0.36, 0.55, sz - 0.36], [sx + 0.36, 0.58, sz + 0.36], new THREE.Color(1.15, 1.1, 1.0), rng); // cut face
+  // A round stump with a root flare, and its pale cut face (a thin disc of planed wood).
+  tube(bark, new THREE.Vector3(sx, -0.05, sz), new THREE.Vector3(sx, 0.55, sz), (t) => 0.38 * (1 + 0.55 * Math.exp(-t * 7)), { sides: 9, rings: 3, tint: (t) => new THREE.Color(1, 1, 1).multiplyScalar(0.7 + t * 0.3) });
+  tube(wood, new THREE.Vector3(sx, 0.53, sz), new THREE.Vector3(sx, 0.58, sz), () => 0.33, { sides: 9, rings: 1, tint: () => new THREE.Color(1.15, 1.1, 1.0) });
   if (!flowers) {
     // Fallen log at the right, with a stub branch.
-    bark.rotBox([5.4, 0.3, 2.6], [2.6, 0.56, 0.56], -0.35, new THREE.Color(0.95, 0.95, 0.95), rng);
-    bark.rotBox([5.0, 0.62, 2.85], [0.18, 0.5, 0.18], -0.35, new THREE.Color(0.9, 0.9, 0.9), rng, 0.4);
+    const d = new THREE.Vector3(Math.cos(-0.35), 0, -Math.sin(-0.35));
+    tube(bark, new THREE.Vector3(5.4, 0.27, 2.6).addScaledVector(d, -1.3), new THREE.Vector3(5.4, 0.25, 2.6).addScaledVector(d, 1.3), (t) => 0.3 - t * 0.06, { sides: 8, rings: 3, wobble: 0.05, seed: 2, tint: () => new THREE.Color(0.95, 0.95, 0.95) });
+    tube(bark, new THREE.Vector3(5.0, 0.42, 2.85), new THREE.Vector3(5.15, 0.9, 2.95), (t) => 0.08 - t * 0.04, { sides: 5, rings: 1, tint: () => new THREE.Color(0.9, 0.9, 0.9) });
   }
   // Fence along the front-right ledge and a signpost by the front path.
   const fenceZ = flowers ? 4.9 : 4.7;
@@ -407,8 +410,14 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     const zf = hm.z0 + hm.nz * CELL;
     const keys = flowers ? ['flowers-yellow', 'flowers-white', 'flowers-violet', 'flowers-pink', 'tall'] : ['tall', 'tall', 'tuft', 'flowers-white', 'flowers-yellow'];
     foreground(fol, {
-      sprites: keys, area: [-15, 5.6, 6, zf + 7], patches: q === 'high' ? 34 : 24, perPatch: [3, 7], rng,
-      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1, k: 0.55, scale: [0.95, 1.25],
+      sprites: keys, area: [-15, 4.4, 6, zf + 7], patches: q === 'high' ? 40 : 28, perPatch: [3, 7], rng,
+      // The middle of the near bank stays low (the desktop camera looks over it at the stage).
+      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1 && !(x > -4.6 && x < 4.2 && z < 6.4), k: 0.55, scale: [0.95, 1.25],
+    });
+    // …and only LOW tufts and flower drifts there (dressed for phones, open for desktops).
+    foreground(fol, {
+      sprites: flowers ? ['flowers-yellow', 'flowers-white', 'flowers-violet', 'tuft'] : ['tuft', 'tuft', 'flowers-white', 'flowers-violet'], area: [-4.6, 4.4, 4.2, 6.4], patches: q === 'high' ? 10 : 7, perPatch: [3, 6], rng,
+      y: (x, z) => topAt(x, z), keep: (x, z) => !nearStage(x, z, 2.4) && poolR(x, z) > 1.1, k: 0.8, scale: [0.85, 1.05],
     });
   }
   // Foliage (all sprites): one mesh.
@@ -442,7 +451,9 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
     sky: flowers ? '#a8b8e0' : '#9cc0e8', ground: flowers ? '#4a4228' : '#2c4224', hemi: flowers ? 1.35 : 1.3,
     fill: flowers ? '#c8c8ff' : '#b8dcff', fillIntensity: 0.5, quality: q,
   });
-  const gob = gobo(key, { kind: 'leaves', seed: flowers ? 9 : 4, pool: { ...BATTLE_POOL, soft: 0.3 }, outside: 0.42, shade: 0.16, cover: flowers ? 0.38 : 0.46, scale: 3.4 });
+  // Outside the pool the dapple is mid-tone, not black: the banks read as lit forms around the
+  // bright stage (the reference's walls are warm and readable, only the floor is brighter).
+  const gob = gobo(key, { kind: 'leaves', seed: flowers ? 9 : 4, pool: { ...BATTLE_POOL, soft: 0.3 }, outside: 0.55, shade: 0.3, cover: flowers ? 0.36 : 0.42, scale: 3.4 });
   extra.push(gob);
 
   // ---- light shafts through the canopy gaps + pollen motes
@@ -500,7 +511,7 @@ function paintMeadowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number
   const mac = macro(variant === 'flowers' ? 13 : 12);
   const flowers = variant === 'flowers';
   // Dirt clearing ellipse (smaller in the flower field: more grass), and a path toward the camera.
-  const rx = flowers ? 4.6 : 5.4, rz = flowers ? 3.0 : 3.4;
+  const rx = flowers ? 5.0 : 6.0, rz = flowers ? 3.3 : 3.8;
   const pathD = (x: number, z: number) => {
     const segs: [number, number, number, number][] = [[-3.4, 2.4, -4.9, 6.6], [3.6, -2.2, 6.2, -6.0]];
     let d = 99;

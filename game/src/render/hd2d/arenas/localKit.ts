@@ -990,10 +990,10 @@ export function palmTree(trunk: VoxelBatch, leaves: FoliageBatch, base: THREE.Ve
     const k = s / segs;
     const bend = k * k * (1.2 - 0.2 * k);
     const p = base.clone().add(new THREE.Vector3(lean.x * bend, height * k, lean.y * bend));
-    const mid = prev.clone().add(p).multiplyScalar(0.5);
-    const len = p.distanceTo(prev);
-    const w = 0.32 - k * 0.15;
-    orientedBox(trunk, mid, new THREE.Vector3(w, len + 0.05, w), p.clone().sub(prev), tint.clone().multiplyScalar(0.92 + (s % 2) * 0.1), rng);
+    // Round, ringed, tapering segments (a slight bulge at each ring), not square boxes.
+    const r0 = (0.34 - ((s - 1) / segs) * 0.15) / 2, r1 = (0.34 - k * 0.15) / 2;
+    const c = tint.clone().multiplyScalar(0.92 + (s % 2) * 0.1);
+    tube(trunk, prev.clone().addScaledVector(p.clone().sub(prev).normalize(), -0.03), p, (t) => (r0 + (r1 - r0) * t) * (1 + 0.12 * Math.sin(t * Math.PI)), { sides: 7, rings: 2, tint: () => c });
     prev = p;
   }
   const top = prev;
@@ -1040,8 +1040,9 @@ export function windsweptTree(trunk: VoxelBatch, leaves: FoliageBatch, base: THR
   for (let s = 1; s <= segs; s++) {
     const k = s / segs;
     const p = base.clone().add(new THREE.Vector3(wind.x * k * k * 1.4 + (rng.next() - 0.5) * 0.15, height * k, wind.y * k * k * 1.4));
-    const mid = prev.clone().add(p).multiplyScalar(0.5);
-    orientedBox(trunk, mid, new THREE.Vector3(0.26 - k * 0.12, p.distanceTo(prev) + 0.06, 0.26 - k * 0.12), p.clone().sub(prev), new THREE.Color(0.75, 0.68, 0.62), rng);
+    // Round, tapering, crooked segments (each starts a little inside the last: no gaps).
+    const r0 = (0.28 - ((s - 1) / segs) * 0.12) / 2, r1 = (0.28 - k * 0.12) / 2;
+    tube(trunk, prev.clone().addScaledVector(p.clone().sub(prev).normalize(), -0.04), p, (t) => r0 + (r1 - r0) * t, { sides: 6, rings: 1, tint: () => new THREE.Color(0.75, 0.68, 0.62) });
     prev = p;
   }
   const rect = atlasRect(ATLAS.shrub);

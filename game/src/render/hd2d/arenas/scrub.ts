@@ -15,7 +15,7 @@ import type { ArenaBuildOptions, ArenaDef } from './index';
 import { BATTLE_POOL, nearStage, paintTrodden, poolR } from './meadow';
 import {
   Foliage, SpriteAtlas, apron, backdrop, clusterMap, disposeGroup, foreground, glints, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
-  paintBark, paintClouds, paintEarth, paintMesas, paintSky, paintTuft, paintTwigs, putRgb, rgb, sunRig, type RgbaTile, type V3,
+  paintBark, paintClouds, paintEarth, paintMesas, paintSky, paintTuft, paintTwigs, putRgb, rgb, sunRig, trunk, type RgbaTile, type V3,
 } from './outdoorKit';
 
 export const SCRUB_RAMPS = {
@@ -128,17 +128,9 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
     const c = Math.cos(ang), s = Math.sin(ang);
     bark.rotBox([x + c * len / 2 * Math.cos(tilt), y + Math.sin(tilt) * len / 2, z + s * len / 2 * Math.cos(tilt) * 0.3], [len, th, th], -ang * 0.3, new THREE.Color(1, 1, 1).multiplyScalar(0.9 + rng.next() * 0.2), rng, 0);
   };
-  bark.box([tx - 0.24, ty, tz - 0.24], [tx + 0.24, ty + 2.8, tz + 0.24], new THREE.Color(1, 1, 1), rng, { aoBottom: 0.5 });
-  bark.box([tx - 0.16, ty + 2.8, tz - 0.16], [tx + 0.16, ty + 3.7, tz + 0.16], new THREE.Color(0.95, 0.95, 0.95), rng);
-  for (const [dx, dz] of [[-1, 0], [1, 0], [0, 1]] as const) bark.box([tx + dx * 0.3 - 0.13, ty, tz + dz * 0.3 - 0.13], [tx + dx * 0.3 + 0.13, ty + 0.25, tz + dz * 0.3 + 0.13], new THREE.Color(0.85, 0.85, 0.85), rng);
-  // Two crooked limbs (stacked short boxes stepping outward).
-  for (const [side, y0] of [[1, 2.2], [-1, 2.9]] as const) {
-    let x = tx, y = ty + y0;
-    for (let k = 0; k < 4; k++) {
-      bark.box([x + (side > 0 ? 0 : -0.42), y, tz - 0.1], [x + (side > 0 ? 0.42 : 0), y + 0.2, tz + 0.1], new THREE.Color(0.9, 0.9, 0.9), rng);
-      x += side * 0.38; y += 0.22 + k * 0.06;
-    }
-  }
+  // A round, tapering dead trunk with a root flare and crooked limbs (not a square post).
+  const top = trunk(bark, [tx, ty, tz], 3.4, 0.24, rng, { flare: 0.9, roots: 4, taper: 0.4, lean: [0.35, 0.05], branches: 3, sides: 8 });
+  void top;
   void branch;
   const barkMat = surfaceMaterial(cachedTexture('od-bark-ridge', () => paintBark(82, S.bark)), undefined, true);
   extra.push(barkMat);
@@ -177,7 +169,7 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
     const zf = hm.z0 + hm.nz * CELL;
     foreground(fol, {
       sprites: ['dry', 'tallDry', 'tallDry', 'scrub'], area: [-15, 4.4, 6, zf + 7], patches: q === 'high' ? 30 : 20, perPatch: [3, 6], rng,
-      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL - 0.06 : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && !(z < 2.6 && Math.abs(x) < 4.6), k: 0.6, sway: 0.06,
+      y: (x, z) => (z >= zf - 0.05 ? FRONT_LV * LEVEL - 0.06 : topAt(x, z)), keep: (x, z) => !nearStage(x, z, 2.4) && !(x > -4.8 && x < 4.4 && z < 6.8), k: 0.6, sway: 0.06,
     });
   }
   // Normals bent well up: backlit tufts still catch the sky and the low key on their tips.
@@ -196,7 +188,7 @@ export function buildScrubArena(opts: ArenaBuildOptions): ArenaRig {
       z: -40, x: [-44, 44], y: [-22, 5], d: 7, gain: 0.92,
       paint: (t, r, toY) => {
         paintSunsetSky(t, toY(sunWorld[1]), Math.round((sunWorld[0] + 44) * 7));
-        paintMesas(t, r, { ramp: S.mesaFar, foot: toY(-9), count: 7, w: [10, 24], h: [24, 40], haze: 0.3, sunX: (sunWorld[0] + 44) * 7, gullies: 0.5, hazeCol: '#c88088', cliff: 3.6 });
+        paintMesas(t, r, { ramp: S.mesaFar, foot: toY(-9), count: 7, w: [10, 24], h: [24, 40], haze: 0.18, sunX: (sunWorld[0] + 44) * 7, gullies: 0.5, hazeCol: '#c88088', cliff: 3.6 });
       },
     },
     {
