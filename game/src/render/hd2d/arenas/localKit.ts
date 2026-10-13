@@ -50,7 +50,7 @@ export function bandField(t: PixelTile, f: Float32Array, lo: number, hi: number,
 export const RAMPS2 = {
   // Volcanic: warm grey-brown basalt (violet only in the darkest shades, i.e. far shadow), a
   // light dusty ash floor so the cave reads lava-lit rather than black, warm slag.
-  basalt: ['#2c2229', '#403138', '#56444a', '#6e595a', '#887170', '#a38a82', '#bea596'],
+  basalt: ['#2c2128', '#403034', '#56433f', '#6d584e', '#877060', '#a28a76', '#bca48c'],
   ash: ['#3a2e2b', '#4e403a', '#63534a', '#7a6758', '#927d6a', '#a9927c', '#bfa78f'],
   slag: ['#2a1e1e', '#3d2b26', '#54392e', '#6c4a36', '#865c40'],
   lava: ['#3a0806', '#7a1408', '#c22a0a', '#f05a12', '#ff9a2a', '#ffd25a', '#fff4b0'],
@@ -58,6 +58,8 @@ export const RAMPS2 = {
   wetSand: ['#5e4a38', '#73594a', '#876a54', '#9a7c60', '#ac8f6c', '#bea27c'],
   sandstone: ['#5a4234', '#73563f', '#8c6c4f', '#a48360', '#b99a73', '#cdb189', '#dfc8a2'],
   wetRock: ['#232a33', '#323c46', '#435058', '#56646a', '#6b7a7c', '#849390', '#a0ada5'],
+  /** Salt-bleached sea stacks (shallows): lighter grey-green tops, cool shadows. */
+  seaRock: ['#2e363c', '#3e4a50', '#53606a', '#6a7880', '#838f94', '#9eaaa8', '#bcc6be'],
   slate: ['#2a2d35', '#383c46', '#4a4e58', '#5c616a', '#71767e', '#888d92', '#a2a6a8'],
   turf: ['#2e4230', '#3b5539', '#4a6541', '#5d784a', '#728b55', '#889e63', '#a2b276'],
   drift: ['#3a3430', '#544b44', '#6e645a', '#887d70', '#a39886', '#bdb39e', '#d6cdb8'],

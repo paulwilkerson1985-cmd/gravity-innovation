@@ -27,7 +27,7 @@ export function summitGrade(): Grade {
     vignette: 0.22, vignetteSoft: 0.7,
     tiltTop: 1.0, tiltBottom: 0.6, focusTop: 0.8, focusBottom: 0.08,
     dither: 2.0,
-    exposure: 1.78,
+    exposure: 1.84,
   };
 }
 

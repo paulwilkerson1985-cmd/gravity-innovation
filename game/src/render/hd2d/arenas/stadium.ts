@@ -95,7 +95,7 @@ function paintCourt(): THREE.CanvasTexture {
     }
     const X = wx(x), Z = wz(y);
     const n = Math.sin(x * 0.11 + y * 0.07) * 0.3 + Math.sin(x * 0.031 - y * 0.05 + 1.3) * 0.4 + (h2(x >> 2, y >> 2, 1) - 0.5) * 0.5;
-    let v = 3.3 + n;
+    let v = 3.0 + n * 1.2;
     // Raked furrows along x (broken), fading where the sand is trodden.
     const w = wear(X, Z);
     if (y % 5 === 0 && h2(x >> 3, y, 2) > 0.25) v -= 0.55 * (1 - w);
@@ -246,7 +246,7 @@ export function buildStadiumArena(opts: StadiumOptions = {}): StadiumRig {
   const steel = new Pieces(16);   // floodlight towers
   const glow = new Pieces(16);    // lamps, LED boards (emissive)
   // Apron: a concrete ring between the field and the stands (slightly below the turf edge).
-  const ax0 = -STAND.x, ax1 = STAND.x, az0 = STAND.z, az1 = 9.5;
+  const ax0 = -STAND.x, ax1 = STAND.x, az0 = STAND.z, az1 = 14; // runs on under the portrait camera
   concrete.aabb([ax0, -0.1, az0], [FIELD.x0, 0, az1], shade(0.78), rng, { skip: [false, false, false, true, false, false] });
   concrete.aabb([FIELD.x1, -0.1, az0], [ax1, 0, az1], shade(0.78), rng, { skip: [false, false, false, true, false, false] });
   concrete.aabb([FIELD.x0, -0.1, az0], [FIELD.x1, 0, FIELD.z0], shade(0.78), rng, { skip: [false, false, false, true, false, false] });

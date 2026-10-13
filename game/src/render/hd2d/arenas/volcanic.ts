@@ -31,7 +31,7 @@ export function volcanicGrade(): Grade {
     lift: new THREE.Vector3(0.012, 0.0, 0.01), gain: new THREE.Vector3(1.04, 0.98, 0.94), gamma: new THREE.Vector3(1.1, 1.1, 1.1),
     saturation: 0.8, contrast: 1.06,
     shadowTint: new THREE.Color('#2c1a3a'), highTint: new THREE.Color('#ffc890'), splitAmount: 0.14,
-    vignette: 0.16, exposure: 1.46,
+    vignette: 0.16, exposure: 1.56,
   });
 }
 
@@ -207,7 +207,8 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
 
   // ---- heightmap
   const X0 = -13.5, Z0 = -12.6;
-  const hm = new Heightmap(30, 21, X0, Z0);
+  // 25 rows: the front ledge runs on under the portrait (phone) camera, no void below it.
+  const hm = new Heightmap(30, 25, X0, Z0);
   const floorHalfX = 5.4, floorFront = 3.6, floorBack = -3.0;
   const river = { z: -4.25, half: 0.75 };      // lava river behind the floor
   const fall = { x0: -4.6, x1: -2.6, z: -6.25 }; // lavafall notch in the back wall
@@ -226,7 +227,8 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
       if (d > 0) lv = 1 + Math.floor(d / 1.5) + (d > 3 ? Math.floor((d - 3) / 1.1) : 0);
       if (x > 1 && d > 0) lv += Math.floor((x - 1) / 7); // the right side climbs higher
     }
-    if (z < -6.3) lv = Math.max(lv, 9 + (Math.abs(x) > 6 ? 1 : 0));
+    // The back wall recedes in ledges (lit tops between rock faces) instead of one sheer wall.
+    if (z < -6.3) lv = Math.max(lv, 6 + Math.floor((-6.3 - z + Math.sin(x * 0.9) * 0.35) / 0.95) + (Math.abs(x) > 6 ? 1 : 0));
     if (x < -9.5) lv = Math.max(lv, 7 + Math.floor((-9.5 - x) * 0.6));
     if (x > 9.5) lv = Math.max(lv, 6 + Math.floor((x - 9.5) * 0.6));
     // The river runs the full width; terraces stop at its banks.
@@ -238,7 +240,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     if (((x - pool.x) / (pool.rx + 0.5)) ** 2 + ((z - pool.z) / (pool.rz + 0.5)) ** 2 < 1) lv = 0;
     const cl = Math.sin(Math.floor(i / 2) * 12.9898 + Math.floor(j / 2) * 78.233) * 43758.5453;
     const n = cl - Math.floor(cl);
-    if (lv > 0 && lv < 9) lv = Math.max(1, lv + (n > 0.8 ? 1 : n < 0.1 ? -1 : 0) + (rng.chance(0.06) ? 1 : 0));
+    if (lv > 0 && lv < 12) lv = Math.max(1, lv + (n > 0.8 ? 1 : n < 0.1 ? -1 : 0) + (rng.chance(0.06) ? 1 : 0));
     hm.set(i, j, lv);
   }
 
@@ -269,7 +271,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     // Far from any lava (high, back corners) the shadow cools toward violet; elsewhere warm grey.
     const far = (1 - Math.min(1, k * 3)) * Math.min(1, Math.max(0, y - 2) / 4);
     const base = (ny > 0.5 ? 1.25 : 1.06) * (1 + 0.2 * Math.min(1, Math.max(0, y) / 5));
-    return [up * base * (1 + rim * 1.5 - far * 0.08), up * base * (1 + rim * 0.55 - far * 0.08), up * base * (1 - rim * 0.15 + far * 0.08)];
+    return [up * base * (1 + rim * 1.9 - far * 0.08), up * base * (1 + rim * 0.75 - far * 0.08), up * base * (1 - rim * 0.12 + far * 0.08)];
   }), track(surfaceMaterial(texBasalt, undefined, true))));
 
   // ---- ash floor: sinks into the river channel and the pool; scorched + lava-lit near them
@@ -286,7 +288,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     const g = floorGrid(hm, texAsh, 64, {
       res: 2,
       heightAt: (x, z) => (inRiver(x, z) || fallD(x, z) === 0 ? -0.5 : poolD(x, z) < 1.05 ? -0.45 : 0),
-      tintAt: (x, z) => { const k = glowAt(x, z); return [0.84 + k * 1.2, 0.8 + k * 0.45, 0.8 - k * 0.15]; },
+      tintAt: (x, z) => { const k = glowAt(x, z); return [0.77 + k * 1.7, 0.73 + k * 0.72, 0.73 - k * 0.05]; },
       aoK: 0.9,
     });
     group.add(mk(g, track(surfaceMaterial(texAsh)), false, true));
@@ -308,11 +310,11 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     const t = i / steps;
     return V(cx + Math.sin(t * 5.1 + cx) * 0.06, top + (ly + 0.05 - top) * t, z + 0.02 + t * t * 0.2);
   });
-  lava.strip(fallPts(fx, mouthY, fall.z, 12), fall.x1 - fall.x0 - 0.5, 6, true, { rag: 0.16, speed: 1.6, seed: 2 });
+  lava.strip(fallPts(fx, mouthY, fall.z, 14), fall.x1 - fall.x0 - 0.5, 6, true, { rag: 0.24, speed: 1.6, seed: 2 });
   lava.pool(V(fx, ly + 0.05, fall.z + 0.45), (fall.x1 - fall.x0) * 0.42, 0.42, 16, 0.12, 0.5);
   lava.strip([V(fx, ly + 0.02, fall.z + 0.3), V(fx, ly + 0.015, (fall.z + river.z) / 2), V(fx, ly + 0.01, river.z)], fall.x1 - fall.x0 - 0.3, 4, false, { rag: 0.08, speed: 0.6, seed: 3 });
   const fx2 = (fall2.x0 + fall2.x1) / 2, mouth2 = 3 * LEVEL;
-  lava.strip(fallPts(fx2, mouth2, fall2.z, 9), fall2.x1 - fall2.x0 - 0.4, 4, true, { rag: 0.13, speed: 1.5, seed: 5 });
+  lava.strip(fallPts(fx2, mouth2, fall2.z, 10), fall2.x1 - fall2.x0 - 0.4, 4, true, { rag: 0.2, speed: 1.5, seed: 5 });
   lava.pool(V(fx2, ly + 0.05, fall2.z + 0.4), (fall2.x1 - fall2.x0) * 0.45, 0.36, 14, 0.12, 0.5);
   lava.strip([V(fx2, ly + 0.02, fall2.z + 0.28), V(fx2, ly + 0.01, river.z)], fall2.x1 - fall2.x0 - 0.3, 3, false, { rag: 0.07, speed: 0.6, seed: 6 });
   lava.pool(V(pool.x, ly + 0.03, pool.z), pool.rx, pool.rz, 22, 0.1);
@@ -396,6 +398,19 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
     }
     crystalPools.push([x + Math.cos(out) * 0.5, z + Math.sin(out) * 0.5, c]);
   }
+  // Crusted fall edges: cooled slag clinging to both sides of each lava sheet, ragged, with a
+  // glowing seam where the crust cracks.
+  for (const [cx0, w, top] of [[fx, fall.x1 - fall.x0 - 0.5, mouthY], [(fall2.x0 + fall2.x1) / 2, fall2.x1 - fall2.x0 - 0.4, 3 * LEVEL]] as const) {
+    for (let y = 0.1; y < top - 0.1; y += 0.22 + rng.next() * 0.2) {
+      for (const s of [-1, 1]) {
+        if (rng.chance(0.25)) continue;
+        const sz = 0.16 + rng.next() * 0.16;
+        const x = cx0 + s * (w / 2 - 0.02 + (rng.next() - 0.3) * 0.12);
+        slag.rotBox([x, y, fall.z + 0.06 + (y / top) * 0.02], [sz * (0.8 + rng.next() * 0.6), sz, 0.12], rng.next() * 0.6, grey(0.8 + rng.next() * 0.3), rng, (rng.next() - 0.5) * 0.4);
+        if (rng.chance(0.25)) glow.box([x - 0.03, y - 0.02, fall.z + 0.12], [x + 0.03, y + 0.06, fall.z + 0.14], hdr('#ff7a22', 1.8), rng);
+      }
+    }
+  }
   // The fall's mouth: a glowing slot in the wall with a dark lintel of slag above it.
   glow.box([fall.x0 + 0.35, mouthY - 0.05, fall.z - 0.02], [fall.x1 - 0.35, mouthY + 0.22, fall.z + 0.03], hdr('#ff7a22', 1.5), rng);
   slag.box([fall.x0 - 0.1, mouthY + 0.35, fall.z - 0.1], [fall.x1 + 0.1, mouthY + 0.7, fall.z + 0.3], grey(0.8), rng, { aoBottom: 0.5 });
@@ -466,7 +481,7 @@ export function buildVolcanicArena(opts: TerrainArenaOptions = {}): ArenaRig {
   group.add(key, key.target);
   // Readable, lava-lit exposure: a strong warm hemisphere (smoky mauve sky, molten ground) and a
   // soft top light; the lava rims are baked into the rock (no front underlight).
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#c8b0b8'), new THREE.Color('#a04a2a'), 3.0);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#ccb6ac'), new THREE.Color('#a04a2a'), 3.0);
   group.add(hemi);
   const top = new THREE.DirectionalLight(new THREE.Color('#e0c8c0'), 1.7);
   top.position.set(-2, 9, 7);

@@ -51,7 +51,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   const pixelers: ((px: number) => void)[] = [];
 
   const texSand = cachedTexture('wet-sand', () => paintSand(43, 64, RAMPS2.wetSand));
-  const texRock = cachedTexture('wet-boulder', () => paintBoulder(29, 32, RAMPS2.wetRock));
+  const texRock = cachedTexture('sea-boulder', () => paintBoulder(29, 32, RAMPS2.seaRock));
   const texDrift = cachedTexture('drift', () => paintDrift(25, 32));
 
   // ---- the sandbar: an ellipse along the kin diagonal, with a ragged rim
@@ -87,7 +87,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   }
   // Bare wet rock islands (rounded boulder stacks, lighter, salt-bleached tops) — no grass caps.
   const rock = new VoxelBatch(32);
-  boulderColumns(hm, rock, rng, { baseY: -0.9, tints: ['#ffffff', '#eef4f4', '#f4f0e8'], shade: [0.7, 1.15] });
+  boulderColumns(hm, rock, rng, { baseY: -0.9, tints: ['#ffffff', '#eef4f4', '#f4f0e8'], shade: [0.85, 1.25], topK: 1.9, merge: 0.6, tall: 0.75 });
   // A few loose boulders at the foot of each stack, half in the water.
   for (const [sx, sz, r] of stacks.slice(0, 8)) rubblePile(rock, [sx, WATER_Y - 0.15, sz + r * 0.6], rng, { radius: r * 0.7, heap: 0.35, big: Math.min(0.6, r * 0.4) });
   group.add(mk(rock.build(), track(surfaceMaterial(texRock, undefined, true))));
