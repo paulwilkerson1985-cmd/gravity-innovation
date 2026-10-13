@@ -273,6 +273,12 @@ internal pixels at the focus depth, so a drifting camera slides the focus plane 
 | Party | 30 / 11k | 27 / 9k |
 | Evolution | 32 / 10k | — |
 
+Frame cost (`__game.benchFrames(3)`, SwiftShader at load ≈ 9 on 4 cores — compare the
+columns, not the absolute values): route map phone-low 111 ms vs the meadow battle phone-low
+199 ms; route map desk-high 552 ms vs meadow battle desk-high 768 ms; title phone-low 269 ms,
+starter phone-low 249 ms, party phone-low 131 ms. No screen costs more than the battle it leads
+into.
+
 Low tier: fewer foliage sprites, fringe quads, cloud billboards, underside rings and floating
 rocks, `lite` boulders, quarter-res bloom, frozen shadow map, no point lights, no GTAO.
 `e2e/hd2d-screens.spec.ts` checks every screen (perf non-null, internal size = drawing buffer,
