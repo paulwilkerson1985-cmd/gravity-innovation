@@ -12,7 +12,7 @@ import type { Grade } from '../pipeline';
 import type { ArenaBuildOptions, ArenaDef } from './index';
 import { MEADOW_RAMPS, nearStage, paintTrodden } from './meadow';
 import {
-  Foliage, SpriteAtlas, backdrop, disposeGroup, glints, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
+  Foliage, SpriteAtlas, backdrop, dappleCookie, disposeGroup, glints, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
   paintCanopy, paintEarth, paintSilhouette, paintSky, paintTuft, paintTurf, paintVine, sunRig, terraces, type RgbaTile, type V3,
 } from './outdoorKit';
 
@@ -52,8 +52,8 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
 
   // ---- heightmap: a bowl of tall mossy rock; a passage out at the back-left rising to the meadow
   const X0 = -14.4, Z0 = -14.4;
-  // 30 rows: the low front ledge runs on under the portrait (phone) camera.
-  const hm = new Heightmap(32, 30, X0, Z0);
+  // 35 rows: the low front ledge runs on under the portrait (phone) camera, past its bottom edge.
+  const hm = new Heightmap(32, 35, X0, Z0);
   for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
     const x = hm.cx(i), z = hm.cz(j);
     const wob = Math.sin(x * 1.3 + z * 0.7) * 0.35 + Math.sin(z * 2.1 - x * 0.4) * 0.25 + Math.sin(x * 0.45 - z * 0.8 + 1.7) * 0.3;
@@ -126,7 +126,7 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
 
   // ---- floor (damp packed earth, moss toward the walls, wet rim by the pool)
   const ground = groundMesh({
-    x0: X0, x1: X0 + hm.nx * CELL, z0: Z0, z1: Z0 + hm.nz * CELL, hm, aoK: 0.12,
+    x0: X0, x1: X0 + hm.nx * CELL, z0: Z0, z1: Z0 + hm.nz * CELL, hm, aoK: 0.22,
     paint: (t, wx, wz) => paintHollowFloor(t, wx, wz, opts.trainerBattle),
   });
   extra.push(ground.texture);
@@ -214,34 +214,36 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   extra.push(back.mesh.material as THREE.Material);
   group.add(back.mesh);
 
-  // ---- light: the sun through the passage (soft-edged cookie), cool cave fill
-  const sunFrom = new THREE.Vector3(-0.4, 0.95, -0.75);
-  const cookie = archCookie();
+  // ---- light: ONE dominant key — a high sun from the back left falling through the canopy at the
+  // rim (leaf-dapple gobo) onto the kin, with a lit focal pool where they stand; a dim cool fill.
+  const stage = new THREE.Vector3(0.1, 0, 0.1);
+  const sunFrom = new THREE.Vector3(-0.42, 1.0, -0.5);
+  const cookie = dappleCookie(57, { holes: 0.5, edge: 0.5 });
   extra.push(cookie);
   const { key, spriteLight } = sunRig(group, {
-    target: new THREE.Vector3(-1.2, 0, 0.4), from: sunFrom, distance: 30, angle: 0.26,
-    color: '#fff0c8', intensity: 8.0, cookie,
-    sky: '#c8e0d0', ground: '#4a4434', hemi: 2.7,
-    fill: '#d8e4d8', fillIntensity: 0.7, quality: q,
+    target: stage, from: sunFrom, distance: 30, angle: 0.15,
+    color: '#ffeec4', intensity: 7.5, cookie,
+    sky: '#b8d0c4', ground: '#3e3a2c', hemi: 1.75,
+    fill: '#c8d8d0', fillIntensity: 0.45, quality: q,
   });
   if (q === 'high') {
-    const bounce = new THREE.PointLight(new THREE.Color('#9fe0c8'), 2.5, 5, 1.6);
+    const bounce = new THREE.PointLight(new THREE.Color('#9fe0c8'), 2.0, 5, 1.6);
     bounce.position.set(5.8, 1.0, 0.6);
     group.add(bounce);
   }
   const dir = sunFrom.clone().normalize().negate();
   const beams: BeamSpec[] = [];
-  // Three shafts of unequal width and spacing through the passage (broad, thin, medium).
-  for (const [ox, oy, w0, w1] of [[-0.75, 0.2, 0.55, 1.9], [-0.3, -0.25, 0.2, 0.7], [0.75, 0.1, 0.38, 1.25]] as const) {
-    const s = new THREE.Vector3((GAP.x0 + GAP.x1) / 2 + 0.6 + ox * (GAP.x1 - GAP.x0) * 0.5, ARCH_Y + 0.6 + oy * 0.6, GAP.z - 0.4);
-    const len = (s.y / -dir.y) * (0.93 + rng.next() * 0.07);
-    beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w0, w1] });
+  // Three shafts of unequal width and spacing down through the canopy gap onto the stage.
+  for (const [ox, oz, w0, w1] of [[-1.3, 0.5, 0.45, 1.5], [-0.2, -0.3, 0.2, 0.7], [1.0, 0.4, 0.35, 1.15]] as const) {
+    const end = new THREE.Vector3(stage.x + ox, 0, stage.z + oz);
+    const len = 7.2 / -dir.y;
+    beams.push({ start: end.clone().addScaledVector(dir, -len), end, width: [w0, w1], fade: 0.35 });
   }
-  const rays = lightBeams(beams, '#fff0c4', 0.24);
+  const rays = lightBeams(beams, '#fff0c4', 0.22);
   extra.push(rays.mesh.geometry, rays.mesh.material as THREE.Material);
   group.add(rays.mesh);
   updates.push(rays.update);
-  const motes = dustMotes(beams, q === 'high' ? 44 : 24, rng, '#fff3c8');
+  const motes = dustMotes(beams, q === 'high' ? 40 : 22, rng, '#fff3c8');
   extra.push(motes.points.geometry, motes.points.material as THREE.Material);
   group.add(motes.points);
   updates.push(motes.update);
@@ -249,7 +251,8 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   extra.push(sparkle.points.geometry, sparkle.points.material as THREE.Material);
   group.add(sparkle.points);
   updates.push(sparkle.update);
-  const pools = lightPools(beams.map((b) => [b.end.x, b.end.z, 1.1 + b.width[1] * 1.1, 0.9 + b.width[1] * 0.7] as [number, number, number, number]), '#706a48');
+  // The focal pool where the kin stand (soft, warm), plus a smaller patch at each shaft's foot.
+  const pools = lightPools([[stage.x, stage.z, 6.4, 4.6], ...beams.map((b) => [b.end.x, b.end.z, 0.8 + b.width[1], 0.7 + b.width[1] * 0.6] as [number, number, number, number])], '#5a5234', 1.1);
   group.add(pools);
 
   return {
@@ -265,54 +268,61 @@ export function buildHollowArena(opts: ArenaBuildOptions): ArenaRig {
   };
 }
 
-/** Soft rounded-rectangle cookie (the passage mouth), slightly brighter at the centre. */
-function archCookie(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 64, 64);
-  const g = ctx.createRadialGradient(32, 34, 4, 32, 34, 30);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, '#e8e8e8'); g.addColorStop(1, '#000000');
-  ctx.fillStyle = g; ctx.fillRect(4, 6, 56, 54);
-  // Vines and leaves breaking the light.
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
-  for (let k = 0; k < 9; k++) ctx.fillRect(6 + k * 6.3, 6, 2, 8 + ((k * 37) % 17));
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 function paintHollowFloor(t: RgbaTile, wx: (x: number) => number, wz: (y: number) => number, trainer: boolean) {
   const H = HOLLOW_RAMPS;
   const rng = new Rng(97);
   const nA = noiseField(64, 64, rng, [[4, 0.5], [8, 0.3], [32, 0.2]]);
+  const nB = noiseField(64, 64, rng, [[16, 0.6], [32, 0.4]]);
   const mac = macro(17);
   for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
     const X = wx(x), Z = wz(y);
-    const n = nA(x, y), m = mac(X, Z);
+    const n = nA(x, y), m = mac(X, Z), fine = nB(x + 17, y + 5);
     const e = Math.hypot(X / 5.6, (Z - 0.2) / 3.6);
     const pd = Math.hypot((X - POOL.x) / POOL.rx, (Z - POOL.z) / POOL.rz);
-    // Moss creeps in from the walls; wet dark rim around the pool; worn light centre.
-    const moss = (e - 0.95) * 3 + (n - 0.5) * 1.6 + (m - 0.5);
-    if (moss > 0.4 && hash2(x, y, 6) < Math.min(1, moss - 0.2)) {
-      t.band(x, y, H.moss, 2.6 + (n - 0.5) * 2.6);
+    // Moss creeps in from the walls in clumps (dithered edge); wet dark rim around the pool;
+    // worn, lighter packed earth in the middle; darker toward the walls (AO).
+    const moss = (e - 0.9) * 3 + (n - 0.5) * 1.8 + (m - 0.5) * 1.1;
+    if (moss > 0.35 && hash2(x >> 1, y >> 1, 6) < Math.min(1, moss - 0.15)) {
+      t.band(x, y, H.moss, 2.4 + (n - 0.5) * 2.4 + (fine - 0.5) * 1.6 - Math.max(0, e - 1.1) * 1.2);
       continue;
     }
-    let v = 2.2 + (n - 0.5) * 3.2 + (m - 0.5) * 1.0 + Math.max(0, 0.9 - e) * 0.7;
+    let v = 2.4 + (n - 0.5) * 2.6 + (m - 0.5) * 0.9 + (fine - 0.5) * 1.2 + Math.max(0, 0.9 - e) * 0.8 - Math.max(0, e - 0.95) * 1.6;
     if (pd < 1.45) v -= (1.45 - pd) * 3.2;
-    if (hash2(x, y, 3) < 0.05) v += hash2(x, y, 4) < 0.5 ? -1 : 1;
-    t.band(x, y, H.floor, v);
+    if (hash2(x, y, 3) < 0.06) v += hash2(x, y, 4) < 0.55 ? -1 : 1; // grit
+    t.band(x, y, H.floor, v, 0.2);
   }
-  // Flat stones set into the floor (flagstone hints) and pebbles.
-  for (let k = 0; k < 60; k++) {
+  const inClearing = (cx: number, cy: number, k = 1.05) => Math.hypot(wx(cx) / 6, wz(cy) / 4) < k;
+  // Flat stones set into the floor (lit top-left rim, dark lower rim).
+  for (let k = 0; k < 70; k++) {
     const cx = rng.int(t.w), cy = rng.int(t.h), r = 2 + rng.int(4);
-    const X = wx(cx), Z = wz(cy);
-    if (Math.hypot(X / 6, Z / 4) > 1.1) continue;
+    if (!inClearing(cx, cy, 1.1)) continue;
     for (let j = -r; j <= r; j++) for (let i = -r - 1; i <= r + 1; i++) {
       if (Math.abs(i) + Math.abs(j) * 1.3 > r + 0.5) continue;
       const edge = Math.abs(i) + Math.abs(j) * 1.3 > r - 0.6;
-      t.set(cx + i, cy + j, H.floor[edge ? (j > 0 ? 1 : 5) : 4]!);
+      t.set(cx + i, cy + j, H.floor[edge ? (j > 0 || i > 0 ? 1 : 5) : 4]!);
     }
+  }
+  // Scuffs and drag marks (dark streak, lit lip), most in the worn middle.
+  for (let k = 0; k < 160; k++) {
+    const cx = rng.int(t.w), cy = rng.int(t.h);
+    if (!inClearing(cx, cy, 0.85)) continue;
+    const len = 3 + rng.int(6), slope = rng.chance(0.5) ? 0 : rng.chance(0.5) ? 0.5 : -0.5;
+    for (let i = 0; i < len; i++) { const yy = cy + Math.round(i * slope); t.set(cx + i, yy, H.floor[1]!); if (rng.chance(0.7)) t.set(cx + i, yy - 1, H.floor[5]!); }
+  }
+  // Pebbles: a lit texel with a dark cast shadow down-right (light from the back left).
+  for (let k = 0; k < 900; k++) {
+    const cx = rng.int(t.w), cy = rng.int(t.h);
+    if (!inClearing(cx, cy, 1.15)) continue;
+    const big = rng.chance(0.3);
+    t.set(cx + 1, cy + 1, H.floor[0]!); if (big) { t.set(cx + 2, cy + 1, H.floor[0]!); t.set(cx + 1, cy + 2, H.floor[1]!); }
+    t.set(cx, cy, H.floor[5]!); if (big) { t.set(cx + 1, cy, H.floor[4]!); t.set(cx, cy + 1, H.floor[4]!); }
+  }
+  // Moss tufts dotted into the earth near the walls.
+  for (let k = 0; k < 500; k++) {
+    const cx = rng.int(t.w), cy = rng.int(t.h);
+    const e = Math.hypot(wx(cx) / 5.6, (wz(cy) - 0.2) / 3.6);
+    if (e < 0.8 || e > 1.2) continue;
+    t.set(cx, cy, H.moss[4]!); t.set(cx + 1, cy, H.moss[3]!); t.set(cx, cy + 1, H.moss[2]!);
   }
   if (trainer) paintTrodden(t, wx, wz, [HOLLOW_RAMPS.floor[6], HOLLOW_RAMPS.floor[4], HOLLOW_RAMPS.floor[1]]);
 }
