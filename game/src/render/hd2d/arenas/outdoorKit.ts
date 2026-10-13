@@ -970,6 +970,71 @@ export function paintSilhouette(t: RgbaTile, rng: Rng, ramp: Ramp, base: number,
   }
 }
 
+// ------------------------------------------------------------------ painted tree line
+
+/**
+ * A row of distant tree crowns on a backdrop tile, filled down to `bottom`: overlapping round
+ * leaf clumps, each shaded like a sphere lit from `light` (screen direction, e.g. [-0.6, -0.7] =
+ * upper left) with leaf-cell texture, a dark gap where clumps overlap, a few bright flecks on
+ * the lit side; `haze` (0..1) lifts the row toward `hazeCol` (aerial perspective), more at the
+ * bottom. Textured masses, not a flat cardboard silhouette.
+ */
+export function paintTreeLine(t: RgbaTile, rng: Rng, ramp: Ramp, o: { base: number; amp: number; size: [number, number]; bottom?: number; haze?: number; hazeCol?: string; light?: [number, number] }) {
+  const n = ramp.length;
+  const bottom = o.bottom ?? t.h;
+  const L = o.light ?? [-0.6, -0.7];
+  const hz = rgb(o.hazeCol ?? ramp[n - 1]!);
+  const haze = o.haze ?? 0;
+  const clumps: [number, number, number][] = [];
+  let x = -o.size[1];
+  while (x < t.w + o.size[1]) {
+    const r = o.size[0] + rng.next() * (o.size[1] - o.size[0]);
+    const top = o.base - o.amp * (0.35 + rng.next() * 0.65);
+    clumps.push([x, top + r, r]);
+    // A second, lower clump tucked beside it (crowns are lumpy, not single domes).
+    if (rng.chance(0.7)) clumps.push([x + (rng.next() - 0.5) * r * 1.4, top + r * (1.5 + rng.next() * 0.6), r * (0.6 + rng.next() * 0.3)]);
+    x += r * (0.9 + rng.next() * 0.7);
+  }
+  // Back to front: higher crowns first, lower clumps over them.
+  clumps.sort((a, b) => a[1] - b[1]);
+  const owner = new Int32Array(t.w * t.h).fill(-1);
+  clumps.forEach(([cx, cy, r], ci) => {
+    for (let y = Math.max(0, Math.floor(cy - r - 1)); y < Math.min(bottom, Math.ceil(cy + r * 3)); y++) for (let xx = Math.max(0, Math.floor(cx - r - 1)); xx <= Math.min(t.w - 1, cx + r + 1); xx++) {
+      const dx = (xx + 0.5 - cx) / r, dy = (y + 0.5 - cy) / r;
+      // Leaf-cell edge: little 3×2 cells make a ragged rim.
+      const cell = hash2(Math.floor((xx + (Math.floor(y / 2) % 2) * 1.5) / 3), Math.floor(y / 2), ci);
+      const inside = dy > 0 ? Math.abs(dx) < 1 + (cell - 0.5) * 0.25 : dx * dx + dy * dy < 1 + (cell - 0.55) * 0.45;
+      if (!inside) continue;
+      const prev = owner[y * t.w + xx]!;
+      owner[y * t.w + xx] = ci;
+      const nz = Math.sqrt(Math.max(0, 1 - Math.min(1, dx * dx + Math.min(0, dy) ** 2)));
+      const lit = -(dx * L[0] + Math.min(dy, 0.6) * L[1]) + nz * 0.4;
+      let v = 1.6 + lit * 2.2 + (cell - 0.5) * 0.9 - Math.max(0, dy) * 1.2;
+      if (prev >= 0 && dx * dx + dy * dy > 0.72) v -= 1.4;           // dark gap where it overlaps
+      if (cell > 0.93 && lit > 0.3) v += 1.2;                          // bright leaf fleck
+      v = Math.max(0, Math.min(n - 1, v));
+      const c = rgb(ramp[bandIndex(v, xx, y, n, 0.16)]!);
+      const k0 = Math.min(1, haze + Math.max(0, (y - o.base) / Math.max(4, bottom - o.base)) * 0.35);
+      const k = Math.min(1, bandIndex(k0 * 5, xx, y, 6, 0.1) / 5);
+      const i = (y * t.w + xx) * 4;
+      t.data[i] = c[0] + (hz[0] - c[0]) * k; t.data[i + 1] = c[1] + (hz[1] - c[1]) * k; t.data[i + 2] = c[2] + (hz[2] - c[2]) * k; t.data[i + 3] = 255;
+    }
+  });
+  // Fill below the crowns down to `bottom` (trunks lost in the undergrowth's shade).
+  for (let xx = 0; xx < t.w; xx++) {
+    let y0 = -1;
+    for (let y = 0; y < bottom; y++) if (t.data[(y * t.w + xx) * 4 + 3]! > 0) { y0 = y; break; }
+    if (y0 < 0) continue;
+    for (let y = y0; y < bottom; y++) {
+      const i = (y * t.w + xx) * 4;
+      if (t.data[i + 3]! > 0 && owner[y * t.w + xx]! >= 0) continue;
+      const c = rgb(ramp[Math.min(n - 1, 1)]!);
+      const k = Math.min(1, haze + 0.3);
+      t.data[i] = c[0] + (hz[0] - c[0]) * k; t.data[i + 1] = c[1] + (hz[1] - c[1]) * k; t.data[i + 2] = c[2] + (hz[2] - c[2]) * k; t.data[i + 3] = 255;
+    }
+  }
+}
+
 // ------------------------------------------------------------------ layered land silhouettes
 
 export interface MesaOpts {

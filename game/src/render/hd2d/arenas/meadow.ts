@@ -17,7 +17,7 @@ import { particleSystem } from '../kit/particles';
 import { boulder } from '../kit/rock';
 import {
   Foliage, SpriteAtlas, apron, backdrop, disposeGroup, gobo, groundMesh, hash2, lightPools, macro, mkMesh, noiseField,
-  paintBark, paintButterfly, paintCanopy, paintEarth, paintFlower, paintSilhouette, paintSky, paintTuft, paintTurf, rampColor, sunRig, terraces,
+  paintBark, paintButterfly, paintCanopy, paintEarth, paintFlower, paintSky, paintTreeLine, paintTuft, paintTurf, rampColor, sunRig, terraces,
   type RgbaTile,
 } from './outdoorKit';
 
@@ -405,16 +405,17 @@ export function buildMeadowSet(opts: ArenaBuildOptions, variant: MeadowVariant):
   group.add(folMesh);
   updates.push((t) => { fol.uTime.value = t; });
 
-  // ---- far backdrop: sky and the distant tree line (rarely more than a sliver in view)
+  // ---- far backdrop: sky and the distant forest — three rows of textured leaf crowns (lit
+  // from the sun's side, leaf-cell rims, dark gaps), hazier with distance; only a sliver of
+  // sky shows between them.
   const back = backdrop((t) => {
     paintSky(t, R.sky, 0, Math.round(t.h * 0.5));
     const r = new Rng(77);
-    // Three rows of tree line, hazier with distance (aerial perspective); they fill most of the
-    // plane, so only a thin band of sky shows between the canopies (no flat sky patch).
-    paintSilhouette(t, r, R.far, t.h * 0.34, 16, 10, t.h, { haze: 0.6 });
-    paintSilhouette(t, r, R.far, t.h * 0.56, 22, 9, t.h, { haze: 0.32 });
-    paintSilhouette(t, r, R.leaf, t.h * 0.8, 20, 8, t.h, { haze: 0.1 });
-  }, 320, 120, [80, 30], [0, 8, -24]);
+    const light: [number, number] = flowers ? [0.6, -0.7] : [-0.6, -0.7];
+    paintTreeLine(t, r, R.far, { base: t.h * 0.36, amp: 18, size: [7, 12], haze: 0.45, hazeCol: '#b8d0c0', light });
+    paintTreeLine(t, r, R.leafWarm, { base: t.h * 0.56, amp: 22, size: [8, 14], haze: 0.28, hazeCol: '#a8c4a8', light });
+    paintTreeLine(t, r, R.leaf, { base: t.h * 0.8, amp: 18, size: [8, 13], haze: 0.08, hazeCol: '#90b090', light });
+  }, 320, 120, [80, 30], [0, 8, -24], { gain: 0.85 });
   extra.push(back.mesh.material as THREE.Material);
   group.add(back.mesh);
 
