@@ -33,10 +33,12 @@ export interface WaterOptions {
   foamWidth?: number;
   /** Flow direction of the surface pattern (units/s). */
   flow?: [number, number];
+  /** Texel size in world units (default TEXEL; route maps use TEXEL / 2). */
+  texel?: number;
 }
 
 const FRAG = /* glsl */ `
-uniform float uTime, uLight, uSpeed, uFoamW, uRange;
+uniform float uTime, uLight, uSpeed, uFoamW, uRange, uTexel;
 uniform vec3 uRamp[7];
 uniform vec3 uFoam[4];
 uniform sampler2D tDist;
@@ -59,8 +61,8 @@ float bayer(vec2 p) {
 }
 void main() {
   // Snap to the texel grid: every computation happens per texel.
-  vec2 tc = floor(vW.xz / ${TEXEL.toFixed(5)});
-  vec2 p = (tc + 0.5) * ${TEXEL.toFixed(5)};
+  vec2 tc = floor(vW.xz / uTexel);
+  vec2 p = (tc + 0.5) * uTexel;
   float t = uTime * uSpeed;
   vec2 fp = p - uFlow * uTime;
   float n = noise(fp * 1.3 + vec2(t * 0.35, t * 0.2)) * 0.55 + noise(fp * 2.9 - vec2(t * 0.25, -t * 0.3)) * 0.3 + noise(fp * 6.0 + t * 0.5) * 0.15;
@@ -90,7 +92,7 @@ void main() {
     float life = fract(uTime * 0.3 + float(i) * 0.37);
     float r = life * 0.9 + 0.15;
     // A 1-texel ring that breaks up as it widens and fades out.
-    if (abs(d - r) < ${TEXEL.toFixed(5)} * 0.5 && hash(tc + float(i)) > life * 0.9) foam = max(foam, 0.75);
+    if (abs(d - r) < uTexel * 0.5 && hash(tc + float(i)) > life * 0.9) foam = max(foam, 0.75);
   }
   // Glints: a few bright texels on wave crests.
   if (n > 0.8 && hash(tc + floor(uTime * 2.0)) > 0.94) foam = max(foam, 1.0);
@@ -154,7 +156,7 @@ export function pixelWater(o: WaterOptions): { mesh: THREE.Mesh; material: THREE
   const material = new THREE.ShaderMaterial({
     vertexShader: VERT, fragmentShader: FRAG,
     uniforms: {
-      uTime: { value: 0 }, uLight: { value: o.light ?? 1 }, uSpeed: { value: o.speed ?? 1 }, uFoamW: { value: o.foamWidth ?? 0.35 }, uRange: { value: range },
+      uTime: { value: 0 }, uTexel: { value: o.texel ?? TEXEL }, uLight: { value: o.light ?? 1 }, uSpeed: { value: o.speed ?? 1 }, uFoamW: { value: o.foamWidth ?? 0.35 }, uRange: { value: range },
       uRamp: { value: pad(ramp.map(lin), 7) }, uFoam: { value: pad(foam.map(lin), 4) },
       tDist: { value: dist }, uHasDist: { value: dist ? 1 : 0 },
       uRect: { value: new THREE.Vector4(r.x0, r.z0, r.w, r.d) },

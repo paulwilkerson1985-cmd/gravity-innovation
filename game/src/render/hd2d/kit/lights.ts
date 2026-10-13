@@ -84,6 +84,11 @@ export interface LightRigOptions {
   cookie?: THREE.Texture;
   /** Cast shadows (default true). */
   shadows?: boolean;
+  /** Override the preset's key colour, hemisphere sky / ground and fill colours. */
+  keyColor?: THREE.ColorRepresentation;
+  sky?: THREE.ColorRepresentation;
+  ground?: THREE.ColorRepresentation;
+  fillColor?: THREE.ColorRepresentation;
 }
 
 export interface LightRig {
@@ -104,7 +109,7 @@ export function lightRig(group: THREE.Group, preset: LightPreset, o: LightRigOpt
   const extent = o.extent ?? 12;
   const elev = o.elev ?? p.elev, azim = o.azim ?? p.azim;
   const dir = new THREE.Vector3(Math.sin(azim) * Math.cos(elev), Math.sin(elev), -Math.cos(azim) * Math.cos(elev));
-  const keyColor = new THREE.Color(p.key);
+  const keyColor = new THREE.Color(o.keyColor ?? p.key);
   const dist = extent * 2.5;
   let key: THREE.DirectionalLight | THREE.SpotLight;
   if (o.cookie) {
@@ -127,16 +132,17 @@ export function lightRig(group: THREE.Group, preset: LightPreset, o: LightRigOpt
   key.shadow.bias = -0.0006;
   key.shadow.normalBias = 0.02;
   key.shadow.radius = p.soft;
-  const hemi = new THREE.HemisphereLight(new THREE.Color(p.sky), new THREE.Color(p.ground), p.hemiI * (o.hemiK ?? 1));
-  const fill = new THREE.DirectionalLight(new THREE.Color(p.fill), p.fillI);
+  const skyC = new THREE.Color(o.sky ?? p.sky), groundC = new THREE.Color(o.ground ?? p.ground);
+  const hemi = new THREE.HemisphereLight(skyC, groundC, p.hemiI * (o.hemiK ?? 1));
+  const fill = new THREE.DirectionalLight(new THREE.Color(o.fillColor ?? p.fill), p.fillI);
   fill.position.copy(target).add(new THREE.Vector3(3, 6, 10));
   fill.target.position.copy(target);
   group.add(key, key.target, hemi, fill, fill.target);
   const spriteLight: SpriteLight = {
     keyDir: dir.clone(),
     keyColor: keyColor.clone().multiplyScalar(0.62 * Math.min(1.3, p.keyI / 2.2)),
-    sky: new THREE.Color(p.sky).multiplyScalar(0.62 * Math.min(1.2, p.hemiI / 1.7)),
-    ground: new THREE.Color(p.ground).multiplyScalar(0.62),
+    sky: skyC.clone().multiplyScalar(0.62 * Math.min(1.2, p.hemiI / 1.7)),
+    ground: groundC.clone().multiplyScalar(0.62),
     rim: keyColor.clone().multiplyScalar(0.55),
   };
   return {
