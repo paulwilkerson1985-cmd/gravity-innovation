@@ -1,8 +1,10 @@
 # HD-2D art direction — pipeline, conventions, rollout
 
-Status: **prototype behind `?gfx=hd2d`** (default rendering unchanged). Covers adventure
-battles on Ember Ridge (every hotspot) and every `cave` hotspot (e.g. Mossy Meadow's Rocky
-hollow). Everything is procedural and original (no external art, see `ASSETS.md`).
+Status: **prototype behind `?gfx=hd2d`** (default rendering unchanged). Covers every battle
+arena (terrain registry below) and, since the screens pass, every non-battle screen too: title,
+starter pick, the four route maps (and the menu over them), party / box / bestiary / bag / shop
+and evolution (see "Screens"). Everything is procedural and original (no external art, see
+`ASSETS.md`).
 
 Try it: `?scene=battle&route=ridge&hotspot=hiker-brann&gfx=hd2d` (trainer),
 `?scene=battle&route=ridge&hotspot=vent-cave&gfx=hd2d` (wild). Extra switches:
@@ -202,6 +204,85 @@ land), `attachKin/detachKin/fitKin`, `trainer(id)`, `trainerPath(entering)`, `th
 - Gaps: the hall is roofless (stars above the wall tops in the HoF framing); floodlight mast
   heads sit above the battle frame (only their shafts show); crowd sprites are spherical
   billboards (they tilt slightly with the camera); the stadium has no front stand.
+
+## Screens: title, starter, route maps, menu screens, evolution
+
+Every non-battle screen renders through the same pipeline when `?gfx=hd2d` is on, as a small
+diorama with the battle sprites; all DOM UI, flows and `data-testid`s are unchanged (each scene
+branches on `hd2dRequested()` in a few places; the default path is untouched).
+
+| Screen | Set (`src/render/hd2d/screens/`) | Scene |
+|---|---|---|
+| Title | `buildTitleSet` — the flower-field arena (`buildMeadowSet(…, 'flowers')`) at golden hour + foreground flora; the camera drifts ±0.55 units in whole texels; three hero kin (Pyrelord, Maelstrode, Verdantusk) as sprites in the lit clearing | `scenes/title.ts` |
+| Starter | `buildStarterSet` — the meadow clearing, three cut octagonal stone daises (`octSlab` + loose kit boulders); `placeSpot()` lights the chosen dais: a steep shaft from a canopy gap, motes, a warm floor pool and a pool on the dais top (rebuilt per selection: beams/motes are world-space) | `scenes/starter.ts` |
+| Route maps + menu | `buildIslandSet(q, theme, spots, { player })` — one floating island per theme (below) | `scenes/route.ts` |
+| Party, box, bestiary, bag, shop | `buildRoomSet` — warm stone room, plinth (`PLINTH_TOP`), window cookie key, shaft + motes, rug, shelf, sconces; turntable in 22.5° steps; vertex-coloured item models are baked sprites too | `scenes/meta.ts` |
+| Evolution | `buildRoomSet(q, { dim: true })` — the room at dusk; the white silhouette phase is the sprite's emissive flash | `scenes/evolution.ts` |
+
+**Stage** (`scenes/hd2dScreen.ts`, `Hd2dScreenStage(game, scene, camera, build)`): installs the
+pipeline at `detectQuality()`'s tier with the set's grade/background/fog, owns the
+`SpriteBaker`, `addKin(view)` / `removeKin` / `addFigure(f)` / `addMesh(mesh)` (same texel
+densities as the battle: people 44, kin 28/34/40 texels by stage — `screens/common.ts`),
+`framed(focus)` after the scene framed its camera (snaps the view offset to whole internal
+pixels, sets fog, sizes buffers, re-aims backdrops), `drift(d)` (camera offset rounded to whole
+internal pixels at the focus depth, so a drifting camera slides the focus plane in whole texels),
+`update(t)`, `perf()`, `dispose()`. A set builder returns a `ScreenSet`:
+`{ group, spriteLight, grade, background, fog, update, setPixelSize, frame?, dispose }`.
+
+**Floating islands** (`screens/island.ts`):
+- The top is ONE unique painted texture at **half the battle texel** (`MT = TEXEL / 2`: the map
+  shows the whole island, so its texels land at the same ~2 screen px as the sprites), alpha-cut
+  to a wobbly polar outline at texel precision. Painters per theme: meadow (mottled grass with
+  blade flecks, dirt paths from the player to every spot, flowers, darker lush grass under the
+  grass patches), ridge (dark basalt ash, branching cracks, dry grass, a banded lava river with
+  slag rims in an emissive mask that blooms, lava-lit ash beside it), coast (sand, wind
+  ripples, shells, dune-turf patches, wet sand round the lagoon), summit (flagstones with
+  seams, snow drifting in from the rim).
+- Under it: `boulderColumns` rim walls just below the top, a hanging cone of rock-kit boulders
+  shrinking and darkening downward with a dark core, a tip, and small floating rock clusters.
+  Raised turf ledges (`terraces`, meadow/coast) or basalt/stone crags (`boulderColumns` on the
+  ledge heightmap, ridge/summit); a grass fringe of static foliage quads hangs over the lip.
+- One `Foliage` mesh (atlas: canopies / dead trees / palms / snowy pines per theme, bushes,
+  tufts, tall grass, flower clumps, fringe) + bark/wood/stone/glow `VoxelBatch`es. Theme props:
+  fence, signpost, log, pond (meadow); vents with steam, embers over the lava, a lavafall down
+  the front-left wall (ridge); driftwood, umbrella, rocks (coast); the Champion's stepped dais,
+  pillars, crown arch, banners, path stones, snow flurries (summit).
+- Hotspots are small groups the scene picks and wiggles: grass clumps (own `Foliage`), a cave
+  mound with a dark mouth (ember / sea glow inside on ridge / coast), a lagoon (pixel water at
+  map texels + rock ring), trainer posts (stone pad with a red / green inset). Pixel gem markers
+  and "!" / ✓ badges are 7–9 texel canvas sprites that bob in whole map texels. Trainers and
+  the player are `characters.ts` figures baked like in battle.
+- Sky: `skyBackdrop` paints a posterised sky with layered cumulus banks (lit rims, flat bands
+  darkening with depth, inner puff outlines on some puffs) onto a plane that exactly covers
+  the visible frustum (view offset included) at ~2 internal px per texel; repainted only when
+  the frame's shape changes. `cloudBillboards` adds drifting pixel cumulus (one draw call)
+  below and behind the island, moving in whole cloud texels.
+- Light: `kit/lights.ts` `lightRig` directional key with shadows (per theme: golden afternoon
+  meadow, sunset ridge, bright coast, dusk summit; colour overrides `keyColor/sky/ground`), long
+  faint sun shafts entering from above the frame, motes; grade from `presetGrade` + per-theme
+  tweaks.
+
+**Perf** (whole frame incl. shadow pass, sprite bakes and post; SwiftShader captures):
+
+| Screen | desk high (640×360) calls / tris | phone low (271×586) calls / tris |
+|---|---|---|
+| Title | 50 / 46k | 41 / 32k |
+| Starter (chosen) | 58 / 43k | 49 / 29k |
+| Route meadow (and menu) | 56 / 49k | 45 / 21k |
+| Route ridge | 56 / 56k | 49 / 24k |
+| Party | 30 / 11k | 27 / 9k |
+| Evolution | 32 / 10k | — |
+
+Low tier: fewer foliage sprites, fringe quads, cloud billboards, underside rings and floating
+rocks, `lite` boulders, quarter-res bloom, frozen shadow map, no point lights, no GTAO.
+`e2e/hd2d-screens.spec.ts` checks every screen (perf non-null, internal size = drawing buffer,
+calls < 100, not blank, testids, no errors) on desktop and phone.
+
+Gaps: the title's near bank is plain turf under the buttons; the island underside is mostly
+hidden by the bottom sheet on phones; trainers' "beaten" state is shown by the badge and pad
+only (the sprite is not greyed); bag/shop item sprites use one texel height for every item;
+the evolution rays/sparkles are the default renderer's effects (additive, pixel-crisp at the
+low internal res, but not pixel-art sprites).
 
 <!-- kit:begin -->
 ## Shared kit (`src/render/hd2d/kit/`) — for arena builders
@@ -422,8 +503,8 @@ Arenas (one builder each, sharing the kit):
    snow motes, blue grade.
 10. **Arena PvP stadium** — tiers of block spectators (instanced sprites), floodlights.
 
-Scenes to convert after battles: route maps (diorama islands with the texture kit + figures as
-sprites), title, starter choice, evolution (sprite silhouette flash works directly), Hall of
-Fame, menu turntables (party/bestiary/bag/box/shop) and the Arena lobby/victory podium.
+Scenes converted after battles: route maps, title, starter choice, evolution, Hall of Fame,
+menu turntables (party/bestiary/bag/box/shop) — see "Screens". Still to do: the Arena lobby
+(the Arena victory podium is done).
 Also: real-device perf pass and tier auto-detection tuning, Arena battle adoption of the stage
 adapter, and moving FX to bloom-aware colours per element.

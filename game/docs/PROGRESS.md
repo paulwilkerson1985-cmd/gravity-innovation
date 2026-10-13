@@ -1,5 +1,9 @@
 # Progress
 
+## 2026-10-13 — HD-2D screens (`?gfx=hd2d`): title, starter, route maps, menu screens, evolution
+- Every non-battle screen now renders through the HD-2D pipeline as a small pixel-art diorama with the battle's baked sprites: golden-hour flower-field title with a whole-texel camera drift, starter daises in the meadow clearing with a light shaft on the chosen one, a floating-island diorama per route (painted island top, boulder rim and underside, ledges/crags, foliage, voxel hotspots, lava river + lavafall, lagoon, Champion dais, painted sky + pixel clouds, shadowed key light), a warm stone room with a plinth for party/box/bestiary/bag/shop, the same room at dusk for evolution. DOM UI, flows and testids unchanged; default renderer unchanged. Design and numbers: `docs/HD2D.md` "Screens"; decisions: `docs/DECISIONS.md` "HD-2D screens".
+- Evidence: `e2e/hd2d-screens.spec.ts` (title → starter → confirm → route; all four maps; menu; party/box/bestiary/bag/shop; evolution; desktop + phone; perf non-null, < 100 calls: 27–58 measured; no console errors) ✓; smoke/adventure/meta/layout ✓ (default path); typecheck, lint, 275 unit tests ✓. Captures: harness `screens` group (12 shots).
+
 ## 2026-10-13 — HD-2D prototype (`?gfx=hd2d`, Ember Ridge + cave battles)
 - New art-direction pipeline behind a flag: pixel-art cave arena (terraced boulder walls with a texel bevel, lodge, stairs with rails, rubble, window), cookie-spot key light with soft shadows, light shafts + dust, bloom/ACES/warm grade/tilt-shift/vignette/dither at a low internal res, kin/player/trainer as live sprite bakes with outlines. Default rendering untouched. Design, API, numbers, gaps and rollout: `docs/HD2D.md`.
 - Evidence: `e2e/hd2d.spec.ts` (trainer + wild cave turn, desktop + phone, no console errors, non-blank, < 100 calls: 44–52 measured), all unit tests ✓, full Playwright suite ✓; sheets in `docs/screenshots/hd2d/`.
