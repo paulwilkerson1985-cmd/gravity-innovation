@@ -43,7 +43,7 @@ export function hd2dTerrainFor(ctx: ArenaContext): Hd2dTerrain | null {
  * battle UI.
  */
 export const HD2D_CAMERA: Record<LayoutName, CameraPreset> = {
-  wide: { elev: 0.56, yaw: -0.06, fov: 38, person: 0.2, mine: [0.4, 0.68], foe: [0.62, 0.52] },
+  wide: { elev: 0.52, yaw: -0.06, fov: 38, person: 0.2, mine: [0.4, 0.72], foe: [0.62, 0.56] },
   portrait: { elev: 0.48, yaw: -0.4, fov: 38, person: 0.1, mine: [0.4, 0.5], foe: [0.62, 0.3] },
   land: { elev: 0.66, yaw: -0.08, fov: 34, person: 0.15, mine: [0.3, 0.66], foe: [0.52, 0.42] },
 } as const;
@@ -74,8 +74,9 @@ export function stageOf(id: string | undefined): 1 | 2 | 3 {
 }
 
 /**
- * Flat kin (rays, moths, gliders) read as a sliver from a near-side view: pitch them toward the
- * camera (rad, top toward the viewer) and bake them from more of the camera's elevation.
+ * Per-species poses: flat kin (rays, moths, gliders) read as a sliver from a near-side view, so
+ * they pitch toward the camera (rad, top toward the viewer) and bake from more of the camera's
+ * elevation; `turn` overrides how far your kin turns toward the camera from a side view.
  */
 export const FLAT_POSES: Record<string, { pitch: number; bakePitch: number; turn?: number }> = {
   // A ray lies flat: tip its back toward the viewer and bake from higher up.
@@ -84,6 +85,8 @@ export const FLAT_POSES: Record<string, { pitch: number; bakePitch: number; turn
   // wings open up instead of showing their edge.
   stormoth: { pitch: 0.12, bakePitch: 0.5, turn: 1.0 },
   cyclonyx: { pitch: 0.16, bakePitch: 0.45, turn: 0.7 },
+  // A hunched brute: from the side its hump hides the face, so it turns further toward us.
+  cragmaul: { pitch: 0, bakePitch: 0.3, turn: 0.78 },
 };
 
 /** How far your kin turns toward the camera from a pure side view (rad). */
