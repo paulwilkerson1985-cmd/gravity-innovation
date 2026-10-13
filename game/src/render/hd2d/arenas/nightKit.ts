@@ -351,26 +351,26 @@ export function swayMaterial(map: THREE.Texture): { material: THREE.MeshLambertM
 const BB_VERT = /* glsl */ `
 attribute vec3 aCenter;
 attribute vec2 aCorner;
-attribute vec4 aInfo;   // x: seed, y: row (variant), z: scale, w: jump amount
+attribute vec4 aInfo;   // x: seed, y: row (variant), z: scale, w: jump height when excited
 attribute vec3 aTint;
 uniform float uTime;
 uniform float uFps;
 uniform float uFrames;
 uniform float uRows;
-uniform float uHype;
+uniform float uHype;    // fraction of sprites that are excited (split sheets)
+uniform float uSplit;   // 1: idle frames in the first half, excited frames in the second
 uniform vec2 uSize;
-uniform float uPixel;   // world units per internal pixel at the subject (for snapping), 0 = off
 varying vec2 vUv;
 varying vec3 vTint;
 void main() {
-  float hype = uHype;
-  float f = floor(mod(uTime * uFps * (0.75 + 0.5 * fract(aInfo.x * 7.13)) + aInfo.x * 11.0, uFrames));
-  // Excited sprites use the back half of the strip (arms up) while hyped.
-  float frames = uFrames;
-  vUv = vec2((uv.x + f) / frames, (uv.y + aInfo.y) / uRows);
+  float span = uSplit > 0.5 ? uFrames * 0.5 : uFrames;
+  float excited = (uSplit > 0.5 && fract(aInfo.x * 3.71) < uHype) ? 1.0 : 0.0;
+  float speed = uFps * (uSplit > 0.5 ? mix(0.3, 1.0, excited) : 1.0) * (0.75 + 0.5 * fract(aInfo.x * 7.13));
+  float f = floor(mod(uTime * speed + aInfo.x * 11.0, span)) + excited * span;
+  vUv = vec2((uv.x + f) / uFrames, (uv.y + aInfo.y) / uRows);
   vTint = aTint;
   vec3 c = aCenter;
-  c.y += max(0.0, sin(uTime * 9.0 + aInfo.x * 40.0)) * aInfo.w * hype;
+  c.y += max(0.0, sin(uTime * 9.0 + aInfo.x * 40.0)) * aInfo.w * excited;
   vec4 mv = viewMatrix * vec4(c, 1.0);
   mv.xy += aCorner * uSize * aInfo.z;
   gl_Position = projectionMatrix * mv;
@@ -384,12 +384,11 @@ varying vec3 vTint;
 void main() {
   vec4 c = texture2D(tMap, vUv);
   if (c.a < 0.5) discard;
-  // Texels with a red channel of exactly the key (#ff00ff-like magenta marker) take the tint.
+  // Key colours in the sheet take the per-sprite tint: #ff00ff full, #b400b4 shaded
+  // (values are linear here: the sheet is sRGB-decoded on sampling).
   vec3 col = c.rgb;
-  float key = step(0.9, c.r) * step(0.9, c.b) * step(c.g, 0.1);
-  float keyDark = step(0.45, c.r) * step(c.r, 0.6) * step(0.45, c.b) * step(c.b, 0.6) * step(c.g, 0.05);
-  col = mix(col, vTint, key);
-  col = mix(col, vTint * 0.55, keyDark);
+  float isKey = step(c.g, 0.05) * step(0.3, c.r) * step(abs(c.r - c.b), 0.05);
+  col = mix(col, vTint * mix(0.55, 1.0, step(0.75, c.r)), isKey);
   gl_FragColor = vec4(col * uGain, 1.0);
 }`;
 
@@ -403,9 +402,10 @@ export interface Billboards {
 /**
  * Many camera-facing quads sharing a flipbook sheet (frames across, variants down) in one
  * draw call. Corners: x −0.5..0.5, y 0..1 (anchored at the feet). Magenta texels in the sheet
- * take the per-sprite tint (shirt colours), dark magenta a shaded tint.
+ * take the per-sprite tint (shirt colours), dark magenta a shaded tint. `split`: the first half
+ * of the frames loop slowly (idle), the second half fast with a hop for the `hype` fraction.
  */
-export function billboards(sheet: THREE.Texture, frames: number, rows: number, size: [number, number], items: { at: THREE.Vector3; row: number; scale?: number; jump?: number; tint?: THREE.Color; seed: number }[], o: { fps?: number; gain?: number } = {}): Billboards {
+export function billboards(sheet: THREE.Texture, frames: number, rows: number, size: [number, number], items: { at: THREE.Vector3; row: number; scale?: number; jump?: number; tint?: THREE.Color; seed: number }[], o: { fps?: number; gain?: number; split?: boolean } = {}): Billboards {
   const n = items.length;
   const center = new Float32Array(n * 4 * 3), corner = new Float32Array(n * 4 * 2), info = new Float32Array(n * 4 * 4), tint = new Float32Array(n * 4 * 3), uv = new Float32Array(n * 4 * 2);
   const index: number[] = [];
@@ -436,7 +436,7 @@ export function billboards(sheet: THREE.Texture, frames: number, rows: number, s
     vertexShader: BB_VERT, fragmentShader: BB_FRAG,
     uniforms: {
       tMap: { value: sheet }, uTime: { value: 0 }, uFps: { value: o.fps ?? 6 }, uFrames: { value: frames }, uRows: { value: rows },
-      uHype: { value: 0 }, uSize: { value: new THREE.Vector2(...size) }, uPixel: { value: 0 }, uGain: { value: o.gain ?? 1 },
+      uHype: { value: 0 }, uSplit: { value: o.split ? 1 : 0 }, uSize: { value: new THREE.Vector2(...size) }, uGain: { value: o.gain ?? 1 },
     },
   });
   const mesh = new THREE.Mesh(g, material);

@@ -21,6 +21,8 @@ import { abtn, curtain, pips, seatTag } from './arenaUi';
 import { ERROR_TEXT, MAX_TIMEOUTS, type RoomView, type ServerMessage } from '../net/protocol';
 import { endOnline, existingClient } from '../net/session';
 import type { ArenaClient, NetStatus } from '../net/client';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import { Hd2dArenaStage } from './hd2dArena';
 
 const STAT_NAMES: Record<StageKey, string> = { atk: 'Attack', def: 'Defense', spe: 'Speed' };
 const STATUS_TEXT: Record<StatusId, [string, string, string]> = {
@@ -82,6 +84,8 @@ export class ArenaBattleScene extends BaseScene {
   private roomGone = false;
   /** The kin currently out on each side (as last sent out). */
   private cur: [{ name: string; species: string } | null, { name: string; species: string } | null] = [null, null];
+  /** HD-2D stadium staging (`?gfx=hd2d`), else null for the default stadium. */
+  private hd2d: Hd2dArenaStage | null = null;
 
   enter(params: Record<string, unknown>) {
     const p = params as ArenaBattleParams;
@@ -108,10 +112,16 @@ export class ArenaBattleScene extends BaseScene {
     }
 
     this.platformFlip = this.near;
-    this.set = buildArena(this.scene, {
-      nearColor: SEAT_COLORS[this.near], farColor: SEAT_COLORS[other(this.near)],
-      nearDark: SEAT_DARK[this.near], farDark: SEAT_DARK[other(this.near)], spots: this.spots,
-    });
+    if (hd2dRequested()) {
+      this.hd2d = new Hd2dArenaStage(this.game, this.scene, this.camera, { near: this.near, colors: SEAT_COLORS, darks: SEAT_DARK });
+      this.spots = this.hd2d.spots;
+      this.set = this.hd2d.set;
+    } else {
+      this.set = buildArena(this.scene, {
+        nearColor: SEAT_COLORS[this.near], farColor: SEAT_COLORS[other(this.near)],
+        nearDark: SEAT_DARK[this.near], farDark: SEAT_DARK[other(this.near)], spots: this.spots,
+      });
+    }
     this.resize(this.game.renderer.width, this.game.renderer.height);
     this.decoratePanels();
 
@@ -138,10 +148,12 @@ export class ArenaBattleScene extends BaseScene {
     for (const u of this.unsub) u();
     this.unsub = [];
     window.removeEventListener('keydown', this.globalKeys);
+    this.hd2d?.dispose();
     super.exit();
   }
 
   override resize(w: number, hgt: number) {
+    if (this.hd2d) { this.hd2d.frame(w, hgt); return; }
     if (placeSpots(this.spots, w, hgt) && this.set) {
       this.set.platforms.forEach((p, i) => p.position.copy(this.spot((i ^ this.platformFlip) as Seat)));
       this.views.forEach((v, seat) => v?.root.position.copy(this.spot(seat as Seat)));
@@ -152,8 +164,13 @@ export class ArenaBattleScene extends BaseScene {
 
   /** Layout checks (debug hook). */
   subjects() {
-    return this.views.flatMap((v, i) => (v?.root.visible ? [{ name: i === this.near ? 'mine' : 'foe', obj: v.inner }] : []));
+    const out = this.views.flatMap((v, i) => (v?.root.visible ? [{ name: i === this.near ? 'mine' : 'foe', obj: v.inner as THREE.Object3D }] : []));
+    if (this.hd2d) for (const seat of [0, 1] as const) { const m = this.hd2d.figureMesh(seat); if (m) out.push({ name: seat === this.near ? 'player' : 'rival', obj: m }); }
+    return out;
   }
+
+  /** HD-2D pipeline stats (debug hook), or null on the default renderer. */
+  perf() { return this.hd2d?.perf() ?? null; }
 
   override update(_dt: number, t: number) {
     this.set?.update(t);
@@ -648,7 +665,7 @@ export class ArenaBattleScene extends BaseScene {
       if (bb && bb.max.y - bb.min.y < 0.55 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) view.root.rotation.y -= 0.4;
     }
     view.setAmbientLift(seat === this.near ? 0.3 : 0.16);
-    fitKinScale(view, seat === this.near ? 0 : 1);
+    if (this.hd2d) { this.hd2d.fitKin(view, seat === this.near); this.hd2d.attachKin(view, seat === this.near); } else fitKinScale(view, seat === this.near ? 0 : 1);
   }
 
   /**
@@ -659,7 +676,9 @@ export class ArenaBattleScene extends BaseScene {
     if (seat === this.near) return;
     this.near = seat;
     // Each platform keeps its seat colour: platforms[i] belongs to seat i ^ platformFlip.
-    this.set.platforms.forEach((p, i) => p.position.copy(this.spot((i ^ this.platformFlip) as Seat)));
+    // (HD-2D: the rings stay put and swap colours instead, the players swap posts.)
+    if (this.hd2d) this.hd2d.setNear(seat);
+    else this.set.platforms.forEach((p, i) => p.position.copy(this.spot((i ^ this.platformFlip) as Seat)));
     for (const s of [0, 1] as const) {
       const v = this.views[s];
       if (v) this.placeView(s, v);
@@ -675,6 +694,7 @@ export class ArenaBattleScene extends BaseScene {
   }
 
   private removeView(v: CreatureView) {
+    this.hd2d?.detachKin(v);
     this.scene.remove(v.root);
     v.mesh.geometry.dispose();
     v.material.dispose();
