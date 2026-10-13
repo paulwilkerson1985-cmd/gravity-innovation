@@ -168,6 +168,27 @@ export function paintRock(seed: number, size = 32, ramp: Ramp = RAMPS.rock): Pix
   return t;
 }
 
+/**
+ * Boulder face (kit/rock.ts): chunkier, higher-contrast mottling than paintRock — 2×2 texel
+ * clusters, lit flecks and dark pits — so a single rounded rock reads as hand-pixeled at 480 px.
+ */
+export function paintBoulder(seed: number, size = 32, ramp: Ramp = RAMPS.rock): PixelTile {
+  const rng = new Rng(seed);
+  const t = new PixelTile(size, size, ramp);
+  const half = size / 2;
+  const f = fbm(half, rng, [[2, 0.35], [4, 0.4], [8, 0.25]]);
+  const n = ramp.length;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const v = f[(y >> 1) * half + (x >> 1)]!;
+    t.idx[y * size + x] = ditherIndex(2.0 + Math.max(0, Math.min(1, 0.5 + (v - 0.5) * 1.7)) * (n - 3.2), x >> 1, y >> 1, n);
+  }
+  // Lit flecks (2 texels, a highlight over a mid tone) and dark pits.
+  for (let i = 0; i < size * 0.7; i++) { const x = rng.int(size), y = rng.int(size); t.nudge(x, y, 2); t.nudge(x + 1, y, 1); }
+  for (let i = 0; i < size * 0.25; i++) { const x = rng.int(size), y = rng.int(size); t.set(x, y, 1); t.nudge(x, y + 1, -1); }
+  for (let i = 0; i < 2; i++) crack(t, rng, 4 + rng.int(5), 0);
+  return t;
+}
+
 /** Grey rubble stone: lighter, cooler, with strong top-left highlights. */
 export function paintStone(seed: number, size = 32): PixelTile {
   const t = paintRock(seed, size, RAMPS.stone);

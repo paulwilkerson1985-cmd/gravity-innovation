@@ -134,6 +134,46 @@ camera (`frame(w, h)` per layout: elevation, yaw, FOV, how tall a person reads, 
 land), `attachKin/detachKin/fitKin`, `trainer(id)`, `trainerPath(entering)`, `throwOrigin()`.
 `BattleScene` keeps all flow, UI and FX and only branches on `this.hd2d` in ~10 places.
 
+<!-- kit:begin -->
+## Shared kit (`src/render/hd2d/kit/`) — for arena builders
+
+Everything here is backward compatible with the original `arena.ts` API; new helpers are
+additive. Units live in `kit/units.ts` (`TEXEL`, `CELL`, `LEVEL`, re-exported by `arena.ts`).
+All builders append into a `VoxelBatch` (one merged mesh per material → one draw call) and use
+the texel bevel (`surfaceMaterial(map, undefined, true)`) plus baked vertex AO.
+
+### Rock — `kit/rock.ts`
+Rounded, irregular boulders instead of cubes: a chamfered box (faces + edge bevels + corner
+facets) whose corners are jittered as units; top bevels are lit, bottom bevels sink into
+shadow, big faces keep the 1-texel seam. Pair with the coarser `paintBoulder(seed, 32, ramp)`
+texture (`textures.ts`).
+
+```ts
+import { boulder, boulderColumns, organicTerraces, pebbles, rubblePile } from '../kit/rock';
+const hm = new Heightmap(30, 21, -13.5, -12.6);
+// Terraces from a distance field: ≤ 0 = floor, +1 level every `step` units, meandering ledges.
+organicTerraces(hm, (x, z) => Math.max(Math.abs(x) - 5.4, -3 - z, z - 3.6), rng, { step: 1.6, max: 8 });
+const rock = new VoxelBatch(32);
+boulderColumns(hm, rock, rng, { tints: ['#ffffff', '#f4e6d8'] }); // drop-in for rockColumns
+rubblePile(stone, [-4.7, 0, -2.1], rng, { radius: 1.3, big: 0.7 });
+pebbles(stone, [-5.4, -3, 5.4, 3.6], 40, rng, [{ x: -1.3, z: 1.0, r: 1.2 }, { x: 1.5, z: -1.0, r: 1.2 }]);
+boulder(stone, [x, y, z], [0.6, 0.45, 0.5], tint, rng, { ry: 0.4, flatBottom: true }); // one rock
+group.add(new THREE.Mesh(rock.build(), surfaceMaterial(cachedTexture('boulder', () => paintBoulder(5, 32)), undefined, true)));
+```
+
+- `boulderColumns(hm, batch, rng, { split, merge, tall, bulge, shade, tints, core, baseY })`:
+  every *visible* block becomes 1–2 boulders (sometimes 2-wide or 2-tall), staggered like
+  dry-stone masonry, darker low, lighter on top tiers. Buried blocks emit nothing. A dark
+  recessed **core** (`core` brightness, default 0.3) fills the crevices. Rows are emitted
+  front-to-back with cores last, so early-z keeps overdraw low — keep that order if you add
+  geometry to the same batch afterwards (append far stuff last).
+- `VoxelBatch.tri(...)` (raw triangles with bevel attribute; `face = [0, 0, -1, k]` marks a
+  chamfer facet with brightness `k`) and `VoxelBatch.append(other)`.
+- Cost: the cave's rock went from 23k to ~78k triangles at the same frame time (SwiftShader,
+  min of runs); flat bottoms + no buried blocks + front-to-back order are what make that free.
+  `?post=voxel` renders the old cube rock for A/B.
+<!-- kit:end -->
+
 ## Conventions for new arenas
 
 - **Scale**: 1 unit ≈ a kin; people 1.55× scale of the ~1.05 unit figure (≈ 1.6 units);

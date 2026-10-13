@@ -12,16 +12,18 @@
 //    glow, beams, dust) — ~12 calls for the whole set.
 import * as THREE from 'three';
 import { Rng } from '../../engine/rng';
-import { RAMPS, cachedTexture, paintBoards, paintDirt, paintPlanks, paintPlaster, paintRock, paintRug, paintSteel, paintStone } from './textures';
+import { RAMPS, cachedTexture, paintBoulder, paintBoards, paintDirt, paintPlanks, paintPlaster, paintRock, paintRug, paintSteel, paintStone } from './textures';
 import type { SpriteLight } from './sprite';
+import { boulderColumns, pebbles, rubblePile } from './kit/rock';
 
-export const TEXEL = 1 / 16;
-export const CELL = 0.9;
-export const LEVEL = 0.7;
+import { CELL, LEVEL, TEXEL } from './kit/units';
+export { CELL, LEVEL, TEXEL };
 
 // ------------------------------------------------------------------ voxel batch
 
-type V3 = [number, number, number];
+export type V3 = [number, number, number];
+/** Per-vertex bevel attribute (see VoxelBatch.tri). */
+export type Face4 = [number, number, number, number];
 
 /**
  * Accumulates textured boxes (and quads) into one BufferGeometry with position / normal / uv /
@@ -39,6 +41,22 @@ export class VoxelBatch {
   constructor(readonly tileTexels = 32) {}
 
   get count() { return this.pos.length / 3; }
+
+  /**
+   * Low-level: one triangle with explicit per-corner attributes (kit/rock.ts boulders use it).
+   * `face` = the bevel attribute per corner: (u, v, width, ±height) in world units for bevelled
+   * faces, or (0, 0, -1, k) for a chamfer facet — no seam, brightness multiplied by `k`.
+   */
+  tri(p: [V3, V3, V3], n: V3, uv: [[number, number], [number, number], [number, number]], col: [THREE.Color, THREE.Color, THREE.Color], face: [Face4, Face4, Face4]) {
+    for (let i = 0; i < 3; i++) {
+      const q = p[i]!, c = col[i]!, f = face[i]!;
+      this.pos.push(q[0], q[1], q[2]);
+      this.nor.push(n[0], n[1], n[2]);
+      this.uv.push(uv[i]![0], uv[i]![1]);
+      this.col.push(c.r, c.g, c.b);
+      this.face.push(f[0], f[1], f[2], f[3]);
+    }
+  }
 
   /** One quad (two triangles). `ao` per corner [a, b, c, d]; corners in CCW order seen from the normal side. */
   quad(a: V3, b: V3, c: V3, d: V3, n: V3, uv: [number, number][], tint: THREE.Color, ao: [number, number, number, number] = [1, 1, 1, 1]) {
@@ -99,6 +117,12 @@ export class VoxelBatch {
     }
   }
 
+  /** Append another batch's triangles (e.g. deferred back-most geometry: draw order = early-z). */
+  append(o: VoxelBatch) {
+    const cat = (a: number[], b: number[]) => { for (let i = 0; i < b.length; i++) a.push(b[i]!); };
+    cat(this.pos, o.pos); cat(this.nor, o.nor); cat(this.uv, o.uv); cat(this.col, o.col); cat(this.face, o.face);
+  }
+
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
@@ -131,6 +155,11 @@ export function addBevel(m: THREE.MeshLambertMaterial) {
     sh.fragmentShader = 'varying vec4 vFace;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
       {
         float tx = ${TEXEL.toFixed(5)};
+        if (vFace.z < 0.0) {
+          // Chamfer facet (kit/rock.ts): no seam; a fixed brightness, quantised per texel row
+          // so the facet keeps a crisp 1-texel edge against the face it bevels.
+          diffuseColor.rgb *= vFace.w;
+        } else {
         vec2 p = floor(vFace.xy / tx);
         vec2 n = max(vec2(1.0), floor(abs(vFace.zw) / tx));
         float e = min(min(p.x, n.x - 1.0 - p.x), min(p.y, n.y - 1.0 - p.y));
@@ -142,6 +171,7 @@ export function addBevel(m: THREE.MeshLambertMaterial) {
           k = 1.12; // a lit rim on the far half of top faces catches the window light
         }
         diffuseColor.rgb *= k;
+        }
       }`);
   };
   m.customProgramCacheKey = () => 'hd2d-bevel';
@@ -400,7 +430,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
 
   // ---- textures (cached for the session)
   const texRock = cachedTexture('rock', () => paintRock(5, 32));
-  const texStone = cachedTexture('stone', () => paintStone(9, 32));
+  const texStone = flags.has('voxel') ? cachedTexture('stone', () => paintStone(9, 32)) : cachedTexture('boulder-stone', () => paintBoulder(9, 32, RAMPS.stone));
   const texDirt = cachedTexture('dirt', () => paintDirt(3, 64));
   const texPlank = cachedTexture('plank', () => paintPlanks(4, 64, 64, 8));
   const texBoards = cachedTexture('boards', () => paintBoards(6, 32));
@@ -455,8 +485,9 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
 
   // ---- rock (one mesh)
   const rock = new VoxelBatch(32);
-  rockColumns(hm, rock, rng, RAMPS.rock);
-  const rockMat = track(surfaceMaterial(texRock, undefined, true));
+  if (flags.has('voxel')) rockColumns(hm, rock, rng, RAMPS.rock);
+  else boulderColumns(hm, rock, rng);
+  const rockMat = track(surfaceMaterial(flags.has('voxel') ? texRock : cachedTexture('boulder', () => paintBoulder(5, 32)), undefined, true));
   group.add(mesh(rock.build(), rockMat));
 
   // ---- floor: one textured grid with baked AO toward the walls
@@ -512,15 +543,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   steps(stair.x0, stair.x1, floorBack + 0.5, lodge.z1 - 0.1, 0, platformY * LEVEL, 6);
   steps(frontStair.x0, frontStair.x1, floorFront - 0.2, floorFront + 1.6, 0, 2 * LEVEL, 3);
 
-  const rubble = (cx: number, cz: number, r: number, n: number) => {
-    for (let i = 0; i < n; i++) {
-      const a = rng.next() * Math.PI * 2, d = Math.sqrt(rng.next()) * r;
-      const s = 0.2 + rng.next() * 0.42 * (1 - d / r * 0.6);
-      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d * 0.8;
-      const yb = Math.max(0, (1 - d / r) * r * 0.45 - s * 0.3);
-      stone.rotBox([x, yb + s * 0.42, z], [s * (0.9 + rng.next() * 0.5), s * 0.85, s * (0.9 + rng.next() * 0.4)], rng.next() * Math.PI, new THREE.Color(1, 1, 1).multiplyScalar(1.0 + rng.next() * 0.3), rng, (rng.next() - 0.5) * 0.4);
-    }
-  };
+  const rubble = (cx: number, cz: number, r: number, n: number) => rubblePile(stone, [cx, 0, cz], rng, { radius: r * 1.3, count: Math.round(n * 0.8), big: Math.min(0.8, r * 0.75), heap: 0.6, tint: new THREE.Color(0.95, 0.95, 0.97) });
   rubble(-4.7, -2.1, 1.0, 22);
   rubble(-5.0, 1.5, 0.9, 18);
   rubble(4.9, 2.3, 1.2, 26);
@@ -528,13 +551,7 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   rubble(-1.6, -2.9, 0.6, 9);
   rubble(1.0, 3.5, 0.8, 12);
   // Scattered pebbles on the floor.
-  for (let i = 0; i < 40; i++) {
-    const x = (rng.next() - 0.5) * floorHalfX * 2, z = floorBack + rng.next() * (floorFront - floorBack);
-    if (Math.abs(x + 1.3) < 1.0 && Math.abs(z - 1.0) < 1.0) continue; // keep the kin spots clean
-    if (Math.abs(x - 1.5) < 1.0 && Math.abs(z + 1.0) < 1.0) continue;
-    const s = 0.05 + rng.next() * 0.08;
-    stone.rotBox([x, s * 0.35, z], [s * 1.3, s * 0.7, s], rng.next() * 3, new THREE.Color(1, 1, 1).multiplyScalar(0.8 + rng.next() * 0.3), rng);
-  }
+  pebbles(stone, [-floorHalfX, floorBack, floorHalfX, floorFront], 40, rng, [{ x: -1.3, z: 1.0, r: 1.2 }, { x: 1.5, z: -1.0, r: 1.2 }, { x: -2.5, z: 1.9, r: 0.6 }, { x: 2.75, z: -1.95, r: 0.6 }]);
 
   // ---- the lodge: plank floor, plaster back wall with steel frame, shelves and props
   const ly = platformY * LEVEL;
