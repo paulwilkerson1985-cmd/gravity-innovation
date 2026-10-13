@@ -1,16 +1,23 @@
 // The Ember Ridge cave/quarry arena (builder in ../arena.ts): the fallback for every `cave`
 // hotspot and every Ember Ridge battle that no more specific arena claims.
+import * as THREE from 'three';
 import { buildCaveArena } from '../arena';
 import { warmCaveGrade, type Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 
 /**
  * The cave's own grade, on top of the shared warm cave grade: brighter exposure for the lit
- * shelves, earthier saturation, a light, wide vignette (the corners stay readable), and only a
- * whisper of top tilt-shift so the lodge shelves and windows stay crisp.
+ * shelves, earthier saturation, a light, wide vignette (the corners stay readable), only a
+ * whisper of top tilt-shift so the lodge shelves and windows stay crisp, and a RAISED shadow
+ * floor: a warm brown lift and brown (not plum) shadow tint, less shadow desaturation — the
+ * seams and shaded courses read as warm mid-brown, never near-black.
  */
 export function caveGrade(): Grade {
-  return { ...warmCaveGrade(), exposure: 1.18, saturation: 0.84, vignette: 0.16, vignetteSoft: 0.7, tiltTop: 0.45, focusTop: 0.88 };
+  return {
+    ...warmCaveGrade(), exposure: 1.16, saturation: 0.86, vignette: 0.16, vignetteSoft: 0.7, tiltTop: 0.45, focusTop: 0.88,
+    lift: new THREE.Vector3(0.07, 0.042, 0.018), gamma: new THREE.Vector3(1.06, 1.05, 1.05),
+    shadowTint: new THREE.Color('#4e2e1c'), splitAmount: 0.16, shadowDesat: 0.28,
+  };
 }
 
 export const ARENA: ArenaDef = {
@@ -28,6 +35,7 @@ export const ARENA: ArenaDef = {
   camera: {
     wide: { elev: 0.72, person: 0.17 },
     land: { elev: 0.8, person: 0.13 },
-    portrait: { elev: 0.6 },
+    // A touch more yaw than the default: the foe trainer at the stair foot stays inside the frame.
+    portrait: { elev: 0.6, yaw: -0.5 },
   },
 };

@@ -12,9 +12,9 @@
 //    glow, beams, dust) — ~12 calls for the whole set.
 import * as THREE from 'three';
 import { Rng } from '../../engine/rng';
-import { RAMPS, cachedTexture, paintBoulderAtlas, paintBoards, paintDirt, paintPlanks, paintPlaster, paintRock, paintRug, paintSteel, paintStone } from './textures';
+import { RAMPS, cachedTexture, paintBoulderAtlas, paintBoards, paintDirt, paintPlanks, paintPlaster, paintRug, paintSteel } from './textures';
 import type { SpriteLight } from './sprite';
-import { boulder, boulderColumns, clusterBump, pebbles, rubblePile, terraceLevel, wobbleAt } from './kit/rock';
+import { courseWall, coursedTerrace, groundGrid, nextRiser, pebbles, polygonSdf, rubblePile, terraceHeight, type Path2, type TerraceTier } from './kit/rock';
 import { banner, barrel, bookcase, brazier, crate, table, type PropBatches } from './kit/props';
 
 import { CELL, LEVEL, TEXEL } from './kit/units';
@@ -41,10 +41,13 @@ export class VoxelBatch {
   private face: number[] = [];
   /**
    * Opt-in baked sky key (world direction, normalised on use): at build() every vertex colour is
-   * multiplied by 0.55 + 0.75 · max(0, n · bake) — bright top planes, mid fronts, dark undersides
-   * whatever the dynamic lights do. Off (null) by default.
+   * multiplied by bakeMin + bakeGain · max(0, n · bake) (default 0.55 + 0.75 ·) — bright top
+   * planes, mid fronts, dark undersides whatever the dynamic lights do. Off (null) by default.
    */
   bake: THREE.Vector3 | null = null;
+  /** The baked sky key's floor and gain: colour × (bakeMin + bakeGain · max(0, n · bake)). */
+  bakeMin = 0.55;
+  bakeGain = 0.75;
   constructor(readonly tileTexels = 32) {}
 
   get count() { return this.pos.length / 3; }
@@ -145,7 +148,7 @@ export class VoxelBatch {
     if (this.bake) {
       const L = this.bake.clone().normalize();
       for (let i = 0; i < this.nor.length; i += 3) {
-        const f = 0.55 + 0.75 * Math.max(0, this.nor[i]! * L.x + this.nor[i + 1]! * L.y + this.nor[i + 2]! * L.z);
+        const f = this.bakeMin + this.bakeGain * Math.max(0, this.nor[i]! * L.x + this.nor[i + 1]! * L.y + this.nor[i + 2]! * L.z);
         this.col[i]! *= f; this.col[i + 1]! *= f; this.col[i + 2]! *= f;
       }
       this.bake = null; // applied once
@@ -179,7 +182,10 @@ export function surfaceMaterial(map: THREE.Texture | null, emissive?: THREE.Colo
  * (u, v, width, ±height):
  *  * box faces (width > 0): a 1-texel dark seam around the face (unless `seam` is false) and a
  *    1–2 texel lit lip along the top of side faces — chunky hand-made planks and crates;
- *  * rock faces (width ≤ -1.5, kit/rock.ts boulders; real width = -width - 2): never a seam;
+ *  * coursed stone faces (width ≤ -1000, kit/rock.ts course stones; real width = -width - 1000):
+ *    a 1-texel seam at ~46% albedo (ragged 2nd texel), dark underside → mid front → lit top band
+ *    on sides, a lit front lip and soft back/side seams on tops — one readable cut stone;
+ *  * rock faces (-1000 < width ≤ -1.5, kit/rock.ts boulders; real width = -width - 2): never a seam;
  *    sides get a quantised vertical value gradient (×0.75 at the foot → 1.0 at the top), tops a
  *    soft 2-texel lit rim along their far edge — rounded, lit rock;
  *  * bevel facets (width = -1): no seam, brightness × height.
@@ -190,7 +196,28 @@ export function addBevel(m: THREE.MeshLambertMaterial, seam = true) {
     sh.fragmentShader = 'varying vec4 vFace;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
       {
         float tx = ${TEXEL.toFixed(5)};
-        if (vFace.z < -1.5) {
+        if (vFace.z < -500.0) {
+          // Coursed stone face (kit/rock.ts course stones): quantised per texel. A 1-texel seam
+          // at ~46% albedo round the face with a ragged second texel, then dark underside → mid
+          // front → lit top band on sides; tops get a lit front lip and a soft back/side seam.
+          vec2 p = floor(vFace.xy / tx);
+          vec2 n = max(vec2(1.0), floor(vec2(-vFace.z - 1000.0, abs(vFace.w)) / tx));
+          float hs = fract(sin(dot(p, vec2(12.9898, 78.233)) + n.x * 1.7 + n.y * 3.1) * 43758.5453);
+          float ex = min(p.x, n.x - 1.0 - p.x);
+          float k = 1.0;
+          if (vFace.w < 0.0) {
+            float t = (p.y + 0.5) / n.y + (hs - 0.5) * 0.1;
+            k = t < 0.16 ? 0.68 : t < 0.36 ? 0.85 : t > 0.86 ? 1.1 : 1.0;
+            float e = min(ex, p.y);
+            if (e < 0.5) k = 0.46;
+            else if (e < 1.5 && hs < 0.4) k = min(k, 0.64);
+          } else {
+            if (p.y < 0.5) k = 1.08;
+            else if (p.y > n.y - 1.5) k = hs < 0.6 ? 0.74 : 0.86;
+            if (ex < 0.5 && p.y > 0.5) k = hs < 0.55 ? 0.72 : 0.84;
+          }
+          diffuseColor.rgb *= k;
+        } else if (vFace.z < -1.5) {
           // Rock face: no seam. Quantised per texel and in 4 value bands.
           vec2 p = floor(vFace.xy / tx);
           float n = max(1.0, floor(abs(vFace.w) / tx));
@@ -234,6 +261,23 @@ export function scaleAmbient(m: THREE.MeshLambertMaterial, k: number) {
     sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>\n\treflectedLight.indirectDiffuse *= ${k.toFixed(3)};`);
   };
   m.customProgramCacheKey = () => `${prevKey()}|amb${k.toFixed(3)}`;
+}
+
+/**
+ * Bake an aerial haze into a geometry's vertex colours: each colour moves toward `tint` (linear,
+ * times the albedo the texture adds) by `k(x, y, z)` (0..1) — distant or high walls lighter and
+ * less saturated, without a fog pass.
+ */
+export function haze(g: THREE.BufferGeometry, k: (x: number, y: number, z: number) => number, tint: THREE.Color): THREE.BufferGeometry {
+  const pos = g.attributes.position!, col = g.attributes.color;
+  if (!col) return g;
+  for (let i = 0; i < pos.count; i++) {
+    const t = k(pos.getX(i), pos.getY(i), pos.getZ(i));
+    if (t <= 0) continue;
+    col.setXYZ(i, col.getX(i) + (tint.r * 2 - col.getX(i)) * t, col.getY(i) + (tint.g * 2 - col.getY(i)) * t, col.getZ(i) + (tint.b * 2 - col.getZ(i)) * t);
+  }
+  col.needsUpdate = true;
+  return g;
 }
 
 function mesh(g: THREE.BufferGeometry, m: THREE.Material, cast = true, receive = true): THREE.Mesh {
@@ -461,26 +505,6 @@ export function dustMotes(beams: BeamSpec[], perBeam: number, rng: Rng, color: T
   return { points, update: (t) => { m.uniforms.uTime!.value = t; }, setPixelSize: (px) => { m.uniforms.uSize!.value = px; } };
 }
 
-/** Window-pane cookie for a SpotLight.map: bright panes, dark mullions, soft falloff. */
-export function windowCookie(cols = 3, rows = 2): THREE.CanvasTexture {
-  const s = 64;
-  const c = document.createElement('canvas');
-  c.width = s; c.height = s;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, s, s);
-  const g = ctx.createRadialGradient(s / 2, s / 2, 4, s / 2, s / 2, s / 2);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(0.55, '#ffffff'); g.addColorStop(1, '#000000');
-  ctx.fillStyle = g;
-  ctx.fillRect(6, 10, s - 12, s - 20);
-  ctx.fillStyle = '#000';
-  for (let i = 1; i < cols; i++) ctx.fillRect(6 + ((s - 12) * i) / cols - 2, 0, 4, s);
-  for (let j = 1; j < rows; j++) ctx.fillRect(0, 10 + ((s - 20) * j) / rows - 2, s, 4);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 // ------------------------------------------------------------------ the cave arena
 
 export interface ArenaRig {
@@ -501,11 +525,12 @@ export interface ArenaRig {
 export interface CaveArenaOptions { seed?: number; quality?: 'high' | 'low' }
 
 /**
- * Ember Ridge cave arena: a sunken dirt floor ringed by 2–3 concentric boulder ledges, a raised
- * miners' lodge (wood floor, shelves, crates, workbench, cart) up a stair with red stringers at
- * the back right, a big window in the back cliff pouring broad warm shafts onto the floor, grey
- * rubble piles on the floor and the ledges, an open front with a small stair at the left
- * corner. All original.
+ * Ember Ridge cave arena: a wide sunken dirt floor ringed by coursed stone terraces (kit/rock.ts
+ * coursedTerrace: 2-course tiers of rounded, top-lit cut stones with flat dirt ledges) climbing
+ * diagonally up the left and to a tall window wall at the back; a raised miners' lodge (plank
+ * floor, painted shelving, workbench, rug, crates) on a stone shelf in the right third, reached
+ * by a clean stone stair with parallel red rails; one big window light pool under the kin; grey
+ * rubble at the wall feet and on the ledges, never in the middle. All original.
  */
 export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   const flags = new Set((new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('post') ?? '').split(','));
@@ -515,261 +540,189 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   group.name = 'hd2d-cave-arena';
   const disposables: { dispose(): void }[] = [];
   const track = <T extends { dispose(): void }>(x: T) => { disposables.push(x); return x; };
-  const voxel = flags.has('voxel');
 
-  // ---- textures (cached for the session). Rock and rubble: 64² atlases of four variants.
-  const texRock = voxel ? cachedTexture('rock', () => paintRock(5, 32)) : cachedTexture('cave-boulder-atlas', () => paintBoulderAtlas(5, RAMPS.boulder));
-  const texStone = voxel ? cachedTexture('stone', () => paintStone(9, 32)) : cachedTexture('cave-rubble-atlas', () => paintBoulderAtlas(9, RAMPS.rubble));
-  const texDirt = cachedTexture('dirt-128b', () => paintDirt(3, 128));
+  // ---- textures (cached for the session). Stone and rubble: 64² cut-stone atlases.
+  const texRock = cachedTexture('cave-stone-atlas', () => paintBoulderAtlas(5, RAMPS.caveStone));
+  const texStone = cachedTexture('cave-rubble-atlas2', () => paintBoulderAtlas(9, RAMPS.rubble));
+  const texDirt = cachedTexture('dirt-128c', () => paintDirt(3, 128));
   const texPlank = cachedTexture('plank-honey', () => paintPlanks(4, 64, 64, 8));
   const texBoards = cachedTexture('boards', () => paintBoards(6, 32));
   const texPlaster = cachedTexture('plaster', () => paintPlaster(8, 32));
   const texSteel = cachedTexture('paint', () => paintSteel(2, 16, RAMPS.paint));
   const texRug = cachedTexture('rug', () => paintRug(32));
 
-  // ---- heightmap: a wide open floor (0) ringed by a few tall craggy ledges (SDF tiers), the
-  // window wall high at the back left, the raised lodge at the back right. The grid runs on
-  // far past the front (z ≈ 14) so the portrait (phone) camera never sees past it.
-  const X0 = -14.4, Z0 = -12.6;
-  const hm = new Heightmap(32, 30, X0, Z0);
-  const floorHalfX = 6.3, floorFront = 4.2, floorBack = -3.6;
-  const platformY = 3; // lodge floor in LEVELs (2.1 units)
-  // Cell-aligned: the lodge platform's rock front is the row z ∈ [-4.5, -3.6].
-  const lodge = { x0: 1.8, x1: 10.8, z0: -6.75, z1: -4.5 };
-  const stair = { x0: 3.6, x1: 5.4, foot: -1.75 };
-  const frontStair = { x0: -6.3, x1: -4.5, z0: 2.4, z1: 4.05 };
-  const cliffZ = -6.3; // back wall face (windows) for x < lodge.x0
-  // Signed distance to the floor: a rounded rectangle open toward the camera (+z).
-  const R = 2.2;
-  const sdf = (x: number, z: number) => {
-    const qx = Math.abs(x) - (floorHalfX - R), qz = floorBack + R - z;
-    return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - R;
+  // ---- layout. The floor is a polygon open toward the camera: its left edge runs diagonally
+  // from the front-left corner to the back (the terraces climb away from it), its back edge
+  // sits under the window wall, the lodge shelf takes the back right. The polygon runs on past
+  // the portrait (phone) camera's bottom edge.
+  const FLOOR: Path2 = [[-10.2, 11], [-3.0, -4.0], [2.2, -4.0], [2.2, -3.1], [8.7, -3.1], [8.7, 11]];
+  const floorD = polygonSdf(FLOOR);
+  const DEPTH = 0.62;
+  // Two terraces of two courses each (1.2 units), then the tall cave wall (the window wall at
+  // the back) rising past the top of the frame.
+  const TIERS: TerraceTier[] = [{ d: 0, y: 1.2 }, { d: 1.3, y: 2.4 }, { d: 2.6, y: 7.2 }];
+  const ly = TIERS[0]!.y; // lodge shelf top
+  const lodge = { x0: 2.2, x1: 13, z0: -6.6, z1: -3.1 };
+  const stair = { x0: 2.75, x1: 3.95, foot: -1.45, n: 5 };
+  const winWallZ = -6.6; // the back terrace wall (TIERS[2] at the back edge)
+  const inLodge = (x: number, z: number) => x > lodge.x0 + 0.3 && z < lodge.z1 - 0.3;
+  // Windows high in the back wall (right of the foe's HUD box, top left of the screen).
+  const win = { x: -3.0, y: 3.65, z: winWallZ - 0.02, w: 2.0, h: 1.2 };
+  const win2 = { x: -0.3, y: 3.75, z: winWallZ - 0.02, w: 1.4, h: 1.05 };
+  const inWindow = (x: number, y: number) => [win, win2].some((w) => Math.abs(x - w.x) < w.w / 2 + 0.25 && Math.abs(y - w.y) < w.h / 2 + 0.2);
+  const stairCut = (x: number, z: number) => x > stair.x0 - 0.15 && x < stair.x1 + 0.15 && z > lodge.z1 - 0.4 && z < lodge.z1 + 0.3;
+  // Ground behind a wall steps up only once well inside its stones (the grid ramp stays hidden).
+  const groundY = (x: number, z: number) => {
+    if (inLodge(x, z)) return z < lodge.z0 - 0.35 - DEPTH * 0.7 ? TIERS[TIERS.length - 1]!.y : ly;
+    return terraceHeight(floorD(x, z), TIERS, DEPTH);
   };
-  // Few, tall ledges: on the left a two-block ledge, then the tall wall of stacked blocks; on the
-  // right (in front of the lodge) lower steps.
-  const TIER_L = [0, 2, 7, 8], TIER_R = [0, 2, 3, 5];
-  const ph = rng.next() * 10;
-  for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
-    const x = hm.cx(i), z = hm.cz(j);
-    const tier = terraceLevel(sdf(x, z) - wobbleAt(x, z, ph, 0.25), 1.6, 9);
-    const TIER = x < 0 ? TIER_L : TIER_R;
-    let lv = tier < TIER.length ? TIER[tier]! : 8;
-    if (tier > 0 && tier < TIER.length) lv = Math.max(1, lv + clusterBump(i, j, ph, 0.06));
-    // The open front: floor in the middle, a low corner ledge either side (on to the phone's edge).
-    if (z > floorFront && Math.abs(x) <= floorHalfX + 0.5) lv = Math.abs(x) < 4.4 ? 0 : Math.abs(x) < 5.4 ? 1 : 2;
-    if (z > floorFront && Math.abs(x) > floorHalfX + 0.5) lv = Math.min(lv, 3);
-    // The front stair's landing on the left ledge.
-    if (x < frontStair.x0 && x > frontStair.x0 - 2 * CELL && z > frontStair.z0 - 0.2 && z < frontStair.z1 + 0.2) lv = 2;
-    // Ledges in front of the window wall stay low so the windows sit above them.
-    if (z > cliffZ && z < floorBack && x < lodge.x0) lv = Math.min(lv, z > floorBack - CELL ? 1 : 3);
-    // The lodge sits on a level shelf whose rock front faces the floor.
-    if (x > lodge.x0 && x < lodge.x1 && z < lodge.z1 && z > lodge.z0 - 2) lv = 0;
-    else if (x > lodge.x0 && x < lodge.x1 && z < floorBack && z > lodge.z0 - 2) lv = platformY - 0.4;
-    // Stair cuts.
-    if (x > stair.x0 && x < stair.x1 && z < floorBack + 0.1 && z > lodge.z1 - 0.2) lv = 0;
-    if (x > frontStair.x0 && x < frontStair.x1 && z > frontStair.z0 - 0.1 && z < frontStair.z1) lv = 0;
-    // Back cliff (window wall), wall behind the lodge, right wall.
-    if (z < cliffZ && x < lodge.x0) lv = Math.max(lv, 9);
-    if (z < lodge.z0) lv = Math.max(lv, 9);
-    if (x > lodge.x1 && z < floorBack) lv = Math.max(lv, 6);
-    hm.set(i, j, lv);
-  }
-  const isStair = (x: number, z: number) => (x > stair.x0 - 0.1 && x < stair.x1 + 0.1 && z < stair.foot + 0.1 && z > lodge.z1 - 0.3) || (x > frontStair.x0 - 0.1 && x < frontStair.x1 + 0.4 && z > frontStair.z0 - 0.2 && z < frontStair.z1 + 0.2);
   // Kin, people and the trainer's walk stay clear of props.
-  const keepOut = [{ x: -1.3, z: 1.0, r: 1.3 }, { x: 1.5, z: -1.0, r: 1.3 }, { x: -2.5, z: 1.9, r: 0.8 }, { x: 2.75, z: -1.95, r: 0.8 }, { x: 3.4, z: -1.6, r: 0.8 }];
+  const SPOTS: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-1.3, 0, 1.0), new THREE.Vector3(1.5, 0, -1.0)];
+  const PEOPLE: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(-2.5, 0, 1.9), new THREE.Vector3(4.4, 0, -1.5)];
+  const keepOut = [{ x: -1.3, z: 1.0, r: 1.3 }, { x: 1.5, z: -1.0, r: 1.3 }, { x: -2.5, z: 1.9, r: 0.8 }, { x: 4.4, z: -1.5, r: 0.9 }, { x: 0.1, z: 0, r: 3.2 }];
   const clear = (x: number, z: number, r: number) => keepOut.every((c) => (x - c.x) ** 2 + (z - c.z) ** 2 > (c.r + r) ** 2);
-  // Baked sky key for rock and stone: lit tops, mid fronts, dark undersides.
+  // Baked sky key for rock and stone: lit tops, mid fronts, dark undersides. Course stones get a
+  // soft, mostly overhead bake leaning toward the room (the lit floor's bounce): fronts stay
+  // mid-value on every wall, tops ≈ 25% brighter.
   const LBAKE = new THREE.Vector3(-0.2, 1, 0.75);
+  const CBAKE = new THREE.Vector3(0.15, 1, 0.6);
   // Geometry nearer than the floor front sinks into foreground shade (× ≈0.7).
-  const fore = (_x: number, _y: number, z: number) => 1 - 0.3 * THREE.MathUtils.smoothstep(z, floorFront, floorFront + 1.2);
+  const FRONT = 3.6;
+  const fore = (_x: number, _y: number, z: number) => 1 - 0.3 * THREE.MathUtils.smoothstep(z, FRONT, FRONT + 1.4);
 
-  // ---- rock (one mesh)
-  const rock = new VoxelBatch(voxel ? 32 : 64);
-  if (voxel) rockColumns(hm, rock, rng, RAMPS.rock);
-  else boulderColumns(hm, rock, rng, { lite: q === 'low', shade: [0.8, 1.04], topK: 1.2, core: 0.13, split: 0.4, merge: 0.2, toneJitter: 0.12 });
-  // A dark pebble skirt along the wall foot (≤ 0.4 units out onto the floor).
-  {
-    const per = q === 'high' ? 3 : 1;
-    for (let j = 0; j < hm.nz; j++) for (let i = 0; i < hm.nx; i++) {
-      if (hm.get(i, j) !== 0) continue;
-      const cx = hm.cx(i), cz = hm.cz(j);
-      if (cz < lodge.z1 + 0.3 || cz > floorFront + 3 || Math.abs(cx) > floorHalfX + 2 || isStair(cx, cz)) continue;
-      for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const nv = hm.get(i + a, j + b);
-        if (nv <= 0 || nv > 90 || isStair(hm.cx(i + a), hm.cz(j + b))) continue;
-        for (let k = 0; k < per; k++) {
-          const along = (rng.next() - 0.5) * CELL, out = rng.next() ** 2 * 0.4 + 0.02;
-          const x = cx + a * (CELL / 2 - out) + (b !== 0 ? along : 0), z = cz + b * (CELL / 2 - out) + (a !== 0 ? along : 0);
-          if (!clear(x, z, 0.1)) continue;
-          const s = 0.07 + rng.next() * 0.1 * (1 - out);
-          boulder(rock, [x, s * 0.2, z], [s * 1.3, s * 0.7, s * 1.1], new THREE.Color(1, 1, 1).multiplyScalar(0.45 + rng.next() * 0.25), rng, {
-            ry: rng.next() * 3, jitter: s * 0.08, topJitter: s * 0.1, aoBottom: 0.5, topK: 1.2, topOnly: true,
-          });
-        }
-      }
-    }
-  }
+  // ---- coursed stone terraces + the window wall + the wall behind the lodge (one mesh)
+  const rock = new VoxelBatch(64);
+  const stone = new VoxelBatch(64); // grey: rubble, pebbles, the stairs
+  const lite = q === 'low';
+  const course = { depth: DEPTH, lite, tint: ['#ffffff', '#fbf0e4', '#f2f2ec'], core: 0.42, gap: TEXEL * 2 };
+  const keepTerrace = (x: number, z: number, y: number) =>
+    !(inLodge(x, z) && y > ly + 0.05) && !(stairCut(x, z) && y < ly + 0.05) && !(x > lodge.x0 + 0.3 && z < lodge.z1 + 0.1 && y < ly + 0.05 && z < lodge.z1 - DEPTH);
+  // The tall wall is the window wall at the back: a bay is left open for each window.
+  coursedTerrace(rock, floorD, TIERS, rng, {
+    ...course, bounds: [-17, -9.5, 17, 13], keep: (x, z, y) => keepTerrace(x, z, y) && !(z < winWallZ + 0.3 && inWindow(x, y)),
+    pebbles: { batch: stone, perUnit: q === 'high' ? 0.45 : 0.25, tint: '#d8d6d2' },
+  });
+  // Behind the lodge: the cave wall rises over the lodge's back wall.
+  courseWall(rock, [[lodge.x0 - 0.2, lodge.z0 - 0.35], [17, lodge.z0 - 0.35]], ly, 7.2, rng, { ...course, ends: false });
   rock.shade(fore);
-  // The upper walls catch the window light and the bounce off the lit floor: no black band.
-  rock.shade((_x, y) => 1 + 0.3 * Math.min(1, Math.max(0, y - 1) / 4));
-  rock.bake = LBAKE;
+  // Upper courses catch the window light and the bounce off the lit floor (no black band); low
+  // courses sit in a little warm shade.
+  rock.shade((_x, y) => 0.9 + 0.22 * Math.min(1, Math.max(0, y) / 4));
+  rock.bake = CBAKE; rock.bakeMin = 0.8; rock.bakeGain = 0.6;
   const rockMat = track(surfaceMaterial(texRock, undefined, true, false));
-  group.add(mesh(rock.build(), rockMat));
+  // The high wall sits in the warm, dusty haze of the window light: lighter and greyer with height.
+  group.add(mesh(haze(rock.build(), (_x, y) => THREE.MathUtils.smoothstep(y, 2.2, 6.0) * 0.55, new THREE.Color(0.62, 0.5, 0.38)), rockMat));
 
-  // ---- floor: one textured grid (2 vertices per cell) with a soft AO band along the wall foot
+  // ---- floor and every ledge: ONE ground mesh at terrace height, AO at the wall feet
   {
-    const g = new THREE.PlaneGeometry(hm.nx * CELL, hm.nz * CELL, hm.nx * 2, hm.nz * 2);
-    g.rotateX(-Math.PI / 2);
-    g.translate(X0 + (hm.nx * CELL) / 2, 0, Z0 + (hm.nz * CELL) / 2);
-    const pos = g.attributes.position!;
-    const uv = g.attributes.uv!;
-    const col = new Float32Array(pos.count * 3);
-    const tile = TEXEL * 128;
-    for (let k = 0; k < pos.count; k++) {
-      const x = pos.getX(k), z = pos.getZ(k);
-      uv.setXY(k, x / tile, -z / tile);
-      const [i, j] = hm.cell(x, z);
-      let dmin = 9, tall = 0;
-      for (let b = -2; b <= 2; b++) for (let a = -2; a <= 2; a++) {
-        const v = hm.get(i + a, j + b);
-        if (v <= 0 || v > 90 || isStair(hm.cx(i + a), hm.cz(j + b))) continue;
-        const d = Math.hypot(Math.max(0, Math.abs(x - hm.cx(i + a)) - CELL / 2), Math.max(0, Math.abs(z - hm.cz(j + b)) - CELL / 2));
-        dmin = Math.min(dmin, d);
-        tall = Math.max(tall, Math.min(v, 4) * Math.exp(-d / 1.2));
-      }
-      const ao = 1 - 0.5 * Math.exp(-dmin / 0.3) - 0.04 * tall;
-      col.set([ao, ao * 0.98, ao * 0.96], k * 3);
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const ground = groundGrid([-17, -9.5, 17, 13], 0.25, 128, groundY, (x, z) => {
+      if (inLodge(x, z)) return [0.8, 0.78, 0.76];
+      const d = floorD(x, z);
+      const dn = nextRiser(d, TIERS, DEPTH);
+      const ao = 1 - 0.42 * Math.exp(-Math.max(0, dn) / 0.28) - (d > 0 ? 0.06 : 0);
+      const f = fore(x, 0, z);
+      return [ao * f, ao * 0.98 * f, ao * 0.95 * f];
+    });
     const floorMat = track(surfaceMaterial(texDirt));
-    scaleAmbient(floorMat, 0.8); // shade stays a light earthy tan while the sun patches burn bright
-    group.add(mesh(g, floorMat, false, true));
+    scaleAmbient(floorMat, 0.95); // shade stays a light sandy tan while the window pool burns bright
+    group.add(mesh(ground, floorMat, false, true));
   }
 
-  // ---- stairs (stone) with red stringers, rubble piles, pebbles (one stone mesh)
-  const stone = new VoxelBatch(voxel ? 32 : 64);
+  // ---- stair (stone) with parallel red rails, rubble piles, pebbles
   const metal = new VoxelBatch(16);
   const wood = new VoxelBatch(64); // the 64-texel plank tile at the shared TEXEL density
   const props = new VoxelBatch(32);
   const red = rampColor(RAMPS.rail, 3).multiplyScalar(2.6); // painted red reads bright even in shade
-  /**
-   * A solid stone stair running along `axis` from `from` (floor, y = 0) to `to` (y = yTo), between
-   * `c0`..`c1` across: bright treads, dark risers, and a solid sloped red stringer slab either
-   * side with a lit cap along its top.
-   */
-  const steps = (axis: 'x' | 'z', c0: number, c1: number, from: number, to: number, yTo: number, n: number) => {
+  {
+    // Clean stepped boxes: each step a riser block with a lighter slab tread that noses out a
+    // little; light treads, mid risers, dark sides (bake). Rails: two parallel sloped red slabs
+    // with a lit cap, from the floor to the shelf edge.
+    const { x0, x1, foot, n } = stair;
+    const top = lodge.z1;
+    const run = (foot - top) / n;
     for (let s = 0; s < n; s++) {
-      const a = from + ((to - from) * s) / n, b = from + ((to - from) * (s + 1)) / n;
-      const y = (yTo * (s + 1)) / n;
-      const lo = Math.min(a, b), hi = Math.max(a, b);
-      // Bright treads, dark risers: a dark tint with a strong top multiplier.
-      const tint = new THREE.Color(1, 1, 1).multiplyScalar(0.46 + rng.next() * 0.05);
-      const o = { skip: [false, false, false, true, false, false], aoBottom: 0.8, topK: 2.0 };
-      if (axis === 'z') stone.box([c0, 0, lo], [c1, y, hi], tint, rng, o);
-      else stone.box([lo, 0, c0], [hi, y, c1], tint, rng, o);
+      const zf = foot - s * run, zb = top - 0.02;
+      const y = (ly * (s + 1)) / n;
+      stone.box([x0, 0, zf - run], [x1, y - 0.06, zb], new THREE.Color(1, 1, 1).multiplyScalar(0.62), rng, { skip: [false, false, false, true, false, true], aoBottom: 0.75 });
+      stone.box([x0 - 0.02, y - 0.07, zf - run - 0.02], [x1 + 0.02, y, zf + 0.04], new THREE.Color(1, 1, 1).multiplyScalar(0.86), rng, { skip: [false, false, false, true, false, true], aoBottom: 0.85, topK: 1.35 });
     }
-    const len = Math.hypot(to - from, yTo);
-    const mid = (from + to) / 2;
-    const cap = red.clone().multiplyScalar(1.6);
-    for (const c of [c0 - 0.13, c1 + 0.13]) {
-      if (axis === 'z') {
-        const ang = Math.atan2(yTo, from - to);
-        const up = new THREE.Vector3(0, Math.cos(ang), Math.sin(ang));
-        if (up.y < 0) up.negate();
-        metal.rotBox([c, yTo / 2 + 0.16, mid], [0.26, 0.62, len + 0.2], 0, red, rng, ang);
-        metal.rotBox([c, yTo / 2 + 0.16 + up.y * 0.32, mid + up.z * 0.32], [0.28, 0.06, len + 0.2], 0, cap, rng, ang);
-      } else {
-        const ang = Math.atan2(yTo, to - from);
-        const up = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
-        if (up.y < 0) up.negate();
-        metal.rotBox([mid, yTo / 2 + 0.16, c], [len + 0.2, 0.62, 0.26], 0, red, rng, 0, ang);
-        metal.rotBox([mid + up.x * 0.32, yTo / 2 + 0.16 + up.y * 0.32, c], [len + 0.2, 0.06, 0.28], 0, cap, rng, 0, ang);
-      }
+    const len = Math.hypot(foot - top, ly);
+    const ang = Math.atan2(ly, foot - top);
+    const up = new THREE.Vector3(0, Math.cos(ang), Math.sin(ang));
+    const mid = (foot + top) / 2;
+    const cap = red.clone().multiplyScalar(1.5);
+    for (const c of [x0 - 0.12, x1 + 0.12]) {
+      metal.rotBox([c, ly / 2 + 0.16, mid], [0.22, 0.56, len + 0.12], 0, red, rng, ang);
+      metal.rotBox([c, ly / 2 + 0.16 + up.y * 0.29, mid + up.z * 0.29], [0.24, 0.05, len + 0.12], 0, cap, rng, ang);
     }
-  };
-  const ly = platformY * LEVEL;
-  // The lodge stair juts out of the platform's rock front onto the floor.
-  steps('z', stair.x0 + 0.08, stair.x1 - 0.08, stair.foot, floorBack - 0.05, ly, 6);
-  // The front stair climbs sideways from the floor up onto the left corner ledge.
-  steps('x', frontStair.z0, frontStair.z1, frontStair.x1 + 0.1, frontStair.x0, 2 * LEVEL, 4);
-
-  // Grey rubble on a cool, light stone ramp: in the corners, at the stair foot and on ledge tops.
-  const topAt = (x: number, z: number) => { const [i, j] = hm.cell(x, z); const v = hm.get(i, j); return v > 90 ? 0 : v * LEVEL; };
+  }
+  // Grey blocky rubble at the wall feet and on the ledges (never in the middle of the floor).
   const rubble = (x: number, z: number, r: number) => {
     if (!clear(x, z, r * 1.1)) return;
-    // A mound of many chunky stones (not one boulder): the biggest ≈ 0.55 × min(0.95, r).
-    rubblePile(stone, [x, topAt(x, z), z], rng, { radius: r * 1.1, big: Math.min(0.95, r) * 0.6, heap: 0.8, blocky: !voxel, tint: '#d2d0ce' });
+    rubblePile(stone, [x, groundY(x, z), z], rng, { radius: r * 1.1, big: Math.min(0.95, r) * 0.6, heap: 0.8, blocky: true, tint: '#d2d0ce' });
   };
-  rubble(-5.2, -2.6, 1.05); // left back corner of the floor
-  rubble(-3.9, 4.5, 0.55); // beside the front stair foot (bottom-left framing)
-  rubble(-1.6, -3.0, 0.6); // back ledge foot, in the window light
-  rubble(5.6, 1.6, 1.15); // right wall foot
-  rubble(6.2, -2.6, 0.75); // beside the lodge stair
-  rubble(-7.6, -0.6, 0.8); // on the first left ledge
-  rubble(7.7, 0.3, 0.7); // on the first right ledge
-  rubble(6.4, 5.0, 1.0); // bottom-right framing pile
-  rubble(-7.3, 5.0, 0.75); // on the left front ledge, beside the front stair
-  rubble(5.7, 3.4, 0.8); // bottom-right framing pile
-  // Scattered pebbles on the floor.
-  pebbles(stone, [-floorHalfX, floorBack, floorHalfX, floorFront + 3], 60, rng, keepOut.map((c) => ({ ...c, r: c.r * 0.8 })));
+  rubble(-3.9, -3.2, 0.85); // back-left corner of the floor
+  rubble(6.7, -2.4, 0.75); // right of the lodge stair, at the shelf foot
+  rubble(7.8, 1.5, 0.9); // right wall foot
+  rubble(6.9, 3.9, 1.0); // bottom-right framing pile
+  rubble(-5.6, 2.9, 0.7); // left wall foot, front
+  rubble(-5.6, -1.3, 0.65); // first left ledge
+  rubble(-7.3, -3.6, 0.6); // second left ledge
+  rubble(-1.6, -4.85, 0.55); // back ledge, under the windows
+  rubble(9.5, -0.6, 0.6); // first right ledge
+  // A few pebbles at the wall feet (the middle of the floor stays clean).
+  pebbles(stone, [-7, -3.9, 8.6, 4.5], q === 'high' ? 70 : 40, rng, [...keepOut.map((c) => ({ ...c, r: c.r * 0.9 })), { x: 1.5, z: 1.5, r: 3.6 }]);
 
-  // ---- the lodge: plank floor over the rock front, plaster back wall with steel frame,
-  // shelves, a workbench, a rug with a low table, crates and barrels
-  wood.box([lodge.x0, ly - 0.25, lodge.z0], [lodge.x1, ly, floorBack + 0.12], new THREE.Color(1, 1, 1), rng, { skip: [false, false, false, true, false, false], texOff: [0, 0] });
-  // A lit plank fascia along the platform edge (no dark bar across the frame).
-  wood.box([lodge.x0, ly - 0.32, floorBack + 0.08], [lodge.x1, ly + 0.04, floorBack + 0.2], new THREE.Color(1.05, 0.98, 0.9), rng, { skip: [false, false, false, true, false, true] });
+  // ---- the lodge: plank floor on the stone shelf, plaster back wall with steel frame, shelves,
+  // a workbench, a rug with a low table, crates and barrels
+  wood.box([lodge.x0, ly - 0.2, lodge.z0], [lodge.x1, ly + 0.02, lodge.z1 + 0.06], new THREE.Color(1, 1, 1), rng, { skip: [false, false, false, true, false, false], texOff: [0, 0] });
+  // A lit plank fascia along the shelf edge.
+  wood.box([lodge.x0, ly - 0.14, lodge.z1 + 0.02], [lodge.x1, ly + 0.05, lodge.z1 + 0.12], new THREE.Color(1.05, 0.98, 0.9), rng, { skip: [false, false, false, true, false, true] });
   const plaster = new VoxelBatch(32);
-  const wallH = 3.1;
+  const wallH = 2.45;
   plaster.box([lodge.x0, ly, lodge.z0 - 0.3], [lodge.x1, ly + wallH, lodge.z0], new THREE.Color(1.0, 0.97, 0.92), rng, { aoBottom: 0.65 });
-  plaster.box([lodge.x1 - 0.05, ly, lodge.z0], [lodge.x1 + 0.3, ly + wallH, lodge.z1 - 0.4], new THREE.Color(0.9, 0.87, 0.83), rng, { aoBottom: 0.65 });
-  // Steel columns + header beam (only on the back wall: nothing crosses the frame) and a dark
-  // painted wainscot along the wall foot.
+  plaster.box([lodge.x0 - 0.3, ly, lodge.z0 - 0.3], [lodge.x0, ly + wallH, lodge.z0 + 0.9], new THREE.Color(0.9, 0.87, 0.83), rng, { aoBottom: 0.65 });
+  // Steel columns + header beam (on the back wall only) and a dark painted wainscot.
   const steelC = rampColor(RAMPS.steel, 4).multiplyScalar(1.45);
-  for (const x of [lodge.x0 + 0.25, (lodge.x0 + lodge.x1) / 2 - 0.1, lodge.x1 - 0.3]) {
-    metal.box([x - 0.24, ly, lodge.z0 + 0.0], [x + 0.24, ly + wallH, lodge.z0 + 0.34], steelC, rng);
-  }
-  metal.box([lodge.x0, ly + wallH - 0.4, lodge.z0], [lodge.x1, ly + wallH, lodge.z0 + 0.36], steelC, rng);
-  metal.box([lodge.x0, ly, lodge.z0 - 0.02], [lodge.x1, ly + 0.55, lodge.z0 + 0.04], rampColor(RAMPS.steel, 2).multiplyScalar(1.2), rng, { skip: [false, false, false, true, false, true] });
+  for (const x of [lodge.x0 + 0.2, lodge.x0 + 4.3, lodge.x0 + 8.4]) metal.box([x - 0.22, ly, lodge.z0], [x + 0.22, ly + wallH, lodge.z0 + 0.32], steelC, rng);
+  metal.box([lodge.x0, ly + wallH - 0.36, lodge.z0], [lodge.x1, ly + wallH, lodge.z0 + 0.34], steelC, rng);
+  metal.box([lodge.x0, ly, lodge.z0 - 0.02], [lodge.x1, ly + 0.5, lodge.z0 + 0.04], rampColor(RAMPS.steel, 2).multiplyScalar(1.2), rng, { skip: [false, false, false, true, false, true] });
   const glowProps = new VoxelBatch(16);
   const pb: PropBatches = { wood, paint: props, glow: glowProps, stone };
-  // Shelves along the back wall (kit/props.ts): big readable runs of books and jars.
   // Painted sage metal shelving with bright runs of books (cabinet bases).
   const bookHues = ['#4fa86a', '#3f7cc8', '#d4553a', '#e8b440', '#f0e6cc', '#8a5ac0', '#e07a2a'];
-  for (let u = 0; u < 4; u++) bookcase(pb, [lodge.x0 + 2.75 + u * 1.45, ly, lodge.z0 + 0.6], rng, { w: 1.34, h: 1.55, d: 0.45, frame: 'paint', tint: '#a8b8a0', hues: bookHues });
+  for (let u = 0; u < 4; u++) bookcase(pb, [lodge.x0 + 2.6 + u * 1.42, ly, lodge.z0 + 0.6], rng, { w: 1.32, h: 1.5, d: 0.45, frame: 'paint', tint: '#a8b8a0', hues: bookHues });
   // Workbench at the left end: papers, a lamp (glow) and a stool.
-  const benchX = lodge.x0 + 1.15, benchZ = lodge.z0 + 0.85;
-  table(pb, [benchX, ly, benchZ], [1.5, 0.75, 0.72], rng);
-  props.box([benchX - 0.55, ly + 0.72, benchZ - 0.2], [benchX - 0.1, ly + 0.76, benchZ + 0.15], new THREE.Color('#efe2c4'), rng); // papers
-  props.box([benchX + 0.15, ly + 0.72, benchZ - 0.25], [benchX + 0.55, ly + 1.05, benchZ + 0.05], new THREE.Color('#5a6f8a'), rng); // a strongbox
-  props.box([benchX + 0.3, ly + 0.72, benchZ + 0.1], [benchX + 0.38, ly + 1.1, benchZ + 0.18], new THREE.Color('#3a3640'), rng); // lamp post
-  glowProps.box([benchX + 0.24, ly + 1.1, benchZ + 0.04], [benchX + 0.44, ly + 1.22, benchZ + 0.24], new THREE.Color('#ffc070').multiplyScalar(1.8), rng);
-  table(pb, [benchX + 0.2, ly, benchZ + 0.9], [0.4, 0.4, 0.42], rng); // stool
-  // Crates (stacked) at the front left of the platform, a barrel by the right wall.
-  crate(pb, [lodge.x0 + 0.7, ly, floorBack - 0.6], 0.55, rng, { ry: 0.2 });
-  crate(pb, [lodge.x0 + 1.35, ly, floorBack - 0.5], 0.45, rng, { ry: -0.15 });
-  crate(pb, [lodge.x0 + 0.8, ly + 0.55, floorBack - 0.6], 0.4, rng, { ry: 0.45 });
-  barrel(pb, [lodge.x1 - 0.55, ly, lodge.z0 + 0.7], 0.26, 0.66, rng);
-  barrel(pb, [lodge.x1 - 0.6, ly, lodge.z0 + 1.35], 0.24, 0.6, rng);
+  const benchX = lodge.x0 + 1.05, benchZ = lodge.z0 + 0.8;
+  table(pb, [benchX, ly, benchZ], [1.4, 0.72, 0.72], rng);
+  props.box([benchX - 0.5, ly + 0.72, benchZ - 0.2], [benchX - 0.08, ly + 0.76, benchZ + 0.15], new THREE.Color('#efe2c4'), rng); // papers
+  props.box([benchX + 0.12, ly + 0.72, benchZ - 0.25], [benchX + 0.5, ly + 1.04, benchZ + 0.05], new THREE.Color('#5a6f8a'), rng); // a strongbox
+  props.box([benchX + 0.28, ly + 0.72, benchZ + 0.1], [benchX + 0.36, ly + 1.08, benchZ + 0.18], new THREE.Color('#3a3640'), rng); // lamp post
+  glowProps.box([benchX + 0.22, ly + 1.08, benchZ + 0.04], [benchX + 0.42, ly + 1.2, benchZ + 0.24], new THREE.Color('#ffc070').multiplyScalar(1.8), rng);
+  table(pb, [benchX + 0.15, ly, benchZ + 0.85], [0.4, 0.4, 0.42], rng); // stool
+  // Crates at the front left of the shelf, barrels by the right.
+  crate(pb, [lodge.x0 + 0.6, ly, lodge.z1 - 0.55], 0.52, rng, { ry: 0.2 });
+  crate(pb, [lodge.x0 + 1.25, ly, lodge.z1 - 0.45], 0.42, rng, { ry: -0.15 });
+  crate(pb, [lodge.x0 + 0.7, ly + 0.52, lodge.z1 - 0.55], 0.38, rng, { ry: 0.45 });
+  barrel(pb, [lodge.x0 + 8.6, ly, lodge.z1 - 0.7], 0.26, 0.64, rng);
+  barrel(pb, [lodge.x0 + 9.2, ly, lodge.z1 - 1.0], 0.24, 0.6, rng);
   // A rug with a low table on it (the lodge's warm centre).
-  const rugX = lodge.x0 + 6.6, rugZ = floorBack - 1.25;
-  table(pb, [rugX, ly + 0.012, rugZ], [1.5, 0.75, 0.45], rng);
-  // Banners on the wall above the shelves.
-  banner(pb, [lodge.x0 + 3.8, ly + 2.7, lodge.z0 + 0.02], rng, { w: 0.7, h: 0.9, cloth: '#2f5a8a', trim: '#e0b048' });
-  banner(pb, [lodge.x0 + 6.7, ly + 2.7, lodge.z0 + 0.02], rng, { w: 0.7, h: 0.9, cloth: '#9a3328', trim: '#e0b048' });
-  // A brazier by the left wall (warm accent), a crate and a barrel at the right wall foot.
-  const brazierLights = [brazier(pb, [-5.75, 0, -0.6], rng)];
-  crate(pb, [5.85, 0, -0.6], 0.5, rng, { ry: -0.4 });
-  barrel(pb, [5.95, 0, 0.15], 0.24, 0.62, rng);
-  // A pickaxe leaning by the left wall (props).
-  wood.rotBox([-5.95, 0.42, 0.75], [0.06, 0.84, 0.06], 0.3, new THREE.Color(0.9, 0.9, 0.9), rng, 0.25);
-  metal.rotBox([-5.85, 0.84, 0.75], [0.42, 0.07, 0.07], 0.3, rampColor(RAMPS.steel, 4), rng, 0.25);
-
-  // Rug in the lodge (its own texture).
+  const rugX = lodge.x0 + 5.6, rugZ = lodge.z1 - 1.2;
+  table(pb, [rugX, ly + 0.012, rugZ], [1.4, 0.7, 0.42], rng);
+  banner(pb, [lodge.x0 + 3.4, ly + 2.15, lodge.z0 + 0.02], rng, { w: 0.6, h: 0.75, cloth: '#2f5a8a', trim: '#e0b048' });
+  banner(pb, [lodge.x0 + 6.3, ly + 2.15, lodge.z0 + 0.02], rng, { w: 0.6, h: 0.75, cloth: '#9a3328', trim: '#e0b048' });
+  // A brazier at the left wall foot (warm accent), a crate and a barrel at the right wall foot.
+  const brazierLights = [brazier(pb, [-4.35, 0, -0.9], rng)];
+  crate(pb, [7.95, 0, -0.4], 0.5, rng, { ry: -0.4 });
+  barrel(pb, [8.05, 0, 0.35], 0.24, 0.62, rng);
+  // A pickaxe leaning on the left wall.
+  wood.rotBox([-4.75, 0.42, 0.55], [0.06, 0.84, 0.06], 0.4, new THREE.Color(0.9, 0.9, 0.9), rng, 0.25);
+  metal.rotBox([-4.65, 0.84, 0.55], [0.42, 0.07, 0.07], 0.4, rampColor(RAMPS.steel, 4), rng, 0.25);
   {
-    const g = new THREE.PlaneGeometry(2.6, 1.7);
+    const g = new THREE.PlaneGeometry(2.4, 1.5);
     g.rotateX(-Math.PI / 2);
     const rug = mesh(g, track(new THREE.MeshLambertMaterial({ map: texRug })), false, true);
-    rug.position.set(rugX, ly + 0.012, rugZ);
+    rug.position.set(rugX, ly + 0.03, rugZ);
     group.add(rug);
   }
 
@@ -788,10 +741,8 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   group.add(mesh(plaster.build(), track(surfaceMaterial(texPlaster, '#3e2c1c')), false, true));
   group.add(mesh(props.build(), track(surfaceMaterial(texSteel))));
 
-  // ---- two windows high in the back-left wall (emissive, capped below the bloom wash)
-  // Right of the foe's HUD box (top left of the screen), so both read whole in the UI.
-  const win = { x: -3.0, y: 3.4, z: cliffZ - 0.08, w: 2.0, h: 1.3 };
-  const win2 = { x: 0.0, y: 3.6, z: cliffZ - 0.08, w: 1.4, h: 1.15 };
+  // ---- two windows in the back wall (emissive, capped below the bloom wash) with a stone
+  // reveal round each opening
   const glow = new VoxelBatch(16);
   glow.append(glowProps);
   const frame = new VoxelBatch(32);
@@ -801,26 +752,30 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
     glow.box([cx - w / 2, cy - hh / 2, cz - 0.05], [cx + w / 2, cy + hh / 2, cz + 0.02], pane, rng);
     for (let i = 0; i <= cols; i++) { const x = cx - w / 2 + (w * i) / cols; frame.box([x - 0.07, cy - hh / 2 - 0.07, cz], [x + 0.07, cy + hh / 2 + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
     for (let j = 0; j <= rows; j++) { const y = cy - hh / 2 + (hh * j) / rows; frame.box([cx - w / 2 - 0.07, y - 0.07, cz], [cx + w / 2 + 0.07, y + 0.07, cz + 0.12], new THREE.Color(0.55, 0.55, 0.55), rng); }
+    // Reveal: a recessed stone surround filling the bay the course stones left open.
+    const rv = new THREE.Color(1, 1, 1).multiplyScalar(0.62);
+    rock2.box([cx - w / 2 - 0.3, cy - hh / 2 - 0.25, cz - 0.4], [cx + w / 2 + 0.3, cy - hh / 2 - 0.02, cz + 0.22], rv.clone().multiplyScalar(1.3), rng, { skip: [false, false, false, true, false, true], topK: 1.3 });
+    rock2.box([cx - w / 2 - 0.3, cy + hh / 2 + 0.02, cz - 0.4], [cx + w / 2 + 0.3, cy + hh / 2 + 0.25, cz + 0.1], rv, rng, { skip: [false, false, false, false, false, true] });
+    for (const sx of [-1, 1]) rock2.box([cx + sx * (w / 2 + 0.02) - (sx > 0 ? 0 : 0.28), cy - hh / 2 - 0.02, cz - 0.4], [cx + sx * (w / 2 + 0.02) + (sx > 0 ? 0.28 : 0), cy + hh / 2 + 0.02, cz + 0.08], rv, rng, { skip: [false, false, true, true, false, true] });
   };
+  const rock2 = new VoxelBatch(64);
   addWindow(win.x, win.y, win.z, win.w, win.h);
   addWindow(win2.x, win2.y, win2.z, win2.w, win2.h);
-  // Ember crystals: tapered hex-prism clusters seated in the wall foot and on a ledge (bloom).
-  for (const [x, y, z, n] of [[-6.2, 0, 1.3, 4], [6.25, 0, 2.9, 3], [-1.6, LEVEL, -3.85, 5]] as const) crystalCluster(glow, [x, y, z], n, rng);
+  rock2.bake = CBAKE; rock2.bakeMin = 0.8; rock2.bakeGain = 0.6;
+  group.add(mesh(rock2.build(), rockMat, false, true));
+  // Ember crystals: tapered hex-prism clusters seated at wall feet and on a ledge (bloom).
+  for (const [x, y, z, n] of [[-5.3, 0, 1.4, 4], [8.45, 0, 2.6, 3], [-0.6, ly, -4.55, 5]] as const) crystalCluster(glow, [x, y, z], n, rng);
   const glowMat = track(new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: true, fog: false }));
   group.add(mesh(glow.build(), glowMat, false, false));
   group.add(mesh(frame.build(), track(surfaceMaterial(texBoards))));
-  // Clear rock in front of the windows (and keep a sight line for the light).
-  carveWindow(group, win, win2);
 
-  // ---- lights: warm window key (cookie spot, shadows) slanting in from the upper left, side
-  // fill, hemisphere, a warm lodge lamp
+  // ---- lights: warm window key (soft cookie spot, shadows) slanting in from the upper left,
+  // aimed so ONE big pool lands under both kin; side fill, hemisphere, a warm lodge lamp
   const keyColor = new THREE.Color('#ffd7a0');
-  // Window → floor, down-right toward the camera: the big window lights the player's side, the
-  // small one the foe's (nearly parallel shafts).
   const winPos = new THREE.Vector3(win.x, win.y, win.z), win2Pos = new THREE.Vector3(win2.x, win2.y, win2.z);
-  const poolA = new THREE.Vector3(-0.6, 0, 0.4), poolB = new THREE.Vector3(2.5, 0, -1.3);
+  const poolA = new THREE.Vector3(0.0, 0, 0.15), poolB = new THREE.Vector3(1.2, 0, -0.7);
   const keyDir = poolA.clone().sub(winPos).normalize(), key2Dir = poolB.clone().sub(win2Pos).normalize();
-  const key = new THREE.SpotLight(keyColor, 150, 0, 0.24, 0.5, 1.2);
+  const key = new THREE.SpotLight(keyColor, 175, 0, 0.3, 0.75, 1.2);
   key.position.copy(winPos).addScaledVector(keyDir, -2.2);
   key.target.position.copy(poolA);
   key.map = track(windowCookie(3, 2));
@@ -830,51 +785,50 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   key.shadow.normalBias = 0.02;
   key.shadow.radius = 3;
   key.shadow.camera.near = 1.5;
-  key.shadow.camera.far = 22;
+  key.shadow.camera.far = 24;
   group.add(key, key.target);
   // The small window gets a shaft and a light-pool decal but no light of its own: a second
   // cookie spot cost ~20% of the frame for a patch the decal fakes well (docs/HD2D.md).
-  const key2 = new THREE.SpotLight(keyColor, 0, 0, 0.3, 0.5, 1.2);
+  const key2 = new THREE.SpotLight(keyColor, 0, 0, 0.3, 0.75, 1.2);
   key2.position.copy(win2Pos).addScaledVector(key2Dir, -2.2);
   key2.target.position.copy(poolB);
-  const hemi = new THREE.HemisphereLight(new THREE.Color('#ffe0b8'), new THREE.Color('#2a160c'), 1.7);
+  const hemi = new THREE.HemisphereLight(new THREE.Color('#ffe0b8'), new THREE.Color('#3a2214'), 1.75);
   group.add(hemi);
-  // Weak side fill (no shadows): keeps camera-facing rock out of pure black without flattening it.
+  // Weak side fill (no shadows): keeps camera-facing stone out of black without flattening it.
   const fill = new THREE.DirectionalLight(new THREE.Color('#ffc49a'), 0.85);
   fill.position.set(-4, 6, 9);
   group.add(fill, fill.target);
-  // Lodge lamps + ember glow (warm point accents) on the high tier only.
+  // Lodge lamp + ember glow (warm point accents) on the high tier only.
   if (q === 'high' && !flags.has('nopoints')) {
-    const lantern = new THREE.PointLight(new THREE.Color('#ffb060'), 22, 9, 1.4);
-    lantern.position.set(lodge.x0 + 5.0, ly + 2.3, floorBack - 1.0);
+    const lantern = new THREE.PointLight(new THREE.Color('#ffb060'), 18, 8, 1.4);
+    lantern.position.set(lodge.x0 + 4.4, ly + 2.0, lodge.z1 - 1.0);
     group.add(lantern);
     const ember = new THREE.PointLight(new THREE.Color('#ff7a2e'), 3, 4.5, 1.6);
-    ember.position.copy(brazierLights[0] ?? new THREE.Vector3(-5.75, 1.2, -0.6));
+    ember.position.copy(brazierLights[0] ?? new THREE.Vector3(-4.35, 1.2, -0.9));
     group.add(ember);
   }
 
-  // ---- god rays + dust: two defined shafts from the big window, one from the small one
+  // ---- god rays + dust: two broad shafts from the big window, one from the small one
   const beamColor = new THREE.Color('#ffd49a');
   const beams: BeamSpec[] = [];
   const shafts = (w: typeof win, dir: THREE.Vector3, offs: number[], gain: number) => {
     for (const ox of offs) {
       const s = new THREE.Vector3(w.x + ox * w.w, w.y - 0.05, w.z + 0.2);
       const len = (s.y / -dir.y) * 0.98;
-      beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w.w * 0.5, w.w * 0.5 * 1.8], gain, fade: 0.18 });
+      beams.push({ start: s, end: s.clone().addScaledVector(dir, len), width: [w.w * 0.55, w.w * 0.55 * 1.9], gain, fade: 0.18 });
     }
   };
   shafts(win, keyDir, [-0.22, 0.24], 1);
-  shafts(win2, key2Dir, [0], 0.85);
-  const rays = lightBeams(beams, beamColor, 0.33);
+  shafts(win2, key2Dir, [0], 0.8);
+  const rays = lightBeams(beams, beamColor, 0.3);
   track(rays.mesh.geometry); track(rays.mesh.material as THREE.Material);
   if (!flags.has('norays')) group.add(rays.mesh);
   const dust = dustMotes(beams, q === 'high' ? 24 : 12, rng, new THREE.Color('#ffd9a0').multiplyScalar(0.75));
   track(dust.points.geometry); track(dust.points.material as THREE.Material);
   group.add(dust.points);
-  // Light pools: a soft additive decal where the shafts land, shaped like the projected window
-  // cookie (the key's real light does the shading; this adds the hazy bounce the reference glows
-  // with, and IS the small window's patch), plus a lamplight patch on the lodge planks.
-  group.add(lightPools(track, [key, key2], [1, 1.5], { x0: -6.5, x1: 7.5, z0: floorBack - 0.4, z1: floorFront + 3.5 }, { x0: lodge.x0 + 3.2, x1: lodge.x0 + 6.4, z0: lodge.z0 + 1.0, z1: floorBack - 0.15, y: ly + 0.014 }));
+  // Light pools: a soft additive decal where the shafts land (the projected cookie, blurred),
+  // plus a pane-shaped lamplight patch on the lodge planks.
+  group.add(lightPools(track, [key, key2], [1, 1.1], { x0: -6.5, x1: 7.5, z0: -4.0, z1: 5.0 }, { x0: lodge.x0 + 2.6, x1: lodge.x0 + 5.6, z0: lodge.z0 + 1.0, z1: lodge.z1 - 0.15, y: ly + 0.04 }));
 
   const spriteLight: SpriteLight = {
     keyDir: key.position.clone().sub(key.target.position).normalize(),
@@ -886,9 +840,10 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
 
   return {
     group,
-    spots: [new THREE.Vector3(-1.3, 0, 1.0), new THREE.Vector3(1.5, 0, -1.0)],
-    people: [new THREE.Vector3(-2.5, 0, 1.9), new THREE.Vector3(2.75, 0, -1.95)],
-    trainerExit: new THREE.Vector3((stair.x0 + stair.x1) / 2, platformY * LEVEL, floorBack - 0.9),
+    spots: SPOTS,
+    people: PEOPLE,
+    // Up the stair onto the lodge shelf.
+    trainerExit: new THREE.Vector3((stair.x0 + stair.x1) / 2, ly, lodge.z1 - 0.9),
     spriteLight,
     key,
     update(t) { rays.update(t); dust.update(t); },
@@ -897,17 +852,36 @@ export function buildCaveArena(opts: CaveArenaOptions = {}): ArenaRig {
   };
 }
 
-/** The window cookie (windowCookie layout) as an analytic soft mask at cookie uv. */
+/**
+ * The window cookie as an analytic soft mask at cookie uv: the pane rectangle with a wide
+ * penumbra and a gentle round falloff, mullions that only dip to ~45% (low contrast) with soft
+ * edges — a big, soft, warm pool rather than a hard stencil.
+ */
 function cookieMask(u: number, v: number, cols = 3, rows = 2): number {
   const px = u * 64, py = v * 64;
-  if (px < 4 || px > 60 || py < 8 || py > 56) return 0;
   const ss = THREE.MathUtils.smoothstep;
-  let m = ss(px, 5, 10) * (1 - ss(px, 54, 59)) * ss(py, 9, 14) * (1 - ss(py, 50, 55));
-  const r = Math.hypot(px - 32, py - 32);
-  m *= 1 - ss(r, 19, 32);
-  for (let i = 1; i < cols; i++) m *= ss(Math.abs(px - (6 + (52 * i) / cols)), 0.5, 3.5);
-  for (let j = 1; j < rows; j++) m *= ss(Math.abs(py - (10 + (44 * j) / rows)), 0.5, 3.5);
+  let m = ss(px, 1, 15) * (1 - ss(px, 49, 63)) * ss(py, 4, 18) * (1 - ss(py, 46, 60));
+  m *= 1 - 0.45 * ss(Math.hypot(px - 32, (py - 32) * 1.2), 14, 34);
+  for (let i = 1; i < cols; i++) m *= 0.45 + 0.55 * ss(Math.abs(px - (6 + (52 * i) / cols)), 0.5, 5.5);
+  for (let j = 1; j < rows; j++) m *= 0.45 + 0.55 * ss(Math.abs(py - (10 + (44 * j) / rows)), 0.5, 5.5);
   return m;
+}
+
+/** Window-pane cookie for a SpotLight.map (cookieMask: soft panes, low-contrast mullions). */
+export function windowCookie(cols = 3, rows = 2): THREE.CanvasTexture {
+  const s = 64;
+  const c = document.createElement('canvas');
+  c.width = s; c.height = s;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(s, s);
+  for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+    const v = Math.round(255 * cookieMask((x + 0.5) / s, (y + 0.5) / s, cols, rows)), i = (y * s + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 /**
@@ -1005,34 +979,3 @@ function crystalCluster(b: VoxelBatch, at: V3, n: number, rng: Rng) {
   }
 }
 
-/** Remove rock blocks that would sit in front of the window panes (post-pass on the rock mesh). */
-function carveWindow(group: THREE.Group, ...wins: { x: number; y: number; z: number; w: number; h: number }[]) {
-  const rockMesh = group.children[0] as THREE.Mesh;
-  const g = rockMesh.geometry;
-  const pos = g.attributes.position!;
-  const keep: number[] = [];
-  const tri = new THREE.Vector3();
-  for (let t = 0; t < pos.count; t += 3) {
-    tri.set(0, 0, 0);
-    for (let k = 0; k < 3; k++) tri.add(new THREE.Vector3(pos.getX(t + k), pos.getY(t + k), pos.getZ(t + k)).multiplyScalar(1 / 3));
-    let hit = false;
-    for (const w of wins) {
-      const wall = Math.abs(w.x) > 8; // the left-wall window faces +x
-      if (!wall && Math.abs(tri.x - w.x) < w.w / 2 + 0.05 && Math.abs(tri.y - w.y) < w.h / 2 + 0.05 && tri.z > w.z - 0.05 && tri.z < w.z + 0.6) hit = true;
-      if (wall && Math.abs(tri.z - w.z) < w.w / 2 + 0.05 && Math.abs(tri.y - w.y) < w.h / 2 + 0.05 && tri.x > w.x - 0.05) hit = true;
-    }
-    if (!hit) keep.push(t);
-  }
-  if (keep.length * 3 === pos.count) return;
-  const out = new THREE.BufferGeometry();
-  for (const name of Object.keys(g.attributes)) {
-    const a = g.attributes[name]!;
-    const arr = new Float32Array(keep.length * 3 * a.itemSize);
-    keep.forEach((t, n) => { for (let k = 0; k < 3 * a.itemSize; k++) arr[n * 3 * a.itemSize + k] = (a.array as Float32Array)[t * a.itemSize + k]!; });
-    out.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize));
-  }
-  out.computeBoundingSphere();
-  out.computeBoundingBox();
-  g.dispose();
-  rockMesh.geometry = out;
-}
