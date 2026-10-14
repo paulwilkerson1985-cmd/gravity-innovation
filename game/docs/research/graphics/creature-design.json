@@ -1,0 +1,477 @@
+{
+  "angle": "creature-design: stylized creature/character design and modeling (design principles, pro workflow, headless Blender pipeline, glTF/three.js integration)",
+  "notesPath": "game/docs/research/graphics/creature-design.md",
+  "keyFindings": [
+    {
+      "claim": "Orbkin's creatures look like programmer art mainly because of how they are built, not how many triangles they have.",
+      "detail": "The lineups show intersecting faceted primitives, uniform box or cylinder legs, straight cones for spikes and ears, hard seams where parts meet, and stage 2/3 adding more small parts instead of changing the main mass. The sprite pipeline (palette snap, hue-shifted ramps, outline, rim) is ahead of the meshes feeding it.",
+      "sources": [
+        "game/docs/screenshots/creatures/lineup-0-flame.jpg",
+        "game/docs/screenshots/creatures/lineup-2-flora.jpg",
+        "game/docs/HD2D.md"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Fix the input meshes: build one continuous, smooth, tapered surface per kin. Keep the existing sprite bake."
+    },
+    {
+      "claim": "A headless Blender pipeline (Skin chains + ellipsoids → voxel remesh → smooth → decimate) produces a clearly more professional stylized creature in under 1 second.",
+      "detail": "Verified with bpy 5.2.2 on CPU. The fox-kit test was 2,998 body tris + 288 eye tris, built and rigged in 0.54 s, exported in 0.68 s, with an ~8 s Cycles preview. The result reads as one soft, appealing creature with a tapered S-curve tail and tapered ears.",
+      "sources": [
+        "/tmp/creature-exp/fox_kit.py (embedded in notes §6.2)"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Adopt it as the generator for all 18 kin. Claude can iterate genome → build → preview → fix in seconds."
+    },
+    {
+      "claim": "Skin-modifier branch nodes with high valence produce non-manifold holes, and the voxel remesh then silently drops whole regions.",
+      "detail": "A hip vertex with 4 edges gave 32 non-manifold edges and the torso vanished after remesh. Keeping Skin chains at valence ≤ 2 (one root per chain) and building the torso from ellipsoids fixed it: 0 non-manifold edges, 1 island.",
+      "sources": [
+        "experiment: /tmp/creature-exp/dbg_skin.py"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "The generator spec should use masses (ellipsoids or metaballs) for bodies and Skin only for simple chains."
+    },
+    {
+      "claim": "ARMATURE_AUTO (bone-heat weights), Rigify generation, skin_armature_create, Cycles AO baking to vertex colours, Geometry Nodes and curve bevel/taper all work headless. Sculpt brush strokes do not.",
+      "detail": "Feature probes: ARMATURE_AUTO gave 0 unweighted verts on a remeshed body; Rigify human metarig → 222-bone rig in 0.2 s; sculpt.brush_stroke failed with poll() 'context is incorrect' because there is no window or region in background mode.",
+      "sources": [
+        "/tmp/creature-exp/feature_tests.py (abridged in notes §6.4)"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Rigging and AO baking can run in the build. Use modifiers, bmesh or Geometry Nodes for form changes instead of sculpt ops."
+    },
+    {
+      "claim": "Exported .glb files load in three r180 GLTFLoader with skinning, 3 animation clips and a blink morph target, and the clips sample correctly.",
+      "detail": "Node test: SkinnedMesh with 17 bones, 3,285 tris; clips Attack 0.92 s, Idle 2.04 s, Blink 3 s; the attack lunge moves the mesh forward and Blink influence reaches 0.8. Raw size 200 KB; meshopt-optimised 59 KB (needs MeshoptDecoder).",
+      "sources": [
+        "/tmp/creature-exp/web/load.mjs",
+        "https://github.com/donmccurdy/glTF-Transform"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Path B (skinned clips) is technically ready whenever Orbkin's toon shader gains skinning and morph chunks."
+    },
+    {
+      "claim": "Custom vertex attributes round-trip from Blender to three.js, so generated meshes can feed Orbkin's existing vertex-shader rig unchanged.",
+      "detail": "Blender attributes named with a leading underscore (_RIGA, _RIGKIND) are exported with export_attributes=True; GLTFLoader exposes them as geometry.attributes._riga and _rigkind.",
+      "sources": [
+        "/tmp/creature-exp/attr_test.py",
+        "bpy 5.2 io_scene_gltf2/__init__.py export_attributes"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Path A (geometry swap) is the lowest-risk integration: map _riga/_rigb to rigA/rigB and keep CreatureView, toonMaterial and SpriteBaker."
+    },
+    {
+      "claim": "Decimate keeps point colour attributes and preserves silhouette tips best at this budget. QuadriFlow drops colours and rounds off thin tips.",
+      "detail": "Decimate kept the vertex colours. QuadriFlow output had no colours until a Data Transfer modifier (POLYINTERP_NEAREST) copied them back from a saved copy, and ear points became rounded.",
+      "sources": [
+        "experiment renders in /tmp/creature-exp/out"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Use symmetric Decimate for kin. Keep QuadriFlow only for cases that need clean quads (e.g. hand sculpting later)."
+    },
+    {
+      "claim": "Infinigen builds creatures the same way: NURBS parts joined into one mesh, voxel remeshed with attribute transfer, small islands removed, joins smoothed, rigged with ARMATURE_AUTO.",
+      "detail": "Read in the infinigen 1.15.5 wheel: util/joining.py join_and_rig_parts → detail.adapt_mesh_resolution(method='remesh') → remesh_with_attrs (REMESH modifier + transfer_attributes) → select_large_component → join_smoothing.smooth_around_line. Parts come from nurbs_data/*.npy and are attached through a genome tree.",
+      "sources": [
+        "https://github.com/princeton-vl/infinigen",
+        "infinigen/assets/objects/creatures/util/joining.py"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "The remesh-fuse-transfer approach is research-grade, not a hack. Copy the ideas (genome tree, part-attribute transfer); not the code, since Infinigen is photoreal and heavy."
+    },
+    {
+      "claim": "Spore's creature skin was a metaball implicit surface, chosen because topological robustness mattered more than local control.",
+      "detail": "Chris Hecker's liner notes describe the creature skin as a blobby implicit surface generated on the fly from player-built creatures.",
+      "sources": [
+        "https://www.chrishecker.com/My_Liner_Notes_for_Spore"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Implicit or voxel fusing is the right tool for scripted creatures, because any combination of parts yields one valid smooth surface."
+    },
+    {
+      "claim": "Baby-schema proportions measurably increase perceived cuteness, and the effect transfers across species.",
+      "detail": "Lorenz's Kindchenschema: big head, big cranium, large eyes below the skull midline, round cheeks, small nose and mouth. Glocker et al. 2009 manipulated infant photos; Golle et al. 2013 (PLoS ONE) showed transfer across species; a 2024 avatar study found the same, with some cultural variation.",
+      "sources": [
+        "https://www.semanticscholar.org/paper/Baby-Schema-in-Infant-Faces-Induces-Cuteness-and-in-Glocker-Langleben/b31418465f9700513fbdec323f8bd8d0dc673af2",
+        "https://journals.plos.org/plosone/article?id=10.1371%2Fjournal.pone.0058248",
+        "https://link.springer.com/article/10.1007/s00146-024-01878-3"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Stage-1 kin: head about equal to body, eyes low and wide, short snout, short tapered limbs. Invert these gradually for stage 3, but keep one juvenile cue."
+    },
+    {
+      "claim": "Pro character readability relies on silhouette tests plus rim and hue/luminance variation (Valve TF2).",
+      "detail": "The NPAR 2007 paper says characters were checked to be identifiable in pure silhouette, and that shading uses rim highlights and luminance/hue variation, inspired by Leyendecker and Rockwell.",
+      "sources": [
+        "https://steamcdn-a.akamaihd.net/apps/valve/2007/NPAR07_IllustrativeRenderingInTeamFortress2.pdf"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Add an automated silhouette-IoU check across all kin and stages. Orbkin's sprite rim is already on-model."
+    },
+    {
+      "claim": "Guilty Gear Xrd controls toon shading through vertex data (edited normals, a vertex-colour threshold offset, outline width in vertex alpha) instead of textures.",
+      "detail": "Motomura's GDC 2015 slides: no normal maps; a vertex-colour channel offsets the lit/shadow threshold and acts as AO; the inverted-hull outline width comes from vertex colour.",
+      "sources": [
+        "https://www.ggxrd.com/Motomura_Junya_GuiltyGearXrd.pdf",
+        "https://www.docswell.com/s/ASW_Academy/5LVY67-GG-Toonline-Eng"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Bake AO or a shadow bias into a vertex channel in Blender (verified possible headless) and let the toon sprite pass read it."
+    },
+    {
+      "claim": "Monster-collector studios design in 2D first (3/4 view first), cull hard, and accept that some designs fail in 3D.",
+      "detail": "Crema (Temtem): ~10 creatures per sheet, best 1–3 refined with an outline, turnarounds with the 3/4 view first, then T/A-pose modelling with clean topology. Pocketpair rates sketches 1–5 internally and some fail at the 2D→3D step. Bytten designs every monster twice (bespoke + modular parts).",
+      "sources": [
+        "https://www.kickstarter.com/projects/cremagames/temtem-massively-multiplayer-creature-collection-a/posts/2219384",
+        "https://gamewave.fr/palworld/palworld-son-studio-possede-un-cimetiere-de-concepts-de-pals-abandonnes/",
+        "https://www.gamedeveloper.com/design/cassette-beasts-is-a-fun-rpg-that-turns-monster-into-mixtapes"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Claude should write a brief and generate several cheap variants, render review sheets, and have the owner pick, rather than polishing the first idea."
+    },
+    {
+      "claim": "A touch of 'silliness' keeps intimidating designs catchable (James Turner). Designs start from one simple mass + one feature (early Pikachu was a daifuku blob with ears).",
+      "detail": "Interview summaries from Kotaku/Game Informer (Turner) and Siliconera (Nishida).",
+      "sources": [
+        "https://kotaku.com/pokemon-james-turner-art-character-designs-interview-2000727904",
+        "https://www.siliconera.com/pikachu-originally-second-evolution-called-gorochu-large-fangs-two-horns/"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Every stage 3 keeps one endearing cue; every brief starts from one mass + one signature."
+    },
+    {
+      "claim": "Evolution lines stay coherent by carrying one signature motif and hue family, and escalate by mass, posture and proportion before adding detail.",
+      "detail": "Examples: Luxray's tail star, Lucario's colour and spike changes. Lines that lose their motif read as incoherent (Digimon examples). Watanabe pushes extremes and bends anatomy for power.",
+      "sources": [
+        "https://www.cbr.com/best-pokemon-evolutionary-line-designs/",
+        "https://www.cbr.com/confusing-digimon-evolution-lines/",
+        "https://withthewill.net/threads/translated-interview-kenji-watanabe-interviewed-by-producer-habu.18323/"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Enforce it by script: silhouette IoU vs the previous stage < 0.85, the same palette family, the signature part present and larger."
+    },
+    {
+      "claim": "Pixel-art colour practice: hue-shifted ramps (cooler, more saturated shadows; warmer highlights), short 3–4-step ramps, and ≥15–20% value contrast between adjacent motifs.",
+      "detail": "Several pixel-art guides agree. 60-30-10 is a general heuristic with no sprite-specific source.",
+      "sources": [
+        "https://the-pixel.art/articles/hue-shifting-pixel-art-shading/",
+        "https://www.pixel-editor.com/articles/color-theory-for-pixel-art"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Keep model base colours mid-value; check every kin in greyscale; split same-hue masses (Verdantusk greens) into distinct value groups."
+    },
+    {
+      "claim": "At HD-2D battle size the kin are only ~50–70 internal px tall, so faces and tertiary details mostly vanish.",
+      "detail": "Measured from hd2d-species.jpg and a 112 px quantized proxy of the fox-kit render: eyes sized for the front view became a few dark texels from the side.",
+      "sources": [
+        "game/docs/screenshots/hd2d/hd2d-species.jpg",
+        "/tmp/creature-exp/out/kit_sprite_proxy.png"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Size faces in texels (eye ≥ 3×4 texels + a 1-texel highlight), place eyes for the battle camera, and cap tertiary details at 3–5 per kin."
+    },
+    {
+      "claim": "Claude + blender-mcp and LLM-to-Blender research are good at blockouts and scripted objects but weak at artistic judgement for characters.",
+      "detail": "The blender-mcp README warns about arbitrary code and says complex operations should be split. Reviews report struggles with organic geometry and rigging, and silhouette drift on an anime character. LL3M shows only an author gallery of mostly hard-surface objects. BlenderGym finds state-of-the-art VLMs struggle with tasks that are easy for humans.",
+      "sources": [
+        "https://github.com/ahujasid/blender-mcp",
+        "https://www.mindstudio.ai/blog/claude-blender-mcp-real-world-performance",
+        "https://threedle.github.io/ll3m/",
+        "https://arxiv.org/abs/2504.01786"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Don't expect 'make a cute fox' prompts to work. Encode art direction as parameters and checklists, and review renders each iteration."
+    },
+    {
+      "claim": "Smooth soft colour boundaries on the mesh should become crisp, curved colour edges after Orbkin's per-pixel palette snap.",
+      "detail": "Inferred from HD2D.md: the toon pass snaps colours to an extracted per-species palette of ≤16 colours. Not tested in-game.",
+      "sources": [
+        "game/docs/HD2D.md"
+      ],
+      "confidence": "low",
+      "implicationForOrbkin": "Vertex-colour gradients are probably fine for sprite kin; confirm with an in-game A/B before investing in palette-UV textures."
+    },
+    {
+      "claim": "Blender 5.x API changes and performance traps that matter for scripted pipelines.",
+      "detail": "Action.fcurves was removed in 5.0 (slotted actions and channelbags); pose_bone.keyframe_insert still works. Per-element colour assignment took 17 s for 18k verts versus <0.05 s with foreach_set. The bpy wheel lacks the Draco and meshopt bridges, so compress with gltf-transform. Freestyle needs use_freestyle + a lineset with a linestyle.",
+      "sources": [
+        "https://docs.blender.org/api/5.0/change_log.html",
+        "experiment logs"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Write the generator against these constraints from day one."
+    },
+    {
+      "claim": "Mixamo is free but needs an Adobe ID and only rigs and animates bipedal humanoids.",
+      "detail": "Adobe FAQ: free with an Adobe ID, royalty-free in games, no redistribution of raw files, humanoid only.",
+      "sources": [
+        "https://helpx.adobe.com/ca/creative-cloud/faq/mixamo-faq.html"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Not useful for quadruped or blob kin; maybe for trainer figures only."
+    },
+    {
+      "claim": "Free AI image-to-3D needs a big NVIDIA GPU, and Hunyuan3D's licence excludes the EU, UK and South Korea.",
+      "detail": "TRELLIS and TripoSR are MIT (LICENSE files checked). The Hunyuan3D-2 LICENSE limits the territory. GPU needs (≥16–24 GB for TRELLIS) come from secondary blogs.",
+      "sources": [
+        "https://github.com/microsoft/TRELLIS",
+        "https://github.com/VAST-AI-Research/TripoSR",
+        "https://github.com/Tencent-Hunyuan/Hunyuan3D-2"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Optional only, and not usable in the cloud container. It also conflicts with Orbkin's 'procedural and original' rule."
+    }
+  ],
+  "tools": [
+    {
+      "name": "Blender 5.2 (bpy pip wheel)",
+      "free": true,
+      "license": "GPL-2.0+ (output unrestricted)",
+      "whatFor": "Headless creature generation: Skin, Remesh, Decimate, QuadriFlow, Data Transfer, Geometry Nodes, Rigify, Cycles bake/render, glTF export",
+      "usableInThisContainer": "Yes, verified: python3.13 venv + pip install bpy (~1 GB); Cycles CPU works; EEVEE/Workbench need EGL; no Draco/meshopt in the exporter"
+    },
+    {
+      "name": "glTF-Transform CLI",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "inspect, optimize, meshopt compression and quantization of .glb",
+      "usableInThisContainer": "Yes, verified via npx @gltf-transform/cli@4"
+    },
+    {
+      "name": "three.js r180 GLTFLoader / AnimationMixer / SkeletonUtils / MeshoptDecoder",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Load skinned and morph-target creatures and play clips",
+      "usableInThisContainer": "Yes, verified GLTFLoader.parse under Node (no WebGL rendering here)"
+    },
+    {
+      "name": "Infinigen",
+      "free": true,
+      "license": "BSD-3-Clause",
+      "whatFor": "Reference implementation of part-based procedural creatures (genome, NURBS parts, remesh join, auto-rig)",
+      "usableInThisContainer": "Code readable via pip wheel download (py3.11 only); not run"
+    },
+    {
+      "name": "blender-mcp (ahujasid)",
+      "free": true,
+      "license": "MIT (premium AI-gen tier paid)",
+      "whatFor": "Claude drives a running GUI Blender interactively (scene info, screenshots, execute code)",
+      "usableInThisContainer": "No: needs a desktop Blender with the add-on socket server"
+    },
+    {
+      "name": "Rigify (built into Blender)",
+      "free": true,
+      "license": "GPL",
+      "whatFor": "Production rigs from metarigs",
+      "usableInThisContainer": "Yes, verified headless generate; heavy (222 bones) for kin"
+    },
+    {
+      "name": "QuadriFlow (built into Blender)",
+      "free": true,
+      "license": "GPL / BSD (QuadriFlow lib)",
+      "whatFor": "Quad remeshing for clean topology",
+      "usableInThisContainer": "Yes, verified; drops colour attributes and rounds tips"
+    },
+    {
+      "name": "Quaternius asset packs",
+      "free": true,
+      "license": "CC0 (per itch.io/OpenGameArt; Sketchfab listing inconsistent)",
+      "whatFor": "Reference for low-poly creature proportions and animation timing; placeholders",
+      "usableInThisContainer": "Download not reachable from this container"
+    },
+    {
+      "name": "Kenney assets",
+      "free": true,
+      "license": "CC0",
+      "whatFor": "Props and UI; few creatures",
+      "usableInThisContainer": "Not reachable from this container"
+    },
+    {
+      "name": "Mixamo",
+      "free": true,
+      "license": "Adobe terms (royalty-free use, no raw redistribution); requires Adobe ID",
+      "whatFor": "Humanoid auto-rig and animations (not for quadrupeds)",
+      "usableInThisContainer": "No (web service, account needed)"
+    },
+    {
+      "name": "Material Maker",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Procedural texture graphs (masks, gradients, patterns)",
+      "usableInThisContainer": "No (desktop Godot app)"
+    },
+    {
+      "name": "ArmorPaint",
+      "free": true,
+      "license": "zlib source (compile yourself; binaries paid)",
+      "whatFor": "3D texture painting",
+      "usableInThisContainer": "No (GPU desktop app)"
+    },
+    {
+      "name": "UV-Colorize / LowPolyUV add-ons",
+      "free": true,
+      "license": "MIT / free",
+      "whatFor": "Palette-atlas UV texturing for low-poly assets",
+      "usableInThisContainer": "Probably (add-ons run in bpy), not tested"
+    },
+    {
+      "name": "Abnormal (BNPR) / custom-normal tools",
+      "free": true,
+      "license": "free add-on",
+      "whatFor": "Clean toon terminators via edited or sphereized normals",
+      "usableInThisContainer": "Not tested"
+    },
+    {
+      "name": "TRELLIS / TripoSR",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "AI image-to-3D drafts",
+      "usableInThisContainer": "No (needs NVIDIA GPU; TripoSR has a slow CPU fallback)"
+    },
+    {
+      "name": "Hunyuan3D-2",
+      "free": true,
+      "license": "Tencent community licence (not valid in EU/UK/South Korea; 1M-user cap)",
+      "whatFor": "AI image/text-to-3D",
+      "usableInThisContainer": "No (GPU); licence territory risk"
+    },
+    {
+      "name": "Playwright Chromium",
+      "free": true,
+      "license": "Apache-2.0",
+      "whatFor": "Headless WebGL screenshots of the real game",
+      "usableInThisContainer": "Browser download blocked by proxy in this container (npx playwright install failed)"
+    }
+  ],
+  "techniques": [
+    {
+      "name": "Skin-modifier chains for limbs, tails, ears and tufts",
+      "why": "Per-node radii give tapered, curved, organic limbs with S-curves, instead of uniform cylinders",
+      "how": "mesh verts + edges (valence ≤ 2), skin_vertices[0].data[i].radius=(rx,ry), use_root per chain, Subsurf 2, apply",
+      "impact": "huge",
+      "effort": "low (minutes per creature in a spec)"
+    },
+    {
+      "name": "Voxel remesh to fuse parts",
+      "why": "Turns intersecting primitives into one continuous watertight surface with natural fillets (Spore and Infinigen principle)",
+      "how": "REMESH modifier VOXEL voxel_size≈0.010–0.014 per unit height, then SMOOTH factor 0.7–0.8 × 4–6",
+      "impact": "huge",
+      "effort": "low"
+    },
+    {
+      "name": "Symmetric Decimate to a triangle budget",
+      "why": "Keeps silhouette tips and vertex colours at 1.5–4.5k tris",
+      "how": "DECIMATE COLLAPSE use_symmetry=True ratio=target/tris; then remove islands <5% of the largest",
+      "impact": "big",
+      "effort": "low"
+    },
+    {
+      "name": "Crisp add-on parts after remesh (eyes, highlights, horns, crystals)",
+      "why": "Small features stay sharp and readable instead of being blurred by the voxels",
+      "how": "Build them separately, colour them, join after decimation; assign eye verts to the head bone",
+      "impact": "big",
+      "effort": "low"
+    },
+    {
+      "name": "Curve horns and flames (bevel + taper)",
+      "why": "Swept, tapered accents instead of straight cones; group them in 3 sizes",
+      "how": "Bezier curve, bevel_depth, taper_object curve 1→0.02, convert to mesh",
+      "impact": "big",
+      "effort": "low"
+    },
+    {
+      "name": "Paint colours on the dense mesh, or transfer part-ids with Data Transfer",
+      "why": "Clean colour regions that survive remesh and decimate",
+      "how": "FLOAT_COLOR POINT attribute via foreach_set; DATA_TRANSFER COLOR_VERTEX POLYINTERP_NEAREST from a saved copy",
+      "impact": "big",
+      "effort": "low"
+    },
+    {
+      "name": "Custom glTF attributes for Orbkin's vertex rig (Path A)",
+      "why": "Swap geometry without touching the renderer, acting or sprite bake",
+      "how": "Blender attributes _RIGA/_RIGB + export_attributes=True; in TS setAttribute('rigA', geo.getAttribute('_riga'))",
+      "impact": "huge",
+      "effort": "medium (0.5–1 day TS + generator)"
+    },
+    {
+      "name": "Auto-rig + keyed actions + morph blink → glTF (Path B)",
+      "why": "Authored acting (anticipation, lunge, recoil) and blinks with standard tools",
+      "how": "armature from the chain spec; parent_set ARMATURE_AUTO; pose_bone.keyframe_insert; one NLA track per action; export_animation_mode=ACTIONS, export_morph=True",
+      "impact": "big",
+      "effort": "medium-high (toon shader needs skinning/morph chunks)"
+    },
+    {
+      "name": "Silhouette IoU regression check",
+      "why": "Objective test that kin and stages are distinct, not just scale-ups",
+      "how": "Render a flat-black mask at sprite height, normalise, IoU matrix; fail if >0.8 between species or >0.85 vs the previous stage",
+      "impact": "medium",
+      "effort": "low"
+    },
+    {
+      "name": "Sprite-size review sheet",
+      "why": "Judge what actually survives at 50–70 px",
+      "how": "Cycles 3/4 + side + back + silhouette + downscaled palette-quantised proxy in one image per kin",
+      "impact": "big",
+      "effort": "low"
+    },
+    {
+      "name": "Baby-schema proportions for stage 1",
+      "why": "Proven cuteness cues",
+      "how": "Head ≈ body, eyes below the head midline and wide, short snout, short tapered limbs, round cheeks",
+      "impact": "big",
+      "effort": "low"
+    },
+    {
+      "name": "Shape-language triad per line (primary / secondary / forbidden shape)",
+      "why": "Coherent and distinct lines that read instantly",
+      "how": "Write it in CREATURES.md per line; enforce in the review",
+      "impact": "medium",
+      "effort": "low"
+    },
+    {
+      "name": "Escalation order: mass/posture → proportion → signature growth → capped detail",
+      "why": "Avoids the 'more spikes' stage-3 problem",
+      "how": "Spec checklist + IoU test",
+      "impact": "big",
+      "effort": "low"
+    },
+    {
+      "name": "Value grouping + greyscale check",
+      "why": "Separates masses at sprite size (e.g. the Verdantusk greens)",
+      "how": "2–3 value groups ≥15–20% apart, accent ≤10%; greyscale render in the review sheet",
+      "impact": "medium",
+      "effort": "low"
+    },
+    {
+      "name": "Baked AO / shadow-bias vertex channel for toon (Guilty Gear Xrd idea)",
+      "why": "Painterly form shadows under the head, between legs and inside ears without textures",
+      "how": "Cycles bake AO with target VERTEX_COLORS; the toon pass offsets its threshold by it",
+      "impact": "medium",
+      "effort": "medium"
+    },
+    {
+      "name": "gltf-transform meshopt compression",
+      "why": "200 KB → 59 KB per kin",
+      "how": "npx @gltf-transform/cli optimize in.glb out.glb --compress meshopt; MeshoptDecoder in the loader",
+      "impact": "small",
+      "effort": "low"
+    },
+    {
+      "name": "Faceting only where on-model (Terra crystals, Vulcrag basalt)",
+      "why": "Deliberate hard edges read as a material, not as low effort",
+      "how": "Keep flat-shaded crystal parts as crisp add-ons on a smooth body",
+      "impact": "medium",
+      "effort": "low"
+    }
+  ],
+  "openQuestions": [
+    "Does a smooth-normal Blender mesh look better than the current faceted mesh through Orbkin's existing toon sprite pass? Needs an in-game A/B capture (Playwright Chromium could not be installed here).",
+    "Commit generated .glb files (~1 MB for 18 kin with meshopt) or generate them in CI with a ~1 GB bpy install?",
+    "Path A (vertex-rig geometry swap) only, or also Path B (skinned authored clips) for starters and hero kin?",
+    "Best automatic authoring of rig attributes (wag/flap amplitude) from chain-id + arc length via Data Transfer: untested.",
+    "Per-part colour via a transferred part-id attribute: untested, expected to give cleaner boundaries than position rules.",
+    "Final battle sprite height (~56–70 internal px?) sets the minimum face and eye sizes.",
+    "Originality review of redesigned kin against franchise archetypes (fire fox, electric bug) before shipping.",
+    "Should EEVEE (needs EGL/GPU) be used on the owner's machine for toon-accurate previews instead of Cycles?"
+  ]
+}
