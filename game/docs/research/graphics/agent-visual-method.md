@@ -18,7 +18,7 @@ Confidence labels:
 - **medium**: one practitioner source with evidence.
 - **low**: my synthesis.
 
-Network note: arxiv.org, gamedeveloper.com and threejs.org could not be fetched from this container. Paper claims are taken from abstracts via search, and repo claims from `raw.githubusercontent.com` reads, which are real files.
+Network note: during the research, arxiv.org, gamedeveloper.com and threejs.org could not be fetched (the allowlist was later widened to Poly Haven, ambientCG, Kenney, Blender docs and threejs.org) from this container. Paper claims are taken from abstracts via search, and repo claims from `raw.githubusercontent.com` reads, which are real files.
 
 ---
 
@@ -201,7 +201,7 @@ Each pattern is drawn from the sources above. **medium** unless noted.
 
 | Base | Licence | Use | In this container? |
 |---|---|---|---|
-| Kenney, Quaternius, KayKit (models), Poly Haven (models, HDRIs, scanned textures), ambientCG (textures) | **CC0** ([summary](https://app.cinevva.com/guides/game-assets-guide)) | Kitbash environment props; scanned surfaces → palette-quantised pixel tiles; base meshes | **Sites are blocked by the proxy** (kenney.nl, polyhaven, ambientcg). Assets would have to be added by the owner, or found mirrored on GitHub or npm (check the licence file) |
+| Kenney, Quaternius, KayKit (models), Poly Haven (models, HDRIs, scanned textures), ambientCG (textures) | **CC0** ([summary](https://app.cinevva.com/guides/game-assets-guide)) | Kitbash environment props; scanned surfaces → palette-quantised pixel tiles; base meshes | **Yes (since 2026-10-14):** polyhaven.com (+ api/dl), ambientcg.com and kenney.nl return 200 through the proxy. Download assets only (no installers), check each licence file |
 | Blender 5.2 as Python module (`pip install bpy`) | GPL (the outputs are yours) | Real modelling ops (remesh, subdivision, curves, skin, booleans, bevels); headless renders (Cycles CPU, Workbench) for gates; GLB export; offline sprite or texture bakes | **Yes** (Cycles CPU; EEVEE needs libEGL) |
 | Our own 3D→sprite baker (`src/render/hd2d/sprite.ts`) | project | Keep: same idea as Dead Cells, at runtime | yes |
 | Pyxelate / pixelize / pxly | MIT | Image → pixel art with learned palette and dithering (process scans or renders into ramps) | via pip, probably yes |
@@ -259,7 +259,7 @@ Recommendation: **kitbash and scan first, procedural second, pure from-scratch l
    - Export GLB (≤ 2,500 tris, 1 material with vertex colour or a small palette texture).
    - Load it in the existing sprite baker.
    - A test checks the triangle budget, grounding and one-mesh rule.
-3. **Environment: kitbash and scan before procedural noise.** Ask the owner to vendor a curated set of CC0 packs into `game/assets-src/`, since the container cannot download them. Then:
+3. **Environment: kitbash and scan before procedural noise.** Vendor a curated set of CC0 packs into `game/assets-src/` (Poly Haven, ambientCG and Kenney are now reachable from the container; download assets only, keep each licence file). Then:
    - palette-quantise scanned textures to the arena ramps at TEXEL = 1/16 (Pyxelate-style or a simple ordered dither);
    - replace fbm rock with quantised scans or hand-designed stamp libraries (large lit planes plus a few cracks);
    - gate with detail CV ≥ 0.45.
@@ -275,7 +275,7 @@ Recommendation: **kitbash and scan first, procedural second, pure from-scratch l
 
 ## 9. Open questions
 - Does Blender-modelled-then-baked kin measurably beat the current code-built kin in blind pairwise judging at 30 texels? Run a 2-species pilot: Ashkit and Pebblet.
-- Which free CC0 packs fit HD-2D after quantisation? Needs the owner to vendor them, since the proxy blocks the asset sites.
+- Which free CC0 packs fit HD-2D after quantisation? The sites are now reachable, so this can be tested directly.
 - Can Workbench or Cycles CPU renders in this container serve as fast enough gate renders (seconds per view)? Benchmark it.
 - Can our vertex-shader rig (flap, wag, nod) be driven by Blender-authored weight or vertex-group attributes exported in GLB, keeping one draw call?
 - How reliable is a fresh-context Opus critic in pairwise mode on our frames? Measure its agreement with the human judges' scores over 5–10 pairs.

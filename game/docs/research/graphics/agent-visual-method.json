@@ -91,7 +91,7 @@
       "detail": "TRELLIS.2 (MIT) was the best raw shape on kiln's bench, but at 191k triangles with broken wires after decimation it is usable only as a proportion template.",
       "sources": ["https://app.cinevva.com/guides/game-assets-guide", "https://github.com/ahujasid/blender-mcp", "https://github.com/elithril/blender-kiln/blob/main/docs/benchmarks.md"],
       "confidence": "medium",
-      "implicationForOrbkin": "The proxy blocks the CC0 sites, so the owner should vendor curated packs into the repo. bpy (pip) with Cycles CPU works in the container. No GPU, so no local generators."
+      "implicationForOrbkin": "Poly Haven, ambientCG and Kenney are now reachable from the container (allowlist widened 2026-10-14), so curated packs can be vendored into the repo directly. bpy (pip) with Cycles CPU works in the container. No GPU, so no local generators."
     }
   ],
   "tools": [
@@ -104,7 +104,7 @@
     {"name": "BlenderGym-Open", "free": true, "license": "see repo", "whatFor": "Benchmark harness for VLM Blender editing; ideas for verifier loops", "usableInThisContainer": "partially (conda env + data download)"},
     {"name": "Pyxelate / pixelize / pxly", "free": true, "license": "MIT", "whatFor": "Image to pixel art with palette learning and dithering (quantise scans/renders to ramps)", "usableInThisContainer": "likely via pip"},
     {"name": "Playwright + Chromium (SwiftShader)", "free": true, "license": "Apache-2.0", "whatFor": "Deterministic in-game captures for gates", "usableInThisContainer": "yes"},
-    {"name": "CC0 asset libraries (Kenney, Quaternius, KayKit, Poly Haven, ambientCG)", "free": true, "license": "CC0", "whatFor": "Kitbash props, base meshes, scanned surface textures, HDRIs", "usableInThisContainer": "no direct download (proxy blocks); the owner must vendor them into the repo"},
+    {"name": "CC0 asset libraries (Kenney, Quaternius, KayKit, Poly Haven, ambientCG)", "free": true, "license": "CC0", "whatFor": "Kitbash props, base meshes, scanned surface textures, HDRIs", "usableInThisContainer": "yes since 2026-10-14 (polyhaven api/dl, ambientcg, kenney return 200); download assets only and keep licence files; Quaternius/KayKit not checked"},
     {"name": "TRELLIS.2", "free": true, "license": "MIT", "whatFor": "Image-to-3D proportion template", "usableInThisContainer": "no - needs a large GPU and ~31 GB of weights"}
   ],
   "techniques": [
@@ -120,7 +120,7 @@
   ],
   "openQuestions": [
     "Do Blender-modelled kin beat the current code-built kin in blind pairwise judging at 30 texels? Pilot Ashkit and Pebblet.",
-    "Which CC0 packs survive quantisation into the HD-2D look? Requires the owner to vendor them (the proxy blocks the sites).",
+    "Which CC0 packs survive quantisation into the HD-2D look? The sites are now reachable, so this can be tested directly.",
     "Are Cycles CPU/Workbench renders in this container fast enough for per-round gates?",
     "Can the vertex-shader rig be driven by Blender vertex groups/attributes in GLB while keeping one draw call per creature?",
     "How well does a fresh-context Opus pairwise critic agree with human judges on our frames (5-10 pairs)?",
