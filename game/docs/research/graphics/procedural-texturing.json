@@ -1,0 +1,300 @@
+{
+  "angle": "procedural-texturing",
+  "notesPath": "game/docs/research/graphics/procedural-texturing.md",
+  "keyFindings": [
+    {
+      "claim": "Headless Cycles baking by script works in this container and is fast.",
+      "detail": "Blender 5.2.2 bpy, Cycles CPU, 4 vCPU: boulder EMIT/NORMAL/AO bakes at 256^2 take 1.4/0.09/0.24 s; a 99,680-face wall chunk baked to a 5,102-face low-poly mask atlas at 1024^2 (16 spp) in 12.8 s.",
+      "sources": [
+        "local test bake_rock.py / bake_wall.py 2026-10-14",
+        "https://docs.blender.org/manual/en/latest/render/cycles/baking.html"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "An offline tools/art step can bake every arena's hero pieces in seconds, deterministically, inside CI-like sessions."
+    },
+    {
+      "claim": "EMIT baking from a mask shader turns any node math (AO, pointiness, normal.z, voronoi cracks) into a texture.",
+      "detail": "Combine masks into Emission colour channels (R=value, G=cavity, B=convex), bake type='EMIT' with use_selected_to_active from hi-poly to low-poly into a Non-Color image whose Image Texture node is nodes.active.",
+      "sources": [
+        "local test bake_wall.py",
+        "https://github.com/kdrnic/AutoBakeAO"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "One bake yields all masks needed for rule-based pixel composition and per-material ramps."
+    },
+    {
+      "claim": "Naive downsample+quantise of a procedural albedo yields 'camouflage' noise; rule-based composition from baked masks yields hand-shaded-looking pixel clusters.",
+      "detail": "compose.py: mask-aware 4x box downsample, auto-levelled value into 5 mid shades, cavity -> 2 shades darker, convex lip -> +1, two passes of orphan cleanup (>=3 of 4 neighbours agree), gutter dilation. Used all 7 ramp shades with 2-4 texel clusters; naive OKLab+Bayer version was noisy.",
+      "sources": [
+        "local test pixelize.py vs compose.py renders",
+        "https://www.slynyrd.com/blog/2018/1/10/pixelblog-1-color-palettes"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Generate indices by rule from form masks and reuse Orbkin's RAMPS and cluster rules as the final quantiser."
+    },
+    {
+      "claim": "Scene-level AO baked with neighbours present gives the reference's tiered-rock-wall read (dark contact crevices, lit caps).",
+      "detail": "AO distance 0.7 world units with all boulders and the floor in the bake; flat-coloured version of the same geometry read as dough. Floor needs its own ramp/rules via a material-ID mask.",
+      "sources": [
+        "local test bake_wall.py + render_wall.py"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Bake AO into textures of hero diorama pieces (walls, rubble, stairs) and keep runtime lights for shafts/cookie."
+    },
+    {
+      "claim": "Orbkin's runtime tile painter already implements good pixel-art rules; the gap is unique, form-following surfaces on organic geometry.",
+      "detail": "textures.ts has hue-shifted 6-7-shade ramps, band-edge-only dithering, >=2-texel clusters, palette-preserving mode mips, fixed texel density; but surfaces are small repeated tiles on boxes shaded per box by a bevel.",
+      "sources": [
+        "game/src/render/hd2d/textures.ts",
+        "game/docs/HD2D.md",
+        "game/docs/screenshots/hd2d/"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Don't rewrite the painter; add organic hi/low meshes and baked atlases for hero pieces, keep tiles for floors/kits."
+    },
+    {
+      "claim": "Pixel-art colour ramps should be hue-shifted with ~10-20 degree steps and saturation peaking in the mids.",
+      "detail": "Darks drift toward cool/purple, lights toward warm/yellow; 'straight ramps' that only change brightness look amateur; 4-9 swatches per ramp.",
+      "sources": [
+        "https://www.slynyrd.com/blog/2018/1/10/pixelblog-1-color-palettes",
+        "https://www.gamedev.net/articles/visual-arts/color-palettes-r4964/"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Existing RAMPS comply; any new materials (moss, crystals, lodge paint) must follow the same construction."
+    },
+    {
+      "claim": "Stylised hand-painted texturing = value base + gradient map + cavity darkening + edge highlights + top-light + small hand-paint pass.",
+      "detail": "Practitioner breakdowns use curvature/cavity overlays, gradient maps over grey bases, blend modes; one UE4 project cites 90% procedural / 10% hand-painted.",
+      "sources": [
+        "https://sketchfab.com/blogs/community/viking-shield-creating-stylized-textures-using-baked-maps",
+        "https://80.lv/articles/002mrs-crafting-a-wow-diorama-textures-painting-lighting",
+        "https://chrisstone3d.artstation.com/projects/0XLL98"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Claude automates the 90% (masks->ramps); the owner optionally hand-paints focal props in Krita/Aseprite."
+    },
+    {
+      "claim": "Consistent texel density and pixel-snapped UV islands are essential for 3D pixel art; UV seams are visible in pixel textures.",
+      "detail": "smart_project(scale_to_bounds=False, area_weight=0) keeps island scale proportional to area; Pixel Unwrapper (early alpha) maps quad grids to whole texels; seams showed as discontinuities in the boulder test.",
+      "sources": [
+        "https://github.com/noio/Pixel-Unwrapper",
+        "https://github.com/Phaazoid/Godoiosis/issues/176",
+        "local test"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Size atlases from surface area at 16 texels/unit; put seams in cavities; use triplanar for terrain."
+    },
+    {
+      "claim": "three r180 ships a TSL triplanarTexture node, but it requires WebGPURenderer; Orbkin's WebGLRenderer needs a GLSL onBeforeCompile version.",
+      "detail": "TriplanarTextures.js (after keijiro/StandardTriplanar) blends three projections in local space; for pixel art a hard dominant-axis switch with texel-centre snapping keeps texels crisp.",
+      "sources": [
+        "three@0.180.0 src/nodes/utils/TriplanarTextures.js",
+        "https://discourse.threejs.org/t/how-can-i-create-a-triplanar-material-from-an-existing-meshphysicalmaterial-using-triplanartexture/60654"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Implement world-space snapped triplanar in the existing onBeforeCompile patches for floors and kit walls."
+    },
+    {
+      "claim": "Bake gotchas: active image node, selected+active objects, hide hi-poly for AO, Non-Color masks, Pointiness needs dense Cycles meshes, filter_width for crisp renders, pip bpy lacks Draco/meshopt.",
+      "detail": "Observed in this container: AO blotches until hi.hide_render=True; glTF exporter logs missing Draco/MeshOptimizer libraries; Cycles default 1.5 px filter softens low-res frames.",
+      "sources": [
+        "local tests",
+        "https://blenderartists.org/t/fix-python-baking-script/1482002"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Encode these in the bake skill's checklist so agents don't lose time on them."
+    },
+    {
+      "claim": "Trim sheets and tileable textures remain the efficient choice for planks, beams, stone courses and rails.",
+      "detail": "Strips tile in one axis; avoid distinctive features inside strips; typical sheets organised in rows.",
+      "sources": [
+        "https://80.lv/articles/arabian-afternoon-working-with-trim-sheets-efficiently",
+        "https://80.lv/articles/breakdown-building-lived-in-stylized-viking-environment-in-3d"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "A pixel trim sheet for the lodge (planks, beams, shelves, rails) baked from bevelled hi-poly strips."
+    },
+    {
+      "claim": "Academic 3D-pixel-art renderers exist (Pixelat3D 2026, RETRO 2024, Texel Splatting 2026) but without usable code; Orbkin's integer-scale low-res pipeline already covers stability.",
+      "detail": "Pixelat3D: priority-map texture LOD + outline post-pass, 62-person preference study; Texel Splatting addresses perspective instability.",
+      "sources": [
+        "https://sol.sbc.org.br/index.php/sbgames/article/view/45414",
+        "https://sol.sbc.org.br/index.php/sbgames/article/view/32320"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Background only; prioritise asset-side improvements over new rendering research."
+    }
+  ],
+  "tools": [
+    {
+      "name": "Blender bpy 5.2.2 (Cycles bake)",
+      "free": true,
+      "license": "GPL",
+      "whatFor": "Hi-to-low bakes: EMIT masks, NORMAL, AO; displacement modelling; UVs; glTF export",
+      "usableInThisContainer": "Yes (Cycles CPU; verified)"
+    },
+    {
+      "name": "NumPy + Pillow",
+      "free": true,
+      "license": "BSD / HPND",
+      "whatFor": "Mask composition, palette mapping, dithering, cleanup, gutter dilation",
+      "usableInThisContainer": "Yes (verified)"
+    },
+    {
+      "name": "ImageMagick",
+      "free": true,
+      "license": "Apache-style",
+      "whatFor": "Nearest upscales, palette remap, contact sheets for review",
+      "usableInThisContainer": "Yes (preinstalled)"
+    },
+    {
+      "name": "three.js r180 (GLSL onBeforeCompile / TSL)",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Runtime triplanar, index+ramp LUT shading, decals",
+      "usableInThisContainer": "Yes (npm)"
+    },
+    {
+      "name": "tsl-textures",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Procedural TSL textures for WebGPU renderer",
+      "usableInThisContainer": "Yes (npm) but needs WebGPURenderer"
+    },
+    {
+      "name": "Pixel Unwrapper (Blender add-on)",
+      "free": true,
+      "license": "see repo",
+      "whatFor": "Pixel-snapped, density-aware UV unwrapping",
+      "usableInThisContainer": "Repo reachable via git; headless use untested"
+    },
+    {
+      "name": "Material Maker",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Node-based procedural materials, --export CLI",
+      "usableInThisContainer": "No (needs Godot + GPU); GLSL snippets portable"
+    },
+    {
+      "name": "ArmorPaint 1.0",
+      "free": true,
+      "license": "zlib source",
+      "whatFor": "3D painting with curvature/AO-driven smart materials",
+      "usableInThisContainer": "No; owner machine"
+    },
+    {
+      "name": "Krita",
+      "free": true,
+      "license": "GPL-3.0",
+      "whatFor": "Hand-paint pass on baked atlases",
+      "usableInThisContainer": "No; owner machine"
+    },
+    {
+      "name": "Aseprite (self-compiled) / LibreSprite / Pixelorama",
+      "free": true,
+      "license": "EULA / GPL-2 / MIT",
+      "whatFor": "Pixel clean-up of generated textures",
+      "usableInThisContainer": "No; owner machine"
+    },
+    {
+      "name": "WaveFunctionCollapse",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Non-repeating tile layouts from a few hand-made tiles",
+      "usableInThisContainer": "Yes (git clone; C#, or port the algorithm)"
+    },
+    {
+      "name": "pixeloe",
+      "free": true,
+      "license": "Apache-2.0",
+      "whatFor": "Contrast-aware pixelisation of hi-res images",
+      "usableInThisContainer": "pip, heavy torch deps; untested"
+    }
+  ],
+  "techniques": [
+    {
+      "name": "Hi-to-low mask bake (EMIT)",
+      "why": "Captures form detail (AO, curvature, cracks) the runtime painter can't know",
+      "how": "Mask shader on hi-poly -> CombineXYZ(value,cavity,convex) -> Emission; bake type='EMIT', selected-to-active, cage_extrusion 0.1, Non-Color image, margin EXTEND",
+      "impact": "huge",
+      "effort": "1 day to productionise the script"
+    },
+    {
+      "name": "Rule-based pixel composer",
+      "why": "Avoids camo noise of naive quantisation; matches existing pixel rules",
+      "how": "Box-downsample 4x, auto-levels to mid shades, cavity -2 / convex +1, orphan cleanup x2, gutter dilation, RAMPS shared with runtime via JSON",
+      "impact": "huge",
+      "effort": "0.5-1 day"
+    },
+    {
+      "name": "Scene-level AO bake",
+      "why": "Contact shadows between pieces are the key diorama cue",
+      "how": "Bake with all neighbouring pieces present, AO distance ~0.5-1 unit; hide hi-poly duplicates when baking low-poly AO",
+      "impact": "big",
+      "effort": "included in bake script"
+    },
+    {
+      "name": "Material-ID mask",
+      "why": "One bake serves rock/dirt/moss/wood with different ramps and rules",
+      "how": "Bake material index into A channel or a second image; composer selects ramp+rules per ID",
+      "impact": "big",
+      "effort": "0.5 day"
+    },
+    {
+      "name": "Organic hi/low diorama pieces",
+      "why": "Boxes read as crates; reference walls are boulders",
+      "how": "Icosphere/cube + layered DISPLACE (clouds/voronoi, GLOBAL coords) + decimate 0.03-0.06; or sculpt on owner machine",
+      "impact": "huge",
+      "effort": "1-2 days per arena kit"
+    },
+    {
+      "name": "Fixed texel density atlases",
+      "why": "Mixed densities break the diorama",
+      "how": "smart_project(scale_to_bounds=False, area_weight=0); atlas_px = sqrt(area*16^2/0.6); checker review",
+      "impact": "big",
+      "effort": "hours"
+    },
+    {
+      "name": "World-space snapped triplanar",
+      "why": "No UV seams and constant density on terrain/kit walls",
+      "how": "GLSL in onBeforeCompile: dominant-axis projection, uv*=texelsPerUnit/tileTexels, snap to texel centres, per-cell flips",
+      "impact": "big",
+      "effort": "1 day"
+    },
+    {
+      "name": "Pixel decals",
+      "why": "Break tiling, add storytelling (moss, cracks, chalk, puddles)",
+      "how": "Alpha-tested pixel quads / DecalGeometry merged into the arena batch with polygonOffset",
+      "impact": "medium",
+      "effort": "0.5 day + art"
+    },
+    {
+      "name": "Index texture + ramp LUT",
+      "why": "On-palette shading, recolouring per route/time, 4x less memory",
+      "how": "Store R8 indices; shader looks up a per-material ramp row; lighting shifts index bands",
+      "impact": "medium",
+      "effort": "2 days (touches materials + grade)"
+    },
+    {
+      "name": "Pixel trim sheet",
+      "why": "Planks/beams/rails reused cheaply at consistent density",
+      "how": "Bake a row of bevelled hi-poly strips through the same composer; UV lodge faces onto strips",
+      "impact": "medium",
+      "effort": "1 day"
+    },
+    {
+      "name": "Hand-paint polish pass",
+      "why": "The last 10% of taste on focal props",
+      "how": "Owner paints over committed atlases in Krita/Aseprite; keep script outputs as the base layer",
+      "impact": "medium",
+      "effort": "owner time"
+    }
+  ],
+  "openQuestions": [
+    "How close does baked AO + rule composition get to hand-painted quality on a full arena in the real three.js pipeline (with grade/bloom)?",
+    "Best curvature source for low-poly kit pieces: Bevel-node difference, Geometry Nodes edge angle, or Pointiness on a temporary subdivided copy?",
+    "Can Pixel Unwrapper's operators run under headless bpy for automated pixel-snapped unwraps?",
+    "How do index+ramp-LUT textures interact with the post-tonemap CDL grade?",
+    "Load-time/download budget for unique 256-512 px atlases per arena on phones?"
+  ]
+}

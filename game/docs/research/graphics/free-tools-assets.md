@@ -162,7 +162,7 @@ palette-map → hand-clean. See `procedural-texturing.md`.
 | **Blender as a Python module** (`pip install bpy` → 5.2.2 LTS, Python 3.13) | GPL (outputs yours) | Modelling by script, sculpt-ish ops (modifiers: remesh/displace/bevel/subdiv), UV, **texture baking**, Rigify, glTF/FBX/OBJ/SVG import, glTF export, Cycles CPU rendering (sprite sheets, impostors, AO/curvature bakes) | **Works** (Cycles CPU; EEVEE needs libEGL — unavailable). Bundled add-ons: `cycles, io_scene_gltf2, io_scene_fbx, io_anim_bvh, io_curve_svg, io_mesh_uv_layout, node_wrangler, pose_library, rigify, hydra_storm, viewport_vr_preview, ui_translate, bl_pkg`. Extensions platform blocked. |
 | `fake-bpy-module` (PyPI) | MIT | Type stubs/autocomplete for writing bpy scripts | pip |
 | **Pillow, NumPy, scikit-image, opensimplex/noise** | permissive | Texture synthesis, palette quantisation, dithering, tiling, atlas packing | pip |
-| **pixeloe** (PyPI 1.0.0, KohakuBlueleaf/PixelOE) | Apache-2.0 (PyPI metadata) | "Detail-oriented" pixel-art downscaling of high-res renders/images (contrast-aware, outline expansion) | pip |
+| **pixeloe** (PyPI 1.0.0, KohakuBlueleaf/PixelOE) | Apache-2.0 (PyPI metadata) | "Detail-oriented" pixel-art downscaling of high-res renders/images (contrast-aware, outline expansion) | pip, but depends on torch+torchvision+kornia+opencv (multi-GB CPU install) — not tested here |
 | **ImageMagick `convert`** | Apache-style | Quick resize (`-filter point`), `-remap palette.png`, `-ordered-dither`, montage/contact sheets | preinstalled |
 | **ffmpeg** | LGPL/GPL | Turntable/sprite videos, GIF previews | preinstalled |
 | **trimesh, pygltflib** (PyPI) | MIT | Inspect/fix glTF without Blender | pip |

@@ -151,7 +151,7 @@
       "free": true,
       "license": "Apache-2.0",
       "whatFor": "Contrast-aware pixel-art downscaling of renders/images",
-      "usableInThisContainer": "Yes, pip"
+      "usableInThisContainer": "Installable via pip but pulls torch/torchvision/kornia/opencv (multi-GB); not tested"
     },
     {
       "name": "ImageMagick convert",
