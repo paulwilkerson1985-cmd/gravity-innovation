@@ -71,7 +71,9 @@
    "detail": "Depth edges come from a 4-neighbour depth difference, floor(smoothstep(.01, .02, diff)*2)/2. Normal edges come from (1 - n·n') gated to the shallower pixel and a bias direction. The output multiplies the beauty colour by (1 - 0.4·dei) or (1 + 0.3·nei). The example also pixel-aligns the frustum and objects.",
    "sources": [
     "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/jsm/postprocessing/RenderPixelatedPass.js",
-    "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/webgl_postprocessing_pixel.html"
+    "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/webgl_postprocessing_pixel.html",
+    "https://threejs.org/docs/pages/RenderPixelatedPass.html",
+    "https://threejs.org/examples/webgl_postprocessing_pixel.html"
    ],
    "confidence": "high",
    "implicationForOrbkin": "Do not drop it in as-is: the override pass breaks custom sprite materials and doubles scene cost (GTAO was rejected for the same reason). Port its indicator logic onto depth-reconstructed normals or an MRT normal target."
@@ -116,18 +118,22 @@
   },
   {
    "claim": "Multi-sample Cycles does not give binary alpha even with filter_width 0.01 BOX, but 1 spp does.",
-   "detail": "At 16 spp, 165 partial-alpha edge pixels (multiples of 1/16) remained even with scene.cycles.use_pixel_jitter=False. render.filter_size is EEVEE's setting; Cycles uses scene.cycles.filter_width.",
+   "detail": "At 16 spp, 165 partial-alpha edge pixels (multiples of 1/16) remained even with scene.cycles.use_pixel_jitter=False. render.filter_size is EEVEE's setting; Cycles uses scene.cycles.filter_width. Docs confirm that Box is 'No filter', that a lower Width is crisper, and that render.filter_size (default 1.5, range 0–500) is the reconstruction filter width.",
    "sources": [
-    "experiment: /tmp/hd2d-exp (notes section 6.3)"
+    "experiment: /tmp/hd2d-exp (notes section 6.3)",
+    "https://docs.blender.org/manual/en/latest/render/cycles/render_settings/film.html",
+    "https://docs.blender.org/api/current/bpy.types.RenderSettings.html"
    ],
    "confidence": "high",
    "implicationForOrbkin": "Render at 1 spp with emission-only passes and do lighting in post or in game, or binarise alpha (threshold 0.5) after rendering."
   },
   {
    "claim": "EEVEE works headless on CPU after installing libEGL (llvmpipe), and the Shader to RGB toon ramp works.",
-   "detail": "Needs apt-get install libegl1 libegl-mesa0 libgl1-mesa-dri and EGL_PLATFORM=surfaceless. The first frame takes 11–19 s (shader compile), later frames about 1.8–2.7 s at 64 px. filter_size 0.01 with 1 TAA sample gives 0 partial alpha.",
+   "detail": "Needs apt-get install libegl1 libegl-mesa0 libgl1-mesa-dri and EGL_PLATFORM=surfaceless. The first frame takes 11–19 s (shader compile), later frames about 1.8–2.7 s at 64 px. filter_size 0.01 with 1 TAA sample gives 0 partial alpha. The manual marks Shader to RGB 'EEVEE Only', gives the diffuse → color ramp toon as its example, and warns it breaks render passes, AO and soft shadows.",
    "sources": [
-    "experiment: /tmp/hd2d-exp/render_sprite.py TOON=1, render_glb.py"
+    "experiment: /tmp/hd2d-exp/render_sprite.py TOON=1, render_glb.py",
+    "https://docs.blender.org/manual/en/latest/render/shader_nodes/color/shader_to_rgb.html",
+    "https://docs.blender.org/api/current/bpy.types.SceneEEVEE.html"
    ],
    "confidence": "high",
    "implicationForOrbkin": "EEVEE toon previews are possible but about 100× slower than Cycles passes on CPU. Prefer Cycles passes and post toon."
@@ -136,7 +142,9 @@
    "claim": "Freestyle outlines at sprite resolution (64 px) are anti-aliased and cluttered. A 4-neighbour alpha outline in post reads much better.",
    "detail": "With Freestyle on, a CC0 RobotExpressive walk sheet (8 dirs × 4 frames, 64 px) had mushy inner lines and took 89.8 s. Without Freestyle plus a post outline (25–30% of the neighbour colour) it was clean and took 58.8 s.",
    "sources": [
-    "experiment: /tmp/hd2d-exp/render_glb.py"
+    "experiment: /tmp/hd2d-exp/render_glb.py",
+    "https://docs.blender.org/manual/en/latest/render/freestyle/introduction.html",
+    "https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html"
    ],
    "confidence": "high",
    "implicationForOrbkin": "Keep Orbkin's own 1-texel outline logic for both live bakes and pre-renders. Do not use Freestyle under ~96 px."
@@ -156,7 +164,8 @@
    "detail": "Defold community and arXiv 2212.09692 note that naive normal mapping breaks pixel-art conventions ('Hi-bit'). The fix is quantising lit output into bands and snapping to a palette.",
    "sources": [
     "https://forum.defold.com/t/normal-map-lighting-for-2d-pixel-art-sprites/70967",
-    "https://arxiv.org/pdf/2212.09692"
+    "https://arxiv.org/pdf/2212.09692",
+    "https://threejs.org/docs/pages/MeshLambertMaterial.html"
    ],
    "confidence": "medium",
    "implicationForOrbkin": "Pre-rendered normal-mapped billboards must use the same banded ramp and palette snap as the live bake (onBeforeCompile on MeshLambertMaterial, which has normalMap in r180)."
@@ -192,14 +201,16 @@
    "implicationForOrbkin": "Standardise on Blender, a headless bpy script and Pixelorama. Optionally build Aseprite locally for personal use."
   },
   {
-   "claim": "Most CC0 asset sites are blocked from this container, but GitHub-hosted CC0 assets are reachable.",
-   "detail": "kenney.nl, polyhaven, ambientcg, quaternius, opengameart, itch and lospec all return proxy-denied. raw.githubusercontent.com works: Kenney starter kits (CC0 assets), the three.js examples/models (RobotExpressive.glb, CC0, downloaded and baked successfully), npm and PyPI.",
+   "claim": "Kenney, Poly Haven and ambientCG are CC0 (confirmed on the primary sites) and reachable from this container since the follow-up pass.",
+   "detail": "Kenney's support page says all asset-page assets are CC0, and each zip has a License.txt. Poly Haven's licence page says all assets are CC0, and its API (api.polyhaven.com, /assets, /files) works. ambientCG's home FAQ says everything is CC0; its /license page is still blocked, but /api/v2 and /api/v3 respond. Still blocked: Quaternius site (not re-tested), opengameart, itch, lospec.",
    "sources": [
-    "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-3D-Platformer/main/README.md",
-    "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/RobotExpressive/README.md"
+    "https://kenney.nl/support",
+    "https://polyhaven.com/license",
+    "https://ambientcg.com/",
+    "https://api.polyhaven.com/types"
    ],
    "confidence": "high",
-   "implicationForOrbkin": "Have the owner download CC0 kits locally (free) and commit them under an assets/ folder with licences, or pull them from GitHub mirrors in-container."
+   "implicationForOrbkin": "CC0 assets can be fetched by scripts in this container (download assets only) and committed with their License.txt."
   },
   {
    "claim": "Stepped (sprite-like) animation playback makes 3D models read as sprites.",
@@ -228,6 +239,40 @@
    ],
    "confidence": "low",
    "implicationForOrbkin": "Measure the target image before changing sizes. Larger final forms (≥48 texels) may add battle presence."
+  },
+  {
+   "claim": "Kenney's Modular Cave Kit and Retro Textures Fantasy are directly usable CC0 inputs for an HD-2D cave arena.",
+   "detail": "Cave kit: 40 glb pieces (rooms, corridors, stairs, gates, ladder, wall/floor templates) on one flat colormap, smooth rounded cave shapes. It loaded and rendered headless in bpy (ortho, Closest sampling, 320×180 Cycles) in 2.4 s. Retro Textures Fantasy: 117 hand-made tiles at 64×64 / 64×128 (stone, wood planks, doors, grates, depth variants).",
+   "sources": [
+    "https://kenney.nl/assets/modular-cave-kit",
+    "https://kenney.nl/assets/retro-textures-fantasy",
+    "experiment: /tmp/hd2d-exp/render_kit.py"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Use the cave kit as blockout or silhouette source and re-texture it with Orbkin's pixel painters. Use the retro tiles (re-graded to warm ramps) for the lodge floor, stairs, shelves and doors."
+  },
+  {
+   "claim": "Converting photo textures (Poly Haven) to pixel tiles by downsampling and palette mapping gives noise, not readable pixel art.",
+   "detail": "rock_wall_08 (CC0, 1k diffuse + GL normal via API) was box-downsampled to 32/64 px, given N·L shading, 4×4 Bayer, and mapped to a 6-shade hue-shifted ramp. The stones did not survive; the result was speckle.",
+   "sources": [
+    "https://api.polyhaven.com/files/rock_wall_08",
+    "experiment: /tmp/hd2d-exp/photo2pixel.py"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Keep the procedural or hand painters for pixel textures (designed shapes, TintedTile-style mosaics). Use photo-scan CC0 sources only for geometry (Poly Haven rock models) or reference."
+  },
+  {
+   "claim": "three.js docs confirm the pixel-art material settings: toon gradientMap needs NearestFilter and NoColorSpace, mipmaps default on, MRT via RenderTarget count, LUTPass intensity.",
+   "detail": "MeshToonMaterial docs: 'required to set minFilter and magFilter to NearestFilter'. Texture.generateMipmaps defaults to true. RenderTarget options include count (colour attachments) and depthTexture. LUTPass takes { lut: Data3DTexture } and has intensity (default 1), not lutIntensity (fixed in the notes).",
+   "sources": [
+    "https://threejs.org/docs/pages/MeshToonMaterial.html",
+    "https://threejs.org/docs/pages/Texture.html",
+    "https://threejs.org/docs/pages/RenderTarget.html",
+    "https://threejs.org/docs/pages/LUTPass.html",
+    "https://threejs.org/examples/webgl_materials_toon.html"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Use these exact settings in the banded-light, MRT edge and palette-LUT techniques."
   }
  ],
  "tools": [
@@ -236,7 +281,7 @@
    "free": true,
    "license": "GPL-3.0",
    "whatFor": "Model and rig arena kits and creatures, export glTF, and batch-render sprite albedo/normal passes headless",
-   "usableInThisContainer": "Yes: python3.13 -m venv + pip install bpy. Cycles CPU works out of the box; EEVEE and Workbench need apt-get install libegl1 libegl-mesa0 libgl1-mesa-dri and EGL_PLATFORM=surfaceless"
+   "usableInThisContainer": "Yes: python3.13 -m venv + pip install bpy. Cycles CPU works out of the box; EEVEE and Workbench need apt-get install libegl1 libegl-mesa0 libgl1-mesa-dri and EGL_PLATFORM=surfaceless. Docs (docs.blender.org manual + API) now reachable for reference"
   },
   {
    "name": "Pillow + numpy",
@@ -250,14 +295,14 @@
    "free": true,
    "license": "MIT",
    "whatFor": "Reference depth/normal edge indicators and pixel-aligned camera/object snapping",
-   "usableInThisContainer": "Yes (in node_modules three@0.180; source via raw GitHub)"
+   "usableInThisContainer": "Yes (node_modules three@0.180; threejs.org docs and live example now reachable)"
   },
   {
    "name": "three.js LUTPass / DepthOfFieldNode (TSL)",
    "free": true,
    "license": "MIT",
    "whatFor": "Palette-lock LUT after the grade; DOF reference for the WebGPU path",
-   "usableInThisContainer": "Yes (present in the three@0.180.0 package)"
+   "usableInThisContainer": "Yes (present in three@0.180.0; LUTPass docs at threejs.org: { lut: Data3DTexture }, intensity)"
   },
   {
    "name": "Pixelorama",
@@ -285,7 +330,7 @@
    "free": true,
    "license": "GPL-3.0 (outputs owned by user)",
    "whatFor": "Normal/specular/parallax/occlusion maps for hand-drawn sprites; CLI batch mode",
-   "usableInThisContainer": "Unverified (itch blocked; could build from GitHub source)"
+   "usableInThisContainer": "Not tested; itch still blocked. Could build from source via git clone (GPL-3), but it is a Qt GUI app so it is mostly for local use"
   },
   {
    "name": "SpriteSheetMaker (Blender add-on)",
@@ -323,25 +368,25 @@
    "usableInThisContainer": "Yes (GitHub reachable)"
   },
   {
-   "name": "Kenney 3D kits (GitHub starter kits)",
+   "name": "Kenney asset packs (kenney.nl + GitHub starter kits)",
    "free": true,
-   "license": "CC0 assets / MIT code",
-   "whatFor": "Props and base meshes to re-texture into the arena palette",
-   "usableInThisContainer": "Partly: kenney.nl blocked; GitHub starter-kit repos reachable via raw"
+   "license": "CC0 (verified on kenney.nl/support and in each zip's License.txt)",
+   "whatFor": "Modular Cave Kit (glTF blockout shapes), Retro Textures Fantasy (64×64 tiles), Mini Dungeon / Fantasy Town kits, UI Pack Pixel Adventure",
+   "usableInThisContainer": "Yes: kenney.nl zips download; cave kit glb rendered headless in bpy"
   },
   {
    "name": "Quaternius models (e.g. RobotExpressive.glb in three.js repo)",
    "free": true,
    "license": "CC0",
    "whatFor": "Rigged, animated base characters for testing the bake pipeline",
-   "usableInThisContainer": "Yes for models mirrored in GitHub repos; quaternius.com blocked"
+   "usableInThisContainer": "Yes for models mirrored in GitHub repos and threejs.org/examples/models; quaternius.com not re-tested"
   },
   {
    "name": "Poly Haven / ambientCG",
    "free": true,
-   "license": "CC0",
-   "whatFor": "Textures and HDRIs (mostly photoreal: sources for hand pixel painting, not direct use)",
-   "usableInThisContainer": "No (blocked)"
+   "license": "CC0 (verified on polyhaven.com/license and the ambientcg.com FAQ)",
+   "whatFor": "Rock and prop models (Poly Haven models API, category rocks: 37) as shape sources; textures only as reference",
+   "usableInThisContainer": "Yes: Poly Haven web + API + dl.polyhaven.org; ambientCG home + /api (the /license page is still blocked). Photo textures did not convert well to pixel tiles in the test; models and reference are more useful"
   },
   {
    "name": "Lospec palette list",
@@ -356,6 +401,13 @@
    "license": "MIT",
    "whatFor": "Software OpenGL so Blender EEVEE and Workbench render headless without a GPU",
    "usableInThisContainer": "Yes (apt-get worked)"
+  },
+  {
+   "name": "Blender Grease Pencil Line Art modifier",
+   "free": true,
+   "license": "GPL-3.0 (part of Blender)",
+   "whatFor": "Camera-view line generation as an alternative to Freestyle for outlines on pre-renders",
+   "usableInThisContainer": "Documented in the manual; not run (Grease Pencil rendering needs the EGL/llvmpipe path, which works for EEVEE here)"
   }
  ],
  "techniques": [
@@ -369,7 +421,7 @@
   {
    "name": "Author arena kit pieces in Blender (glTF)",
    "why": "Hand-coded boxes are the root of the voxel/Minecraft read. HD-2D games use authored low-poly geometry.",
-   "how": "20–40 modular pieces per biome, vertices on a TEXEL grid, one texel density, UVs to an atlas painted by hand or by the existing TS painters; load glTF and merge per material into the existing VoxelBatch-style draw budget.",
+   "how": "20–40 modular pieces per biome, vertices on a TEXEL grid, one texel density, UVs to an atlas painted by hand or by the existing TS painters; load glTF and merge per material into the existing VoxelBatch-style draw budget. CC0 starting points: Kenney Modular Cave Kit (blockout), Kenney Retro Textures Fantasy (wood/stone tiles), Poly Haven rock models (decimate).",
    "impact": "huge",
    "effort": "1–2 weeks for the cave set, then about 3–5 days per biome"
   },
@@ -411,14 +463,14 @@
   {
    "name": "Palette lock via LUTPass",
    "why": "Grading and bloom drift colours off the authored ramps, while pixel art keeps a fixed palette.",
-   "how": "Build a 32³ LUT mapping to the nearest OKLab entry of the arena palette and apply it after the grade, before the dither, at intensity about 0.6; exclude emissive and FX through intensity.",
+   "how": "Build a 32³ LUT mapping to the nearest OKLab entry of the arena palette and apply it after the grade, before the dither, with LUTPass({ lut: Data3DTexture }) at intensity about 0.6; exclude emissive and FX through intensity.",
    "impact": "medium",
    "effort": "1 day"
   },
   {
    "name": "Banded key light on world materials",
    "why": "Quantised light steps are a core pixel-art cue (t3ssel8r, bababuyyy _Cuts=3).",
-   "how": "onBeforeCompile on the world Lambert material: band the key N·L (2–3 steps) with a 4×4 Bayer offset before the step; keep the hemisphere fill smooth; keep the shadow map.",
+   "how": "onBeforeCompile on the world Lambert material: band the key N·L (2–3 steps) with a 4×4 Bayer offset before the step; keep the hemisphere fill smooth; keep the shadow map. If using MeshToonMaterial instead, the gradientMap must be NearestFilter + NoColorSpace (three.js docs).",
    "impact": "medium",
    "effort": "1 day"
   },
@@ -463,6 +515,13 @@
    "how": "Render a wide Cycles view of a Blender backdrop scene, palette-quantise it, hand-touch it, and place it on a far plane (Orbkin already has backdrop planes).",
    "impact": "small",
    "effort": "1 day per biome"
+  },
+  {
+   "name": "Re-texture CC0 kit geometry with Orbkin pixel painters",
+   "why": "Kenney and Poly Haven give authored silhouettes for free; photo or flat textures do not read as pixel art.",
+   "how": "Import glb in bpy, set image nodes to Closest, re-UV (cube or box projection at TEXEL density), bake or assign atlas tiles from the TS painters or Kenney Retro Textures, export glTF, and merge per material in game.",
+   "impact": "big",
+   "effort": "2–4 days for the pipeline and the first arena"
   }
  ],
  "openQuestions": [
@@ -470,9 +529,11 @@
   "Does the target fan-art's rock use pixel textures on 3D geometry or a painted backdrop? Measure texel density on the reference image against its sprite texels.",
   "What does the depth-reconstructed edge pass cost on a real phone GPU (SwiftShader timings are not representative)?",
   "Why do multi-sample Cycles renders keep fractional alpha with filter_width 0.01 and use_pixel_jitter False in Blender 5.2? (The 1-spp emission passes sidestep it.)",
-  "Does Blender's Line Art (Grease Pencil) give crisp 1-px lines at sprite scale? (Not tested.)",
   "Does Sea of Stars use sprite normal maps or another lighting method? (No primary source found.)",
   "How much per-frame hand clean-up can the owner afford, which decides whether P2 stops at authored models with a live bake?",
-  "What licence does CelestialLemon/pixel3d-renderer use? Check before reusing code."
+  "What licence does CelestialLemon/pixel3d-renderer use? Check before reusing code.",
+  "Does the Grease Pencil Line Art modifier render crisp 1-px lines at sprite scale headless (documented, not run)?",
+  "Can photo-scan textures become pixel tiles via stone segmentation plus per-stone ramps, or is hand or procedural painting always needed? (Naive conversion failed.)",
+  "Why did the Kenney cave room render with a black floor when sun shadows were on (likely occluding underside geometry; not investigated)?"
  ]
 }

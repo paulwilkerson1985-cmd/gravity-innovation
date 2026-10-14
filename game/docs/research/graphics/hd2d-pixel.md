@@ -19,6 +19,14 @@ code claim below comes from source I fetched over raw GitHub. Press and intervie
 search summaries. I could not open the articles themselves, which is why many of them are tagged
 [secondary].
 
+**Follow-up pass (same day).** The proxy then opened docs.blender.org, blender.org, threejs.org,
+polyhaven.com (plus its API and download hosts), ambientcg.com (home and API only; `/license` still
+403) and kenney.nl. Section 14 lists what I re-checked against those primary sources. The Blender
+and three.js API claims are now tagged [verified: docs]. I also added three experiments: a Kenney
+CC0 cave kit rendered headless, the Kenney "Retro Textures Fantasy" pack inspected, and a Poly
+Haven photo texture converted to a pixel tile (the conversion failed; section 14). The game press
+and interview sites are still blocked, so those claims stay [secondary].
+
 ---
 
 ## 0. TL;DR (the ten things that matter)
@@ -45,7 +53,7 @@ search summaries. I could not open the articles themselves, which is why many of
    time**; quantised (banded) lighting; **depth-discontinuity silhouettes that darken the nearer
    side**; **normal-discontinuity convex-edge highlights that brighten**, but only on convex edges
    and only on the shallower pixel. [verified: code]
-5. **Three.js already ships the edge pass.** `RenderPixelatedPass` (Kody King) is in r180
+5. **Three.js already ships the edge pass** [verified: code + [threejs.org docs](https://threejs.org/docs/pages/RenderPixelatedPass.html)]. `RenderPixelatedPass` (Kody King) is in r180
    (`examples/jsm/postprocessing/RenderPixelatedPass.js`): `pixelSize`, `normalEdgeStrength`
    (default 0.3), `depthEdgeStrength` (default 0.4). The `webgl_postprocessing_pixel.html`
    example also shows pixel-aligned frustum panning and object snapping. [verified: code]
@@ -55,7 +63,7 @@ search summaries. I could not open the articles themselves, which is why many of
    pipeline. Section 8 gives a recipe that needs **no extra scene render**: it reconstructs
    normals from the depth texture the composer already has. [speculative impact,
    verified technique]
-7. **Blender headless works in this container (Blender 5.2.2 via `pip install bpy`).** Cycles
+7. **Blender headless works in this container (Blender 5.2.2 via `pip install bpy`)** [verified: ran it; settings checked against docs.blender.org]. Cycles
    CPU renders 128-px albedo/normal sprite passes in about **10 ms per frame**. EEVEE works after
    `apt-get install libegl1 libegl-mesa0 libgl1-mesa-dri` and `EGL_PLATFORM=surfaceless`
    (llvmpipe), at about **1.8–2.7 s per 64-px frame**. EEVEE's
@@ -72,7 +80,9 @@ search summaries. I could not open the articles themselves, which is why many of
    a fork of Aseprite 1.1.8), Aseprite (source-available: building it yourself is allowed for
    personal use but not for redistribution), Laigter (GPL-3; normal maps from sprites, and its
    output is yours), SpriteSheetMaker / BlenderSpriteGenerator Blender add-ons (MIT). For CC0
-   assets, Kenney's GitHub starter kits are reachable over raw GitHub from here; the three.js
+   assets, kenney.nl, Poly Haven (with its API) and ambientCG are reachable since the follow-up
+   pass and their CC0 licences are confirmed on the primary sites. Kenney's Modular Cave Kit and
+   Retro Textures Fantasy were downloaded and inspected (section 14). The three.js
    repo's `RobotExpressive.glb` (CC0, Quaternius) loaded and baked fine. [verified licences]
 10. **Recommendation, in priority order** (section 10): (1) world edge pass + environment palette
     LUT; (2) author the arena **in Blender** as low-poly modular kit pieces with hand- or
@@ -378,14 +388,14 @@ sprites you do not need Laigter**: render the true normal pass (section 6).
 |---|---|---|
 | Camera | `type='ORTHO'`, `ortho_scale` = subject height × ~1.35 | Ortho keeps texel size constant across the sprite. Use the game's pitch (Orbkin bakes at a fraction of the main camera's elevation, `bakePitch`) |
 | Resolution | Final sprite size, 1:1 (e.g. 64×64 for kin, 96×96 for big forms) | Never render big and bilinear-downscale: that makes AA mush. If supersampling, downsample by **picking** samples (Orbkin's detail-preserving 2× already does this) |
-| EEVEE AA | `scene.render.filter_size = 0.01`, `scene.eevee.taa_render_samples = 1` | **Verified: 0 partial-alpha pixels** at 64 px |
-| Cycles AA | `scene.cycles.pixel_filter_type='BOX'`, `scene.cycles.filter_width=0.01` (min 0.01), **`samples=1`** | `render.filter_size` is not Cycles' filter. With 16 spp I still measured **165 partial-alpha pixels** even with `use_pixel_jitter=False` (a Blender 5.x property that had no visible effect). 1 spp gave **0 partial** |
+| EEVEE AA | `scene.render.filter_size = 0.01`, `scene.eevee.taa_render_samples = 1` | **Verified: 0 partial-alpha pixels** at 64 px. API docs: `filter_size` is the "width over which the reconstruction filter combines samples (in [0, 500], default 1.5)" ([RenderSettings](https://docs.blender.org/api/current/bpy.types.RenderSettings.html)); `taa_render_samples` is "samples per pixel for rendering (default 64)" ([SceneEEVEE](https://docs.blender.org/api/current/bpy.types.SceneEEVEE.html)); the EEVEE Film manual says "lower values give more crisp renders" ([manual](https://docs.blender.org/manual/en/latest/render/eevee/render_settings/film.html)) |
+| Cycles AA | `scene.cycles.pixel_filter_type='BOX'`, `scene.cycles.filter_width=0.01` (min 0.01), **`samples=1`** | The Cycles Film manual: Pixel Filter Type "Box: No filter", Width "lower values give more crisp renders" ([manual](https://docs.blender.org/manual/en/latest/render/cycles/render_settings/film.html)). The Cycles add-on properties are not in the bpy API reference (`bpy.types.CyclesRenderSettings` returns 404); I read the property names from the live `bl_rna`. `render.filter_size` is not Cycles' filter. With 16 spp I still measured **165 partial-alpha pixels** even with `use_pixel_jitter=False` (a Blender 5.x property that had no visible effect). 1 spp gave **0 partial** |
 | Noise-free at 1 spp | Material override → Emission(albedo) and Emission(camera-space normal) | Emission needs no light sampling, so it is deterministic and noise-free. Lighting is then done in post or in game |
 | Colour management | `view_settings.view_transform = 'Standard'` (not AgX/Filmic) | Keeps authored colours exact (also recommended by BNPR's Blender pixel-art guide per search summary). Note: 'Standard' sRGB-encodes the normal pass. Decode it (`srgb_to_lin`) or use a non-colour output |
 | Transparency | `film_transparent = True`, RGBA PNG | Binary alpha only with 1 sample / filter 0.01 |
-| Toon in EEVEE | `Diffuse BSDF → Shader to RGB → ColorRamp(interpolation='CONSTANT') × base colour → Emission` | **EEVEE only**. Shader to RGB does not exist in Cycles. Verified headless with llvmpipe |
+| Toon in EEVEE | `Diffuse BSDF → Shader to RGB → ColorRamp(interpolation='CONSTANT') × base colour → Emission` | **EEVEE only** per the [manual](https://docs.blender.org/manual/en/latest/render/shader_nodes/color/shader_to_rgb.html), which gives "a color ramp on the output of a diffuse BSDF … to create a flexible toon shader" as its example. The manual also warns that it breaks the PBR pipeline (AO, soft shadows, SSR, SSS, alpha clip/hashed) and "doesn't give expected results in render passes". Verified headless with llvmpipe |
 | Toon in Cycles | Do it in post from albedo + normal (section 6) or fake N·L with Geometry Normal · light vector in the shader | Verified the post route |
-| Outlines | **Post 4-neighbour alpha outline** (dark shade of the neighbour colour) + inner contour from normal jumps | Freestyle works headless in Cycles and EEVEE but is **anti-aliased** (241 partial-alpha px) and **cluttered at 64 px** (see 6.3). Line Art (Grease Pencil) not tested |
+| Outlines | **Post 4-neighbour alpha outline** (dark shade of the neighbour colour) + inner contour from normal jumps | Freestyle works headless in Cycles and EEVEE but is **anti-aliased** (241 partial-alpha px) and **cluttered at 64 px** (see 6.3). Freestyle per the [manual](https://docs.blender.org/manual/en/latest/render/freestyle/introduction.html) is a line engine that "relies on mesh data and Z-depth"; `line_thickness_mode='ABSOLUTE'` means thickness "in pixels" ([API](https://docs.blender.org/api/current/bpy.types.RenderSettings.html)). Line Art (Grease Pencil modifier, [manual](https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html)) generates strokes from the active camera's view of a scene, collection or object. Each modifier runs its own occlusion pass (slow with several). Not tested |
 | Palette | Pillow `quantize(colors=N, method=MEDIANCUT, dither=Dither.NONE)` or map to a fixed Lospec palette | Median cut **eats small distinct colours** (my cream tail turned orange at 16 colours). Protect eyes and accents (Orbkin's `extractPalette` already keeps rare-but-distinct colours) |
 | Directions | Rotate a parent empty by 360/N; N = 8 for overworld, **2 for battle** (front 3/4 of the foe, back 3/4 of yours) | |
 | Animation | Sample the action at 8–12 fps ("stepped" playback like sprite sheets) | glTF actions import fine (`bpy.ops.import_scene.gltf`) |
@@ -564,7 +574,7 @@ depth buffer). The silhouette should darken the **nearer** pixel (`-neighbour.z 
 means this pixel is in front), which matches the three.js and denovodavid convention. In Orbkin
 the sprite outline is already 1 texel, so world lines and sprite lines will match.
 
-If quality matters more than cost, use MRT instead (`new THREE.WebGLRenderTarget(w, h, { count:
+If quality matters more than cost, use MRT instead. The [RenderTarget docs](https://threejs.org/docs/pages/RenderTarget.html) define `count` ("number of color attachments", default 1) and `depthTexture` ("useful for further processing e.g. in context of post-processing"): (`new THREE.WebGLRenderTarget(w, h, { count:
 2 })`, with world materials writing a view normal to `layout(location = 1)` via
 `onBeforeCompile`), and port `outline.gdshader`'s exact convex rule.
 
@@ -592,6 +602,14 @@ const grad = new THREE.DataTexture(new Uint8Array([60, 140, 255]), 3, 1, THREE.R
 grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
 const mat = new THREE.MeshToonMaterial({ map: pixelTex, gradientMap: grad }); // 3 bands
 ```
+
+[verified: docs] The [MeshToonMaterial docs](https://threejs.org/docs/pages/MeshToonMaterial.html)
+say: "It's required to set Texture#minFilter and Texture#magFilter to NearestFilter" for the
+gradient map, and that it "represents non-color data" (keep `colorSpace = NoColorSpace`). The
+official [toon example](https://threejs.org/examples/webgl_materials_toon.html) builds the
+gradient as `new THREE.DataTexture(colors, colors.length, 1, THREE.RedFormat)`. For pixel
+textures the [Texture docs](https://threejs.org/docs/pages/Texture.html) state
+`generateMipmaps` defaults to `true`, so set it to `false` together with `NearestFilter`.
 
 Orbkin's world uses Lambert with baked AO. Banding the **key light only** (keep the hemisphere
 smooth) through `onBeforeCompile` on `MeshLambertMaterial` keeps the cookie and shadow-map look
@@ -622,7 +640,7 @@ of the same idea.
 `three/examples/jsm/postprocessing/LUTPass.js` (present in r180) applies a 3D LUT. Build a 32³
 LUT that maps every colour to the nearest **OKLab** entry of the arena palette, which yields a
 hard palette lock after grading. Apply it **after** the grade and **before** the dither. Keep a
-`lutIntensity` below 1 (e.g. 0.6) so emissives and FX are not crushed. pixel3d-renderer's
+`intensity` below 1 (e.g. 0.6; the [LUTPass docs](https://threejs.org/docs/pages/LUTPass.html) list `lut: Data3DTexture` and `intensity`, default 1) so emissives and FX are not crushed. pixel3d-renderer's
 minimax-merge palette is a good model for generating the palette from the arena's ramps.
 [verified that the pass exists; recipe speculative]
 
@@ -697,8 +715,8 @@ in a DCC tool and let the engine light them.
 6. **Headless pipeline in the repo** (`tools/blender/*.py`, run with `pip install bpy`): glTF
    validation, texel-density check, palette check, and a contact-sheet render of each kit piece.
    It runs in this container (Cycles CPU, section 6).
-7. **CC0 props**: Kenney 3D kits (CC0; the GitHub starter kits are reachable via raw GitHub
-   here; kenney.nl itself is blocked), re-textured to the arena ramps through a Blender script
+7. **CC0 props**: Kenney 3D kits (CC0, kenney.nl reachable; Modular Cave Kit, Mini Dungeon,
+   Fantasy Town Kit; plus Retro Textures Fantasy 64×64 tiles), re-textured to the arena ramps through a Blender script
    that replaces materials with the pixel atlas.
 
 ### P2: creatures and people from authored models (2–4 weeks)
@@ -740,19 +758,24 @@ in a DCC tool and let the engine light them.
 
 ## 11. Free asset sources (and what is reachable from this container)
 
-| Source | Licence | Reachable here? | Notes |
-|---|---|---|---|
-| Kenney (kenney.nl) | CC0 | **No** (site blocked). **Yes** via `raw.githubusercontent.com/KenneyNL/<Starter-Kit-*>`; their README says assets are CC0, code MIT | Also unofficial npm mirrors (`@anabis/kenney-space-kit-mirror`), not verified |
-| Quaternius | CC0 | No (site). `RobotExpressive.glb` (CC0, Tomás Laulhé/Quaternius) is in the three.js repo: **downloaded and baked OK** | Animated humanoids and monsters |
-| Poly Haven | CC0 | No | HDRIs and textures; photoreal textures are not useful for pixel art except as sources |
-| ambientCG | CC0 | No | Same |
-| OpenGameArt | mixed (CC0/CC-BY/GPL) | No | Check each licence |
-| itch.io CC0 packs | per pack | No | |
-| Lospec palettes | per palette (mostly free to use) | No | Palettes are small; can be typed in by hand |
-| three.js `examples/models` | per model (README per folder) | **Yes** (raw GitHub) | Several CC0, some CC-BY |
-| npm / PyPI | per package | **Yes** | `bpy`, `pillow`, `three` |
+Licences re-checked on the primary sites in the follow-up pass:
+- Kenney [support page](https://kenney.nl/support): "all game assets on the asset pages are public
+  domain licensed (CC0) … even in commercial projects", and attribution is not required. Each zip
+  ships a `License.txt` (CC0).
+- Poly Haven [licence](https://polyhaven.com/license): "Our assets are all licensed as CC0".
+- ambientCG [home page FAQ](https://ambientcg.com/): "All assets are released under the Creative
+  Commons CC0 license". The `/license` page itself is still proxy-blocked.
 
----
+| Source | Licence | Reachable here? | HD-2D / pixel-suitable content |
+|---|---|---|---|
+| Kenney (kenney.nl) | CC0 (verified) | **Yes** (site and zip downloads) | **Modular Cave Kit** (40 glTF pieces: rooms, corridors, stairs, gates, ladder, wall/floor templates; one `colormap.png`, so flat colour, not pixel textures). **Retro Textures Fantasy** (117 tiles at 64×64 / 64×128: stone floors and walls, wood planks, doors, grates, with `_depth` variants; PS1/retro style). Also Mini Dungeon, Fantasy Town Kit, Graveyard Kit, Pirate Kit, Tiny Town/Farm/Battle (2D pixel tiles), Pixel Platformer, Roguelike Characters, **UI Pack Pixel Adventure**, Pattern Pack Pixel |
+| Poly Haven | CC0 (verified) | **Yes**: web, [API](https://api.polyhaven.com/types) (`/assets?t=textures&c=rock` gives 125 rock textures; `/files/<id>` gives URLs per map and resolution; models category `rocks` has 37) | Photoreal. Useful for **shapes** (rock models to retopo and pixel-texture) and as reference, **not** as direct pixel textures (section 14) |
+| ambientCG | CC0 (verified via FAQ) | Partly: home and `/api/v2`, `/api/v3` reachable; the API search for "pixel" returns 0 assets | Photoreal PBR materials. Same caveat as Poly Haven |
+| Quaternius | CC0 | Site not re-tested. `RobotExpressive.glb` (CC0) from the three.js repo **downloaded and baked OK** | Animated humanoids and monsters |
+| OpenGameArt, itch.io CC0 packs | per item | No | Check each licence |
+| Lospec palettes | per palette | No | Type them in by hand |
+| three.js `examples/models` | per model | **Yes** (raw GitHub, threejs.org) | Several CC0 |
+| npm / PyPI | per package | **Yes** | `bpy`, `pillow`, `three` |
 
 ## 12. Open questions
 
@@ -768,7 +791,11 @@ in a DCC tool and let the engine light them.
   `use_pixel_jitter=False` in Blender 5.2. This may be a sampling-pattern detail. The 1-spp
   emission passes sidestep it.
 - Whether Blender's Line Art (Grease Pencil v3) gives crisper 1-px lines than Freestyle at sprite
-  scale (not tested).
+  scale. Not tested: Grease Pencil rendering needs the GPU/EGL path, and the manual documents
+  the generation options but not pixel-exactness.
+- How to turn photo textures (Poly Haven / ambientCG) into readable pixel tiles. Naive
+  downsample plus palette produced noise (section 14), so segmentation into stones plus
+  per-stone ramps may be needed. Otherwise paint by hand.
 - Is a hand-clean-up pass per frame affordable for the owner (time), or should P2 stop at step 8
   (authored models + live bake)?
 
@@ -797,3 +824,49 @@ Articles and interviews (mostly via search summaries; sites blocked for direct r
 - [Kotaku: HD-2D Pokémon fan demo (Dott, UE5)](https://kotaku.com/pokemon-hd-2d-octopath-traveler-fan-art-unreal-engine-5-1850350661)
 - [Bubblehead: texture painting pixel art onto a mesh](https://bubblehead-game-dev.com/articles/texture-painting-pixel-art-onto-a-mesh-in-blender) · [Blender Artists: low-poly pixel textures](https://blenderartists.org/t/how-to-make-3d-models-with-pixel-textures-low-poly-pixel-art/1179588) · [Pixel Kit FAQ](https://superhivemarket.com/products/pixel-kit---one-click-pixel-art-renderer/faq)
 - [Laigter (itch)](https://azagaya.itch.io/laigter) · [Aseprite open vs paid](https://en.bioerrorlog.work/entry/aseprite-open-vs-paid-version)
+
+---
+
+## 14. Follow-up verification pass (primary sources now reachable)
+
+| Claim | Before | Now | Primary source |
+|---|---|---|---|
+| EEVEE `render.filter_size` controls AA softness; default 1.5; range 0–500 | verified (ran) | **verified: docs + ran** | [bpy RenderSettings](https://docs.blender.org/api/current/bpy.types.RenderSettings.html), [EEVEE Film](https://docs.blender.org/manual/en/latest/render/eevee/render_settings/film.html) |
+| Cycles pixel filter Box = "No filter"; Width lower = crisper | verified (ran) | **verified: docs** (the Cycles property names are not in the bpy API reference) | [Cycles Film](https://docs.blender.org/manual/en/latest/render/cycles/render_settings/film.html) |
+| `taa_render_samples` = render samples per pixel, default 64 | ran | **verified: docs** | [SceneEEVEE](https://docs.blender.org/api/current/bpy.types.SceneEEVEE.html) |
+| Shader to RGB is EEVEE-only; diffuse → color ramp toon is the documented use; breaks render passes and AO/soft shadows | verified (ran) | **verified: docs** | [Shader To RGB](https://docs.blender.org/manual/en/latest/render/shader_nodes/color/shader_to_rgb.html) |
+| Freestyle uses mesh data plus Z-depth; ABSOLUTE thickness is in pixels | ran | **verified: docs** | [Freestyle intro](https://docs.blender.org/manual/en/latest/render/freestyle/introduction.html), [RenderSettings](https://docs.blender.org/api/current/bpy.types.RenderSettings.html) |
+| Line Art modifier generates strokes from the active camera; each modifier recomputes occlusion | not checked | **verified: docs** (still not run) | [Line Art](https://docs.blender.org/manual/en/latest/grease_pencil/modifiers/generate/line_art.html) |
+| `RenderPixelatedPass(pixelSize, scene, camera, options)`; `depthEdgeStrength` default 0.4, `normalEdgeStrength` default 0.3 | verified (code) | **verified: docs** (the docs page mislabels depthEdgeStrength as "The normal edge strength", same as the source comment) | [docs](https://threejs.org/docs/pages/RenderPixelatedPass.html), [example](https://threejs.org/examples/webgl_postprocessing_pixel.html) |
+| MeshToonMaterial `gradientMap` needs NearestFilter and NoColorSpace | general knowledge | **verified: docs** | [MeshToonMaterial](https://threejs.org/docs/pages/MeshToonMaterial.html), [toon example](https://threejs.org/examples/webgl_materials_toon.html) |
+| `Texture.generateMipmaps` defaults to true (turn off for pixel art) | general | **verified: docs** | [Texture](https://threejs.org/docs/pages/Texture.html) |
+| MeshLambertMaterial has `normalMap` | verified (npm source) | **verified: docs** | [MeshLambertMaterial](https://threejs.org/docs/pages/MeshLambertMaterial.html) |
+| RenderTarget `count` (MRT) and `depthTexture` options | general | **verified: docs** | [RenderTarget](https://threejs.org/docs/pages/RenderTarget.html) |
+| LUTPass takes `{ lut: Data3DTexture }` and has `intensity` (default 1) | name was wrong (`lutIntensity`) | **fixed + verified: docs** | [LUTPass](https://threejs.org/docs/pages/LUTPass.html) |
+| Kenney, Poly Haven and ambientCG assets are CC0 | secondary | **verified: primary sites** | links in section 11 |
+
+**New experiments (scratch in `/tmp/hd2d-exp`; no assets added to the repo):**
+
+1. **Kenney Modular Cave Kit** (7 MB zip, 40 `.glb` pieces plus FBX/OBJ, `License.txt` CC0).
+   `render_kit.py` imports `room-large.glb` in headless bpy, sets every image node to
+   `interpolation='Closest'`, and renders an ortho 35° view at 320×180 in Cycles (64 spp,
+   filter_width 0.01) in **2.4 s**. It loads and frames fine. The first attempt had a black floor
+   with sun shadows on, cause not investigated; with `use_shadow=False` it rendered correctly. The
+   kit is **smooth, flat-coloured (one colormap) cave geometry**: a good source of **authored
+   silhouettes** (rounded walls, pillars, stairs) to re-texture with pixel tiles. The look is not
+   HD-2D as-is.
+2. **Kenney Retro Textures Fantasy**: 117 PNGs at 64×64 (some 64×128). Stone floors and walls,
+   wood planks (plus damaged and `_depth` variants), doors, grates, and a lit window. These are
+   real hand-made low-res tiles at one density, a usable CC0 base for the lodge, stairs and floor
+   areas. Their palette needs re-grading to Orbkin's warm ramps.
+3. **Poly Haven `rock_wall_08`** (CC0, 1k diffuse + GL normal via the API) through
+   `photo2pixel.py`: box-downsample to 32 or 64 px, mix luminance with N·L from the normal map,
+   4×4 Bayer, map to a 6-shade hue-shifted ramp. **Result: noisy speckle. The individual stones
+   do not survive.** Photo textures are **not** a shortcut to pixel textures. Pixel tiles need
+   designed shapes (painted, or procedurally structured like Orbkin's `TintedTile` mosaic), so
+   Orbkin's painter approach is right for textures. What needs authoring is the **geometry**.
+
+**Net effect on the plan (section 10):** P1 gets concrete CC0 inputs. Use the Kenney cave kit for
+blockout silhouettes or as modelling reference, Kenney Retro Textures for wood, stone and door
+surfaces, and Poly Haven rock **models** (`/assets?t=models&c=rocks`) as shape sources to decimate
+and pixel-texture. Keep Orbkin's own painters for the rock faces.
