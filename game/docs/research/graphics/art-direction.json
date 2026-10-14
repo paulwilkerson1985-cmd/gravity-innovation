@@ -1,0 +1,122 @@
+{
+  "angle": "Art direction, composition, lighting & polish",
+  "notesPath": "game/docs/research/graphics/art-direction.md",
+  "keyFindings": [
+    {
+      "claim": "Readability comes from value, not hue; a frame must survive a grayscale/squint test with 3-4 grouped value masses and the subject on a contrasting mass.",
+      "detail": "Desaturate the frame and check the shapes still separate. A strong frame squints down to a 3-value notan with one dominant band (about 45-65%) and a small accent band.",
+      "sources": ["https://www.wayline.io/learn/color-palettes/1", "https://dataanddesign.substack.com/p/how-to-use-grayscale-a-quick-way", "https://jerwoodvisualarts.org/blog/how-to-choose-a-focal-point-in-painting/"],
+      "confidence": "high",
+      "implicationForOrbkin": "Measured on the cave battle: the notan splits 35/45/20 with no dominant band. In the squint image the brightest mass is the window and beams, not the creatures."
+    },
+    {
+      "claim": "The focal point must hold the frame's highest local contrast (value, saturation, temperature, detail) while the rest stays restrained.",
+      "detail": "Standard painting and art-direction rule. It can be measured as the ratio of local L*-std, chroma and edge energy inside the focal box versus a surrounding ring.",
+      "sources": ["https://jerwoodvisualarts.org/blog/how-to-choose-a-focal-point-in-painting/", "https://blog.milanartinstitute.com/how-to-critique-art/"],
+      "confidence": "high",
+      "implicationForOrbkin": "Cave focal vs ring: L-std 19.2 vs 18.5, chroma 35 vs 34, edges 6.5 vs 5.3. Meadow: edges 9.5 vs 9.6, and chroma is lower at the focus. Creatures do not win the frame."
+    },
+    {
+      "claim": "Detail density should be a gradient (high near focus/gameplay, low at edges and in big planes); uniform noise everywhere reads as amateur/procedural.",
+      "detail": "Negative space and rest areas let key elements breathe (e.g. Dark Souls bonfires). Measured as the coefficient of variation of gradient energy over a 6x8 grid.",
+      "sources": ["https://www.wayline.io/blog/negative-space-in-video-game-design", "http://www.neilblevins.com/art_lessons/composition_fore_mid_back/composition_fore_mid_back.htm"],
+      "confidence": "medium",
+      "implicationForOrbkin": "Meadow detail CV is 0.195, almost uniform. paintRock/paintBoulder apply the same fbm+chips+cracks to every face. Detail should be modulated by light and by distance from focus."
+    },
+    {
+      "claim": "Palettes should be built from hue-shifted ramps with saturation peaking mid-ramp, drawn from a limited per-scene gamut, with accents reserved for subjects.",
+      "detail": "Slynyrd: straight ramps look flat; bright+saturated burns the eyes; dark+saturated looks heavy. Gurney's gamut mask preselects a palette region on the colour wheel.",
+      "sources": ["https://www.slynyrd.com/blog/2018/1/10/pixelblog-1-color-palettes", "https://www.gamedev.net/articles/visual-arts/color-palettes-r4964/", "https://linesandcolors.com/2011/09/19/james-gurney-on-gamut-masking/"],
+      "confidence": "high",
+      "implicationForOrbkin": "The RAMPS already hue-shift, but no gamut is reserved. In the cave, 99% of chromatic pixels fall in two orange/yellow 30-degree bins, so the flame kin has no free hue to pop against."
+    },
+    {
+      "claim": "Temperature contrast between key light and shadow is a primary lighting tool; same-hue lights and shadows read as a filter.",
+      "detail": "Warm key with cool or plum shadows, or a cool key with warm bounce. Measurable as the mean b* in shadows versus lights.",
+      "sources": ["https://linesandcolors.com/2011/09/19/james-gurney-on-gamut-masking/", "https://gdcvault.com/play/1020475/In-Game-and-Cinematic-Lighting"],
+      "confidence": "high",
+      "implicationForOrbkin": "Cave shadows have b* +18.5 vs lights +31.6, i.e. still orange despite the plum split-tone grade. The summit night arena (-10.7 vs +13.3) shows the split working. Push cool shadow colour in warm arenas."
+    },
+    {
+      "claim": "In games, use rim/background light to silhouette subjects; keep one dominant, motivated key direction.",
+      "detail": "Shaver (GDC 2018 Invisible Intuition): three-point lighting breaks with free cameras, so use rim and background lights in encounters. The Last of Us lighting talk: dominant directionality, ambient shadows, bounce.",
+      "sources": ["https://gdcvault.com/play/1025360/Level-Design-Workshop-Invisible-Intuition", "https://www.blog.radiator.debacle.us/2018/03/gdc-2018-how-to-light-level-slides-and.html", "https://gdcvault.com/play/1020475/In-Game-and-Cinematic-Lighting"],
+      "confidence": "high",
+      "implicationForOrbkin": "The battle camera is fixed per layout, so a real rim light per kin is possible. Raise SpriteLight.rim for warm-on-warm pairings."
+    },
+    {
+      "claim": "HD-2D = pixel sprites in a 3D diorama, dramatic light/shadow interacting with pixel surfaces, tilt-shift DoF, selective bloom, extra point lights for FX.",
+      "detail": "Developer statements via Unreal spotlights and Wikipedia. A fan reimplementation spec gives FOV 25-35 deg, pitch 35-45 deg, 32/48-texel tiles, characters about 1.5 tiles, nearest filtering, and a single directional light with sprite shadows.",
+      "sources": ["https://en.wikipedia.org/wiki/HD-2D", "https://www.unrealengine.com/spotlights/octopath-traveler-s-hd-2d-art-style-and-story-make-for-a-jrpg-dream-come-true", "https://www.unrealengine.com/en-US/developer-interviews/octopath-traveler-ii-builds-a-bigger-bolder-world-in-its-stunning-hd-2d-style", "https://github.com/Phaazoid/Godoiosis/issues/176"],
+      "confidence": "medium",
+      "implicationForOrbkin": "Orbkin's pipeline already matches the technical recipe. The remaining gap is art direction (value grouping, gamut, focal contrast, UI), not missing tech."
+    },
+    {
+      "claim": "God rays and atmosphere must be used sparingly and must not cover the subject; atmospheric perspective lowers contrast/saturation with distance and converges to the fog/sky value.",
+      "detail": "Aerial perspective: contrast and saturation fall and hue shifts toward the background colour. Shafts should land beside the action and have a visible source.",
+      "sources": ["https://en.wikipedia.org/wiki/Aerial_perspective", "https://www.britannica.com/art/aerial-perspective"],
+      "confidence": "high",
+      "implicationForOrbkin": "The cave shafts cross the player's side and are the brightest mass in the squint image. Cut to 2-3 shafts and cap their added light on the kin region."
+    },
+    {
+      "claim": "VFX readability: a primary element (high value range, opaque, strong shape, intense motion) plus subdued secondaries; visual weight equals gameplay weight; anticipation-climax-dissipation timing kept short.",
+      "detail": "League of Legends VFX Style Guide (Riot, 2017): five areas (gameplay, value, colour, shape, timing).",
+      "sources": ["https://www.vfxapprentice.com/blog/10-league-of-legends-vfx-design-tips", "https://realtimevfx.com/t/official-league-of-legends-vfx-style-guide/3392", "https://polycount.com/discussion/192857/official-league-of-legends-vfx-style-guide"],
+      "confidence": "high",
+      "implicationForOrbkin": "Audit movefx so each move has one primary opaque shape and is scaled to its power."
+    },
+    {
+      "claim": "UI must belong to the world's art direction (palette, typography, frame motif); style mismatch is a top immersion breaker.",
+      "detail": "For pixel JRPG battles: nine-slice frames at the world texel scale, a cream/ink palette with one accent, a pixel typeface, and colour reserved for state.",
+      "sources": ["https://blog.unity.com/games/how-to-immerse-your-players-through-effective-ui-and-game-design", "https://designcaitlin.substack.com/p/how-to-write-a-ui-art-bible", "https://www.wayline.io/blog/your-ui-is-killing-immersion-fix-it"],
+      "confidence": "medium",
+      "implicationForOrbkin": "The candy-saturated pink/orange/green/violet buttons and the modern sans font are the most saturated things on screen and outrank the creatures. Re-skin as a cheap, high-impact fix."
+    },
+    {
+      "claim": "Silhouette-first creature design: black-fill test at thumbnail size, a lineup test across the cast, shape semantics (round = friendly, square = sturdy, spiky/diagonal = danger), evolutions change silhouette not scale.",
+      "detail": "The three-read hierarchy: silhouette at 32 px, colour blocks at 64 px, then detail.",
+      "sources": ["https://skillselion.com/skills/omer-metin/skills-for-antigravity/character-design", "https://binus.ac.id/bandung/dkv/?p=959", "https://abhigameart.wordpress.com/2018/11/02/technical-wizardry/"],
+      "confidence": "high",
+      "implicationForOrbkin": "Every Orbkin species uses the same ellipsoid+cone+cylinder vocabulary. Give each line a shape motif and add an automated silhouette solidity/IoU test."
+    },
+    {
+      "claim": "Pixel consistency: one texel/pixel density everywhere; mixels (mixed pixel sizes, rotated or scaled sprites) read as amateur.",
+      "detail": "Keep the scale at 1 with a base viewport; mixed asset packs break consistency.",
+      "sources": ["https://community.flowlab.io/t/mini-rant-stop-using-mixels/38287", "https://backiee.wasmer.app/http_gamedev_stackexchange_com/q/141609"],
+      "confidence": "high",
+      "implicationForOrbkin": "Orbkin already enforces TEXEL=1/16 and integer upscales. Keep that invariant for any new Blender-baked or imported assets, and for the UI frames."
+    },
+    {
+      "claim": "Automated pixel metrics (notan shares, b* split, hue dominance, detail CV, focal contrast ratios, k-means palette, colourfulness) turn vague critique into reference deltas, but are not absolute aesthetic scores.",
+      "detail": "Hasler-Susstrunk colourfulness (~15 slightly, ~82 highly, ~109 extremely colourful) has no linear relation to aesthetics overall. Spectral-residual saliency at 64 px is crude (it found the window, not the kin).",
+      "sources": ["https://infoscience.epfl.ch/record/33994?ln=en", "https://arxiv.org/pdf/1908.08505", "https://github.com/DrNickRedfern/HSM3", "https://reality.tf.fau.de/projects/image-colourfulness/image-colourfulness.pdf"],
+      "confidence": "medium",
+      "implicationForOrbkin": "Use artcheck.py (in the notes, verified in this container) to compute deltas against the reference crops and between iterations, and feed the notan/squint images to the VLM critic."
+    }
+  ],
+  "tools": [
+    {"name": "artcheck.py (in art-direction.md)", "free": true, "license": "project code", "whatFor": "Notan/squint/saliency/palette images and metrics: value bands, hue dominance, b* split, detail CV, focal ratios", "usableInThisContainer": "yes - Pillow 12 + numpy 2.5 present, verified on repo screenshots"},
+    {"name": "Pillow + numpy", "free": true, "license": "MIT-CMU (HPND) / BSD-3", "whatFor": "Image analysis without OpenCV", "usableInThisContainer": "yes, preinstalled"},
+    {"name": "Playwright + Chromium (SwiftShader)", "free": true, "license": "Apache-2.0 / BSD", "whatFor": "Deterministic screenshot capture of each scene and layout for critique", "usableInThisContainer": "yes (repo already uses it for smoke screenshots)"},
+    {"name": "scikit-image / OpenCV (opencv-python-headless)", "free": true, "license": "BSD-3 / Apache-2.0", "whatFor": "Better saliency (fine-grained), SSIM, contour/solidity for silhouette tests", "usableInThisContainer": "probably via pip from PyPI (not installed now)"},
+    {"name": "Aseprite grayscale-preview script / any image editor", "free": false, "license": "Aseprite is paid (source-available); LibreSprite is GPL-2.0 and free", "whatFor": "Manual value checks by artists", "usableInThisContainer": "no GUI; use artcheck instead"}
+  ],
+  "techniques": [
+    {"name": "Rubric-driven screenshot critique with located evidence", "why": "Turns a 6/10 vibe into specific, ranked fixes, and stops a VLM from rubber-stamping", "how": "15-item rubric (art-direction.md section 2), 0-2 each with image-located evidence, derived images first, side-by-side with the reference, top-3 deltas ranked", "impact": "huge", "effort": "low: a skill file plus the script"},
+    {"name": "Subject/ground separation (complementary floor patch + rim light + selective outline)", "why": "The creatures currently share value and hue with their ground", "how": "Desaturated complementary or neutral tone in the floor area under the kin, a rim term in the sprite toon shader for warm-on-warm pairings, and an outline colour from a darkened adjacent ramp", "impact": "big", "effort": "small-medium (shader + arena params)"},
+    {"name": "Detail falloff (light- and focus-modulated texture detail)", "why": "Uniform noise kills focal hierarchy (meadow detail CV 0.20)", "how": "Painters take a detail parameter: lit faces near the focus get cracks and chips, shadow and far faces get 2-3 flat shades. Bake per block from the light direction and distance to the battle spots", "impact": "big", "effort": "medium"},
+    {"name": "Per-arena gamut and reserved accent hues", "why": "Prevents the monochrome scene and guarantees kin and UI pop", "how": "An arena palette file (allowed ramps + reserved hues); a unit test samples painter outputs; the grade pushes shadows cool", "impact": "big", "effort": "medium"},
+    {"name": "Light-shaft discipline", "why": "Shafts are currently the brightest mass and wash out the kin", "how": "2-3 shafts with a visible source, landing beside the kin; additive light on the kin region capped at about +8 L*", "impact": "medium", "effort": "small"},
+    {"name": "Foreground framing plane", "why": "Dioramas read as a window into a world when the edges are dark and near-silhouette", "how": "A dark rock lip or overhang or foliage in the bottom corners, lit only by fill", "impact": "medium", "effort": "small"},
+    {"name": "World-cohesive pixel UI", "why": "The UI is currently the most off-style, saturated element", "how": "Nine-slice pixel frames at the world texel scale, cream/ink palette from the arena, pixel typeface at integer scale, colour only for state and focus", "impact": "big", "effort": "medium"},
+    {"name": "Silhouette and lineup tests", "why": "Shape language and distinctness are a designer's first read", "how": "Render black silhouettes at 32/64 px; compute solidity and pairwise IoU; flag IoU > 0.8 and blobby high-solidity builds", "impact": "medium", "effort": "small"},
+    {"name": "VFX primary/secondary audit", "why": "Riot's guide is the industry reference for readable FX", "how": "Per move: one opaque, high-value primary shape; soft secondaries; anticipation-climax-dissipation; scale equals power", "impact": "medium", "effort": "medium"}
+  ],
+  "openQuestions": [
+    "What are the reference image's measured metrics (notan, b* split, focal ratios, detail CV)? Store it privately in-repo to calibrate the thresholds.",
+    "Is the VLM critic reliable at 640x360, or does it need 2x nearest upscales and crops?",
+    "Which rim/outline rule works across all 11 arenas without per-pair tuning?",
+    "How much of the judges' gap is UI alone? A/B a UI-only re-skin.",
+    "Do the threshold values (detail CV >= 0.45, focal ratio >= 1.3, delta-b* >= 15) correlate with judge scores across iterations?"
+  ]
+}
