@@ -1,0 +1,425 @@
+{
+  "angle": "free-tools-assets",
+  "notesPath": "game/docs/research/graphics/free-tools-assets.md",
+  "keyFindings": [
+    {
+      "claim": "In this container git clone over github.com and raw.githubusercontent.com work, but nearly every asset website (Poly Haven, ambientCG, Kenney, Quaternius, itch.io, OpenGameArt, Sketchfab, Mixamo, Google Fonts, blender.org) and GitHub release downloads are blocked.",
+      "detail": "Tested 2026-10-14 with curl (HTTP 000 timeouts, 403 on /releases). git clone --filter=blob:none + git show HEAD:<path> fetches single files lazily; npm registry and PyPI also work. jsdelivr/unpkg blocked.",
+      "sources": [
+        "local test: curl/git from this container 2026-10-14"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Asset pipeline must source from git repos, npm or PyPI; everything else is an owner download that gets committed with provenance."
+    },
+    {
+      "claim": "KayKit's official GitHub org hosts 10 CC0 packs with GLB/glTF files (no LFS) that clone fine here.",
+      "detail": "KayKit-Game-Assets: Dungeon Remastered (203 GLB + FBX/OBJ), Adventurers (4 rigged characters, 75 animations, 25+ accessories), Skeletons, Prototype Bits, City Builder, Medieval Hexagon (200+), Furniture, Restaurant, Halloween, Space Base. README: CC0, no attribution; single 1024x1024 gradient atlas texture per pack.",
+      "sources": [
+        "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0",
+        "https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0",
+        "https://kaylousberg.itch.io/kaykit-adventurers"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Ready-made shelves, barrels, chests, stairs, tables, banners and rigged humanoids for the lodge/quarry dioramas and trainers; re-texture with our pixel palette."
+    },
+    {
+      "claim": "1,545 Quaternius models (32 packs, all CC0 upstream) are reachable as GLB via the trebeljahr/quaternius-showcase repo.",
+      "detail": "public/glb/<pack>/ includes nature_pack (150), house_interior_pack (123), rpg_items, crops, animals (with 13 animation actions on Deer), dinosaurs, fish, modular men/women. LICENSES.md lists CC0-1.0 per pack, checked 2026-10-10. Quaternius' Animated Monsters/Ultimate Monsters packs are not mirrored.",
+      "sources": [
+        "https://github.com/trebeljahr/quaternius-showcase",
+        "https://github.com/J-Ponzo/gltf-universal-animation-library",
+        "https://quaternius.itch.io/lowpoly-animated-monsters"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Trees, bushes, rocks, interior props and animal animation references for outdoor arenas and creature motion studies."
+    },
+    {
+      "claim": "Kenney's CC0 content is reachable through official Starter Kits and an unofficial 2020 mirror of 128 packs.",
+      "detail": "KenneyNL/Starter-Kit-* contain GLB models; ETdoFresh/kenney.nl has 1,425 GLB, 33,866 PNG and 10 Kenney fonts (snapshot July 2020). Kenney terms: CC0, attribution optional.",
+      "sources": [
+        "https://github.com/KenneyNL",
+        "https://github.com/ETdoFresh/kenney.nl"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Particle/smoke sprites for move FX, prototype textures, nature/castle/graveyard kits as greybox geometry."
+    },
+    {
+      "claim": "npm packages carry real CC0/OFL assets: @pmndrs/assets and @fontsource/*.",
+      "detail": "@pmndrs/assets 1.7.0 (CC0, 19 MB): 18 HDRIs (EXR as base64 modules), 284 matcaps, 29 normal maps, Inter. @fontsource/* exposes every Google Font under OFL-1.1, incl. pixel faces Press Start 2P, Pixelify Sans, Silkscreen, Tiny5, Micro 5, Jersey 10, VT323, DotGothic16.",
+      "sources": [
+        "https://www.npmjs.com/package/@pmndrs/assets",
+        "https://fontsource.org"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Matcaps and HDRIs for stylised bakes and IBL; font fallbacks without leaving the npm toolchain."
+    },
+    {
+      "claim": "Poly Haven HDRIs are available here via pmndrs/drei-assets (12 at 1k) even though polyhaven.com is blocked.",
+      "detail": "drei-assets/hdri/*.hdr (venice_sunset, kiara_1_dawn, forest_slope, st_fagans_interior, etc.), CC0 from Poly Haven; also matcaps, normal maps and LUT PNGs (LUT provenance unclear). Poly Haven assets are CC0; its live API needs a custom licence for commercial apps.",
+      "sources": [
+        "https://github.com/pmndrs/drei-assets",
+        "https://polyhaven.com/our-api",
+        "https://github.com/Poly-Haven/Public-API"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Use as Cycles world lighting when baking AO/irradiance into props and sprites."
+    },
+    {
+      "claim": "pip bpy 5.2.2 (headless Blender) includes Rigify, Node Wrangler and glTF/FBX import-export; Cycles CPU renders work.",
+      "detail": "addon_utils lists cycles, io_scene_gltf2, io_scene_fbx, io_anim_bvh, io_curve_svg, io_mesh_uv_layout, node_wrangler, pose_library, rigify. Imported KayKit chest/barrel and Quaternius tree/deer GLBs and rendered 480x160 @16spp in about 1 s. EEVEE unavailable (no libEGL); extensions.blender.org blocked.",
+      "sources": [
+        "local test /tmp/gr/render_test.py, /tmp/gr/addons.py"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Blender-by-script is the in-container art tool: import, retexture, bake, rig (Rigify), render sprites, export GLB."
+    },
+    {
+      "claim": "Most GUI art tools are free but owner-machine only; several have scriptable formats or CLIs.",
+      "detail": "Blockbench (GPL-3, .bbmodel JSON), Krita/GIMP (GPL), Pixelorama (MIT), LibreSprite (GPL-2, -b CLI), Aseprite (source-available EULA: compile for personal use, output commercial OK, no redistribution of binaries), Material Maker (MIT, --export CLI in parse_args.gd but needs Godot+GPU), ArmorPaint 1.0 (zlib source, binaries paid), MagicaVoxel (free proprietary). None installable here (no apt, release downloads 403).",
+      "sources": [
+        "https://aseprite.org/faq/",
+        "https://github.com/RodZill4/material-maker",
+        "https://digitalproduction.com/2026/09/12/armorpaint-1-0-swaps-haxe-for-c/",
+        "https://github.com/JannisX11/blockbench"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Agent work happens in bpy/Python/Node; hand-painting and polishing passes are for the owner in Krita/Aseprite/Blockbench."
+    },
+    {
+      "claim": "Mixamo is free and royalty-free for games but raw files may not be redistributed, and it is humanoid-only.",
+      "detail": "Adobe community FAQ mirror: commercial/non-commercial use OK, no distribution of raw character/animation files to non-team members, no ML training. Terms may change.",
+      "sources": [
+        "https://community.adobe.com/questions-696/mixamo-faq-licensing-royalties-ownership-eula-and-tos-589400"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Fine for trainer/NPC animation baked into the build; avoid committing raw Mixamo FBX to the public repo; useless for non-humanoid creatures."
+    },
+    {
+      "claim": "Sketchfab and Poly Pizza are mostly CC-BY (attribution) and need owner downloads; Sketchfab downloads require login.",
+      "detail": "Sketchfab: majority CC BY, some CC0, some NC (unusable commercially); Download API requires authenticated users. Poly Pizza: mostly CC-BY, some CC0; record title/creator/licence per model.",
+      "sources": [
+        "https://sketchfab.com/developers/download-api/guidelines",
+        "https://app.cinevva.com/guides/free-3d-model-sites"
+      ],
+      "confidence": "medium",
+      "implicationForOrbkin": "Use only with a credits screen and ASSETS.md provenance; prefer CC0 sources first."
+    },
+    {
+      "claim": "Free CC0 3D libraries are flat-colour low-poly, not HD-2D pixel art.",
+      "detail": "KayKit uses gradient atlases, Quaternius/Kenney flat materials. Their value is geometry/silhouette and animation; the look comes from our texturing, lighting and low-res pipeline.",
+      "sources": [
+        "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0",
+        "local render test"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Plan a re-surfacing step (pixel textures, palette, texel density) for every imported asset rather than dropping them in."
+    },
+    {
+      "claim": "LPC pixel sprites are CC-BY-SA 3.0 / GPL 3 with per-artist credits.",
+      "detail": "Universal LPC Spritesheet Generator requires crediting all contributors in-game; share-alike applies.",
+      "sources": [
+        "https://github.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Avoid for hero art; share-alike and a recognisable style conflict with an original look."
+    }
+  ],
+  "tools": [
+    {
+      "name": "Blender (bpy pip module 5.2.2)",
+      "free": true,
+      "license": "GPL (outputs yours)",
+      "whatFor": "Scripted modelling, UV, baking, Rigify, glTF/FBX IO, Cycles sprite rendering",
+      "usableInThisContainer": "Yes: pip install bpy; Cycles CPU only, EEVEE needs libEGL"
+    },
+    {
+      "name": "Rigify (Blender bundled)",
+      "free": true,
+      "license": "GPL",
+      "whatFor": "Auto control rigs for humanoid/quadruped/bird metarigs",
+      "usableInThisContainer": "Yes, bundled in bpy"
+    },
+    {
+      "name": "Pillow / NumPy / scikit-image / opensimplex",
+      "free": true,
+      "license": "permissive (HPND/BSD/MIT)",
+      "whatFor": "Texture synthesis, palette mapping, dithering, atlasing",
+      "usableInThisContainer": "Yes, pip"
+    },
+    {
+      "name": "pixeloe",
+      "free": true,
+      "license": "Apache-2.0",
+      "whatFor": "Contrast-aware pixel-art downscaling of renders/images",
+      "usableInThisContainer": "Yes, pip"
+    },
+    {
+      "name": "ImageMagick convert",
+      "free": true,
+      "license": "ImageMagick (Apache-style)",
+      "whatFor": "Point resize, palette remap, ordered dither, contact sheets",
+      "usableInThisContainer": "Yes, preinstalled"
+    },
+    {
+      "name": "ffmpeg",
+      "free": true,
+      "license": "LGPL/GPL",
+      "whatFor": "Turntables, GIF previews",
+      "usableInThisContainer": "Yes, preinstalled"
+    },
+    {
+      "name": "@gltf-transform/cli",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Optimise/compress/inspect GLB (meshopt, webp, dedup, simplify)",
+      "usableInThisContainer": "Yes, npm"
+    },
+    {
+      "name": "gltfjsx",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Inspect/transform GLB",
+      "usableInThisContainer": "Yes, npm"
+    },
+    {
+      "name": "meshoptimizer",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Mesh compression for web",
+      "usableInThisContainer": "Yes, npm"
+    },
+    {
+      "name": "trimesh / pygltflib",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Inspect/fix glTF in Python",
+      "usableInThisContainer": "Yes, pip"
+    },
+    {
+      "name": "@pmndrs/assets",
+      "free": true,
+      "license": "CC0-1.0",
+      "whatFor": "HDRIs, matcaps, normal maps, Inter font",
+      "usableInThisContainer": "Yes, npm"
+    },
+    {
+      "name": "@fontsource/* (Google Fonts)",
+      "free": true,
+      "license": "OFL-1.1",
+      "whatFor": "Web fonts incl. pixel faces",
+      "usableInThisContainer": "Yes, npm"
+    },
+    {
+      "name": "pmndrs/drei-assets",
+      "free": true,
+      "license": "CC0 HDRIs (Poly Haven); other files mixed",
+      "whatFor": "1k HDRIs, matcaps, normals, LUTs",
+      "usableInThisContainer": "Yes, git/raw"
+    },
+    {
+      "name": "KayKit asset packs",
+      "free": true,
+      "license": "CC0",
+      "whatFor": "Stylised low-poly props, dungeon kit, rigged humanoids + 75 anims",
+      "usableInThisContainer": "Yes, git clone KayKit-Game-Assets/*"
+    },
+    {
+      "name": "Quaternius packs (via trebeljahr/quaternius-showcase)",
+      "free": true,
+      "license": "CC0",
+      "whatFor": "1,545 low-poly GLBs: nature, interiors, animals, characters",
+      "usableInThisContainer": "Yes, git clone mirror; official site blocked"
+    },
+    {
+      "name": "Kenney packs",
+      "free": true,
+      "license": "CC0",
+      "whatFor": "3D kits, 2D sprites, particles, UI, fonts",
+      "usableInThisContainer": "Partly: official Starter Kits + 2020 mirror ETdoFresh/kenney.nl; newer packs owner download"
+    },
+    {
+      "name": "Poly Haven",
+      "free": true,
+      "license": "CC0",
+      "whatFor": "Photoreal HDRIs, PBR textures, models",
+      "usableInThisContainer": "Site blocked; HDRIs via drei-assets/@pmndrs/assets; rest owner download"
+    },
+    {
+      "name": "ambientCG",
+      "free": true,
+      "license": "CC0",
+      "whatFor": "PBR texture sets",
+      "usableInThisContainer": "No; owner download"
+    },
+    {
+      "name": "Sketchfab",
+      "free": true,
+      "license": "Per model: CC0/CC-BY/CC-BY-SA/CC-BY-NC",
+      "whatFor": "Large CC model library",
+      "usableInThisContainer": "No; login required, owner download"
+    },
+    {
+      "name": "Poly Pizza",
+      "free": true,
+      "license": "Mostly CC-BY, some CC0",
+      "whatFor": "Low-poly models incl. Google Poly archive",
+      "usableInThisContainer": "No; owner download"
+    },
+    {
+      "name": "OpenGameArt",
+      "free": true,
+      "license": "Mixed per item",
+      "whatFor": "Pixel tilesets, sprites",
+      "usableInThisContainer": "No; owner download"
+    },
+    {
+      "name": "Mixamo",
+      "free": true,
+      "license": "Adobe terms: royalty-free, no raw-file redistribution",
+      "whatFor": "Humanoid auto-rig + mocap",
+      "usableInThisContainer": "No; owner download (Adobe account)"
+    },
+    {
+      "name": "Blockbench",
+      "free": true,
+      "license": "GPL-3.0",
+      "whatFor": "Pixel-textured low-poly models, glTF export; .bbmodel JSON",
+      "usableInThisContainer": "Not installed; source cloneable, web build under Playwright untested"
+    },
+    {
+      "name": "Krita",
+      "free": true,
+      "license": "GPL-3.0",
+      "whatFor": "Texture painting, concept art, pixel brushes",
+      "usableInThisContainer": "No; owner machine"
+    },
+    {
+      "name": "GIMP",
+      "free": true,
+      "license": "GPL-3.0",
+      "whatFor": "Image editing, indexed palettes",
+      "usableInThisContainer": "No; owner machine"
+    },
+    {
+      "name": "Aseprite (compiled from source)",
+      "free": true,
+      "license": "Source-available EULA (personal compile OK, output commercial OK, no binary redistribution)",
+      "whatFor": "Pixel art + animation, Lua/CLI batch export",
+      "usableInThisContainer": "No (needs Skia from GitHub releases); owner machine"
+    },
+    {
+      "name": "LibreSprite",
+      "free": true,
+      "license": "GPL-2.0",
+      "whatFor": "Aseprite fork with batch CLI",
+      "usableInThisContainer": "No; owner machine"
+    },
+    {
+      "name": "Pixelorama",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Pixel-art editor (Godot)",
+      "usableInThisContainer": "No; owner machine"
+    },
+    {
+      "name": "Material Maker",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Node-based procedural materials; --export CLI",
+      "usableInThisContainer": "No (needs Godot + GPU); owner machine"
+    },
+    {
+      "name": "ArmorPaint 1.0",
+      "free": true,
+      "license": "zlib source (binaries paid)",
+      "whatFor": "3D texture painting, smart materials, bakes",
+      "usableInThisContainer": "No; build from source on owner machine"
+    },
+    {
+      "name": "MagicaVoxel",
+      "free": true,
+      "license": "Free proprietary (commercial output allowed per secondary sources)",
+      "whatFor": "Voxel modelling, OBJ export",
+      "usableInThisContainer": "No; Windows/macOS (Goxel GPL alternative)"
+    },
+    {
+      "name": "blender-mcp (ahujasid)",
+      "free": true,
+      "license": "MIT",
+      "whatFor": "Drive a GUI Blender from Claude Desktop; Poly Haven/Sketchfab search",
+      "usableInThisContainer": "No (needs GUI Blender); owner machine"
+    },
+    {
+      "name": "Universal LPC Spritesheet Generator",
+      "free": true,
+      "license": "Art CC-BY-SA 3.0 / GPL 3",
+      "whatFor": "Pixel character sprite sheets",
+      "usableInThisContainer": "Repo reachable; not recommended (share-alike, credits)"
+    }
+  ],
+  "techniques": [
+    {
+      "name": "Git sparse asset fetch with provenance",
+      "why": "Only git/npm/PyPI reach the container",
+      "how": "git clone --depth 1 --filter=blob:none --no-checkout <repo>; git show HEAD:<path> > out.glb; write {repo, sha, path, license} to a provenance JSON and ASSETS.md",
+      "impact": "big",
+      "effort": "0.5 day for a tools/assets/fetch script"
+    },
+    {
+      "name": "Import-retexture-export with headless Blender",
+      "why": "CC0 packs are flat low-poly; HD-2D needs our pixel surfaces",
+      "how": "bpy: import_scene.gltf -> normalise scale -> replace materials with our palette/pixel textures (or remap KayKit gradient atlas) -> export_scene.gltf -> gltf-transform optimize",
+      "impact": "huge",
+      "effort": "1-2 days for a reusable script"
+    },
+    {
+      "name": "Use KayKit/Quaternius props as diorama clutter",
+      "why": "Reference scenes read rich because of dense, well-modelled props",
+      "how": "Pick shelves/barrels/crates/stairs/lanterns/trees; merge into arena batches to stay <100 draw calls",
+      "impact": "big",
+      "effort": "1 day per arena once the import script exists"
+    },
+    {
+      "name": "Rigify or CC0 rigs for trainers",
+      "why": "Hand-coded figures look stiff",
+      "how": "KayKit Adventurers rig+anims or Rigify-generated rigs, rendered through the existing sprite baker",
+      "impact": "medium",
+      "effort": "2-3 days"
+    },
+    {
+      "name": "HDRI-lit Cycles bakes",
+      "why": "Baked AO/irradiance gives depth cheaply",
+      "how": "Load a drei-assets HDRI as world, bake AO/diffuse to textures by script",
+      "impact": "medium",
+      "effort": "0.5 day"
+    },
+    {
+      "name": "GLB optimisation for web",
+      "why": "Keep download/VRAM small",
+      "how": "npx @gltf-transform/cli optimize in.glb out.glb --compress meshopt --texture-compress webp",
+      "impact": "small",
+      "effort": "hours"
+    },
+    {
+      "name": "Owner fetch list per milestone",
+      "why": "Some best sources are blocked here",
+      "how": "Write exact URLs + target paths; owner downloads and commits (Mixamo derived bakes, Poly Haven textures, itch packs)",
+      "impact": "medium",
+      "effort": "ongoing"
+    },
+    {
+      "name": "Licence guard test",
+      "why": "Public repo = redistribution",
+      "how": "Vitest checks every file under public/assets has a provenance entry with an allowed licence (CC0, CC-BY, OFL)",
+      "impact": "small",
+      "effort": "hours"
+    }
+  ],
+  "openQuestions": [
+    "Does Blockbench's web build run headless under Playwright in this container for scripted .bbmodel -> glTF export?",
+    "Exact 2026 Mixamo terms for committing derived/retargeted animations to a public repo.",
+    "Is Quaternius 'Ultimate Monsters' mirrored anywhere reachable?",
+    "Licence provenance of the LUT files in pmndrs/drei-assets.",
+    "Will re-surfaced CC0 props blend with procedural arenas without a visible style seam? Needs an A/B screenshot test."
+  ]
+}
