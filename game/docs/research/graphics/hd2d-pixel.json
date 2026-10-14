@@ -1,0 +1,478 @@
+{
+ "angle": "hd2d-pixel: HD-2D (Octopath / Triangle Strategy / Live A Live / DQ3 HD-2D) and pixel-art-in-3D techniques (t3ssel8r-style post stack, Dead Cells 3D-to-2D sprites, Blender pre-render pipelines), how to replicate them in Three.js r180 with free tools, plus a headless Blender experiment run in this container.",
+ "notesPath": "game/docs/research/graphics/hd2d-pixel.md",
+ "keyFindings": [
+  {
+   "claim": "HD-2D is a method on stock Unreal Engine, not a special engine.",
+   "detail": "DQ3 HD-2D producer Hayasaka: there is no 'HD-2D engine'; you place pixel characters on 3D backgrounds and apply effects. Octopath (UE4) relied heavily on Unreal with a small team.",
+   "sources": [
+    "https://www.siliconera.com/interview-preparing-a-hd-and-2d-dragon-quest-iii-remake/",
+    "https://en.wikipedia.org/wiki/HD-2D"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "The renderer is not the bottleneck. Orbkin's post and light stack is already comparable, so effort should go into authored content."
+  },
+  {
+   "claim": "HD-2D backgrounds are authored 3D models. DQ3 HD-2D dropped pixel textures on backgrounds entirely.",
+   "detail": "Octopath and Triangle Strategy use low-poly authored geometry with pixel-art textures. OT2 raised map resolution for an 'organic pixel-art appearance'. DQ3 HD-2D uses no pixel art in backgrounds; only characters and monsters are pixels.",
+   "sources": [
+    "https://www.siliconera.com/interview-preparing-a-hd-and-2d-dragon-quest-iii-remake/",
+    "https://blog.playstation.com/2024/11/08/dragon-quest-iii-hd-2d-remake-interview-how-the-classic-rpg-was-revamped-for-its-ps5-debut/",
+    "https://www.unrealengine.com/en-US/developer-interviews/octopath-traveler-ii-builds-a-bigger-bolder-world-in-its-stunning-hd-2d-style"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "Replace hand-coded procedural boxes with Blender-authored low-poly kit pieces (glTF). Keep the TS texture painters as a texture generator for authored UVs."
+  },
+  {
+   "claim": "In Octopath, VFX spawn point lights so sprites cast shadows onto the 3D world.",
+   "detail": "Acquire's lead artist Mika Iizuka: plain battle VFX did not look good enough, so a point light was added with each effect, letting characters cast shadows on the environment.",
+   "sources": [
+    "https://www.unrealengine.com/spotlights/octopath-traveler-s-hd-2d-art-style-and-story-make-for-a-jrpg-dream-come-true",
+    "https://en.wikipedia.org/wiki/HD-2D"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Attach a short-lived shadow-casting (high tier) or non-shadow point light to each move FX. Sprites already cast real-mesh shadows."
+  },
+  {
+   "claim": "Depth of field is called 'extremely important' to HD-2D by the DQ3 team.",
+   "detail": "The PlayStation Blog interview credits Horii's comment about background blur. Octopath PC exposes tilt-shift and bloom as separate toggles. Orbkin limits tilt-shift to about 1 px to protect texture crispness.",
+   "sources": [
+    "https://blog.playstation.com/2024/11/08/dragon-quest-iii-hd-2d-remake-interview-how-the-classic-rpg-was-revamped-for-its-ps5-debut/",
+    "https://steamcommunity.com/app/921570/discussions/0/3022387599801832913"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "Use depth-based blur on the far wall and window only (≤2 px at 640×360, then Bayer-dithered), keeping floor and sprites crisp, instead of a screen-Y tilt band."
+  },
+  {
+   "claim": "Dead Cells pipeline: crude 3D model → keyframed animation → rendered tiny with no AA → PNG plus normal map per frame → toon shading.",
+   "detail": "Thomas Vasseur, Motion Twin. Character is about 50 px tall in game, so detailed models are cost-inefficient. A homebrew renderer outputs no-AA frames and normal maps, and a cel shader lights them in game.",
+   "sources": [
+    "https://www.gamedeveloper.com/production/art-design-deep-dive-using-a-3d-pipeline-for-2d-animation-in-i-dead-cells-i-",
+    "https://www.gameanim.com/2018/01/31/dead-cells-3d-pipeline-2d-animation/",
+    "https://sudonull.com/post/14066-Dead-Cells-Using-3D-Pipeline-for-2D-Animation"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "For trainers and hero species, pre-render albedo and normal pose sheets in Blender at the in-game texel height, then hand-clean them in Pixelorama."
+  },
+  {
+   "claim": "t3ssel8r-style 3D pixel art uses five parts: low internal resolution, texel-snapped camera with sub-pixel compensation, object snapping, banded lighting, and a depth/normal edge pass.",
+   "detail": "Read in the code of bababuyyy (Unity, MIT, 640×360 default), denovodavid/David Holland's Godot code via astrellon (MIT), leopeltola (MIT) and three.js RenderPixelatedPass. The silhouette darkens the nearer pixel; convex creases get a highlight on the pixel that faces away more; concave creases get nothing.",
+   "sources": [
+    "https://github.com/bababuyyy/unity-isometric-pixel-pipeline",
+    "https://github.com/astrellon/godot-3d-pixel-art",
+    "https://github.com/leopeltola/Godot-3d-pixelart-demo",
+    "https://www.davidhol.land/articles/3d-pixel-art-rendering/"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Orbkin has everything except a world-space edge pass, which is the missing piece that makes 3D rock tiers read as drawn pixel art."
+  },
+  {
+   "claim": "three.js r180 ships RenderPixelatedPass with normalEdgeStrength 0.3 and depthEdgeStrength 0.4 defaults, but it re-renders the scene with a MeshNormalMaterial override.",
+   "detail": "Depth edges come from a 4-neighbour depth difference, floor(smoothstep(.01, .02, diff)*2)/2. Normal edges come from (1 - n·n') gated to the shallower pixel and a bias direction. The output multiplies the beauty colour by (1 - 0.4·dei) or (1 + 0.3·nei). The example also pixel-aligns the frustum and objects.",
+   "sources": [
+    "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/jsm/postprocessing/RenderPixelatedPass.js",
+    "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/webgl_postprocessing_pixel.html"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Do not drop it in as-is: the override pass breaks custom sprite materials and doubles scene cost (GTAO was rejected for the same reason). Port its indicator logic onto depth-reconstructed normals or an MRT normal target."
+  },
+  {
+   "claim": "A world edge pass can run without a second scene render by reconstructing view position and normals from the depth buffer.",
+   "detail": "Use 5 depth taps per internal pixel at 640×360. The silhouette threshold scales with linear depth because the camera is perspective. A convex ridge shows as positive second difference of depth.",
+   "sources": [
+    "https://raw.githubusercontent.com/astrellon/godot-3d-pixel-art/main/materials/outline.gdshader"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "P0 change: add an `edges` stage to GradePass (or a new pass) before sprite compositing, behind ?post=edges for A/B, and measure on SwiftShader."
+  },
+  {
+   "claim": "Smooth sub-pixel camera motion comes from snapping the camera and re-adding the snap error as a UV offset at upscale.",
+   "detail": "denovodavid: snap the position in the camera's rotation frame to the texel size, set h_offset/v_offset, and record texel_error for the output shift. bababuyyy: _PixelPanOffset plus a sharp-bilinear upscale using fwidth/smoothstep at texel borders.",
+   "sources": [
+    "https://raw.githubusercontent.com/astrellon/godot-3d-pixel-art/main/camera/main_camera.gd",
+    "https://github.com/bababuyyy/unity-isometric-pixel-pipeline"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Optional P3: a final device-resolution blit with the remainder offset smooths intros and shakes and fixes non-integer phone scales."
+  },
+  {
+   "claim": "Camera grid snapping is exact only for orthographic projection.",
+   "detail": "Texel Splatting (Ebert, arXiv 2603.14587, 2026) and ProPixelizer's author: under perspective the drift rate depends on depth.",
+   "sources": [
+    "https://arxiv.org/abs/2603.14587",
+    "https://elliotb256.itch.io/propixelizer"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "Orbkin's perspective battle camera can only be exact at the focus depth, which it already does. Keep camera moves slow and mostly static during battle."
+  },
+  {
+   "claim": "Headless Blender 5.2.2 (pip bpy) works here. Cycles CPU renders sprite passes in about 10 ms per frame at 128 px.",
+   "detail": "Albedo and camera-space-normal emission overrides at 1 spp are deterministic, crisp (0 partial-alpha pixels) and noise-free. 8 directions at 128 px took 0.18 s of render (0.9 s wall including import bpy).",
+   "sources": [
+    "experiment: /tmp/hd2d-exp/render_sprite.py (see notes section 6)"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "A tools/blender pipeline can batch-render every species and pose in minutes, in CI or this container, with no GPU."
+  },
+  {
+   "claim": "Multi-sample Cycles does not give binary alpha even with filter_width 0.01 BOX, but 1 spp does.",
+   "detail": "At 16 spp, 165 partial-alpha edge pixels (multiples of 1/16) remained even with scene.cycles.use_pixel_jitter=False. render.filter_size is EEVEE's setting; Cycles uses scene.cycles.filter_width.",
+   "sources": [
+    "experiment: /tmp/hd2d-exp (notes section 6.3)"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Render at 1 spp with emission-only passes and do lighting in post or in game, or binarise alpha (threshold 0.5) after rendering."
+  },
+  {
+   "claim": "EEVEE works headless on CPU after installing libEGL (llvmpipe), and the Shader to RGB toon ramp works.",
+   "detail": "Needs apt-get install libegl1 libegl-mesa0 libgl1-mesa-dri and EGL_PLATFORM=surfaceless. The first frame takes 11–19 s (shader compile), later frames about 1.8–2.7 s at 64 px. filter_size 0.01 with 1 TAA sample gives 0 partial alpha.",
+   "sources": [
+    "experiment: /tmp/hd2d-exp/render_sprite.py TOON=1, render_glb.py"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "EEVEE toon previews are possible but about 100× slower than Cycles passes on CPU. Prefer Cycles passes and post toon."
+  },
+  {
+   "claim": "Freestyle outlines at sprite resolution (64 px) are anti-aliased and cluttered. A 4-neighbour alpha outline in post reads much better.",
+   "detail": "With Freestyle on, a CC0 RobotExpressive walk sheet (8 dirs × 4 frames, 64 px) had mushy inner lines and took 89.8 s. Without Freestyle plus a post outline (25–30% of the neighbour colour) it was clean and took 58.8 s.",
+   "sources": [
+    "experiment: /tmp/hd2d-exp/render_glb.py"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Keep Orbkin's own 1-texel outline logic for both live bakes and pre-renders. Do not use Freestyle under ~96 px."
+  },
+  {
+   "claim": "Median-cut palette reduction drops small but distinct colours.",
+   "detail": "At 16 colours the creature's small cream tail merged into orange. pixel3d-renderer uses OKLab minimax merging so small objects are not absorbed, and Orbkin's extractPalette already keeps rare-but-distinct colours.",
+   "sources": [
+    "experiment: /tmp/hd2d-exp/toon_post.py",
+    "https://github.com/CelestialLemon/pixel3d-renderer"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Use Orbkin's palette extractor, or an OKLab minimax variant, in the Blender post step. Never use plain median cut for sprites."
+  },
+  {
+   "claim": "Smooth normal-map lighting on pixel sprites produces too many tones and stops looking like pixel art.",
+   "detail": "Defold community and arXiv 2212.09692 note that naive normal mapping breaks pixel-art conventions ('Hi-bit'). The fix is quantising lit output into bands and snapping to a palette.",
+   "sources": [
+    "https://forum.defold.com/t/normal-map-lighting-for-2d-pixel-art-sprites/70967",
+    "https://arxiv.org/pdf/2212.09692"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "Pre-rendered normal-mapped billboards must use the same banded ramp and palette snap as the live bake (onBeforeCompile on MeshLambertMaterial, which has normalMap in r180)."
+  },
+  {
+   "claim": "Children of Morta lights pixel sprites with high-resolution lights by stretching the pixel art about 4×.",
+   "detail": "Dead Mage: 'the puppets are pixelated but are lit with real lights'. Lighting resolution is decoupled from art resolution.",
+   "sources": [
+    "https://techraptor.net/gaming/previews/how-dead-mage-created-art-for-children-of-morta"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "An alternative look: Orbkin chose the opposite (light inside the low-res frame). Keep that, since it matches the crisp reference, but it is a valid A/B."
+  },
+  {
+   "claim": "Sea of Stars' lighting uses a custom render pipeline; no technical breakdown is public.",
+   "detail": "The press kit promises 'full-on dynamic lighting' through a custom pipeline. Whether sprites use normal maps is unconfirmed.",
+   "sources": [
+    "https://sabotagestudio.com/presskits/sea-of-stars/"
+   ],
+   "confidence": "low",
+   "implicationForOrbkin": "Do not base decisions on Sea of Stars specifics. Use the documented t3ssel8r and Dead Cells techniques."
+  },
+  {
+   "claim": "Free tooling covers the whole pipeline, with licence caveats.",
+   "detail": "Blender (GPL), Pixelorama (MIT), LibreSprite (GPL-2, Aseprite 1.1.8 fork), Aseprite (EULA: self-compile for personal use, no redistribution), Laigter (GPL-3, outputs are yours), and the SpriteSheetMaker and BlenderSpriteGenerator add-ons (MIT). Licences were checked via raw GitHub.",
+   "sources": [
+    "https://raw.githubusercontent.com/Orama-Interactive/Pixelorama/master/LICENSE",
+    "https://raw.githubusercontent.com/aseprite/aseprite/main/EULA.txt",
+    "https://raw.githubusercontent.com/azagaya/laigter/master/LICENSE",
+    "https://github.com/ManasMakde/SpriteSheetMaker"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Standardise on Blender, a headless bpy script and Pixelorama. Optionally build Aseprite locally for personal use."
+  },
+  {
+   "claim": "Most CC0 asset sites are blocked from this container, but GitHub-hosted CC0 assets are reachable.",
+   "detail": "kenney.nl, polyhaven, ambientcg, quaternius, opengameart, itch and lospec all return proxy-denied. raw.githubusercontent.com works: Kenney starter kits (CC0 assets), the three.js examples/models (RobotExpressive.glb, CC0, downloaded and baked successfully), npm and PyPI.",
+   "sources": [
+    "https://raw.githubusercontent.com/KenneyNL/Starter-Kit-3D-Platformer/main/README.md",
+    "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/RobotExpressive/README.md"
+   ],
+   "confidence": "high",
+   "implicationForOrbkin": "Have the owner download CC0 kits locally (free) and commit them under an assets/ folder with licences, or pull them from GitHub mirrors in-container."
+  },
+  {
+   "claim": "Stepped (sprite-like) animation playback makes 3D models read as sprites.",
+   "detail": "Robert-K's godot-3d-pixel-art lists 'stepped 3D animation playback to emulate spritesheet animation'. Dead Cells keyframes few poses with snappy timing.",
+   "sources": [
+    "https://github.com/Robert-K/godot-3d-pixel-art",
+    "https://www.gameanim.com/2018/01/31/dead-cells-3d-pipeline-2d-animation/"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "Sample idle and rig motion at 8–12 fps in the live bake (Orbkin already re-bakes at a 'sprite frame rate'; tune it), with big moves kept snappy."
+  },
+  {
+   "claim": "The closest public three.js analogue is pixel3d-renderer: a G-buffer at art resolution plus one stylisation shader.",
+   "detail": "Renders at 320×180, with albedo + flags and normal + linear depth MRT. Adds silhouette ink, creases, hue-shifted OKLab ramps, gradient-aware dithering, orphan-pixel clean-up, an OKLab minimax palette (64–80 colours) and camera snapping.",
+   "sources": [
+    "https://github.com/CelestialLemon/pixel3d-renderer"
+   ],
+   "confidence": "medium",
+   "implicationForOrbkin": "A reference design if Orbkin later moves the world to an MRT G-buffer. Read its code before implementing edges and palette (licence not stated)."
+  },
+  {
+   "claim": "Octopath and HD-2D sprite pixel dimensions are not published. Orbkin's sprite texel heights are probably in range.",
+   "detail": "No reliable source gives Octopath sprite sizes (Spriters Resource is blocked here). Dead Cells is about 50 px. Orbkin uses people 44 and kin 28–40 texels at 2 px each, and its own docs measure the reference at people 44–50 and kin about 30.",
+   "sources": [
+    "https://gamefaqs.gamespot.com/boards/204212-octopath-traveler/76868269"
+   ],
+   "confidence": "low",
+   "implicationForOrbkin": "Measure the target image before changing sizes. Larger final forms (≥48 texels) may add battle presence."
+  }
+ ],
+ "tools": [
+  {
+   "name": "Blender (bpy 5.2.2 via pip)",
+   "free": true,
+   "license": "GPL-3.0",
+   "whatFor": "Model and rig arena kits and creatures, export glTF, and batch-render sprite albedo/normal passes headless",
+   "usableInThisContainer": "Yes: python3.13 -m venv + pip install bpy. Cycles CPU works out of the box; EEVEE and Workbench need apt-get install libegl1 libegl-mesa0 libgl1-mesa-dri and EGL_PLATFORM=surfaceless"
+  },
+  {
+   "name": "Pillow + numpy",
+   "free": true,
+   "license": "MIT-CMU (HPND) / BSD-3",
+   "whatFor": "Post toon banding, outlines, palette quantisation and sprite-sheet packing of Blender renders",
+   "usableInThisContainer": "Yes (pip)"
+  },
+  {
+   "name": "three.js RenderPixelatedPass + webgl_postprocessing_pixel example",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Reference depth/normal edge indicators and pixel-aligned camera/object snapping",
+   "usableInThisContainer": "Yes (in node_modules three@0.180; source via raw GitHub)"
+  },
+  {
+   "name": "three.js LUTPass / DepthOfFieldNode (TSL)",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Palette-lock LUT after the grade; DOF reference for the WebGPU path",
+   "usableInThisContainer": "Yes (present in the three@0.180.0 package)"
+  },
+  {
+   "name": "Pixelorama",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Hand clean-up of baked sprite frames, palettes, pixel textures, animation preview",
+   "usableInThisContainer": "No GUI here; owner runs it locally (desktop or web build)"
+  },
+  {
+   "name": "LibreSprite",
+   "free": true,
+   "license": "GPL-2.0",
+   "whatFor": "Aseprite-like sprite editor (fork of Aseprite 1.1.8)",
+   "usableInThisContainer": "No GUI; local use"
+  },
+  {
+   "name": "Aseprite (self-compiled)",
+   "free": true,
+   "license": "Proprietary EULA, source-available; compiling for personal use allowed, no redistribution",
+   "whatFor": "Industry-standard pixel editor and animator",
+   "usableInThisContainer": "Not practical (GUI, Skia build); local only. Paid binaries are not free"
+  },
+  {
+   "name": "Laigter",
+   "free": true,
+   "license": "GPL-3.0 (outputs owned by user)",
+   "whatFor": "Normal/specular/parallax/occlusion maps for hand-drawn sprites; CLI batch mode",
+   "usableInThisContainer": "Unverified (itch blocked; could build from GitHub source)"
+  },
+  {
+   "name": "SpriteSheetMaker (Blender add-on)",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Animation to sprite sheet with optional pixelation inside Blender's GUI",
+   "usableInThisContainer": "Code reachable via raw GitHub; the headless script in the notes is more practical here"
+  },
+  {
+   "name": "BlenderSpriteGenerator (Blender add-on)",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Multi-angle (e.g. 8-direction) sprite rendering",
+   "usableInThisContainer": "Code reachable via raw GitHub; tested by its author on Blender 3.4–4.0 only"
+  },
+  {
+   "name": "bababuyyy/unity-isometric-pixel-pipeline",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Reference shaders: adaptive silhouette/crease outline, sharp-bilinear upscale with pan offset, banded toon with Bayer dither",
+   "usableInThisContainer": "Yes (read via raw GitHub; port to GLSL)"
+  },
+  {
+   "name": "denovodavid / astrellon godot-3d-pixel-art",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Reference texel-snapping camera with error compensation and convex-edge outline shader",
+   "usableInThisContainer": "Yes (read via raw GitHub)"
+  },
+  {
+   "name": "CelestialLemon/pixel3d-renderer",
+   "free": true,
+   "license": "Not stated in README (check before reuse)",
+   "whatFor": "three.js reference for an art-resolution G-buffer stylisation pass and OKLab palette",
+   "usableInThisContainer": "Yes (GitHub reachable)"
+  },
+  {
+   "name": "Kenney 3D kits (GitHub starter kits)",
+   "free": true,
+   "license": "CC0 assets / MIT code",
+   "whatFor": "Props and base meshes to re-texture into the arena palette",
+   "usableInThisContainer": "Partly: kenney.nl blocked; GitHub starter-kit repos reachable via raw"
+  },
+  {
+   "name": "Quaternius models (e.g. RobotExpressive.glb in three.js repo)",
+   "free": true,
+   "license": "CC0",
+   "whatFor": "Rigged, animated base characters for testing the bake pipeline",
+   "usableInThisContainer": "Yes for models mirrored in GitHub repos; quaternius.com blocked"
+  },
+  {
+   "name": "Poly Haven / ambientCG",
+   "free": true,
+   "license": "CC0",
+   "whatFor": "Textures and HDRIs (mostly photoreal: sources for hand pixel painting, not direct use)",
+   "usableInThisContainer": "No (blocked)"
+  },
+  {
+   "name": "Lospec palette list",
+   "free": true,
+   "license": "Palettes free to use (per author)",
+   "whatFor": "Curated limited palettes and ramps for arena and sprite palette locks",
+   "usableInThisContainer": "No (blocked); palettes can be typed in by hand"
+  },
+  {
+   "name": "Mesa llvmpipe EGL (libegl1, libegl-mesa0, libgl1-mesa-dri)",
+   "free": true,
+   "license": "MIT",
+   "whatFor": "Software OpenGL so Blender EEVEE and Workbench render headless without a GPU",
+   "usableInThisContainer": "Yes (apt-get worked)"
+  }
+ ],
+ "techniques": [
+  {
+   "name": "World-space edge pass (silhouette darken + convex highlight)",
+   "why": "It makes 3D tiers, ledges and stairs read as drawn pixel art (t3ssel8r). Orbkin only outlines sprites today.",
+   "how": "At 640×360, reconstruct view position from the composer's depth texture, test 4 neighbours, darken the nearer pixel on a depth jump (threshold ∝ linear depth), and brighten the pixel on a convex ridge (positive second difference) by about 1.15–1.25×. Run before sprite compositing; A/B with ?post=edges.",
+   "impact": "big",
+   "effort": "1–3 days"
+  },
+  {
+   "name": "Author arena kit pieces in Blender (glTF)",
+   "why": "Hand-coded boxes are the root of the voxel/Minecraft read. HD-2D games use authored low-poly geometry.",
+   "how": "20–40 modular pieces per biome, vertices on a TEXEL grid, one texel density, UVs to an atlas painted by hand or by the existing TS painters; load glTF and merge per material into the existing VoxelBatch-style draw budget.",
+   "impact": "huge",
+   "effort": "1–2 weeks for the cave set, then about 3–5 days per biome"
+  },
+  {
+   "name": "Authored creature models with the existing live toon bake",
+   "why": "Designed silhouettes beat primitive-built bodies, and the live bake keeps all procedural animation hooks.",
+   "how": "Blender low-poly (300–1500 tris) with vertex colours or a small palette texture and a simple armature, exported to glTF and fed to SpriteBaker.",
+   "impact": "huge",
+   "effort": "1–3 days per species including rig"
+  },
+  {
+   "name": "Pre-rendered albedo + normal sprite sheets (Dead Cells pipeline)",
+   "why": "Allows per-pixel hand clean-up (faces, eyes, hands) while keeping dynamic light.",
+   "how": "Headless bpy: ortho camera, 1 spp Cycles emission overrides for albedo and camera-space normal, filter_width 0.01 BOX, film_transparent, Standard view transform; post-outline and palette-protect in numpy; Pixelorama clean-up; billboard with MeshLambertMaterial(map, normalMap, alphaTest) plus banded quantisation via onBeforeCompile.",
+   "impact": "big",
+   "effort": "about 1 day for the pipeline, then mostly artist time per sheet"
+  },
+  {
+   "name": "Texel-snapped camera with sub-pixel remainder re-applied at upscale",
+   "why": "Removes texel crawl while keeping slow camera moves smooth (exact only at the focus depth for a perspective camera).",
+   "how": "Round the view offset to whole internal px (already done) and pass the dropped fraction to a final device-resolution sharp-bilinear blit as a UV offset (bababuyyy SharpUpscale).",
+   "impact": "small",
+   "effort": "1 day"
+  },
+  {
+   "name": "Sharp-bilinear final upscale",
+   "why": "Uniform texel widths at non-integer scales (phones) without blur.",
+   "how": "fw = fwidth(uv)/px; grid = uv/px - 0.5*fw; blend = smoothstep(1-fw, 1, fract(grid)); uv' = (floor(grid)+0.5+blend)*px with linear sampling.",
+   "impact": "small",
+   "effort": "0.5 day"
+  },
+  {
+   "name": "Depth-based DOF on the far set only",
+   "why": "DOF is central to the HD-2D diorama read, and screen-Y tilt-shift blurs the floor texture.",
+   "how": "Blur radius from linear depth beyond the battle focus plane, ≤2 px at 640×360, then Bayer dither; floor, kin and trainers stay sharp.",
+   "impact": "medium",
+   "effort": "1–2 days"
+  },
+  {
+   "name": "Palette lock via LUTPass",
+   "why": "Grading and bloom drift colours off the authored ramps, while pixel art keeps a fixed palette.",
+   "how": "Build a 32³ LUT mapping to the nearest OKLab entry of the arena palette and apply it after the grade, before the dither, at intensity about 0.6; exclude emissive and FX through intensity.",
+   "impact": "medium",
+   "effort": "1 day"
+  },
+  {
+   "name": "Banded key light on world materials",
+   "why": "Quantised light steps are a core pixel-art cue (t3ssel8r, bababuyyy _Cuts=3).",
+   "how": "onBeforeCompile on the world Lambert material: band the key N·L (2–3 steps) with a 4×4 Bayer offset before the step; keep the hemisphere fill smooth; keep the shadow map.",
+   "impact": "medium",
+   "effort": "1 day"
+  },
+  {
+   "name": "Stepped animation playback",
+   "why": "8–12 fps poses read as sprite animation; 60 fps vertex motion reads as a 3D model.",
+   "how": "Quantise rig time for idle and ambient motion; keep hit and lunge tweens snappy and texel-quantised.",
+   "impact": "medium",
+   "effort": "0.5 day"
+  },
+  {
+   "name": "VFX point lights casting sprite shadows (Octopath)",
+   "why": "Grounds FX and sprites in the 3D world; this is a documented Octopath technique.",
+   "how": "Spawn a short-lived PointLight at each move impact (shadow-casting on the high tier only, else none), tinted by element, tweened intensity.",
+   "impact": "medium",
+   "effort": "1 day"
+  },
+  {
+   "name": "Protected palette reduction for baked sprites",
+   "why": "Median cut drops small accent colours (verified).",
+   "how": "Reuse Orbkin's extractPalette (rare-but-distinct kept) or OKLab minimax merging; never use plain median cut.",
+   "impact": "small",
+   "effort": "0.5 day"
+  },
+  {
+   "name": "Post outline instead of Freestyle for sprites under ~96 px",
+   "why": "Freestyle is anti-aliased and clutters small sprites (verified).",
+   "how": "4-neighbour alpha edge set to about 25–30% of the neighbour colour, plus inner contours from normal jumps (1 - n·n' > 0.35) darkened to about 0.55×.",
+   "impact": "medium",
+   "effort": "already in Orbkin's live bake; about 0.5 day for the offline path"
+  },
+  {
+   "name": "Headless Blender asset pipeline in the repo",
+   "why": "Reproducible content builds with no GUI or GPU, in CI or this container.",
+   "how": "tools/blender/*.py run via pip-installed bpy: glTF import/export, texel-density and palette checks, contact sheets, sprite bakes (scripts in the notes, section 6).",
+   "impact": "big",
+   "effort": "2–3 days"
+  },
+  {
+   "name": "Pre-rendered painted backdrops",
+   "why": "Distant vistas do not need live geometry, and a curated pixel painting looks better.",
+   "how": "Render a wide Cycles view of a Blender backdrop scene, palette-quantise it, hand-touch it, and place it on a far plane (Orbkin already has backdrop planes).",
+   "impact": "small",
+   "effort": "1 day per biome"
+  }
+ ],
+ "openQuestions": [
+  "What are the real pixel dimensions of Octopath / Triangle Strategy character sprites, and their texel-to-screen ratio? (Spriters Resource is blocked here.)",
+  "Does the target fan-art's rock use pixel textures on 3D geometry or a painted backdrop? Measure texel density on the reference image against its sprite texels.",
+  "What does the depth-reconstructed edge pass cost on a real phone GPU (SwiftShader timings are not representative)?",
+  "Why do multi-sample Cycles renders keep fractional alpha with filter_width 0.01 and use_pixel_jitter False in Blender 5.2? (The 1-spp emission passes sidestep it.)",
+  "Does Blender's Line Art (Grease Pencil) give crisp 1-px lines at sprite scale? (Not tested.)",
+  "Does Sea of Stars use sprite normal maps or another lighting method? (No primary source found.)",
+  "How much per-frame hand clean-up can the owner afford, which decides whether P2 stops at authored models with a live bake?",
+  "What licence does CelestialLemon/pixel3d-renderer use? Check before reusing code."
+ ]
+}
