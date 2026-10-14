@@ -3,6 +3,16 @@
   "notesPath": "game/docs/research/graphics/creature-design.md",
   "keyFindings": [
     {
+      "claim": "Kenney's CC0 animated animals show that a professional low-poly look comes from a committed shape language plus gradient-palette texturing, not from triangle count.",
+      "detail": "Cube Pets (24 animals, CC0 1.0 per its License.txt, released 2026) was downloaded and inspected. The fox is 568 triangles in 6 rigid parts (body, tail, 4 legs) with node-transform animation and no skinning, and 8 clips (static/idle/walk/run/eat/dance/gesture±). All pets share one 512² colormap.png of about 30 vertical gradient swatches. In a Cycles render it reads clean: a bevelled cube body and a round tail with a cream tip.",
+      "sources": [
+        "https://kenney.nl/assets/cube-pets",
+        "https://kenney.nl/support"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Pick one shape family per line and build it cleanly. Gradient-swatch palette UVs are a verified alternative to vertex colours if the sprite pass ever needs texture gradients."
+    },
+    {
       "claim": "Orbkin's creatures look like programmer art mainly because of how they are built, not how many triangles they have.",
       "detail": "The lineups show intersecting faceted primitives, uniform box or cylinder legs, straight cones for spikes and ears, hard seams where parts meet, and stage 2/3 adding more small parts instead of changing the main mass. The sprite pipeline (palette snap, hue-shifted ramps, outline, rim) is ahead of the meshes feeding it.",
       "sources": [
@@ -24,9 +34,11 @@
     },
     {
       "claim": "Skin-modifier branch nodes with high valence produce non-manifold holes, and the voxel remesh then silently drops whole regions.",
-      "detail": "A hip vertex with 4 edges gave 32 non-manifold edges and the torso vanished after remesh. Keeping Skin chains at valence ≤ 2 (one root per chain) and building the torso from ellipsoids fixed it: 0 non-manifold edges, 1 island.",
+      "detail": "A hip vertex with 4 edges and a chest with 5, both with large overlapping radii, gave 32 non-manifold edges, and the torso vanished after remesh. The manual warns that branch points 'tend to produce more complicated topology, some of which may overlap' (remedies: Branch Smoothing, Mark Loose). A minimal 4-branch re-test with small radii was manifold, so the risk depends on radii and overlap. Keeping Skin chains at valence ≤ 2 and building the torso from ellipsoids was robust: 0 non-manifold edges, 1 island.",
       "sources": [
-        "experiment: /tmp/creature-exp/dbg_skin.py"
+        "experiment: /tmp/creature-exp/dbg_skin.py, followup_tests.py",
+        "https://docs.blender.org/manual/en/latest/modeling/modifiers/generate/skin.html",
+        "https://docs.blender.org/api/current/bpy.types.SkinModifier.html"
       ],
       "confidence": "high",
       "implicationForOrbkin": "The generator spec should use masses (ellipsoids or metaballs) for bodies and Skin only for simple chains."
@@ -35,7 +47,11 @@
       "claim": "ARMATURE_AUTO (bone-heat weights), Rigify generation, skin_armature_create, Cycles AO baking to vertex colours, Geometry Nodes and curve bevel/taper all work headless. Sculpt brush strokes do not.",
       "detail": "Feature probes: ARMATURE_AUTO gave 0 unweighted verts on a remeshed body; Rigify human metarig → 222-bone rig in 0.2 s; sculpt.brush_stroke failed with poll() 'context is incorrect' because there is no window or region in background mode.",
       "sources": [
-        "/tmp/creature-exp/feature_tests.py (abridged in notes §6.4)"
+        "/tmp/creature-exp/feature_tests.py (abridged in notes §6.4)",
+        "https://docs.blender.org/api/current/bpy.ops.object.html",
+        "https://docs.blender.org/manual/en/latest/animation/armatures/skinning/parenting.html",
+        "https://docs.blender.org/api/current/bpy.ops.sculpt.html",
+        "https://docs.blender.org/api/current/info_gotchas_operators.html"
       ],
       "confidence": "high",
       "implicationForOrbkin": "Rigging and AO baking can run in the build. Use modifiers, bmesh or Geometry Nodes for form changes instead of sculpt ops."
@@ -45,6 +61,11 @@
       "detail": "Node test: SkinnedMesh with 17 bones, 3,285 tris; clips Attack 0.92 s, Idle 2.04 s, Blink 3 s; the attack lunge moves the mesh forward and Blink influence reaches 0.8. Raw size 200 KB; meshopt-optimised 59 KB (needs MeshoptDecoder).",
       "sources": [
         "/tmp/creature-exp/web/load.mjs",
+        "https://threejs.org/docs/pages/GLTFLoader.html",
+        "https://threejs.org/docs/pages/AnimationMixer.html",
+        "https://threejs.org/docs/pages/SkinnedMesh.html",
+        "https://threejs.org/docs/pages/Mesh.html",
+        "https://threejs.org/docs/pages/module-SkeletonUtils.html",
         "https://github.com/donmccurdy/glTF-Transform"
       ],
       "confidence": "high",
@@ -55,16 +76,19 @@
       "detail": "Blender attributes named with a leading underscore (_RIGA, _RIGKIND) are exported with export_attributes=True; GLTFLoader exposes them as geometry.attributes._riga and _rigkind.",
       "sources": [
         "/tmp/creature-exp/attr_test.py",
-        "bpy 5.2 io_scene_gltf2/__init__.py export_attributes"
+        "https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html",
+        "three r180 GLTFLoader.js (attributeName.toLowerCase())"
       ],
       "confidence": "high",
       "implicationForOrbkin": "Path A (geometry swap) is the lowest-risk integration: map _riga/_rigb to rigA/rigB and keep CreatureView, toonMaterial and SpriteBaker."
     },
     {
-      "claim": "Decimate keeps point colour attributes and preserves silhouette tips best at this budget. QuadriFlow drops colours and rounds off thin tips.",
-      "detail": "Decimate kept the vertex colours. QuadriFlow output had no colours until a Data Transfer modifier (POLYINTERP_NEAREST) copied them back from a saved copy, and ear points became rounded.",
+      "claim": "Decimate keeps point colour attributes and preserves silhouette tips best at this budget. QuadriFlow drops colours unless preserve_attributes=True, and it rounds off thin tips.",
+      "detail": "Decimate kept the vertex colours, and its docs list vertex_group + vertex_group_factor (collapse only) for protecting regions such as the face. The QuadriFlow op docs say 'All data layers will be lost' but offer preserve_attributes ('Reproject attributes onto the new mesh'); a re-test with it kept the colour attribute. Without it, a Data Transfer modifier fixed the colours. Ear points still became rounded.",
       "sources": [
-        "experiment renders in /tmp/creature-exp/out"
+        "experiment renders in /tmp/creature-exp/out",
+        "https://docs.blender.org/api/current/bpy.ops.object.html",
+        "https://docs.blender.org/api/current/bpy.types.DecimateModifier.html"
       ],
       "confidence": "high",
       "implicationForOrbkin": "Use symmetric Decimate for kin. Keep QuadriFlow only for cases that need clean quads (e.g. hand sculpting later)."
@@ -193,13 +217,25 @@
     },
     {
       "claim": "Blender 5.x API changes and performance traps that matter for scripted pipelines.",
-      "detail": "Action.fcurves was removed in 5.0 (slotted actions and channelbags); pose_bone.keyframe_insert still works. Per-element colour assignment took 17 s for 18k verts versus <0.05 s with foreach_set. The bpy wheel lacks the Draco and meshopt bridges, so compress with gltf-transform. Freestyle needs use_freestyle + a lineset with a linestyle.",
+      "detail": "Action.fcurves was removed in 5.0 (slotted actions and channelbags); pose_bone.keyframe_insert still works. Per-element colour assignment took 17 s for 18k verts versus <0.05 s with foreach_set. The bpy wheel lacks the Draco and meshopt bridge libraries, although the exporter supports both (the manual lists Draco and Meshopt compression with an EXT/KHR_meshopt choice), so headless builds compress with gltf-transform. Freestyle needs use_freestyle + a lineset with a linestyle.",
       "sources": [
         "https://docs.blender.org/api/5.0/change_log.html",
+        "https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html",
         "experiment logs"
       ],
       "confidence": "high",
       "implicationForOrbkin": "Write the generator against these constraints from day one."
+    },
+    {
+      "claim": "All Blender and three.js API claims in the notes are now confirmed against official documentation.",
+      "detail": "docs.blender.org pages confirm Skin, Remesh, Decimate, the QuadriFlow, voxel_remesh, skin_armature_create and parent_set operators, sculpt.brush_stroke, operator poll/context failures, the glTF manual (animation modes, merge, shape keys, underscore attributes, Draco/Meshopt) and the 5.0 removal of Action.fcurves. threejs.org pages confirm GLTFLoader (meshopt extensions, setMeshoptDecoder), AnimationMixer, SkinnedMesh, Mesh morph targets and SkeletonUtils.clone.",
+      "sources": [
+        "https://docs.blender.org/api/current/bpy.ops.object.html",
+        "https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html",
+        "https://threejs.org/docs/pages/GLTFLoader.html"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "The generator plan rests on documented, stable APIs, not undocumented behaviour."
     },
     {
       "claim": "Mixamo is free but needs an Adobe ID and only rigs and animates bipedal humanoids.",
@@ -228,7 +264,7 @@
       "free": true,
       "license": "GPL-2.0+ (output unrestricted)",
       "whatFor": "Headless creature generation: Skin, Remesh, Decimate, QuadriFlow, Data Transfer, Geometry Nodes, Rigify, Cycles bake/render, glTF export",
-      "usableInThisContainer": "Yes, verified: python3.13 venv + pip install bpy (~1 GB); Cycles CPU works; EEVEE/Workbench need EGL; no Draco/meshopt in the exporter"
+      "usableInThisContainer": "Yes, verified: python3.13 venv + pip install bpy (~1 GB); Cycles CPU works; EEVEE/Workbench need EGL; Draco/meshopt bridge libraries missing in the wheel (the exporter supports them per the manual); docs.blender.org reachable"
     },
     {
       "name": "glTF-Transform CLI",
@@ -242,21 +278,21 @@
       "free": true,
       "license": "MIT",
       "whatFor": "Load skinned and morph-target creatures and play clips",
-      "usableInThisContainer": "Yes, verified GLTFLoader.parse under Node (no WebGL rendering here)"
+      "usableInThisContainer": "Yes: GLTFLoader.parse verified under Node (no WebGL rendering here); docs reachable at threejs.org"
     },
     {
       "name": "Infinigen",
       "free": true,
       "license": "BSD-3-Clause",
       "whatFor": "Reference implementation of part-based procedural creatures (genome, NURBS parts, remesh join, auto-rig)",
-      "usableInThisContainer": "Code readable via pip wheel download (py3.11 only); not run"
+      "usableInThisContainer": "Code read from the pip wheel; git clone of github.com is now allowed; not run (py3.11, heavy deps)"
     },
     {
       "name": "blender-mcp (ahujasid)",
       "free": true,
       "license": "MIT (premium AI-gen tier paid)",
       "whatFor": "Claude drives a running GUI Blender interactively (scene info, screenshots, execute code)",
-      "usableInThisContainer": "No: needs a desktop Blender with the add-on socket server"
+      "usableInThisContainer": "No: needs a desktop Blender with the add-on socket server (repo cloneable for reading)"
     },
     {
       "name": "Rigify (built into Blender)",
@@ -270,21 +306,28 @@
       "free": true,
       "license": "GPL / BSD (QuadriFlow lib)",
       "whatFor": "Quad remeshing for clean topology",
-      "usableInThisContainer": "Yes, verified; drops colour attributes and rounds tips"
+      "usableInThisContainer": "Yes, verified; use preserve_attributes=True to keep colours; rounds thin tips"
     },
     {
       "name": "Quaternius asset packs",
       "free": true,
       "license": "CC0 (per itch.io/OpenGameArt; Sketchfab listing inconsistent)",
       "whatFor": "Reference for low-poly creature proportions and animation timing; placeholders",
-      "usableInThisContainer": "Download not reachable from this container"
+      "usableInThisContainer": "No: quaternius.com unreachable, poly.pizza 403"
     },
     {
-      "name": "Kenney assets",
+      "name": "Kenney assets (Cube Pets, Blocky Characters, Mini Characters)",
       "free": true,
-      "license": "CC0",
-      "whatFor": "Props and UI; few creatures",
-      "usableInThisContainer": "Not reachable from this container"
+      "license": "CC0 1.0 (support page + License.txt verified)",
+      "whatFor": "Reference for committed shape language, gradient palette atlas and clip sets; 24 animated animals in GLB/FBX",
+      "usableInThisContainer": "Yes: kenney.nl reachable; Cube Pets ZIP downloaded, glb inspected and rendered in bpy"
+    },
+    {
+      "name": "Poly Haven / ambientCG",
+      "free": true,
+      "license": "CC0 (license pages verified)",
+      "whatFor": "Textures, HDRIs and props for arenas and look-dev; no creature models (Poly Haven API: 521 models, none animals)",
+      "usableInThisContainer": "Yes: polyhaven.com, api.polyhaven.com and ambientcg.com reachable"
     },
     {
       "name": "Mixamo",
@@ -382,9 +425,16 @@
     {
       "name": "Paint colours on the dense mesh, or transfer part-ids with Data Transfer",
       "why": "Clean colour regions that survive remesh and decimate",
-      "how": "FLOAT_COLOR POINT attribute via foreach_set; DATA_TRANSFER COLOR_VERTEX POLYINTERP_NEAREST from a saved copy",
+      "how": "FLOAT_COLOR POINT attribute via foreach_set after voxel remesh (the remesh op loses data layers); Decimate keeps it; QuadriFlow needs preserve_attributes=True; otherwise DATA_TRANSFER COLOR_VERTEX POLYINTERP_NEAREST from a saved copy",
       "impact": "big",
       "effort": "low"
+    },
+    {
+      "name": "Gradient-swatch palette atlas (Kenney style)",
+      "why": "One small texture of vertical gradients gives every part a soft built-in value ramp and allows recolours by palette swap",
+      "how": "Smart UV or per-face UV snapped into swatch columns of a ~512² gradient PNG; one material for all kin",
+      "impact": "medium",
+      "effort": "medium"
     },
     {
       "name": "Custom glTF attributes for Orbkin's vertex rig (Path A)",
@@ -472,6 +522,7 @@
     "Per-part colour via a transferred part-id attribute: untested, expected to give cleaner boundaries than position rules.",
     "Final battle sprite height (~56–70 internal px?) sets the minimum face and eye sizes.",
     "Originality review of redesigned kin against franchise archetypes (fire fox, electric bug) before shipping.",
+    "Kenney-style rigid-part animation versus a vertex rig versus skinning: which reads best after the sprite bake for small kin?",
     "Should EEVEE (needs EGL/GPU) be used on the owner's machine for toon-accurate previews instead of Cycles?"
   ]
 }

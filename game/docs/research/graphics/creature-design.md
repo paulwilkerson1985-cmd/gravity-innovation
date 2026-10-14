@@ -5,7 +5,17 @@ that a script (Claude + headless Blender, free tools only) can do, and a concret
 Orbkin's 18 kin.
 
 Status: research notes + **verified experiments** run in this container (Blender 5.2.2 `bpy`
-wheel, CPU only, no GPU or display). All experiment files stayed in `/tmp/creature-exp/`, which is
+wheel, CPU only, no GPU or display).
+
+**Follow-up pass (primary-source verification).** Once docs.blender.org, threejs.org, kenney.nl,
+polyhaven.com and ambientcg.com became reachable, I checked every `bpy` and three.js claim
+against the official API reference and manual pages, which are linked inline as **[docs]**. I
+also re-ran two probes:
+- QuadriFlow `preserve_attributes`;
+- Skin branch nodes.
+
+I downloaded one Kenney CC0 creature pack (assets only) and inspected it. Claims those sources
+confirm are re-tagged **[verified + docs]**. All experiment files stayed in `/tmp/creature-exp/`, which is
 temporary, so the key scripts are copied into §6. No binaries were added to the repo.
 
 Confidence labels: **[verified]** = I ran it here or read the primary source code.
@@ -46,6 +56,12 @@ judgement from the evidence.
    at them, and iterates. That is the workflow tested here. AI image-to-3D (TRELLIS, Hunyuan3D)
    needs a ≥16 GB NVIDIA GPU. Hunyuan3D's licence also excludes the EU/UK/South Korea
    [verified in its LICENSE].
+6. **Primary-source check (follow-up).**
+   - Every Blender claim is now backed by docs.blender.org pages; every three.js claim by
+     threejs.org pages.
+   - One correction: QuadriFlow has `preserve_attributes=True`, which keeps colours (re-tested).
+   - Kenney's CC0 *Cube Pets* (568-tri fox, rigid parts, one gradient-swatch palette texture)
+     shows the "pro low-poly" bar is about committed shapes and palette, not triangle count.
 
 ---
 
@@ -353,9 +369,17 @@ Run this checklist against every model (all items are checkable in a Cycles prev
    UV-Colorize (MIT, https://github.com/RouBroeck/UV-Colorize). Explainers:
    https://www.blendernation.com/2020/05/21/texturing-low-poly-art-with-color-palettes/ ;
    https://savedpixel.com/blog/unwrap-uv-blender/ (recommends decimate first, then unwrap).
-   **Note:** no source documents how Quaternius, Kenney or Synty structure their textures. The
-   Quaternius author says there is "no really defined workflow" (2017 Reddit AMA). Treat
-   "palette UV is what X uses" claims as unverified.
+   **Kenney: verified from a primary asset.** Kenney's *Cube Pets* (CC0, 24 animated animals,
+   2026) was downloaded and inspected. Every model shares **one 512² `colormap.png`** made of
+   ~30 **vertical gradient swatches** (1,829 distinct colours, dark-to-light ramps per hue), and
+   UVs pick a swatch. This is the gradient-palette-atlas trick. The fox is **568 triangles**
+   in 6 rigid parts (body, tail, 4 legs), animated by node transforms (no skinning), with 8
+   clips (static, idle, walk, run, eat, dance, gesture ±). It was exported by UnityGLTF. Rendered
+   in Cycles it reads as clean and deliberate: a bevelled-cube body, a round tail with a cream
+   tip, and stubby legs. **Lesson: a pro low-poly look comes from one committed shape language +
+   clean bevels + gradient palette, not from triangle count.** Quaternius's and Synty's internal
+   workflows are still undocumented (the Quaternius author: "no really defined workflow", 2017
+   Reddit AMA), and quaternius.com is still unreachable from here.
 6. **Texture**: hand-painted (Blender Texture Paint, ArmorPaint) or baked (AO, curvature)
    gradients. For toon, vertex colours are often enough.
 7. **Rig**: Rigify (human or animal metarigs) or a custom armature. Weight paint.
@@ -369,28 +393,29 @@ Script: `/tmp/creature-exp/feature_tests.py` (temporary file; abridged in §6.4)
 
 | Feature | Result | Notes |
 |---|---|---|
-| `pip install bpy` in a py3.13 venv | **OK** | ≈1.0 GB installed. Draco and meshopt bridges are **missing** in the wheel, so the exporter can't compress. Use `gltf-transform` afterwards. |
-| Skin modifier → apply | **OK** | **Gotcha:** high-valence branch nodes (a hip vertex with 4+ edges) produced **32 non-manifold edges**, and the voxel remesh then silently **dropped the torso**. Fix: keep Skin chains to valence ≤ 2 and make the torso from ellipsoids or metaballs. |
-| `bpy.ops.object.skin_armature_create` | **OK** | Creates an armature from the Skin graph + an Armature modifier. |
+| `pip install bpy` in a py3.13 venv | **OK** | ≈1.0 GB installed. Draco and meshopt bridge libraries are **missing** in the wheel (`ERROR Draco/MeshOptimizer is not available`). The exporter itself supports both: the manual lists "Data - Draco Compression" and "Data - Meshopt Compression" (EXT_ or KHR_meshopt_compression) [docs: https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html]. So compression works in a full desktop Blender. Headless here, use `gltf-transform` afterwards. |
+| Skin modifier → apply | **OK** | **Gotcha [verified + docs]:** the manual warns that branch points (a vertex with ≥3 edges) "tend to produce more complicated topology, some of which may overlap". It suggests `branch_smoothing` or **Mark Loose** [docs: https://docs.blender.org/manual/en/latest/modeling/modifiers/generate/skin.html, https://docs.blender.org/api/current/bpy.types.SkinModifier.html]. In the fox run, the hip (4 edges) and chest (5) with large overlapping radii gave **32 non-manifold edges**, and the voxel remesh **dropped the torso**. A minimal 4-branch re-test with small radii was manifold, with or without `use_loose`. So the risk depends on radii and overlap. Robust rule: keep Skin chains at valence ≤ 2 and build bodies from ellipsoids or metaballs. Each connected set needs one root (the manual: "one is selected by default"). |
+| `bpy.ops.object.skin_armature_create(modifier=…)` | **OK [verified + docs]** | "Create an armature that parallels the skin layout" [docs: https://docs.blender.org/api/current/bpy.ops.object.html]. |
 | Metaballs → mesh (`object.convert`) | **OK** | 3 elements → 2,112 faces in < 0.01 s. |
-| Voxel remesh (modifier or `object.voxel_remesh`) | **OK** | 0.1 s at voxel 0.012 on a 1 m creature (≈17.7k quads). Needs closed input. |
-| `object.quadriflow_remesh` | **OK** on a clean voxel-remeshed creature (0.8 s) | **Drops colour attributes**; fixed with a Data Transfer modifier from a copy [verified]. Rounds off thin tips (ears lost their points). It silently did nothing on Suzanne (non-manifold input warning). |
-| Decimate (collapse, symmetric) | **OK** | Keeps POINT colour attributes; best silhouette preservation at ~3k tris. |
+| Voxel remesh (Remesh modifier `mode='VOXEL'`, or `object.voxel_remesh()`) | **OK [verified + docs]** | 0.1 s at voxel 0.012 on a 1 m creature (≈17.7k quads). Docs: the voxel mode "uses an OpenVDB to generate a new manifold mesh … preserve the mesh's original volume"; `voxel_size` "lower values preserve finer details"; `adaptivity` > 0 adds triangles and disables Fix Poles; the modifier also has `use_smooth_shade` [docs: https://docs.blender.org/api/current/bpy.types.RemeshModifier.html, https://docs.blender.org/manual/en/latest/modeling/modifiers/generate/remesh.html]. **The operator `object.voxel_remesh()` documents "All data layers will be lost"**. Paint colours after the remesh, as the fox script does. |
+| `object.quadriflow_remesh` | **OK [verified + docs]** (0.8 s) | Docs: "Create a new quad based mesh … All data layers will be lost", **but the op has `preserve_attributes` ("Reproject attributes onto the new mesh")** plus `use_mesh_symmetry`, `use_preserve_sharp`, `smooth_normals`, and `mode` RATIO/EDGE/FACES [docs: https://docs.blender.org/api/current/bpy.ops.object.html]. Re-test: `preserve_attributes=True` **kept the colour attribute** (interpolated). The first run's Data Transfer workaround is only needed without that flag. It still rounds off thin tips. It silently did nothing on non-manifold Suzanne. |
+| Decimate (collapse, symmetric) | **OK [verified + docs]** | Keeps POINT colour attributes; best silhouette at ~3k tris. Docs: `ratio` (collapse only), `use_symmetry` + `symmetry_axis`, and **`vertex_group` + `vertex_group_factor` (collapse only)**, which can protect the face or eyes from reduction [docs: https://docs.blender.org/api/current/bpy.types.DecimateModifier.html]. |
 | Smooth modifier, Subdivision | **OK** | |
 | Data Transfer modifier (colours) | **OK** | `vert_mapping="POLYINTERP_NEAREST"`. |
 | Curves with bevel + taper → mesh | **OK** | Swept tapered horns/flames (§6.3). |
 | Geometry Nodes built from Python | **OK** | `node_groups.new(..., "GeometryNodeTree")` + `interface.new_socket`. |
-| `parent_set(type="ARMATURE_AUTO")` (bone heat) | **OK headless** | 0 unweighted verts on a watertight remeshed body. Separate eye islands had to be assigned to the head bone by hand. |
+| `parent_set(type="ARMATURE_AUTO")` (bone heat) | **OK headless [verified + docs]** | 0 unweighted verts on a watertight remeshed body. The manual: Automatic Weights uses the "bone heat" algorithm and "can often lead to armatures which do not deform child objects in ways you would want" [docs: https://docs.blender.org/manual/en/latest/animation/armatures/skinning/parenting.html]. The op signature includes `xmirror` for symmetric weights [docs: https://docs.blender.org/api/current/bpy.ops.object.html]. Separate eye islands had to be assigned to the head bone by hand. |
 | Rigify: add human metarig + `pose.rigify_generate` | **OK headless** | 0.2 s, 222-bone rig. For glTF export only DEF bones (`export_def_bones=True`). Probably overkill for kin. |
-| Sculpt `bpy.ops.sculpt.brush_stroke` | **FAIL** | `poll() failed, context is incorrect`: no window/region in background mode. Use a Displace modifier, bmesh math, or Geometry Nodes "sculpting" instead. |
+| Sculpt `bpy.ops.sculpt.brush_stroke` | **FAIL [verified + docs]** | `poll() failed, context is incorrect`. The op exists with a `stroke` collection of `OperatorStrokeElement`s (mouse positions, pressure) [docs: https://docs.blender.org/api/current/bpy.ops.sculpt.html]. The gotchas page explains that operators check for an active area or region type and fail their poll otherwise [docs: https://docs.blender.org/api/current/info_gotchas_operators.html]. Background mode has no window or region, so scripted sculpting is not practical. Use a Displace modifier, bmesh math or Geometry Nodes instead. |
+| Shape keys | **OK** | `obj.shape_key_add(name=…)`, edit `key_block.data[i].co`, keyframe `value`. Exported as morph targets with "Data - Shape Keys" and "Animation - Shape Keys" [docs: https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html]. |
 | Cycles bake AO → vertex colours | **OK** | `scene.render.bake.target="VERTEX_COLORS"`, 0.1 s. |
 | Smart UV Project + bake to image | **OK** | |
 | Cycles render 640² (24 spp + OIDN) | **OK** | ≈8 s on 4 CPU cores. |
 | EEVEE / Workbench | Not tried | Needs libEGL/GPU here. Cycles is the preview renderer. |
 | Freestyle lines in Cycles | **OK** | Needs `view_layer.use_freestyle=True` + a lineset with a linestyle. Otherwise you get the "strokes set empty" error. |
-| glTF export: skin + 3 actions + morph | **OK** | `export_animation_mode="ACTIONS"`, single-strip NLA tracks per action. |
-| glTF custom attributes | **OK** | `export_attributes=True` exports attributes whose names start with `_`. Three gives `_riga` etc. |
-| Python API change | — | Blender 5.0 removed `Action.fcurves` (slotted actions → `action.layers[].strips[].channelbag(slot).fcurves`). `pose_bone.keyframe_insert` still works and hides this (https://docs.blender.org/api/5.0/change_log.html). |
+| glTF export: skin + 3 actions + morph | **OK [verified + docs]** | `export_animation_mode="ACTIONS"` (default), single-strip NLA tracks per action. The manual describes the modes: Actions, Active actions merged, Broadcast, NLA Tracks ("each NLA Track will be export as an independent glTF animation"), Scene. "Merge Animation" merges by Action (using slot), NLA Track name, or no merge. Option "Reset Shape Keys between actions" [docs: https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html]. |
+| glTF custom attributes | **OK [verified + docs]** | Manual: "Attributes — Export Attributes with meshes, when the name starts with underscore" (`export_attributes=True`). three's GLTFLoader maps unknown attribute names with `attributeName.toLowerCase()` (r180 source, GLTFLoader.js line ~4836), hence `_RIGA` → `_riga`. |
+| Python API change | — | **[verified + docs]** The 4.5→5.0 change log lists `bpy.types.Action`: "Removed: fcurves, groups, id_root", and adds `ActionChannelbagFCurves` [docs: https://docs.blender.org/api/5.0/change_log.html]. `pose_bone.keyframe_insert` still works and hides this. |
 | Perf gotcha | — | Setting colour attributes per element (`ca.data[i].color = …`) took **17 s** for 18k verts. `foreach_set` took < 0.05 s. |
 
 ---
@@ -440,8 +465,9 @@ Attack t=0.45: minZ moved -0.518 → -0.360 (lunge forward), Blink t=2.6: influe
   2. Eyes were sized for the front view and read small in the side view. At a ~56 px sprite
      proxy they shrink to a few dark texels. **Eyes must be bigger and placed for the battle
      camera.**
-  3. QuadriFlow mode rounds off thin tips (ear points) and drops colours (fixed via Data
-     Transfer). **Decimate is better for silhouettes at this budget.**
+  3. QuadriFlow mode rounds off thin tips (ear points) and dropped colours. Data Transfer fixed
+     it; the follow-up found that `preserve_attributes=True` alone keeps them. **Decimate is
+     better for silhouettes at this budget.**
 - First attempt failure: the torso vanished. The Skin hip node with 4 edges → non-manifold →
   voxel remesh discarded it. Fixed by moving the torso to ellipsoids (see §5.2).
 - Second gotcha: the root bone pointed +Z, so "forward" translation went up. Fix: lay the root
@@ -578,6 +604,25 @@ bpy.ops.export_scene.gltf(..., export_attributes=True)   # three: geometry.attri
 
 ## 7. Rigging, animation, export and three.js: two integration paths
 
+three.js primary docs checked (threejs.org, r180-era pages):
+- **GLTFLoader:** supports `KHR_mesh_quantization`, `EXT_meshopt_compression`,
+  `KHR_meshopt_compression`, `KHR_draco_mesh_compression` and more. `setMeshoptDecoder()` is
+  "Required for decoding assets compressed with the EXT_meshopt_compression extension". It is an
+  addon import (`three/addons/loaders/GLTFLoader.js`) and has `parse(ArrayBuffer, path, onLoad,
+  onError)`, used in the Node test (https://threejs.org/docs/pages/GLTFLoader.html).
+- **AnimationMixer:** "a player for animations on a particular object"; one mixer per
+  independently animated object; `clipAction(clip|name)`, `setTime`, `stopAllAction`,
+  `timeScale` (https://threejs.org/docs/pages/AnimationMixer.html).
+- **SkinnedMesh:** "requires skin indices and weights as buffer attributes"; typically created
+  by GLTFLoader; `bindMode` `AttachedBindMode` / `DetachedBindMode`
+  (https://threejs.org/docs/pages/SkinnedMesh.html).
+- **Mesh:** `morphTargetDictionary` and `morphTargetInfluences` are only set when morph targets
+  exist. `getVertexPosition()` accounts for morphs *and* skinning; the Node test used it
+  (https://threejs.org/docs/pages/Mesh.html).
+- **SkeletonUtils.clone:** "ensuring that any SkinnedMesh instances are correctly associated with
+  their bones … geometries and materials are reused by reference"
+  (https://threejs.org/docs/pages/module-SkeletonUtils.html).
+
 ### Path A: geometry swap (recommended first) [verified building blocks]
 - Blender produces a **static** mesh per species:
   - smooth-shaded, vertex colours (`COLOR_0`);
@@ -601,7 +646,8 @@ bpy.ops.export_scene.gltf(..., export_attributes=True)   # three: geometry.attri
     (`#include <skinning_pars_vertex>`, `<skinbase_vertex>`, `<skinning_vertex>`,
     `<morphtarget_vertex>`), and the shadow depth material too;
   - per-frame `mixer.update(dt)` before `SpriteBaker.bake`.
-- Exporter knobs [verified in the installed exporter source]:
+- Exporter knobs [verified in the installed exporter source and in the manual,
+  https://docs.blender.org/manual/en/latest/addons/scene_gltf2.html]:
   - `export_animation_mode`: ACTIONS (default; active actions and NLA-track actions become
     separate animations), ACTIVE_ACTIONS, BROADCAST, NLA_TRACKS, SCENE;
   - `export_merge_animation`: ACTION / NLA_TRACK / NONE;
@@ -641,7 +687,9 @@ verified. `skin_armature_create` can also derive one automatically [verified].
 - **glTF-Transform CLI** (MIT): `inspect`, `optimize`, `meshopt`, `quantize`. Works via `npx`
   [verified].
 - **three.js r180** `GLTFLoader`, `AnimationMixer`, `SkeletonUtils`, `MeshoptDecoder` (MIT).
-- **Quaternius** packs, **CC0** per the itch.io/OpenGameArt listings:
+  Behaviour confirmed against threejs.org docs (§7).
+- **Quaternius** packs (quaternius.com still unreachable from this container; poly.pizza returns
+  403), **CC0** per the itch.io/OpenGameArt listings, not re-verified in the follow-up:
   - LowPoly Animated Monsters, Textured Cute Monster Pack (21 animated monsters), animal packs;
   - the Sketchfab "Ultimate Monsters" listing is **inconsistent** (CC0 in the description, CC-BY
     in the field).
@@ -650,7 +698,23 @@ verified. `skin_armature_create` can also derive one automatically [verified].
   them directly would break Orbkin's "all original, procedural" rule (`ASSETS.md`), so treat them
   as study material. (https://quaternius.itch.io/lowpoly-animated-monsters ;
   https://opengameart.org/content/textured-cute-monster-pack)
-- **Kenney** (CC0): mostly props, characters and UI. Few creatures.
+- **Kenney** (CC0, **verified**): the support page says "all game assets on the asset pages are
+  public domain licensed (CC0) … even in commercial projects", and attribution is optional
+  (https://kenney.nl/support).
+  - Creature-relevant 3D packs reachable now:
+    - **Cube Pets** (24 animated animals, GLB + FBX, `License.txt` = CC0 1.0; inspected, see
+      §5.1; https://kenney.nl/assets/cube-pets);
+    - **Blocky Characters** (20, animated, CC0);
+    - **Mini Characters** (25, animated, CC0).
+  - Good **reference** for a committed shape language, gradient-palette texturing and
+    animation-clip sets. Shipping them would break Orbkin's all-original rule. (The pack ZIP
+    stayed in `/tmp`; nothing was added to the repo.)
+- **Poly Haven** (CC0, verified license page https://polyhaven.com/license) and **ambientCG**
+  (CC0, verified FAQ on https://ambientcg.com):
+  - textures, HDRIs and props for arenas and look-dev;
+  - the Poly Haven API lists 521 models and **none are creatures or animals** (only things like
+    a cat statue);
+  - not a creature source.
 - **Mixamo**:
   - free with an Adobe ID (not Enterprise/Federated IDs or China);
   - royalty-free in games, but raw files can't be redistributed;
