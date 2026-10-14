@@ -13,14 +13,16 @@ secondary sources and marked as such.
 
 ## 0. TL;DR
 
-1. **`git clone` to github.com works; almost every asset website does not.** curl to
-   polyhaven.com, ambientcg.com, kenney.nl, quaternius.com, poly.pizza, opengameart.org,
-   itch.io, sketchfab.com, mixamo.com, fonts.google.com, blender.org, extensions.blender.org,
-   lospec.com, huggingface.co, jsdelivr and unpkg all time out (HTTP 000). GitHub *release
-   downloads* return 403. What works: `git clone`/`git show` over the git protocol,
-   `raw.githubusercontent.com`, the npm registry (`npm view/pack/install`) and PyPI (`pip`).
-   **So the asset strategy is: prefer sources that live in git repos or npm/PyPI packages;
-   for everything else, the owner downloads on their own machine and commits.**
+1. **Network access depends on the environment's allowlist — record it per session.** At first
+   test (2026-10-14 ~01:10 UTC) every asset website timed out; later that day the environment
+   allowlist was widened and **Poly Haven (site + API + `dl.polyhaven.org` files), ambientCG
+   (API + downloads via `acg-download.struffelproductions.com`), kenney.nl, blender.org /
+   docs / download.blender.org and threejs.org became reachable and real downloads were
+   verified** (§1.1). Still blocked: quaternius.com, opengameart.org, itch.io, sketchfab.com,
+   mixamo.com, fonts.google.com, lospec.com, jsdelivr/unpkg; poly.pizza returns 403 (its own
+   Cloudflare). GitHub *release downloads* return 403. Always available: `git clone`/`git show`,
+   `raw.githubusercontent.com`, npm and PyPI. **Strategy: official CC0 sites and APIs where the
+   allowlist permits; git/npm mirrors otherwise; owner downloads for the rest.**
 2. **There are large CC0 3D libraries in reachable git repos** (verified here):
    - `KayKit-Game-Assets/*` — 10 official repos by Kay Lousberg, CC0, `.glb/.gltf` + FBX/OBJ
      (e.g. Dungeon Remastered: 203 GLBs; Adventurers: 4 rigged characters, 75 animations).
@@ -51,7 +53,7 @@ secondary sources and marked as such.
 
 ---
 
-## 1. Reachability matrix (tested 2026-10-14 from this container)
+## 1. Reachability matrix (tested 2026-10-14 from this container; rows marked ★ re-tested after the allowlist update)
 
 | Route | Result | Notes |
 |---|---|---|
@@ -62,10 +64,33 @@ secondary sources and marked as such.
 | npm registry (`npm view`, `npm pack`, `npm install`) | **works** | Asset-carrying packages are a first-class source. |
 | PyPI (`pip install`, `pip index versions`) | **works** | `bpy 5.2.2`, `pixeloe 1.0.0`, `trimesh`, `pygltflib`, `opensimplex`, `scikit-image`, `rembg`… |
 | jsdelivr / unpkg CDNs | blocked | Use npm instead. |
-| polyhaven.com, api.polyhaven.com, dl.polyhaven.org | blocked | Use drei-assets / @pmndrs/assets mirrors, or owner download. |
-| ambientcg.com, kenney.nl, quaternius.com, poly.pizza, opengameart.org, itch.io, sketchfab.com, mixamo.com, lospec.com, fonts.google.com | blocked | Owner downloads, or GitHub mirrors (below). |
-| blender.org, extensions.blender.org | blocked | `pip install bpy` instead; bundled add-ons only. |
+| ★ polyhaven.com, api.polyhaven.com, dl.polyhaven.org/file/… | **works** (after allowlist update; `dl.polyhaven.org/` root alone returns 521, file URLs 200) | Send a unique `User-Agent`. Before the update: use drei-assets / @pmndrs/assets mirrors. |
+| ★ ambientcg.com API + `ambientcg.com/get?file=…` → `acg-download.struffelproductions.com` | **works** (after update) | Zip per material; see §1.1. |
+| ★ kenney.nl (pages + `/media/pages/assets/…zip`) | **works** (after update) | Current packs, newer than the 2020 git mirror. |
+| ★ www.blender.org, docs.blender.org, download.blender.org, threejs.org | **works** (after update) | Docs readable; do **not** download Blender binaries (no executables policy) — pip `bpy` suffices. |
+| ★ poly.pizza | 403 (Cloudflare) | Owner download. |
+| quaternius.com, opengameart.org, itch.io, sketchfab.com, mixamo.com, lospec.com, fonts.google.com | blocked (also after the update) | Owner downloads, or GitHub mirrors (below). |
+| extensions.blender.org | blocked | `pip install bpy`; bundled add-ons only. |
 | apt | blocked | Preinstalled: ImageMagick `convert`, `ffmpeg`, `git-lfs`, `cmake`, `g++`, Rust, Node 22, Python 3.13, `xvfb-run`, Playwright Chromium. |
+
+
+### 1.1 Verified official downloads (after the allowlist update, 2026-10-14)
+
+All are data files only (images/models); archives were listed before extraction and only
+images/models were extracted. No executables, installers or `.blend` files were opened.
+
+| Source | What was fetched | Check | Licence evidence |
+|---|---|---|---|
+| Poly Haven API | `GET https://api.polyhaven.com/files/rock_wall_08` → map types `Diffuse, nor_dx, nor_gl, AO, Displacement, Rough, arm, blend, gltf, mtlx`; `…/info/rock_wall_08` (author Amal Kumar, max 16k) | `rock_wall_08_diff_1k.jpg` 768,570 B, **md5 matches the API** (`d75a5bea…`); AO 1k JPG; displacement 1k = **16-bit PNG** | polyhaven.com/license: "CC0 means absolute freedom" |
+| Poly Haven HDRI | `…/files/kloofendal_48d_partly_cloudy_puresky` → 1k `.hdr` 1.4 MB URL | URL + md5 returned | CC0 |
+| Poly Haven models | `…/assets?t=models&c=nature` → 110 assets (e.g. `boulder_01`, `coast_land_rocks_02`) | listing | CC0 |
+| ambientCG | `GET /api/v2/full_json?id=Rock030&include=downloadData` → 1K…8K JPG/PNG zips; `Rock030_1K-JPG.zip` (9.7 MB) via 302 to `acg-download.struffelproductions.com` | zip listing: `AmbientOcclusion, Color, Displacement, NormalDX, NormalGL, Roughness` JPGs + `.blend .usdc .mtlx .tres` + preview PNG | `ambientcg.com/license` → docs.ambientcg.com/license: "Creative Commons CC0" |
+| Kenney | `kenney.nl/assets/nature-kit` → `kenney_nature-kit.zip` (10.5 MB, 3,626 files: 329 each of GLB/FBX/OBJ/DAE/STL + 1,640 PNG) | `License.txt`: "Nature Kit (2.1) … License: (Creative Commons Zero, CC0)" | CC0 |
+
+Practical notes: Poly Haven asks API clients for a unique User-Agent and states the *API* needs a
+custom licence for commercial apps — fetching assets at build time and committing them is not
+"an app built on the API", but credit "Poly Haven" in `ASSETS.md` anyway. ambientCG zips include
+`.blend` files: extract only the images (`unzip archive '*.jpg'`).
 
 ### Fetch recipe (verified)
 
@@ -96,8 +121,8 @@ import must update that policy and the table.
 |---|---|---|---|---|
 | **KayKit** (Kay Lousberg) — official GitHub org `KayKit-Game-Assets`: Dungeon Remastered (200+), Adventurers (4 rigged chars, 75 anims, 25+ accessories), Skeletons, Prototype Bits, City Builder, Medieval Hexagon (200+ tiles), Furniture, Restaurant, Halloween, Space Base | **CC0** ("free for personal and commercial use, no attribution required", README); paid "extra/source" tiers add content | Very clean stylised low-poly; *single 1024² gradient-atlas texture per pack* (README) — trivially recolourable/palette-mappable | Lodge/room props (shelves, barrels, crates, chests, stairs, banners, tables), dungeon/quarry kit pieces, rigged humanoid base for trainers | **Yes** — `git clone` (verified: 848 files in Dungeon; GLB+FBX+OBJ; no LFS) |
 | **Quaternius** (~80 packs, 1,100+ models) | **CC0** per pack (`LICENSES.md` of the mirror; secondary sources agree) | Clean low-poly, flat colours, many **rigged & animated** (animals, dinosaurs, monsters, fish, knights, modular men/women) | Nature (trees/bushes/rocks: Ultimate Nature 150 GLBs), animals as reference/base meshes, crops, interiors, RPG items; *Animated Monsters* / *Cute Monster* packs as creature-animation references | **Yes** via `trebeljahr/quaternius-showcase` (1,545 GLBs, 32 packs, `public/glb/<pack>/`), `J-Ponzo/*` glTF mirrors. Official site/itch blocked. The "Ultimate Monsters" & "LowPoly Animated Monsters" packs are **not** in the mirror (owner download). |
-| **Kenney** | **CC0** ("free to use in any project, personal or commercial… attribution optional") | Very consistent, simple; huge 2D and 3D range; Nature Kit, Platformer Kit, Castle Kit, Pirate Kit, Graveyard Kit, Furniture Kit, Prototype textures, UI packs, particles, fonts | Prototype/greybox kits, particle sprites (`particlePack_1.1`, `smokeparticleassets`), UI references, Kenney fonts | **Yes**: official `KenneyNL/Starter-Kit-*` (GLB), unofficial mirror `ETdoFresh/kenney.nl` (128 packs, 2020 snapshot). Newer packs: owner download. |
-| **Poly Haven** models | **CC0** (all assets; secondary quotes of polyhaven.com/license) | Photoreal scanned props, 1k–8k PBR | Rarely fits pixel HD-2D; useful as *bake sources* (bake detail into our textures) | Site/API blocked. Owner download, or the official Blender add-on `Poly-Haven/polyhavenassets` on the owner's machine. API use for commercial apps needs a custom license per the polyhaven.com API page (assets themselves stay CC0). |
+| **Kenney** | **CC0** ("free to use in any project, personal or commercial… attribution optional") | Very consistent, simple; huge 2D and 3D range; Nature Kit, Platformer Kit, Castle Kit, Pirate Kit, Graveyard Kit, Furniture Kit, Prototype textures, UI packs, particles, fonts | Prototype/greybox kits, particle sprites (`particlePack_1.1`, `smokeparticleassets`), UI references, Kenney fonts | **Yes**: official `KenneyNL/Starter-Kit-*` (GLB), unofficial mirror `ETdoFresh/kenney.nl` (128 packs, 2020 snapshot); **kenney.nl itself works after the allowlist update** (Nature Kit 2.1 zip verified, §1.1). |
+| **Poly Haven** models | **CC0** (all assets; secondary quotes of polyhaven.com/license) | Photoreal scanned props, 1k–8k PBR | Rarely fits pixel HD-2D; useful as *bake sources* (bake detail into our textures) | **Yes after the allowlist update** (API + file downloads verified, §1.1); before it: owner download or the `Poly-Haven/polyhavenassets` add-on on the owner's machine. API use for commercial apps needs a custom license per the polyhaven.com API page (assets themselves stay CC0). |
 | **Poly Pizza** (10,600+ models incl. ~2,294 archived Google Poly) | **Mixed: mostly CC-BY**, some CC0 — check each model's field | Uneven | Occasional props; must track per-model attribution | Blocked. Owner download only. |
 | **Sketchfab** (700k+ CC models) | Per model: CC0, CC-BY (most), CC-BY-SA, **CC-BY-NC (not usable commercially)** | Ranges from junk to superb | Hero references; CC0/CC-BY props | Blocked; downloads require a logged-in account (Sketchfab Download API guidelines). Owner download. |
 | **OpenGameArt** | Mixed: CC0, CC-BY, CC-BY-SA, GPL, OGA-BY — per item | Uneven, lots of pixel art | CC0 pixel tilesets (e.g. *Puny World* 16×16), sprite references | Blocked; owner download. |
@@ -123,8 +148,8 @@ rendered with Cycles CPU at 480×160, 16 spp in **0.9–1.0 s**.
 
 | Source | License | Best for | Reachable? |
 |---|---|---|---|
-| **Poly Haven** textures & HDRIs | CC0 | Lighting reference, IBL for bakes, photo detail to bake/pixelise | Blocked; **12 HDRIs at 1k in `pmndrs/drei-assets/hdri/`** and 18 EXRs inside npm `@pmndrs/assets/hdri` (base64 ES modules) |
-| **ambientCG** (ex-cc0textures) | CC0 | PBR sets (rock, dirt, planks, plaster) as bake/pixelise sources | Blocked (API too). Owner download; `alvarognnzz/ambientcg-downloader` script can run on the owner's machine. `Kimbatt/cc0-textures` = torrents (not usable here). |
+| **Poly Haven** textures & HDRIs | CC0 | Lighting reference, IBL for bakes, **height/AO maps as mask sources for pixel textures** (see procedural-texturing §3.4) | **Works after the allowlist update** (§1.1); otherwise **12 HDRIs at 1k in `pmndrs/drei-assets/hdri/`** and 18 EXRs inside npm `@pmndrs/assets/hdri` (base64 ES modules) |
+| **ambientCG** (ex-cc0textures) | CC0 | PBR sets (rock, dirt, planks, plaster) as bake/pixelise sources | **Works after the allowlist update** (API + zip verified, §1.1); otherwise owner download (`alvarognnzz/ambientcg-downloader`). `Kimbatt/cc0-textures` = torrents (not usable here). |
 | **@pmndrs/assets** (npm) | CC0 | 284 matcaps (great for stylised NPR shading/bakes), 29 normal maps, HDRIs, Inter font | **Yes** (`npm pack @pmndrs/assets`) |
 | **drei-assets** (git) | Poly Haven HDRIs = CC0; matcaps from the `emmelleppi/matcaps` collection (check per-file); LUT/`.cube` files: provenance unclear → don't ship without checking | HDRIs, matcaps, normals, LUT PNGs | **Yes** |
 | **Kenney Prototype Textures** | CC0 | Greybox grids | **Yes** (mirror) |
@@ -243,7 +268,8 @@ CC0/CC-BY/OFL are fine; Mixamo raw FBX and "no redistribution" itch packs are no
 8. **Update `ASSETS.md`** with a provenance table (source repo, commit, path, licence) the first
    time any third-party asset lands; add a CC0/CC-BY-only guard (e.g. a test that every file in
    `public/assets/` has a provenance entry).
-9. **Owner's machine** unlocks Mixamo, Poly Haven/ambientCG full libraries, Sketchfab CC0,
+9. **When the allowlist includes Poly Haven / ambientCG / kenney.nl**, fetch officially (API + checksum) instead of mirrors, and prefer their *height + AO* maps as inputs to the pixel-texture composer (verified: a Poly Haven rock-wall height/AO pair became a clean 64² pixel stone wall; the colour map did not).
+10. **Owner's machine** unlocks Mixamo, Poly Haven/ambientCG full libraries, Sketchfab CC0,
    Blockbench, Krita, Aseprite and blender-mcp. A short "owner fetch list" per milestone (exact
    URLs + target paths) is the efficient hand-off.
 
@@ -251,6 +277,7 @@ CC0/CC-BY/OFL are fine; Mixamo raw FBX and "no redistribution" itch packs are no
 
 - Does Blockbench's web build run headless under Playwright here (would allow Claude to author
   `.bbmodel` pixel-textured models and export glTF in-container)?
+- Network allowlists differ per environment: re-run the §1 probe at the start of each session and record it.
 - Exact current Mixamo terms (2026) for committing derived/retargeted animations to a public repo.
 - Whether Quaternius "Ultimate Monsters" (2024+) is mirrored in any reachable repo.
 - Licence provenance of the LUT files in drei-assets.

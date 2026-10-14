@@ -39,6 +39,9 @@ versions were in `/tmp/gr/bake/` (scratch, not committed).
    texel-snapped triplanar** (no UV seams, constant density) and break repetition with
    **decals** and **vertex-colour/mask variation**; for **hero diorama pieces** (the arena's
    back wall, lodge, stairs), bake **unique atlases**.
+7. **Real CC0 PBR height + AO maps are the best pixel-texture input found** (verified after the
+   allowlist update): Poly Haven `rock_wall_08` height/AO → rule composer → a clean 64² pixel stone
+   wall in ~1 s; the same texture's colour map turned to mush (§3.4).
 
 ---
 
@@ -175,6 +178,34 @@ non-dithered version read cleaner, matching the existing rule "no Bayer checkers
   floor used the rock ramp and the same rules, so it went pale — **bake a material-ID mask (A
   channel or a second image) and pick ramp + rules per material** (floor: dirt ramp, no
   top-light term, AO only from walls).
+
+
+### 3.4 Real CC0 PBR maps as mask sources (verified after the allowlist update)
+
+Downloaded Poly Haven `rock_wall_08` (1k diffuse JPG, AO JPG, **16-bit** displacement PNG) and
+ambientCG `Rock030` (1K-JPG zip). Derived masks with NumPy (`pbr_to_masks.py`):
+
+```python
+H = norm(disp)            # percentile 1–99 normalisation — handles 16-bit PNGs (PIL .convert('L') clips them!)
+A = norm(ao)
+R = 0.15 + 0.85*H                         # value: raised stones are lit
+G = clip((0.75 - A) * 2.5, 0, 1)          # cavity: mortar/cracks
+B = clip((H - gaussian_blur(H, 12) - 0.04) * 8, 0, 1)   # local convexity: stone lips
+```
+
+then ran the same `compose.py` (1024 → 64², factor 16; and → 128², factor 8). Results:
+
+- **Colour map, naive downsample+ramp:** noise/mush again (both textures).
+- **Poly Haven rock wall, height+AO masks → rule composer: a clean, readable pixel-art stone
+  wall** — distinct stones with lit tops, 1-texel dark mortar, all 7 ramp shades, at both 64²
+  and 128². This is the best result of all experiments and costs ~1 s.
+- ambientCG Rock030 (a broad slab, little mid-scale relief): large blobby shapes — usable for
+  big cliff faces, too coarse for walls. Choose sources by *relief at the target texel scale*.
+
+Lesson: **photo albedo is the wrong input for pixel art; height/AO/normal maps are excellent
+inputs** — they carry form, which the rule composer turns into deliberate light/shadow shapes.
+CC0 PBR libraries therefore feed the pixel pipeline directly (tileable too, since the sources tile;
+check seams after the 3×3 cleanup, which uses wrap-around `np.roll` and so stays tileable).
 
 ### 3.3 Rules that make generated pixels look hand-made (from pixel-art practice)
 
@@ -336,11 +367,12 @@ Both can coexist: tiles for floors/kits, baked atlases for hero diorama pieces.
    from a trim sheet).
 5. **Keep the existing rules as the quantiser**: ramps, 2-texel clusters, no stone dithering,
    palette-preserving mips (`modeHalve`) — run on the composed indices.
-6. **Terrain/floors**: keep runtime tiles but switch to world-space texel-snapped triplanar +
+6. **Tileable surfaces from CC0 height/AO maps**: fetch Poly Haven / ambientCG height + AO (when the allowlist allows), run `pbr_to_masks` + the composer at 16 texels/unit, and ship the resulting pixel tiles — much richer than hand-coded fBm, still on-palette.
+7. **Terrain/floors**: keep runtime tiles but switch to world-space texel-snapped triplanar +
    per-cell flips + pixel decals (cracks, pebbles, chalk ring, puddles) to kill repetition.
-7. **Index textures + ramp LUT** would let one baked arena be recoloured per route/time of day
+8. **Index textures + ramp LUT** would let one baked arena be recoloured per route/time of day
    and keep every lit pixel on-palette.
-8. **Evaluation loop**: render the same camera before/after at 640×360, nearest ×3, and compare
+9. **Evaluation loop**: render the same camera before/after at 640×360, nearest ×3, and compare
    side by side (like `docs/screenshots/hd2d/hd2d-iterations-*`). Cycles renders of baked pieces
    are a cheap preview before wiring into three.js.
 
@@ -369,4 +401,5 @@ Both can coexist: tiles for floors/kits, baked atlases for hero diorama pieces.
 - Material Maker CLI: https://github.com/RodZill4/material-maker (`parse_args.gd`)
 - Pixel-art rendering research: https://sol.sbc.org.br/index.php/sbgames/article/view/45414 (Pixelat3D), https://sol.sbc.org.br/index.php/sbgames/article/view/32320 (RETRÔ), https://upcommons.upc.edu/handle/2117/416925 ; pixeloe: https://github.com/KohakuBlueleaf/PixelOE
 - t3ssel8r interview (animation): https://cascadeur.com/forum/news/1989-making-an-animation-for-a-3d-pixel-art-game-interview-with-t3ssel8r
-- Local experiments (this container, 2026-10-14): bake_rock.py, bake_wall.py, pixelize.py, compose.py, render_variants.py, render_wall.py
+- CC0 sources used: Poly Haven `rock_wall_08` (https://polyhaven.com/a/rock_wall_08, CC0, https://polyhaven.com/license), ambientCG `Rock030` (https://ambientcg.com/view?id=Rock030, CC0, https://docs.ambientcg.com/license/)
+- Local experiments (this container, 2026-10-14): pbr_to_masks.py, bake_rock.py, bake_wall.py, pixelize.py, compose.py, render_variants.py, render_wall.py

@@ -33,6 +33,19 @@
       "implicationForOrbkin": "Generate indices by rule from form masks and reuse Orbkin's RAMPS and cluster rules as the final quantiser."
     },
     {
+      "claim": "Real CC0 PBR height+AO maps (Poly Haven, ambientCG) are excellent inputs for pixel-art textures; their colour maps are not.",
+      "detail": "Poly Haven rock_wall_08 (16-bit displacement PNG + AO JPG) -> masks R=height, G=1-AO cavity, B=height minus 12px blur -> compose.py at 64^2 and 128^2 gave clean stones with lit tops and 1-texel dark mortar using all 7 ramp shades in ~1 s. Naive downsample of the colour map gave noise. ambientCG Rock030 (low mid-scale relief) gave coarse blobs. 16-bit PNGs must be percentile-normalised (PIL convert('L') clips them).",
+      "sources": [
+        "https://polyhaven.com/a/rock_wall_08",
+        "https://ambientcg.com/view?id=Rock030",
+        "https://polyhaven.com/license",
+        "https://docs.ambientcg.com/license/",
+        "local test pbr_to_masks.py + compose.py 2026-10-14"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "Generate tileable pixel tiles (walls, floors, cliffs) from CC0 height/AO maps through the shared ramp composer instead of hand-coded fBm; pick sources whose relief matches the 16 texels/unit scale."
+    },
+    {
       "claim": "Scene-level AO baked with neighbours present gives the reference's tiered-rock-wall read (dark contact crevices, lit caps).",
       "detail": "AO distance 0.7 world units with all boulders and the floor in the bake; flat-coloured version of the same geometry read as dough. Floor needs its own ramp/rules via a material-ID mask.",
       "sources": [
@@ -209,6 +222,13 @@
       "license": "Apache-2.0",
       "whatFor": "Contrast-aware pixelisation of hi-res images",
       "usableInThisContainer": "pip, heavy torch deps; untested"
+    },
+    {
+      "name": "Poly Haven / ambientCG APIs",
+      "free": true,
+      "license": "CC0 assets (Poly Haven API: custom licence for commercial apps built on the API)",
+      "whatFor": "Height/AO/normal maps and HDRIs as inputs to bakes and the pixel composer",
+      "usableInThisContainer": "Yes after the 2026-10-14 allowlist update (verified downloads); otherwise via owner download or drei-assets mirrors"
     }
   ],
   "techniques": [
@@ -225,6 +245,13 @@
       "how": "Box-downsample 4x, auto-levels to mid shades, cavity -2 / convex +1, orphan cleanup x2, gutter dilation, RAMPS shared with runtime via JSON",
       "impact": "huge",
       "effort": "0.5-1 day"
+    },
+    {
+      "name": "CC0 height/AO -> pixel tile",
+      "why": "Real scanned relief gives believable stone/brick/rock structure that hand-coded noise lacks",
+      "how": "Fetch height (16-bit PNG) + AO via Poly Haven/ambientCG API; percentile-normalise; R=height, G=clip((0.75-AO)*2.5), B=clip((H-blur12(H)-0.04)*8); compose.py with factor = src_px/target_px; review tiled 3x3",
+      "impact": "huge",
+      "effort": "hours (script exists in research form)"
     },
     {
       "name": "Scene-level AO bake",

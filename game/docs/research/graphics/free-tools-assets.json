@@ -3,13 +3,26 @@
   "notesPath": "game/docs/research/graphics/free-tools-assets.md",
   "keyFindings": [
     {
-      "claim": "In this container git clone over github.com and raw.githubusercontent.com work, but nearly every asset website (Poly Haven, ambientCG, Kenney, Quaternius, itch.io, OpenGameArt, Sketchfab, Mixamo, Google Fonts, blender.org) and GitHub release downloads are blocked.",
-      "detail": "Tested 2026-10-14 with curl (HTTP 000 timeouts, 403 on /releases). git clone --filter=blob:none + git show HEAD:<path> fetches single files lazily; npm registry and PyPI also work. jsdelivr/unpkg blocked.",
+      "claim": "Network access depends on the environment allowlist: initially every asset site was blocked; after a same-day allowlist update Poly Haven, ambientCG, kenney.nl, blender.org/docs/download and threejs.org became reachable. git clone, raw.githubusercontent.com, npm and PyPI always work.",
+      "detail": "Re-tested 2026-10-14: Poly Haven API + dl.polyhaven.org file URLs 200 (md5 matched), ambientCG API + zip via acg-download.struffelproductions.com 200, kenney.nl pack zip 200. Still blocked: quaternius.com, opengameart.org, itch.io, sketchfab.com, mixamo.com, fonts.google.com, lospec.com, jsdelivr/unpkg; poly.pizza 403 (Cloudflare); GitHub release downloads 403.",
       "sources": [
         "local test: curl/git from this container 2026-10-14"
       ],
       "confidence": "high",
-      "implicationForOrbkin": "Asset pipeline must source from git repos, npm or PyPI; everything else is an owner download that gets committed with provenance."
+      "implicationForOrbkin": "Probe reachability at session start; use official CC0 APIs when allowed, git/npm mirrors otherwise, owner downloads for the rest; never download executables."
+    },
+    {
+      "claim": "Official CC0 downloads verified from Poly Haven, ambientCG and Kenney after the allowlist update.",
+      "detail": "Poly Haven: api.polyhaven.com/files/<id> lists map types and URLs with md5 (rock_wall_08 diffuse 1k matched); HDRI and 110 nature models listed. ambientCG: /api/v2/full_json?id=Rock030&include=downloadData -> 1K-8K zips; 1K-JPG zip holds AO/Color/Displacement/NormalDX/NormalGL/Roughness JPGs plus .blend/.usdc/.mtlx/.tres (extract images only). Kenney Nature Kit 2.1 zip: 329 GLB (+FBX/OBJ/DAE/STL) and License.txt stating CC0. Licence pages: Poly Haven 'CC0 means absolute freedom', ambientCG 'Creative Commons CC0'.",
+      "sources": [
+        "https://api.polyhaven.com/files/rock_wall_08",
+        "https://polyhaven.com/license",
+        "https://ambientcg.com/api/v2/full_json?id=Rock030&include=downloadData",
+        "https://docs.ambientcg.com/license/",
+        "https://kenney.nl/assets/nature-kit"
+      ],
+      "confidence": "high",
+      "implicationForOrbkin": "A fetch script can pull exact CC0 assets with checksums and licence evidence into the repo, recorded in ASSETS.md."
     },
     {
       "claim": "KayKit's official GitHub org hosts 10 CC0 packs with GLB/glTF files (no LFS) that clone fine here.",
@@ -235,21 +248,21 @@
       "free": true,
       "license": "CC0",
       "whatFor": "3D kits, 2D sprites, particles, UI, fonts",
-      "usableInThisContainer": "Partly: official Starter Kits + 2020 mirror ETdoFresh/kenney.nl; newer packs owner download"
+      "usableInThisContainer": "Yes: kenney.nl after the allowlist update (Nature Kit zip verified), plus official Starter Kits and the 2020 git mirror"
     },
     {
       "name": "Poly Haven",
       "free": true,
       "license": "CC0",
       "whatFor": "Photoreal HDRIs, PBR textures, models",
-      "usableInThisContainer": "Site blocked; HDRIs via drei-assets/@pmndrs/assets; rest owner download"
+      "usableInThisContainer": "Yes after the allowlist update (API + downloads verified); otherwise HDRIs via drei-assets/@pmndrs/assets"
     },
     {
       "name": "ambientCG",
       "free": true,
       "license": "CC0",
       "whatFor": "PBR texture sets",
-      "usableInThisContainer": "No; owner download"
+      "usableInThisContainer": "Yes after the allowlist update (API + zip verified); otherwise owner download"
     },
     {
       "name": "Sketchfab",
@@ -416,6 +429,7 @@
     }
   ],
   "openQuestions": [
+    "Allowlists differ per environment/session: which hosts will future sessions see? Re-probe at session start.",
     "Does Blockbench's web build run headless under Playwright in this container for scripted .bbmodel -> glTF export?",
     "Exact 2026 Mixamo terms for committing derived/retargeted animations to a public repo.",
     "Is Quaternius 'Ultimate Monsters' mirrored anywhere reachable?",
