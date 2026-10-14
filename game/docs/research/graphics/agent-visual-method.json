@@ -1,0 +1,129 @@
+{
+  "angle": "Methodology: how AI agents best produce visual assets",
+  "notesPath": "game/docs/research/graphics/agent-visual-method.md",
+  "keyFindings": [
+    {
+      "claim": "Closed write-run-render-compare-revise loops beat one-shot generation, and compute spent on verification pays off more than compute spent on generation.",
+      "detail": "SceneCraft: inner VLM critique loop plus a growing skill library. BlenderGym (CVPR 2025): VLM systems trail humans, and scaling the verifier helps, with a larger share of compute going to verification as the budget grows. VIGA: +35% over one-shot on BlenderGym, bounded by VLM spatial perception.",
+      "sources": ["https://arxiv.org/pdf/2403.01248", "https://arxiv.org/pdf/2504.01786", "https://github.com/richard-guyunqi/BlenderGym-Open", "https://arxiv.org/pdf/2601.11109"],
+      "confidence": "high",
+      "implicationForOrbkin": "Every visual change needs a render-and-measure gate. At least half of each iteration's effort goes to captures, crops, metrics and critique."
+    },
+    {
+      "claim": "Measured Claude Code + Blender skills reach good fidelity by gating on rendered evidence against a reference from the same camera at gameplay pixel size, not by eyeballing.",
+      "detail": "blender-kiln (Opus 5.5, Blender 5.2.2) scores silhouette overlap against the real asset from 5 sides: lantern 0.83 to 0.90, crate 0.85 to 0.95, chair 0.45 to 0.75, at about $4-6 per object. blender-image-to-3d gates blockout at IoU >= 0.85 and forms at IoU >= 0.90, with proportions within 5%/2%, and writes 'mismatches as measurements, not adjectives'.",
+      "sources": ["https://github.com/elithril/blender-kiln/blob/main/docs/benchmarks.md", "https://github.com/majidmanzarpour/blender-game-skills/blob/main/skills/blender-image-to-3d/SKILL.md"],
+      "confidence": "high",
+      "implicationForOrbkin": "Adopt the brief, gated phases and silhouette-IoU/lineup gates for creature authoring. HD2D.md's adjective-based gap list is the anti-pattern."
+    },
+    {
+      "claim": "Eyeball review by the agent over-corrects; numbers must gate the loop while the eye chooses the next problem.",
+      "detail": "kiln: by-eye sessions over-corrected twice (too bright and blotchy, then grey at half the reference saturation). Fix one material problem per round; six at once regressed the surface.",
+      "sources": ["https://github.com/elithril/blender-kiln/blob/main/docs/benchmarks.md"],
+      "confidence": "high",
+      "implicationForOrbkin": "Use artcheck.py metrics (value bands, b* split, detail CV, focal ratios) plus silhouette IoU as gates. One problem per round."
+    },
+    {
+      "claim": "Procedural noise reads as a smear; starting surfaces from CC0 scans (tinted or quantised to the palette) reads as real material.",
+      "detail": "kiln v15: 'scanned CC0 texture sets before procedural noise' made rust and wood read correctly on the crate and chair. majid: 'large random noise hides form and shimmers at distance'.",
+      "sources": ["https://github.com/elithril/blender-kiln/blob/main/docs/benchmarks.md", "https://github.com/majidmanzarpour/blender-game-skills/blob/main/skills/blender-image-to-3d/SKILL.md"],
+      "confidence": "medium",
+      "implicationForOrbkin": "Replace fbm-plus-chips painters (textures.ts) with palette-quantised CC0 scans or designed stamp libraries. Meadow detail CV of 0.20 shows the noise problem."
+    },
+    {
+      "claim": "VLMs are detail-blind on small or low-level features but recover when the region is isolated and zoomed.",
+      "detail": "VLMs-are-blind: 58% average on 7 trivial geometry tasks (best 77.8%), near 100% when shapes are spaced apart; the information is in the encoder. V*: guided search-and-crop raises fine detail recognition from 51% (GPT-4V) to 75%.",
+      "sources": ["https://arxiv.org/html/2407.06581v6", "https://vlmsareblind.github.io/", "https://huggingface.co/papers/2306.04356", "https://arxiv.org/pdf/2602.06566"],
+      "confidence": "high",
+      "implicationForOrbkin": "Always give the critic 2-4 zoom crops (each kin, FX, UI) at >= 2x nearest upscale next to the full frame, and ask closed, located questions."
+    },
+    {
+      "claim": "Claude silently downscales images beyond its long-edge/megapixel/token limits; multi-image requests are capped more tightly.",
+      "detail": "Patch-based visual tokens (28x28); oversized images are downscaled before the model sees them; multi-image requests are capped at 2000 px per side or 20 images. In this session a 2571x518 image was shown at 2000x403.",
+      "sources": ["https://platform.claude.com/en/docs/build-with-claude/vision", "https://claude.com/blog/best-practices-for-computer-and-browser-use-with-claude"],
+      "confidence": "high",
+      "implicationForOrbkin": "Pre-size captures. Use several focused images rather than wide contact sheets. Nearest-upscale the 640x360 internal frames so each texel spans >= 2 image pixels."
+    },
+    {
+      "claim": "LLM/MLLM judges favour their own outputs; self-scoring is unreliable.",
+      "detail": "Panickssery et al. (NeurIPS 2024): self-recognition correlates linearly with self-preference. Wataoka et al.: significant self-preference, driven by familiarity. Some 2026 work questions how it is measured.",
+      "sources": ["https://papers.nips.cc/paper_files/paper/2024/hash/7f1f0218e45f5414c79c0679633e47bc-Abstract-Conference.html", "https://arxiv.org/pdf/2410.21819", "https://icml.cc/virtual/2026/poster/61230"],
+      "confidence": "medium",
+      "implicationForOrbkin": "Use a fresh-context critic subagent that sees only images and the rubric, with pairwise ours-vs-reference or A/B comparisons in randomised order, never 'rate your render'."
+    },
+    {
+      "claim": "Typical LLM-made 3D failures: blobby scaled-primitive assemblies with default flat materials, floating/disconnected or interpenetrating parts, and API mismatches.",
+      "detail": "3DCodeBench (12 VLMs): most failures are API mismatches, and successful renders often have floating geometry; more thinking budget and multi-turn refinement help. 3JSBench: three.js objects fail the bar (flicker, invisible faces, interpenetration). HN on LL3M: 'a primitive like a sphere, scaled... default material and set its color'.",
+      "sources": ["https://arxiv.org/pdf/2606.01057", "https://discourse.threejs.org/t/3jsbench-a-benchmark-for-llm-generated-three-js-objects/95137", "https://news.ycombinator.com/item?id=44930808"],
+      "confidence": "medium",
+      "implicationForOrbkin": "Orbkin's kin are this pattern: 66 ellipsoids plus cones and tubes with 87 hand-typed coordinate triples in designs.ts. Fuse forms (remesh) and check every joint."
+    },
+    {
+      "claim": "Code-only procedural modelling can reach decent likeness, but only with a reference, a detail inventory, staged passes and per-pass vision review, and at about 3x the cost of Blender scripting.",
+      "detail": "img2threejs: 8 vision-reviewed passes (blockout to optimisation) and a detailInventory gate. kiln measured likeness 0.866 vs its own 0.861 at about 3x the cost.",
+      "sources": ["https://github.com/img2threejs/img2threejs", "https://github.com/elithril/blender-kiln/blob/main/docs/benchmarks.md"],
+      "confidence": "medium",
+      "implicationForOrbkin": "The plateau is less 'three.js primitives' than 'no reference, no gates, no detail inventory'. Blender adds real modelling operations (remesh, subdivision, curves, bevels) and cheaper iteration."
+    },
+    {
+      "claim": "A 3D-model-then-render-to-pixel-art pipeline is a proven professional method (Dead Cells), and works best when the 3D is built from a 2D pixel model sheet.",
+      "detail": "Motion Twin modelled and rigged in 3D and batch-converted animations to pixel art with an in-house tool. Changing a design no longer meant redrawing frames.",
+      "sources": ["https://80.lv/articles/case-study-dead-cells-character-art-pipeline/", "https://habr.com/post/416589"],
+      "confidence": "high",
+      "implicationForOrbkin": "Keep the runtime sprite baker. Improve its input: Blender-built kin from an agent-drawn 2D reference sheet."
+    },
+    {
+      "claim": "Agent iteration saturates (~3 rounds) and critics' feedback is often not applied; progress needs new information or re-planning from an earlier stage.",
+      "detail": "Planner-Actor-Critic paper: quality degrades or converges after about 3 iterations. Blender devtalk practitioner: blind execution degrades after 3-4 steps, and screenshots were the biggest gain.",
+      "sources": ["https://arxiv.org/pdf/2601.05016", "https://devtalk.blender.org/t/3d-agent-blender-ai-assistant-built-a-multi-agent-system-on-top-of-blenders-mcp-and-python-api-and-sharing-architecture-learnings-for-the-lab-discussion/44260"],
+      "confidence": "medium",
+      "implicationForOrbkin": "Stop rule: after 2 rounds without measured gain, go back to the blockout or brief instead of tweaking parameters."
+    },
+    {
+      "claim": "Any reference measurement placed in the generator's instructions becomes a target (Goodhart); verifier data must be held out.",
+      "detail": "kiln: sessions copied quoted figures (height, metal share, colour) as 'assumptions'. Removing them made the maps vary like the real object. One version read the answer key, so the bench was sandboxed.",
+      "sources": ["https://github.com/elithril/blender-kiln/blob/main/docs/benchmarks.md"],
+      "confidence": "high",
+      "implicationForOrbkin": "Skills must not embed the reference's numbers. The critique script holds them, and the generator sees only the deltas."
+    },
+    {
+      "claim": "Free/CC0 bases (Kenney, Quaternius, KayKit, Poly Haven, ambientCG) plus headless Blender are the free-tool foundation; cloud 3D generators are paid or quota-bound, and local image-to-3D (TRELLIS.2) needs a big GPU.",
+      "detail": "TRELLIS.2 (MIT) was the best raw shape on kiln's bench, but at 191k triangles with broken wires after decimation it is usable only as a proportion template.",
+      "sources": ["https://app.cinevva.com/guides/game-assets-guide", "https://github.com/ahujasid/blender-mcp", "https://github.com/elithril/blender-kiln/blob/main/docs/benchmarks.md"],
+      "confidence": "medium",
+      "implicationForOrbkin": "The proxy blocks the CC0 sites, so the owner should vendor curated packs into the repo. bpy (pip) with Cycles CPU works in the container. No GPU, so no local generators."
+    }
+  ],
+  "tools": [
+    {"name": "Blender 5.2 as Python module (bpy)", "free": true, "license": "GPL-3.0 (outputs unrestricted)", "whatFor": "Real modelling ops, headless gate renders (Cycles CPU/Workbench), GLB export, offline sprite/texture bakes", "usableInThisContainer": "yes - pip install bpy into a python3.13 venv; Cycles CPU works, EEVEE needs libEGL"},
+    {"name": "blender-image-to-3d skill (majidmanzarpour/blender-game-skills)", "free": true, "license": "MIT", "whatFor": "Gated reference-to-asset method, review_render/compose_review (silhouette IoU, width profiles), validate, export", "usableInThisContainer": "files readable via raw.githubusercontent; scripts run headless with Blender (use --engine cycles on GPU-less Linux)"},
+    {"name": "blender-kiln", "free": true, "license": "MIT", "whatFor": "Photo/brief to GLB pipeline, fidelity_check.py, CC0 scan texturing, benchmark method", "usableInThisContainer": "readable; needs a Blender MCP or adaptation to headless bpy"},
+    {"name": "blender-bridge (Rambo19911)", "free": true, "license": "MIT plugin / GPL-3.0 add-on", "whatFor": "Agent-Blender MCP with multi-view preview renders, asset checks (tris, scale, UVs, manifold), GLB export", "usableInThisContainer": "headless mode documented (blender -b --python); untested here"},
+    {"name": "blender-mcp (ahujasid)", "free": true, "license": "MIT", "whatFor": "Popular Claude-Blender bridge; execute code, screenshots, Poly Haven/Sketchfab import", "usableInThisContainer": "needs a running Blender GUI/socket; AI-gen features are paid/quota"},
+    {"name": "img2threejs", "free": true, "license": "Apache-2.0", "whatFor": "Reference to procedural Three.js code with staged vision-reviewed passes and a detail inventory", "usableInThisContainer": "probably (Node + Python stdlib); costly in tokens"},
+    {"name": "BlenderGym-Open", "free": true, "license": "see repo", "whatFor": "Benchmark harness for VLM Blender editing; ideas for verifier loops", "usableInThisContainer": "partially (conda env + data download)"},
+    {"name": "Pyxelate / pixelize / pxly", "free": true, "license": "MIT", "whatFor": "Image to pixel art with palette learning and dithering (quantise scans/renders to ramps)", "usableInThisContainer": "likely via pip"},
+    {"name": "Playwright + Chromium (SwiftShader)", "free": true, "license": "Apache-2.0", "whatFor": "Deterministic in-game captures for gates", "usableInThisContainer": "yes"},
+    {"name": "CC0 asset libraries (Kenney, Quaternius, KayKit, Poly Haven, ambientCG)", "free": true, "license": "CC0", "whatFor": "Kitbash props, base meshes, scanned surface textures, HDRIs", "usableInThisContainer": "no direct download (proxy blocks); the owner must vendor them into the repo"},
+    {"name": "TRELLIS.2", "free": true, "license": "MIT", "whatFor": "Image-to-3D proportion template", "usableInThisContainer": "no - needs a large GPU and ~31 GB of weights"}
+  ],
+  "techniques": [
+    {"name": "Reference-first brief", "why": "Most wasted work is detail on wrong proportions; generic output comes from the model's average prior", "how": "Per asset: VIEWS, SCALE, 8-15 PROPORTIONS, PARTS in overlap order, 3-5 SILHOUETTE features, MATERIALS by role, INFERRED list, TARGET camera and pixel height. The agent draws a 2D silhouette+colour-block sheet for sign-off", "impact": "huge", "effort": "low per asset"},
+    {"name": "Gated phases (blockout, forms, surface, light, polish)", "why": "Prevents polishing broken foundations; matches every successful pipeline found", "how": "Silhouette IoU >= 0.85 (blockout) and >= 0.90 (forms) at gameplay px vs the reference; cast lineup distinct by shape; greyscale material read; scene rubric", "impact": "huge", "effort": "medium (scripts once)"},
+    {"name": "Measured render-compare loop with held-out targets", "why": "Eyeballing over-corrects; quoted numbers get Goodharted", "how": "Verifier scripts hold the reference metrics; the generator receives only deltas phrased as measurements; one problem per round; stop after 2 rounds with no gain", "impact": "big", "effort": "medium"},
+    {"name": "Isolated pairwise critic with crops and derived images", "why": "Self-preference bias plus VLM detail blindness and downscaling", "how": "Fresh subagent; reference vs ours in randomised order; full frame plus 2-4 crops at >= 2x nearest; squint/notan/silhouette/palette images; rubric with located evidence", "impact": "big", "effort": "low"},
+    {"name": "Blender-built creatures fed to the existing sprite baker", "why": "Real modelling ops (remesh/fuse, subdivision, curves, bevels, asymmetric posing) instead of typed ellipsoids", "how": "Headless bpy scripts per species from the brief; GLB <= 2,500 tris, one material; vertex groups for the shader rig; tests for budget/grounding", "impact": "big", "effort": "large (pilot 2 species first)"},
+    {"name": "Scan/kitbash-first surfaces quantised to pixel ramps", "why": "Noise reads as smear; scans read as material", "how": "Vendor CC0 scans; downsample to TEXEL density; quantise to arena ramps with ordered dither; designed stamp libraries for rock faces; gate with detail CV", "impact": "big", "effort": "medium"},
+    {"name": "Asymmetry and pose pass", "why": "Mirror-built creatures look like stiff toys", "how": "After the symmetric build: head tilt, weight shift, tail curve, one asymmetric accent; check in the silhouette lineup", "impact": "medium", "effort": "small"},
+    {"name": "Joint and contact inspection renders", "why": "Floating and intersecting parts are the most common LLM 3D defect", "how": "Render every part junction close up; automated loose-part/manifold checks; auto-grounding", "impact": "medium", "effort": "small"},
+    {"name": "Versioned API notes + snippet library (RAG-lite)", "why": "API mismatches are the top failure on 3DCodeBench", "how": "A skill reference file of verified Blender 5.2 bpy snippets (remesh, bevel, GLB export with sRGB-correct textures)", "impact": "medium", "effort": "small"}
+  ],
+  "openQuestions": [
+    "Do Blender-modelled kin beat the current code-built kin in blind pairwise judging at 30 texels? Pilot Ashkit and Pebblet.",
+    "Which CC0 packs survive quantisation into the HD-2D look? Requires the owner to vendor them (the proxy blocks the sites).",
+    "Are Cycles CPU/Workbench renders in this container fast enough for per-round gates?",
+    "Can the vertex-shader rig be driven by Blender vertex groups/attributes in GLB while keeping one draw call per creature?",
+    "How well does a fresh-context Opus pairwise critic agree with human judges on our frames (5-10 pairs)?",
+    "What reference sheet format (agent-drawn SVG silhouettes vs owner sketches) gives the best IoU-gated results without an image generator?"
+  ]
+}
