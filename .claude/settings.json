@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(curl * | sh)",
+      "Bash(curl * | bash)",
+      "Bash(curl * | zsh)",
+      "Bash(curl * | python*)",
+      "Bash(wget * | sh)",
+      "Bash(wget * | bash)",
+      "Bash(wget * | python*)",
+      "Bash(* | sudo *)",
+      "Bash(sudo:*)",
+      "Bash(su:*)",
+      "Bash(npm install -g:*)",
+      "Bash(npm i -g:*)",
+      "Bash(npm install --global:*)",
+      "Bash(pnpm add -g:*)",
+      "Bash(yarn global:*)",
+      "Bash(pip install --user:*)",
+      "Bash(npm config set registry:*)",
+      "Bash(pip config set:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push --force origin main:*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.netrc)",
+      "Read(~/.git-credentials)",
+      "Read(**/.env)",
+      "Read(**/.env.*)"
+    ]
+  }
+}
