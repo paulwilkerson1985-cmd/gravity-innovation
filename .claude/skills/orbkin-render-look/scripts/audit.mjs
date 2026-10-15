@@ -44,7 +44,7 @@ for (const scene of String(args.scenes).split(',').filter(Boolean)) {
       const snap = await page.evaluate((i) => globalThis.__orbAuditSnapshot(12, i), internal);
       const c = { scene, view, q: info.perf?.quality ?? VIEWS[view].q, tier: VIEWS[view].q === 'low' ? 'low' : 'desk', internal, internalMpx: (internal[0] * internal[1]) / 1e6, scale: info.scale, rendererCalls: info.calls, rendererTris: info.triangles, ...snap, consoleErrors: errors.length, wallMs: Date.now() - t0 };
       out.cases.push(c);
-      console.error(`[audit] ${scene}-${view}: ${internal.join('x')} draws ${c.draws.toFixed(1)} tris ${Math.round(c.tris)} passes ${c.passes.toFixed(1)} full-res ${c.fullResPasses.toFixed(1)} dram ${c.dramMB.toFixed(1)} MB programs ${c.programsLinked} resident ${c.gpuResidentMB.toFixed(1)} MB canvases ${c.canvases} (${c.canvasMB.toFixed(1)} MB) heap ${c.heapMB.toFixed(0)} MB`);
+      console.error(`[audit] ${scene}-${view}: ${internal.join('x')} draws ${c.draws.toFixed(1)} tris ${Math.round(c.tris)} passes(all) ${c.passes.toFixed(1)} fullResPasses ${c.fullResPasses.toFixed(1)} dram ${c.dramMB.toFixed(1)} MB programs ${c.programsLinked} resident ${c.gpuResidentMB.toFixed(1)} MB canvases ${c.canvases} (${c.canvasMB.toFixed(1)} MB) heap ${c.heapMB.toFixed(0)} MB`);
     } catch (e) {
       failed++;
       out.cases.push({ scene, view, error: String(e.message), consoleErrors: errors });

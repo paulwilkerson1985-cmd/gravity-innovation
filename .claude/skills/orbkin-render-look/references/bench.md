@@ -62,12 +62,17 @@ dated JSON next to the budget; compare runs on the same phone only.
 - hybrid: `cave-low-fa-h.sync − cave-low-fa-l.sync ≤ 1.5 ms` and `raf.over20 ≤ 5 %` ⇒ H on that device
   class; `cave-low-fa-l − cave-low > 1.5 ms` ⇒ cap max CoC at 6 grid px or gather at ½ grid.
 - `enterMs > 2500` or `links > 40` on a mid phone ⇒ fix scene build / program count before adding content.
+- Screen grade / tilt changes: run the screen's case with and without your switch (`bvar=<flag>`,
+  §7); adopt when `case − case+flag ≤ 0.8 ms` (the low tier's grade/tilt budget) and `raf.over20 ≤ 5 %`.
+  The three cases for a title/starter change: `title-low`, `starter-low` (both with `bvar`) and
+  `cave-low-again` (thermal): `?bench=1&bcases=cave-low,title-low,starter-low,cave-low-again&bvar=<flag>`.
 - Tier detection stays: coarse pointer → low; T1 only from a GPU-string allow-list (Android
   `WEBGL_debug_renderer_info`: "Adreno (TM) 6xx", "Mali-G…") or a cached 1-s startup probe (iOS masks
   the GPU string).
 
 ## 7 Extending the cases
-Add an entry to `CASES` in `bench.ts` with the URL switches your change reads (`post=`, or a new
+`&bvar=<post flag>` runs every picked case a second time with that flag added (id `<case>+<flag>`): the
+ablation of a same-build switch without editing the file. Add an entry to `CASES` in `bench.ts` with the URL switches your change reads (`post=`, or a new
 param such as `fa=l|h2|h|n`, `ires=2`, `msaa=4`, `rt=rgba8|r11|f16`; those three pipeline switches are
 not in the game yet — they land with the hybrid port). Keep `cave-low` first and `cave-low-again` last.
 Reference devices: 17 GB/s class (Adreno 610/619, Mali-G57 MC2: Snapdragon 680/695, Helio G99),

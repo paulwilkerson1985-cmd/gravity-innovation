@@ -99,7 +99,7 @@ export const STEP_MS = 1000 / 60;
  * Open a page at a view preset with the frozen clock installed and paused. `initScript` (optional)
  * is injected before the game loads (the audit's WebGL recorder).
  */
-export async function openPage(browser, view, { initScript } = {}) {
+export async function openPage(browser, view, { initScript, clock = true } = {}) {
   const v = VIEWS[view];
   if (!v) throw new Error(`unknown view ${view}; use ${Object.keys(VIEWS).join('|')}`);
   const ctx = await browser.newContext({ viewport: v.viewport, deviceScaleFactor: v.deviceScaleFactor, hasTouch: v.hasTouch, isMobile: v.isMobile });
@@ -108,8 +108,12 @@ export async function openPage(browser, view, { initScript } = {}) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
   if (initScript) await page.addInitScript(initScript);
+  if (!clock) return { page, ctx, errors, view: v }; // real time (frametime.mjs): benchFrames needs a live performance.now
   await page.clock.install({ time: T0 });
-  await page.clock.pauseAt(T0);
+  // Pause 10 s after the epoch: the game's first loop frame then always sees now ≥ 100 ms and takes
+  // its capped dt = 0.1 s, whatever the real load time was (a sub-100 ms first timestamp once gave
+  // a different first dt and flipped the title's whole-px drift rounding by one pixel).
+  await page.clock.pauseAt(new Date(T0.getTime() + 10000));
   return { page, ctx, errors, view: v };
 }
 
@@ -174,7 +178,15 @@ export async function frameInfo(page) {
     const g = globalThis.__game;
     const perf = g.perf();
     const info = g.renderInfo();
-    return { canvas: { x: r.x, y: r.y, w: r.width, h: r.height, bw: c.width, bh: c.height }, dpr: devicePixelRatio, perf, calls: info.calls, triangles: info.triangles, scale: perf ? Math.round((r.width * devicePixelRatio) / c.width) : 0 };
+    // Focal subjects (kin, figures) as fractions of the canvas, from the scene's own subjects():
+    // screen_metrics --focal subjects and gate.py --crop subjects read them from the meta JSON.
+    let subjects = [];
+    try {
+      const lay = g.layout();
+      subjects = lay.subjects.map((s) => ({ name: s.name, box: [Math.max(0, (s.x - r.x) / r.width), Math.max(0, (s.y - r.y) / r.height), Math.min(1, (s.x + s.w - r.x) / r.width), Math.min(1, (s.y + s.h - r.y) / r.height)].map((v) => Math.round(v * 1000) / 1000) }));
+    } catch { /* scenes without subjects() */ }
+    const union = subjects.length ? [Math.min(...subjects.map((s) => s.box[0])), Math.min(...subjects.map((s) => s.box[1])), Math.max(...subjects.map((s) => s.box[2])), Math.max(...subjects.map((s) => s.box[3]))] : null;
+    return { canvas: { x: r.x, y: r.y, w: r.width, h: r.height, bw: c.width, bh: c.height }, dpr: devicePixelRatio, perf, calls: info.calls, triangles: info.triangles, scale: perf ? Math.round((r.width * devicePixelRatio) / c.width) : 0, subjects, subjectsUnion: union };
   });
 }
 

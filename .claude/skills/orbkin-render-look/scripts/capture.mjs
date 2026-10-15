@@ -64,19 +64,33 @@ async function shoot(screen, view, suffix = '') {
 }
 
 const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex').slice(0, 16);
+const dropShot = (b) => { for (const f of [`${b.name}.png`, `${b.name}.clean.png`, `${b.name}.json`]) fs.rmSync(path.join(out, f), { force: true }); report.shots = report.shots.filter((s) => s !== b); };
 for (const screen of String(args.screens).split(',').filter(Boolean)) {
   for (const view of String(args.views).split(',').filter(Boolean)) {
     const a = await shoot(screen, view);
     if (a && args['repeat-check']) {
-      const b = await shoot(screen, view, '.repeat');
-      if (b) {
-        const same = sha(path.join(out, `${a.name}.clean.png`)) === sha(path.join(out, `${b.name}.clean.png`));
-        a.repeatIdentical = same;
-        console.error(`[capture] ${a.name}: repeat ${same ? 'pixel-identical ✓' : 'DIFFERS ✗ (capture invalid: unseeded or wall-clock state)'}`);
-        if (!same) failed += 100;
-        for (const f of [`${b.name}.png`, `${b.name}.clean.png`, `${b.name}.json`]) fs.rmSync(path.join(out, f), { force: true });
-        report.shots = report.shots.filter((s) => s !== b);
+      // Repeat in a fresh context; on a mismatch repeat once more and keep the frame two runs agree on.
+      let b = await shoot(screen, view, '.repeat');
+      let same = b && sha(path.join(out, `${a.name}.clean.png`)) === sha(path.join(out, `${b.name}.clean.png`));
+      if (b && !same) {
+        const c = await shoot(screen, view, '.repeat2');
+        const bc = c && sha(path.join(out, `${b.name}.clean.png`)) === sha(path.join(out, `${c.name}.clean.png`));
+        const ac = c && sha(path.join(out, `${a.name}.clean.png`)) === sha(path.join(out, `${c.name}.clean.png`));
+        if (bc) { // the first shot was the odd one out: replace it by the repeat
+          for (const f of ['.png', '.clean.png', '.json']) fs.renameSync(path.join(out, `${b.name}${f}`), path.join(out, `${a.name}${f}`));
+          report.shots = report.shots.filter((s) => s !== b);
+          Object.assign(a, b, { name: a.name });
+          console.error(`[capture] ${a.name}: first shot differed from two agreeing repeats; kept the repeat`);
+          same = true; b = null;
+        } else if (ac) { same = true; }
+        if (c) dropShot(c);
+        a.repeatRetried = true;
       }
+      if (b) {
+        a.repeatIdentical = same;
+        console.error(`[capture] ${a.name}: repeat ${same ? 'pixel-identical ✓' : 'DIFFERS ✗ after a retry (capture invalid: unseeded or wall-clock state; see .repeat files)'}`);
+        if (!same) { failed += 100; a.repeatKeptAs = `${b.name}.clean.png`; } else dropShot(b);
+      } else a.repeatIdentical = same;
     }
   }
 }

@@ -72,8 +72,12 @@ Per frame (targets RGBA16F unless noted):
   720p: C 56, H 74, N 142, N+MSAA4 230. SwiftShader ratios (H/C 2–4× desk, 4–8× phone) are CPU
   rasteriser artefacts: the bench decides.
 - Until H ships, the screen-space tilt bands stay: title/starter `tiltTop 3.6 @ 0.60–0.66`,
-  `tiltBottom 3.6 @ 0.34–0.36`, vignette ≥ 0.5–0.6 won 4/4 desk and phone with the focal crop
-  unchanged; route map blur only above 0.84 and below 0.30. Do not scale screen tilts by the low
+  `tiltBottom 3.6 @ 0.34–0.36`, vignette ≥ 0.5–0.6 won 4/4 desk and phone (the judge's subject crop
+  was `no_difference`, i.e. the trio read the same; the vignette step 0.4→0.6 does change 1 % of the
+  trio-box pixels by one level, so "focal identity" means the crop READS the same, measured with the
+  camera held and the bands verified at grid scale); route map blur only above 0.84 and below 0.30.
+  Strength is the owner's: when a band or vignette is strengthened, also capture a lighter candidate
+  (e.g. 2.4 px / vignette 0.5) for the blind kit; judges reward strength, owners decide it. Do not scale screen tilts by the low
   tier's 0.45 (13 taps, cheap): the pipeline multiplies `tiltTop/Bottom` by `TIERS[q].tilt`.
 
 ## 4 Mobile budget table (verbatim from mobile-perf-budget §5; CI counters in assets/perf-budget.json)

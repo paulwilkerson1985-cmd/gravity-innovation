@@ -9,8 +9,10 @@
 // per internal px, frame list). `--skip` = frames to run before the first dump (let the scene
 // settle; default 90). `--freeze-world` dumps with the world frozen (dt = 0: only camera-induced
 // change is measured) — not available without a game hook, so it reports and exits 2.
-// ~0.3–0.5 s per frame on SwiftShader; a 2 s clip (120 frames) takes about 1 minute.
+// ~0.3–0.5 s per frame on SwiftShader; a 2 s clip (120 frames) takes about 1 minute. Run clips one at a
+// time (a lock file refuses a second concurrent run).
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { parseArgs, gameDir, loadPlaywright, baseUrl, launch, openPage, sceneUrl, loadScene, frameInfo, setUiHidden, step, writeJson } from './lib/orb.mjs';
 
@@ -23,6 +25,11 @@ if (!args.out) { console.error('--out DIR is required'); process.exit(1); }
 if (args['freeze-world']) { console.error('--freeze-world needs an in-game dt=0 hook (none in this build); use a static screen or compare against an idle clip'); process.exit(2); }
 const out = path.resolve(args.out);
 fs.mkdirSync(out, { recursive: true });
+// One clip at a time: two concurrent SwiftShader page loops on this box starve each other and crash.
+const lock = path.join(os.tmpdir(), 'orbkin-cam-capture.lock');
+if (fs.existsSync(lock) && Date.now() - fs.statSync(lock).mtimeMs < 20 * 60 * 1000) { console.error(`another cam_capture is running (${lock}); run clips one at a time`); process.exit(1); }
+fs.writeFileSync(lock, String(process.pid));
+process.on('exit', () => { try { fs.unlinkSync(lock); } catch { /* gone */ } });
 const game = gameDir(args.game);
 const pw = loadPlaywright(game);
 const { url: base, close } = await baseUrl(args);

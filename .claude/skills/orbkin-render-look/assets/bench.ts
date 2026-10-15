@@ -6,6 +6,8 @@
 //
 //   ?bench=1          warm-up + every case + probes      ?bench=quick   6 cases
 //   &bcases=a,b,c     pick cases by id                   &bnoprobe=1    skip the fullscreen-pass probes
+//   &bvar=flag        ALSO run every picked case with `post=flag` added (id `<case>+flag`): the ablation
+//                     of your same-build switch, e.g. bvar=oldscreens → cost = title-low − title-low+oldscreens
 //
 // Per case: enterMs (scene build, instant mode), links/linkMs (programs linked while entering),
 // syncMs p50/p90 (render + 1-px readPixels: CPU submit + GPU, no vsync), gpuMs p50/p90 (whole-frame
@@ -193,7 +195,9 @@ export async function runBench(game: Game) {
   const p = new URLSearchParams(location.search);
   const mode = p.get('bench') ?? '1';
   const picked = p.get('bcases')?.split(',').filter(Boolean);
-  const cases = CASES.filter((c) => (picked ? picked.includes(c.id) : mode === 'quick' ? QUICK.includes(c.id) : true));
+  const base = CASES.filter((c) => (picked ? picked.includes(c.id) : mode === 'quick' ? QUICK.includes(c.id) : true));
+  const bvar = p.get('bvar');
+  const cases = bvar ? base.flatMap((c) => [c, { ...c, id: `${c.id}+${bvar}`, post: c.post ? `${c.post},${bvar}` : bvar }]) : base;
   const ui = document.createElement('div');
   ui.id = 'bench';
   ui.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:#111d;color:#eee;font:14px monospace;padding:8px;border-radius:6px';

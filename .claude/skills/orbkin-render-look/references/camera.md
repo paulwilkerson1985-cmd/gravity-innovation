@@ -23,10 +23,10 @@ Phone cost of all of this: zero extra passes (a projection-matrix update + two u
 
 | What slips | Where (HEAD) | Fix |
 |---|---|---|
-| Sprite feet anchors (and their contact/drop shadows) snap in absolute buffer px: on a 1-px pan the floor moves 1 px, the sprite 0 or 2 (px = 2 internal px per texel) | `sprite.ts` ≈ 1113–1117 `ax = round(sx/px)·px` | `ax = round((sx − panX)/px)·px + panX` (same for y with panY); `panX/Y` = the current pan in internal px, held on the `SpriteBaker` (e.g. `baker.pan: Vector2`) and set by whoever pans |
-| Bayer dither is screen-anchored → a whole-frame "screen door" crawl (2/255 on every gradient) | `pipeline.ts` GradeShader ≈ 264 `bayer4(gl_FragCoord.xy)` | `bayer4(gl_FragCoord.xy + uDitherOff)` with `uDitherOff = (panX, −panY)` (y flipped: gl_FragCoord is bottom-up); add the uniform and a `pipeline.setPan(x, y)` |
-| Pixel FX flipbooks / points snap to `uRes` px | `fx.ts` 560–600 | same subtraction with a `uPan` uniform (battles only; title/starter have none) |
-| Dust motes are world-space Points (`uSize` px) | `arena.ts` 448–506 | no lock needed (not screen-snapped); they move with the world |
+| Sprite feet anchors (and their contact/drop shadows) snap in absolute buffer px: on a 1-px pan the floor moves 1 px, the sprite 0 or 2 (px = 2 internal px per texel) | `sprite.ts` `SpriteSubject.bake`, the two lines `ax = Math.round(… / px) * px` after "snap the feet to the texel grid" | `ax = round((sx − panX)/px)·px + panX` (same for y with panY); `panX/Y` = the current pan in internal px, held on the `SpriteBaker` (e.g. `baker.pan: Vector2`) and set by whoever pans |
+| Bayer dither is screen-anchored → a whole-frame "screen door" crawl (2/255 on every gradient) | `pipeline.ts` GradeShader, the `bayer4(gl_FragCoord.xy)` line before `gl_FragColor` | `bayer4(gl_FragCoord.xy - uPan)` with `uPan` = the image shift in bottom-up buffer px (gl_FragCoord is bottom-up, same frame as the sprite `ay`); add the uniform and a `pipeline.setPan(x, y)`. One convention everywhere: pan = how far the IMAGE moved, +x right, +y up |
+| Pixel FX flipbooks / points snap to `uRes` px | `fx.ts` the `floor(… * uRes + 0.5)` lines in the flipbook and points vertex shaders | same subtraction with a `uPan` uniform (battles only; title/starter have none) |
+| Dust motes are world-space Points (`uSize` px) | `arena.ts` `dustMotes` / `DUST_VERT` | no lock needed (not screen-snapped); they move with the world |
 | Bloom's half-res mip chain is not shift-invariant for odd shifts (window halos shimmer ≈ half the last residual) | `pipeline.ts` UnrealBloom | accept, or pan in 2-px steps during bloom-heavy shots |
 | Vignette, tilt bands, bottom shade | grade | screen lenses by design: leave them anchored |
 
@@ -35,27 +35,33 @@ Residual after each lock (whole-px pan): none 0.214 → dither lock 0.037 → + 
 ## 3 View-offset drift recipe (what replaces the title's 3D truck in `hd2dScreen.ts drift()`)
 
 The battle already does it for shakes (`hd2dBattle.ts shake(dx, dy)`): keep the snapped base offset
-and shift it by whole internal px. For the stage:
+and shift it by whole internal px. For the stage (`Hd2dScreenStage`):
 ```ts
-// framed(): after snapping, remember the base view offset and the CSS px per internal px
-const v = cam.view; this.base = { pos, focus, off: [v.offsetX, v.offsetY, v.fullWidth, v.fullHeight], s };
+// framed(): after snapping, keep the whole view-offset tuple and the CSS px per internal px; reset the pan
+const v = cam.view;                      // null/disabled when fitPoints never set an offset: then use (0, 0, w, h, w, h)
+this.base = { pos: cam.position.clone(), focus, s, off: v?.enabled ? [v.offsetX, v.offsetY, v.fullWidth, v.fullHeight, v.width, v.height] : [0, 0, W, H, W, H] };
+this.baker.pan.set(0, 0); this.pipeline.setPan(0, 0);
 // drift(d): world units at the focus depth → whole internal px (px = world units per internal px)
-const nx = Math.round(d.x / px), ny = Math.round(d.y / px);            // camera right / up
-cam.setViewOffset(off[2], off[3], off[0] - nx * s, off[1] + ny * s, off[2], off[3]);   // the image moves +nx right, +ny up
+const nx = Math.round(d.x / px), ny = Math.round(d.y / px);          // d.x = camera right, d.y = camera up
+const [ox, oy, fw, fh, w, h] = base.off;
+cam.setViewOffset(fw, fh, ox + nx * s, oy - ny * s, w, h);           // offset +x shows more of the right: the IMAGE moves −nx (left), +ny (up)
 cam.updateProjectionMatrix();
-this.baker.pan.set(nx, ny);               // sprite anchor lock, bottom-up buffer px (same frame as `ay`)
-this.pipeline.setPan(nx, ny);             // dither: bayer4(gl_FragCoord.xy − uPan) keeps the pattern on the image
+this.baker.pan.set(-nx, ny); this.pipeline.setPan(-nx, ny);         // the locks of §2 take the IMAGE shift, bottom-up buffer px
 ```
-- Sign check: capture 2 frames with pan 0 and pan (1, 0) on a static scene (`setFast`, no sway);
-  `cam_analyze` rigid must be ≈ 0 and every block shift = (1, 0). If sprites or the dither disagree
-  the sign is wrong, not the idea.
-- `cam.position` stays at `base.pos` (no truck; `d.z` is dropped or kept as a rare snapped move).
-- `framed()` runs on every resize: re-derive the base and re-apply the current pan.
+- This keeps the old truck's direction (camera right ⇒ image moves left). `cam.position` stays at
+  `base.pos`; `d.z` is dropped (or kept as a rare snapped move).
+- Pass the sub-window `w, h` (what `fitPoints` set), never `fullWidth, fullHeight`, or the framing changes.
+- Required sign check (S4, 1 minute): capture two frames with pan 0 and pan (1, 0) on a held world
+  (`setFast`/instant, or `drift=0` plus a forced 1-px offset); `cam_analyze` rigid must be ≈ 0 and
+  every block shift = (−1, 0) px. If sprites or the dither disagree the sign is wrong, not the idea.
+- `framed()` runs on every resize: it re-derives the base and resets the pan, so the next `drift()`
+  re-applies it.
 - The sky/backdrop planes are aimed from the camera frustum at `framed()` time with 4 % padding; a
   ±0.55-unit drift at the title's distance stays inside it — check the frame edges on phone.
-- Amplitude: the title drifts ±0.55 u (≈ ±13 internal px at 720p) at `sin(t·0.11)`: ≈ 0.14 px/frame
-  peak → mostly holds with 1-px steps every few frames. That is the intended look (whole texels).
-- Gate it (§6): rigid ≤ 0.05 excess over idle, flick ≤ 0.02 %, rigid_bad ≤ 0.5 %; MP4 for the owner.
+- Amplitude: the title drifts ±0.55 u (≈ ±44 internal px at 720p) at `sin(t·0.11)`: ≈ 0.08 px/frame
+  at the zero crossing → 1-px steps every ~12 frames, held in between. That is the intended look.
+- Gate it (§6): rigid ≤ 0.05, flick ≤ 0.02 %, rigid_bad ≤ 0.5 % as EXCESS over the idle clip of the
+  same screen; MP4 for the owner.
 
 ## 4 Intro pan + iris reveal (battle-in, ≈ 1.6 s, judge 4/4 over static)
 1. Overworld: 2 grey pulses (16 frames each to 40 % #5a5a5a, ≥ 20 frames apart; WCAG-safe, never 3 flashes/s).
@@ -78,6 +84,9 @@ node scripts/cam_capture.mjs --dist DIST --out /tmp/cam/after --screen title --v
 node scripts/cam_capture.mjs --dist DIST --out /tmp/cam/idle  --screen title --view desk --frames 120 --skip 90 --extra 'drift=0'   # your switch for "move off"
 python3 -I scripts/cam_analyze.py /tmp/cam/after --baseline /tmp/cam/idle --relative --mp4 /tmp/cam/after.mp4
 ```
-A live world (sway, sprite bakes) has its own floor (idle battle: rigid 0.063, bad 0.41 %); gate on
-the excess the move adds. Kymographs catch gross jitter (4/4) but are order-biased on subtle pairs;
+A live world (sway, sprite bakes) has its own floor; gate on the EXCESS the move adds. Measured idle
+floors (drift off, 120 frames from frame 90): title desk rigid 0.319 / bad 2.33 % / flick 0.0145 %;
+title phone 0.274 / 1.92 % / 0.0094 %; idle cave battle 0.063 / 0.41 % / 0. The absolute thresholds
+are unreachable on the title; the view-offset drift adds 0.007 / 0.04 % / 0.011 % (desk), the old
+truck 0.099 / 0.87 % / 0.015 %. Kymographs catch gross jitter (4/4) but are order-biased on subtle pairs;
 strips judge beats (hit-stop, flash) only, with the dropped-hit-stop canary.

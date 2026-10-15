@@ -3,6 +3,7 @@
 # Usage: bash ${CLAUDE_SKILL_DIR}/scripts/doctor.sh [GAME_DIR]   (default ./game)
 # Prints one line per check: ok | missing | warn, then a summary; exit 1 if a required item is missing.
 set -u
+case "${1:-}" in -h|--help) sed -n 2,4p "$0" | sed "s/^# //"; exit 0;; esac
 GAME="${1:-${ORBKIN_GAME:-game}}"
 miss=0
 line() { printf '%-9s %-22s %s\n' "$1" "$2" "$3"; }

@@ -4,7 +4,7 @@ Same protocol as the calibrated gate (judge-calibration §6): canary first, then
 display orders × --votes, through a fresh tool-less `claude -p` per vote with the images inline.
 
   python3 -I ${CLAUDE_SKILL_DIR}/scripts/gate.py --candidate AFTER.clean.png --baseline BEFORE.clean.png \
-      [--crop x0,y0,x1,y1 ...] [--votes 2] [--model opus] [--view desk|phone] [--out verdict.json] [--no-canary]
+      [--crop x0,y0,x1,y1 | --crop subjects] [--votes 2] [--model opus] [--view desk|phone] [--out verdict.json] [--no-canary] [--reasons]
 
 Decision: `better` only when the candidate won ≥ 75 % of the full-frame votes AND won in both orders
 AND mean confidence ≥ 2.5; `worse` symmetrically; everything else is `no_difference` (a first-class
@@ -14,10 +14,15 @@ Canary: baseline vs a degraded baseline (½-res bilinear + 1.2 px blur) in both 
 does not pick the clean frame both times the run is `invalid` (exit 3). Exit 0 better, 1 worse /
 no_difference, 3 invalid. DoF/blur pairs: crops of defocused bands judge blur QUALITY (banding,
 dither, mosaic), never strength; strength is the owner's call.
+`--crop subjects` takes the union box of the scene's focal subjects from the capture's sidecar meta
+(`<candidate>.json` next to the PNG, written by capture.mjs). Judge reasons are written to --out only;
+`--reasons` prints them too (the generator should not read judge vocabulary: let the owner read the JSON).
 Cost ≈ $0.03–0.05 and 5–60 s per vote; a pair with one crop = 2 (canary) + 4 + 4 = 10 calls.
 """
 import argparse, base64, io, json, os, shutil, subprocess, sys, tempfile
 from PIL import Image, ImageFilter
+
+SHOW_REASONS = False
 
 PROMPT_FULL = ('You are an experienced game art director judging two candidate frames (A, B) of an HD-2D pixel-art creature game '
                'with original characters. Decide which frame is the better professional game screenshot: composition and focal '
@@ -76,7 +81,7 @@ def vote_pair(model, cand, base, prompt, votes, label):
             v = call(model, a, b, prompt)
             cand_won = (v['winner'] == 'A') if order == 'cb' else (v['winner'] == 'B')
             out.append({'label': label, 'order': order, 'rep': rep, 'candidateWon': bool(cand_won) if v['winner'] in ('A', 'B') else None, **v})
-            print(f'[gate] {label} {order} #{rep}: {"candidate" if cand_won else "baseline"} (conf {v["confidence"]}) {v["reason"]}', file=sys.stderr)
+            print(f'[gate] {label} {order} #{rep}: {"candidate" if cand_won else "baseline"} (conf {v["confidence"]})' + (f' {v["reason"]}' if SHOW_REASONS else ''), file=sys.stderr)
     return out
 
 def decide(votes):
@@ -107,8 +112,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--candidate', required=True); ap.add_argument('--baseline', required=True)
     ap.add_argument('--crop', action='append', default=[]); ap.add_argument('--votes', type=int, default=2)
-    ap.add_argument('--model', default='opus'); ap.add_argument('--view', default=''); ap.add_argument('--out'); ap.add_argument('--no-canary', action='store_true')
+    ap.add_argument('--model', default='opus'); ap.add_argument('--view', default=''); ap.add_argument('--out'); ap.add_argument('--no-canary', action='store_true'); ap.add_argument('--reasons', action='store_true')
     a = ap.parse_args()
+    global SHOW_REASONS
+    SHOW_REASONS = a.reasons
     if not shutil.which('claude'):
         sys.exit('claude CLI not found on PATH: the fallback gate needs it (or install orbkin-visual-gate)')
     cand, base = fit(Image.open(a.candidate).convert('RGB')), fit(Image.open(a.baseline).convert('RGB'))
@@ -127,8 +134,22 @@ def main():
     d, rate, conf = decide(fv)
     res['full'] = {'decision': d, 'candidateWinRate': round(rate, 2), 'meanConfidence': round(conf, 2)}
     res['crops'] = []
-    for i, c in enumerate(a.crop):
-        box = [float(v) for v in c.split(',')]
+    crops = []
+    for c in a.crop:
+        if c == 'subjects':
+            meta = os.path.splitext(a.candidate)[0]
+            meta = (meta[:-6] if meta.endswith('.clean') else meta) + '.json'
+            try:
+                u = json.load(open(meta)).get('subjectsUnion')
+            except (OSError, ValueError):
+                u = None
+            if not u:
+                sys.exit(f'--crop subjects: no subjectsUnion in {meta} (capture.mjs writes it for scenes with subjects())')
+            pad = 0.02
+            crops.append([max(0, u[0] - pad), max(0, u[1] - pad), min(1, u[2] + pad), min(1, u[3] + pad)])
+        else:
+            crops.append([float(v) for v in c.split(',')])
+    for i, box in enumerate(crops):
         cv = vote_pair(a.model, crop2x(cand, box), crop2x(base, box), PROMPT_CROP, max(1, a.votes // 2), f'crop{i}')
         res['votes'] += cv
         cd, cr, cc = decide(cv)
@@ -141,7 +162,8 @@ def main():
         final = 'invalid'
     res['decision'] = final
     res['reasons'] = [f"{v['label']}/{v['order']}: {'C' if v['candidateWon'] else 'B'} ({v['confidence']}) {v['reason']}" for v in res['votes']]
-    print(json.dumps({k: v for k, v in res.items() if k != 'votes'}, indent=1))
+    shown = {k: v for k, v in res.items() if k not in ('votes',) and (a.reasons or k != 'reasons')}
+    print(json.dumps(shown, indent=1))
     _save(a, res)
     sys.exit(0 if final == 'better' else 3 if final == 'invalid' else 1)
 

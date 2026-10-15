@@ -43,6 +43,9 @@ def main():
     if g('cave-high') is not None and g('cave-low') is not None: costs['highTier'] = round(g('cave-high') - g('cave-low'), 1)
     for k in ('cave-low-fa-l', 'cave-low-fa-h2', 'cave-low-fa-h', 'cave-low-fa-n', 'cave-low-ires2', 'cave-low-native', 'cave-low-native-msaa4'):
         if g(k) is not None and g('cave-low') is not None: costs[k] = round(g(k) - g('cave-low'), 1)
+    for cid in list(cases):
+        if '+' in cid and cid.split('+')[0] in cases:
+            costs[f'{cid.split("+")[0]} − {cid}'] = round(g(cid.split('+')[0]) - g(cid), 1)
     main_case = {'low': 'cave-low', 'T1': 'cave-low-ires2', 'desk': 'cave-high'}[a.tier]
     verdict, notes = 'PASS', []
     drift = d.get('thermalDriftPct')

@@ -2,21 +2,29 @@
 """Depth-of-field band profile and value/colour statistics of HD-2D frames (clean canvas PNGs).
 
   python3 -I ${CLAUDE_SKILL_DIR}/scripts/screen_metrics.py AFTER.clean.png [--before BEFORE.clean.png]
-      [--focal x0,y0,x1,y1] [--focus-band 0.36,0.60] [--band-max 0.6] [--band-min 0.9] [--json OUT.json]
+      [--focal x0,y0,x1,y1 | --focal subjects] [--focus-band bottom,top] [--band-max 0.6] [--band-tol 0.03] [--json OUT.json]
 
-Prints JSON: per 12 horizontal bands (top → bottom) the relative sharpness
-  sharp_b = mean|L − G(1)| / mean|L − G(4)|  (per band, divided by the max band)
-measured at 640 px wide (the pixel-grid scale; native scale reads dither as detail), plus notan
-(dark/mid/light shares), L* mean, chroma p95 and the cool-pixel share (CIE b* < 0).
-Optional checks (exit 1 when any fails, 0 otherwise):
-  --focus-band a,b    bands whose centre lies in [a, b] of the height must have sharpness ≥ --band-min (0.9)
-                      and the top band and the bottom band must be ≤ --band-max (0.6).
-  --focal x0,y0,x1,y1 (fractions of width/height) with --before: the crop must be pixel-identical in
-                      both frames (focalDiff = 0): a DoF change must never touch the subject.
+The frame is first reduced to its INTERNAL pixel grid (one sample per device-px block; the grid size
+and scale come from the capture's sidecar `<name>.json`, or --grid W,H / --scale S), so a phone frame
+is measured at 271×586 and a desk frame at 640×360: the nearest upscale never counts as detail.
+Then, per 12 horizontal bands (listed top → bottom), relative sharpness
+  sharp_b = mean|L − G(1)| / mean|L − G(4)|  divided by the sharpest band,
+plus notan (dark/mid/light shares), L* mean, chroma p95 and the cool-pixel share (CIE b* < 0).
+Checks (exit 1 when any fails):
+  --focus-band b,t    the Grade's focusBottom,focusTop (BOTTOM-UP fractions, as in pipeline.ts): the
+                      bands inside that range must be as sharp as before (≥ before − --band-tol; ≥ 0.9
+                      when there is no --before) and the top band and the bottom band ≤ --band-max.
+                      The focus band is normalised by the sharpest band, so a content-driven low band
+                      is judged against --before, not an absolute.
+  --focal …           with --before: the subject crop (fractions of width/height, or `subjects` = the
+                      union box from the sidecar meta written by capture.mjs) must be pixel-identical
+                      (focalDiff = 0). Hold the camera (drift off, pan 0) when measuring this: a frozen
+                      frame at a non-zero pan rasterises differently before/after a camera change, and a
+                      vignette change reaches any subject wider than the frame's centre third.
 Octopath field shots at 640 px for context: top 0.46–0.64, bottom 0.26–0.36, focus band at 0.5–0.67 of
 the height (non-battle-screens §1.2). These are critique context, not targets.
 """
-import argparse, json, sys
+import argparse, json, os, sys
 import numpy as np
 from PIL import Image, ImageFilter
 
@@ -27,10 +35,29 @@ def luma(im):
     a = np.asarray(im).astype(np.float64)
     return 0.2126 * a[..., 0] + 0.7152 * a[..., 1] + 0.0722 * a[..., 2]
 
+def to_grid(im, path, grid=None, scale=None):
+    """Reduce a device-px capture to the internal grid (block centres), using the sidecar meta."""
+    meta = os.path.splitext(path)[0]
+    meta = (meta[:-6] if meta.endswith('.clean') else meta) + '.json'
+    if grid is None or scale is None:
+        try:
+            m = json.load(open(meta))
+            grid = grid or (m.get('perf') or {}).get('internal') or [m['canvas']['bw'], m['canvas']['bh']]
+            scale = scale or m.get('scale')
+        except (OSError, ValueError, KeyError):
+            pass
+    if not scale:
+        scale = max(1, round(im.width / (grid[0] if grid else 640)))
+    a = np.asarray(im)
+    s = int(scale)
+    off = s // 2
+    g = a[off::s, off::s]
+    if grid:
+        g = g[:min(g.shape[0], grid[1]), :min(g.shape[1], grid[0])]
+    return Image.fromarray(g), s, [g.shape[1], g.shape[0]]
+
 def dof_profile(im, bands=12):
-    w = 640
-    h = max(1, round(im.height * w / im.width))
-    im = im.resize((w, h), Image.BOX)
+    h = im.height
     L = Image.fromarray(np.clip(luma(im), 0, 255).astype(np.uint8))
     l = np.asarray(L).astype(np.float64)
     g1 = np.asarray(L.filter(ImageFilter.GaussianBlur(1))).astype(np.float64)
@@ -67,32 +94,60 @@ def crop(im, box):
     x0, y0, x1, y1 = box
     return im.crop((int(x0 * im.width), int(y0 * im.height), int(x1 * im.width), int(y1 * im.height)))
 
+def subjects_box(path):
+    meta = os.path.splitext(path)[0]
+    meta = (meta[:-6] if meta.endswith('.clean') else meta) + '.json'
+    try:
+        u = json.load(open(meta)).get('subjectsUnion')
+    except (OSError, ValueError):
+        u = None
+    if not u:
+        sys.exit(f'--focal subjects: no subjectsUnion in {meta} (capture.mjs writes it for scenes with subjects())')
+    return u
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('after'); ap.add_argument('--before'); ap.add_argument('--focal'); ap.add_argument('--focus-band')
-    ap.add_argument('--band-max', type=float, default=0.6); ap.add_argument('--band-min', type=float, default=0.9); ap.add_argument('--json')
+    ap.add_argument('--band-max', type=float, default=0.6); ap.add_argument('--band-tol', type=float, default=0.03); ap.add_argument('--json')
+    ap.add_argument('--grid', help='internal W,H when there is no sidecar meta'); ap.add_argument('--scale', type=int, help='device px per internal px when there is no sidecar meta')
     a = ap.parse_args()
-    im = load(a.after)
-    res = {'file': a.after, 'size': [im.width, im.height], 'dof': dof_profile(im), **stats(im), 'checks': {}}
+    grid = [int(v) for v in a.grid.split(',')] if a.grid else None
+    im_full = load(a.after)
+    im, scale, g = to_grid(im_full, a.after, grid, a.scale)
+    res = {'file': a.after, 'size': [im_full.width, im_full.height], 'grid': g, 'scale': scale, 'bands': 'top→bottom', 'dof': dof_profile(im), **stats(im), 'checks': {}}
+    bim = None
     if a.before:
-        bim = load(a.before)
+        bim_full = load(a.before)
+        bim, _, _ = to_grid(bim_full, a.before, grid, a.scale)
         res['before'] = {'file': a.before, 'dof': dof_profile(bim), **stats(bim)}
-        if bim.size != im.size:
+        if bim_full.size != im_full.size:
             res['checks']['sameSize'] = False
     if a.focal:
-        box = [float(v) for v in a.focal.split(',')]
+        box = subjects_box(a.after) if a.focal == 'subjects' else [float(v) for v in a.focal.split(',')]
         res['focalBox'] = box
         if a.before:
-            ca, cb = np.asarray(crop(im, box)).astype(int), np.asarray(crop(bim, box)).astype(int)
+            ca, cb = np.asarray(crop(im_full, box)).astype(int), np.asarray(crop(bim_full, box)).astype(int)
             diff = int(np.abs(ca - cb).sum()) if ca.shape == cb.shape else -1
             res['focalDiff'] = diff
+            res['focalDiffPixelsPct'] = round(100.0 * float((np.abs(ca - cb).sum(-1) > 0).mean()), 3) if ca.shape == cb.shape else None
             res['checks']['focalIdentical'] = diff == 0
     if a.focus_band:
-        lo, hi = [float(v) for v in a.focus_band.split(',')]
+        bot, top = [float(v) for v in a.focus_band.split(',')]
+        if bot > top:
+            bot, top = top, bot
         n = len(res['dof'])
-        inband = [res['dof'][i] for i in range(n) if lo <= (i + 0.5) / n <= hi]
+        # bands are listed top→bottom; the Grade's fractions are bottom-up: band i covers height
+        # fractions [1 − (i+1)/n, 1 − i/n] bottom-up.
+        idx = [i for i in range(n) if bot <= 1 - (i + 0.5) / n <= top]
+        inband = [res['dof'][i] for i in idx]
+        res['focusBandRowsTopDown'] = idx
         res['focusBandMin'] = min(inband) if inband else None
-        res['checks']['focusBandSharp'] = bool(inband) and min(inband) >= a.band_min
+        if bim is not None:
+            before_in = [res['before']['dof'][i] for i in idx]
+            res['focusBandMinBefore'] = min(before_in) if before_in else None
+            res['checks']['focusBandKept'] = bool(inband) and all(x >= y - a.band_tol for x, y in zip(inband, before_in))
+        else:
+            res['checks']['focusBandSharp'] = bool(inband) and min(inband) >= 0.9
         res['checks']['topBandBlurred'] = res['dof'][0] <= a.band_max
         res['checks']['bottomBandBlurred'] = res['dof'][-1] <= a.band_max
     res['pass'] = all(res['checks'].values()) if res['checks'] else None

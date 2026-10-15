@@ -23,8 +23,15 @@ Contents: 1 pipeline.ts · 2 screens stage · 3 arena registry · 4 light rigs �
 - `installPipeline(game.renderer, pipeline) → uninstall()`: shadows on, `info.autoReset = false`,
   `renderer.setInternal({height, minShort})`. Call uninstall on scene exit (restores defaults).
 - A scene opts in with `scene.userData.render = () => pipeline.render()`.
-- Grade shader uniforms you may add to: `uRes` (internal px), `uDither`; the Bayer dither is
-  `bayer4(gl_FragCoord.xy)` (line ≈ 264) — add `uDitherOff` for pans (camera.md §2).
+- Grade shader uniforms you may add to: `uRes` (internal px), `uDither`; the Bayer dither is the
+  `bayer4(gl_FragCoord.xy)` line before `gl_FragColor` — add a `uPan` for pans (camera.md §2).
+- **Low-tier tilt scaling**: `applyGrade` multiplies `tiltTop/tiltBottom` by `TIERS[q].tilt` (0.45 on
+  low). Screens want full strength: add an optional `Grade.tiltUnscaled?: boolean` and use
+  `g.tiltUnscaled ? 1 : this.settings.tilt` in `applyGrade` (no field exists today).
+- **Shared grades**: the starter set returns `meadowGrade(false)`, the same object shape the meadow
+  BATTLE arena uses; give the starter its own `starterGrade()` in `meadowScreens.ts` before changing
+  its bands, or the battle changes with it. `titleGrade()` is already separate (it overrides
+  `tiltTop/focusTop` only; `tiltBottom/focusBottom` come from `meadowGrade(true)`).
 
 ## 2 Screens stage (`scenes/hd2dScreen.ts`, `Hd2dScreenStage(game, scene, camera, build)`)
 - Installs the pipeline at `detectQuality()` with the set's `grade/background/fog`, owns the
@@ -35,7 +42,9 @@ Contents: 1 pipeline.ts · 2 screens stage · 3 arena registry · 4 light rigs �
   internal px), stores `base = {pos, focus}`, sets fog, `pipeline.setSize()`, `set.setPixelSize(high ? 1 : 1.5)`, `set.frame?.(cam, buffer)`.
 - `drift(d: Vector3)`: TODAY moves `cam.position` by `d` along camera right/up/forward with the
   right/up part rounded to whole internal px at the focus depth (`px = 2·focus·tan(fov/2)/bufferH`)
-  — a 3D truck (other depths crawl: camera.md §3). `update(t)`, `perf()`, `dispose()`.
+  — a 3D truck (other depths crawl: camera.md §3 has the view-offset replacement). `update(t)`,
+  `perf()`, `dispose()`. `subjects()` on title/starter scenes feeds `__game.layout()` (screen boxes
+  of the kin), which `capture.mjs` stores as `subjects`/`subjectsUnion` in each capture's meta.
 - Set contract `ScreenSet { group, spriteLight, grade, background, fog, update(t), setPixelSize(px),
   frame?(camera, buffer), dispose() }`. Title: `screens/meadowScreens.ts buildTitleSet` (grade
   `titleGrade()`: meadowGrade(true) + warm gain, exposure 1.58, vignette 0.4, bottomShade −0.32 @ 0.4,
@@ -96,12 +105,15 @@ internal}` (HD-2D only), `benchFrames(n)`, `layout()`, `debugSetParty`, `debugDe
 `window.__hd2dScreen` = the live `Hd2dScreenStage` (edit `.pipeline.grade` then `.pipeline.regrade()`
 for live tuning in a headless page).
 
-## 8 Where things are (HEAD 5fb0752)
-`pipeline.ts` 69–74 TIERS · 130 warmCaveGrade · 152–267 GradeShader (tilt 206–227, dither 264) ·
-310–439 Hd2dPipeline · 446 installPipeline. `hd2dScreen.ts` 84–99 framed · 106–120 drift.
-`title.ts` 235–251 frameHd2d · 261–268 update/drift. `starter.ts` 199–209 frameHd2d.
-`meadowScreens.ts` 20–32 titleGrade · 165 starter grade. `sprite.ts` 1113–1117 anchor snap ·
-1222–1291 shadow snap. `hd2dBattle.ts` 388–394 shake. `fx.ts` 560–600 pixel-snapped FX shaders (uRes).
-`arena.ts` 448–506 dust motes · 405–481 light beams. `kit/lights.ts` 29–55 presets · 105 lightRig.
-`renderer.ts` 48 pixelGrid · 55 resize. `e2e/hd2d-screens.spec.ts` checks perf non-null, internal =
-buffer, calls < 100, not blank, testids, no console errors on desktop + Pixel 7.
+## 8 Where things are (grep anchors; line numbers drift, symbols do not)
+`pipeline.ts`: `TIERS`, `warmCaveGrade`, `GradeShader` (tilt loop under "Tilt-shift (linear HDR)",
+dither `bayer4(gl_FragCoord.xy)`), `class Hd2dPipeline` (`applyGrade`, `regrade`, `setSize`, `render`),
+`installPipeline`. `hd2dScreen.ts`: `framed(`, `drift(`. `title.ts`: `frameHd2d(`, `override update(`
+(the `drift(new THREE.Vector3(Math.sin(t * 0.11)` call). `starter.ts`: `frameHd2d(`.
+`meadowScreens.ts`: `function titleGrade`, `buildStarterSet` (`grade: meadowGrade(false)`).
+`sprite.ts`: `SpriteSubject.bake` ("snap the feet to the texel grid"), `placeShadow`/"Contact ellipse".
+`hd2dBattle.ts`: `shake(dx`. `fx.ts`: the flipbook and points vertex shaders (`uRes`). `arena.ts`:
+`dustMotes`, `lightBeams`. `kit/lights.ts`: `LIGHT_PRESETS`, `lightRig`. `renderer.ts`: `pixelGrid`,
+`resize`. `e2e/hd2d-screens.spec.ts` checks perf non-null, internal = buffer, calls < 100, not blank,
+testids, no console errors on desktop + Pixel 7. `npm run lint` is red on the untouched repo
+(3 `no-undef` errors in `docs/research/**/lab/*.mjs`): lint the code you touch with `npx eslint src e2e`.
