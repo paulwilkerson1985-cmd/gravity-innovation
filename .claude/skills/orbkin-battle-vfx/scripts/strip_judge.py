@@ -76,6 +76,8 @@ def call(a, b, prompt, model):
             text = ev.get('result', '') or ''
     s, e = text.find('{'), text.rfind('}')
     if s < 0 or e < 0:
+        if 'limit' in text.lower() or '429' in r.stderr:
+            sys.exit(f'strip_judge: the judge CLI is rate-limited ({text[:80]!r}); wait for the reset it names and re-run (exit 3)')
         return {'winner': None, 'confidence': 0, 'reason': f'unparseable: {text[:120]!r} {r.stderr[-200:]!r}'}
     try:
         v = json.loads(text[s:e + 1])
