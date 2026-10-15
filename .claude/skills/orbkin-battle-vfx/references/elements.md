@@ -73,13 +73,16 @@ Point the open side of any ring or crown toward the camera (`openArc` already do
    - **by hand**: paint frames at the target texel size as RGBA PNGs on the ramp colours (any tool,
      or a small Python painter); `book_from_renders.py` passes same-size frames through untouched;
    - **Blender** (`"$ORBKIN_BPY" -I ${CLAUDE_SKILL_DIR}/scripts/blender_fx.py -- arc|splash|fire DIR
-     --size 96 --frames 12 [--aspect 2:3]`): arc = bevelled midpoint-displaced curves (0.3 s for 12
-     frames), splash = metaballs (2 s), fire = Cycles 4D-noise volume (≈ 7 s per frame at 128 px / 8
-     spp; use 96 px / 6 spp first). Mantaflow does not work in the pip bpy module. Pure Blender output
+     --size 96 --frames 12 [--aspect 2:3]`): arc = bevelled midpoint-displaced polylines (0.3 s for
+     12 frames; a hand-ruled 24×48 zigzag painted directly on the ramp was sharper in the pilot and
+     took minutes: prefer it for electric), splash = metaballs (2 s), fire = Cycles 4D-noise volume
+     (≈ 7 s per frame at 128 px / 8 spp; use 96 px / 6 spp first). Mantaflow does not work in the pip bpy module. Pure Blender output
      reads as a blob: it needs the hand-ruled key frames and shape dissipation on top.
 4. Pixelise and palette-lock: `python3 -I ${CLAUDE_SKILL_DIR}/scripts/book_from_renders.py --id
    spark-arc --out game/src/render/hd2d/books --ramp spark --w 32 --h 48 --fit --thr 0.2 --edges
-   0.25,0.55,0.9 KEYFRAMES_DIR BODY_DIR` (premultiplied BOX downscale → value by the sequence's 99th
+   0.25,0.55,0.9 BODY_DIR` for rendered frames, and a separate `--passthrough` book for the
+   hand-ruled key frames (they are already on the ramp; the luminance re-banding would lose the
+   yellow and the dotted light lines). Rendered frames: premultiplied BOX downscale → value by the sequence's 99th
    percentile → ramp index by band edges with Bayer only within `--dither` of an edge → optional
    closing → 3×3 mode filter → orphan cleanup → dark edge band → JSON + PNG atlas). Check the `.x4.png`
    preview: solid bands, a value structure (dark edge → mid → hot core), no speckle, ≤ 6 colours.

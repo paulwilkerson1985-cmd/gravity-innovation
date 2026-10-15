@@ -9,7 +9,10 @@ severity for the hit-stop check; default = the run's own severity text).
 Exit 0 = every checked beat inside the beat sheet, 1 = at least one beat outside it, 2 = usage.
 Checks (60 fps frames; see references/timing.md): impact->reaction <= 2, flash on the impact frame
 (impact->flash <= 1), hit-stop by severity (normal 3, super-effective 5-6, critical 8-10, KO 10-12;
-not-very-effective 0-2), launch->settle <= 60, text->launch reported only (project decision).
+not-very-effective 0-2; counted as frames held, flash frame included: a hold of N frames reads N),
+launch->settle <= 60, text->launch reported only (project decision). Draw calls: "FX draw calls peak"
+is the number of FX meshes/points in the scene (what fx_budget gates, <= 4); raw calls include +2 per
+acting kin per frame for sprite re-bakes and bake ticks, so they are informational.
 """
 import json, sys, os
 
@@ -32,8 +35,8 @@ def row(r):
         'impact->reaction': e['impactToReaction'], 'hit-stop': hs, 'hit-stop target': f'{lo}-{hi}' if lo != hi else str(lo),
         'attacker held': e.get('attackerHeld'), 'shake frames': e['shake']['frames'], 'shake peak px': e['shake']['peakPx'],
         'shake kind': 'kick' if e['shake']['directional'] else ('buzz' if e['shake']['directional'] is False else '-'),
-        'hp drain f': e['hpDrainFrames'], 'launch->settle': e['launchToSettle'],
-        'draw calls idle': c['idleCalls'], 'draw calls peak': c['peakCalls'], 'extra calls': c['extraCalls'],
+        'hp drain f': e['hpDrainFrames'], 'launch->settle': e['launchToSettle'], 'set dim peak %': round((e.get('setDimPeak') or 0) * 100),
+        'FX draw calls peak': c.get('fxDrawsPeak'), 'raw calls idle': c['idleCalls'], 'raw calls peak': c['peakCalls'], 'raw extra calls': c['extraCalls'],
         'programs': f"{c['programsIdle']}->{c['programsPeak']}", 'point lights': c['pointLights'], 'lit peak': c['litPointLightsPeak'],
         'points peak': c['pointsAlivePeak'], '3D fx meshes': c['meshes3dAdded'], 'fx objects peak': c['fxObjectsPeak'],
         'page errors': len(r.get('pageErrors', [])),

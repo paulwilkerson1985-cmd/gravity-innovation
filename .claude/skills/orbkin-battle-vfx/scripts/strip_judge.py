@@ -6,7 +6,7 @@
 
 Each vote is a fresh `claude -p` process with no tools and no session: the judge sees only the two
 images (inline, native size, unlabeled) and the prompt below, so it cannot read file names, code or
-earlier votes. Protocol (judge-calibration.md): 1) canary: baseline vs a degraded baseline (half-res
+earlier votes. Protocol (the gate protocol in SKILL.md S6): 1) canary: baseline vs a degraded baseline (half-res
 bilinear + 1.2 px blur) in both orders; the judge must prefer the clean strip both times or the run
 is INVALID (exit 3); 2) `votes` votes per display order (A=candidate,B=baseline and the reverse);
 `better` only if the candidate wins the majority in BOTH orders (exit 0); wins in one order only =

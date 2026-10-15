@@ -79,7 +79,7 @@ def frames(size, n):
                 if r > 0.98 or r < hole:
                     continue
                 a = math.atan2(dy, dx)
-                tri = abs(((a * 3 / math.pi) % 2) - 1)  # 6 rays: 0 at a ray axis, 1 between rays
+                tri = abs(((a * 6 / math.pi) % 2) - 1)  # 6 rays: 0 on a ray axis, 1 between rays
                 reach = 0.3 + 0.68 * (1 - tri) ** 1.6
                 if hole:
                     reach *= 0.92

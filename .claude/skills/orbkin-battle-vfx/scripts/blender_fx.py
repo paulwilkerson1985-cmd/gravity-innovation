@@ -6,7 +6,7 @@
 
 Renders OUT_DIR/f00.png .. (RGBA, transparent film, orthographic camera, view transform Standard)
 for book_from_renders.py. Modes and what they cost here (4-core cloud box, no GPU):
-  arc     midpoint-displaced polylines (depth 5, roughness 0.42) re-seeded every 2 frames, 1-3
+  arc     midpoint-displaced polylines (depth 3, roughness 0.5: few long segments, sharp angles) re-seeded every 2 frames, 1-3
           branches, bevelled curves: a thin white core over a wider yellow glow; electric "on twos":
           blank frames at 2 and 5 and every other frame after 60 % (--no-blanks keeps them).
           Emission only, so --spp 1 is enough: ~0.3 s for 12 frames at 128 px.
@@ -135,12 +135,12 @@ def arc(out, o):
             render(sc, os.path.join(out, f'f{f:02d}.png')); continue
         if f % 2 == 0 or lines is None:
             top = Vector((rng.uniform(-0.2, 0.2), 0, 1.0)); bot = Vector((0, 0, -0.95))
-            main = midpoint_line(top, bot, 5, 0.42, rng)
+            main = midpoint_line(top, bot, 3, 0.5, rng)
             lines = [main]
             for _ in range(rng.randint(1, 3)):
                 i = rng.randint(len(main) // 4, 3 * len(main) // 4)
                 a = main[i]; b = a + Vector((rng.uniform(-0.6, 0.6), 0, rng.uniform(-0.6, -0.1)))
-                lines.append(midpoint_line(a, b, 3, 0.4, rng))
+                lines.append(midpoint_line(a, b, 2, 0.45, rng))
         fade = 1.0 if f < n * 0.6 else max(0.25, 1 - (f - n * 0.6) / (n * 0.4))
         curve_obj('glow', lines, 0.075 * fade, glow, 0.05)
         curve_obj('core', lines, 0.028 * fade, core, 0.0)

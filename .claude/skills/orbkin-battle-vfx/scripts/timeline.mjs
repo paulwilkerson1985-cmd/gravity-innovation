@@ -147,6 +147,9 @@ const SAMPLER = `(() => {
   const dx = bo && view ? Math.round((view.offsetX - bo[0]) / s) : 0, dy = bo && view ? Math.round((view.offsetY - bo[1]) / s) : 0;
   const perf = g.perf?.();
   const ev = window.__fxEvents.splice(0);
+  const keyI = st.rig?.key?.intensity ?? null;
+  let liveSubjects = 0;
+  for (const v of views) if (v && ((v.acting ?? 0) > 0 || v.busy)) liveSubjects++;
   const emis = foeV?.material?.emissive;
   return {
     frame: window.__vclock.frame, text, added, removed, fx: fxs.length, fxKinds: fxs, pointsAlive, pointsCap,
@@ -154,7 +157,7 @@ const SAMPLER = `(() => {
     foeActing: (foeV?.acting ?? 0) > 0 || !!foeV?.busy, mineActing: (mineV?.acting ?? 0) > 0,
     foe: pose(foeV), mine: pose(mineV), foeEmissive: emis ? Math.round(Math.max(emis.r, emis.g, emis.b) * 100) / 100 : 0, foeBlinkOff: !!foeV?.blinkOff,
     foeVisible: foeV ? foeV.root.visible : null, hp, ghost: ghost ? parseFloat(ghost.style.width) : NaN,
-    shake: [dx, dy], idle: g.idle(), speed: window.__game ? undefined : undefined, fxEvents: ev,
+    shake: [dx, dy], idle: g.idle(), fxEvents: ev, keyI, liveSubjects,
   };
 })()`;
 
@@ -166,7 +169,9 @@ const mineBox = layout.subjects.find((s) => s.name === 'mine') ?? null;
 // Idle reference frames.
 const frames = [];
 for (let i = 0; i < 6; i++) frames.push(await page.evaluate(SAMPLER));
-const idleCalls = median(frames.map((f) => f.calls));
+// Idle reference = the quietest idle frame: sprite bake ticks (+2 calls) land on some idle frames.
+const idleCalls = Math.min(...frames.map((f) => f.calls));
+const idleKeyI = frames[0].keyI;
 const idleFx = frames[frames.length - 1].fx;
 
 // Pick the move through the real UI.
@@ -210,7 +215,7 @@ for (let i = 0; i < maxFrames; i++) {
 }
 
 // ---- derive the beats
-const E = deriveEvents(frames, { textFrame, launch, impact, impactMarked, idleCalls, idleFx, secondUse });
+const E = deriveEvents(frames, { textFrame, launch, impact, impactMarked, idleCalls, idleFx, secondUse, idleKeyI });
 const crop = args.crop ? String(args.crop).split(',').map(Number) : defaultCrop(foeBox, mineBox, vw, vh);
 const result = {
   config: { move, moveName, lead, leadLevel, foe, foeLevel, route, hotspot, arena, seed, viewport: [vw, vh], qs: args.qs ?? '', base, fps: FPS },
@@ -255,8 +260,9 @@ function deriveEvents(frames, s) {
     if (f.foeActing && (s.secondUse === null || n < s.secondUse)) lastFoeMove = n;
     prev = f;
   }
-  // Hit-stop: consecutive frames after the flash where the target's pose is bit-identical while
-  // its flash is still on; attackerHeld = how many of those frames the attacker did not move either.
+  // Hit-stop: the number of frames (the flash frame included) on which the target's pose stays
+  // bit-identical while its flash is on: a hold of N frames reads N. attackerHeld = how many of
+  // those frames the attacker did not move either.
   let hitStop = 0, attackerHeld = 0;
   if (flash !== null) {
     for (let n = flash + 1; n <= Math.min(last, flash + 24); n++) {
@@ -265,7 +271,11 @@ function deriveEvents(frames, s) {
       hitStop++;
       if (held(a.mine, b.mine) || !a.mineActing) attackerHeld++;
     }
+    if (hitStop > 0) { hitStop++; attackerHeld++; }
   }
+  // Set dim: the key light's intensity drop vs idle (sprites and FX are unlit by it, so this is the set).
+  let dimPeak = 0, dimFrames = 0;
+  if (s.idleKeyI) for (const f of frames) { const d = 1 - f.keyI / s.idleKeyI; if (d > 0.02) { dimFrames++; dimPeak = Math.max(dimPeak, d); } }
   // Severity, from the battle text that follows the hit.
   const allText = frames.map((f) => f.text).join('\n');
   const severity = /critical hit/i.test(allText) ? 'critical' : /super effective/i.test(allText) ? 'super-effective' : /not very effective/i.test(allText) ? 'not-very-effective' : 'normal';
@@ -282,6 +292,11 @@ function deriveEvents(frames, s) {
   // Counters over the move window.
   const win = frames.filter((f) => launch !== null && f.frame >= launch && (settle === null || f.frame <= settle + 1));
   const peakCalls = win.length ? Math.max(...win.map((f) => f.calls)) : null;
+  // FX draw calls = FX meshes/points in the scene (one call each; the light is none). Raw calls also
+  // move with sprite re-bakes (+2 per acting kin per frame, +2 on bake ticks), so the budget uses this.
+  const fxDraws = (f) => f.fxKinds.filter((k) => k !== 'light').length;
+  const fxDrawsPeak = win.length ? Math.max(...win.map(fxDraws)) : 0;
+  const liveSubjectsPeak = win.length ? Math.max(...win.map((f) => f.liveSubjects ?? 0)) : 0;
   const progIdle = frames[0].programs, progPeak = win.length ? Math.max(...win.map((f) => f.programs)) : progIdle;
   const meshes3d = win.reduce((n, f) => n + f.added.filter((a) => a.k === 'mesh3d').length, 0);
   const kindsAdded = {};
@@ -294,10 +309,10 @@ function deriveEvents(frames, s) {
     impactToFlash: impact !== null && flash !== null ? flash - impact : null,
     launchToSettle: settle !== null && launch !== null ? settle - launch : null,
     hpDrainFrames: hpStart !== null && hpEnd !== null ? hpEnd - hpStart : null,
-    shake: sh, secondMoveText: s.secondUse, end: last,
+    shake: sh, setDimPeak: Math.round(dimPeak * 100) / 100, setDimFrames: dimFrames, secondMoveText: s.secondUse, end: last,
   };
   const counters = {
-    idleCalls: s.idleCalls, peakCalls, extraCalls: peakCalls !== null ? peakCalls - s.idleCalls : null,
+    idleCalls: s.idleCalls, peakCalls, extraCalls: peakCalls !== null ? peakCalls - s.idleCalls : null, fxDrawsPeak, liveSubjectsPeak,
     programsIdle: progIdle, programsPeak: progPeak,
     pointLights: Math.max(...frames.map((f) => f.pointLights)), litPointLightsPeak: Math.max(...frames.map((f) => f.litPointLights)),
     pointsAlivePeak: win.length ? Math.max(...win.map((f) => f.pointsAlive)) : 0, pointsCapPeak: win.length ? Math.max(...win.map((f) => f.pointsCap)) : 0,
@@ -314,7 +329,8 @@ function eventsText(r) {
   L.push(`text->launch ${e.textToLaunch} f | launch->impact ${e.launchToImpact} f | impact->flash ${e.impactToFlash} f | impact->reaction ${e.impactToReaction} f | hit-stop ${e.hitStop} f (attacker held ${e.attackerHeld}) | launch->settle ${e.launchToSettle} f | hp drain ${e.hpDrainFrames} f`);
   L.push(`severity ${e.severity}${e.ko ? ' (KO)' : ''}: foe HP ${e.hpBefore} -> ${e.hpAfter} %`);
   L.push(`shake: start ${e.shake.start} frames ${e.shake.frames} peak ${e.shake.peakPx} px ${e.shake.directional === null ? '' : e.shake.directional ? 'directional kick' : 'alternating buzz'} ${JSON.stringify(e.shake.pattern)}`);
-  L.push(`draw calls idle ${c.idleCalls} peak ${c.peakCalls} (+${c.extraCalls}) | programs ${c.programsIdle} -> ${c.programsPeak} | point lights ${c.pointLights} (lit peak ${c.litPointLightsPeak}) | points alive peak ${c.pointsAlivePeak}/${c.pointsCapPeak} | fx objects peak ${c.fxObjectsPeak} | 3D fx meshes added ${c.meshes3dAdded} | added by kind ${JSON.stringify(c.fxAddedByKind)}`);
+  L.push(`set dim peak ${Math.round((e.setDimPeak ?? 0) * 100)} % over ${e.setDimFrames ?? 0} f (key light intensity vs idle)`);
+  L.push(`FX draw calls peak ${c.fxDrawsPeak} (FX meshes/points in the scene; the budget counts these) | raw draw calls idle ${c.idleCalls} peak ${c.peakCalls} (+${c.extraCalls}, includes +2 per acting kin re-bake, up to ${c.liveSubjectsPeak} acting) | programs ${c.programsIdle} -> ${c.programsPeak} | point lights ${c.pointLights} (lit peak ${c.litPointLightsPeak}) | points alive peak ${c.pointsAlivePeak}/${c.pointsCapPeak} | fx objects peak ${c.fxObjectsPeak} | 3D fx meshes added ${c.meshes3dAdded} | added by kind ${JSON.stringify(c.fxAddedByKind)}`);
   if (r.pageErrors.length) L.push(`PAGE ERRORS: ${r.pageErrors.join(' | ')}`);
   L.push('');
   L.push('frame  calls prog fx pts | foeEmis blink hp    ghost shake   | text / added / removed');

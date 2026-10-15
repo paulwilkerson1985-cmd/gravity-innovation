@@ -88,23 +88,31 @@ async function sparkPx(c: Ctx) {
 ```
 
 ```ts
-// battle.ts case 'move'
+// battle.ts case 'move'  (play(e, next): `next` is the engine's following event; today it is used
+// to detect a miss, and it also tells you the severity before `damage` plays:
+// next.t === 'damage' && (next.crit ? 'critical' : next.mult > 1 ? 'super' : next.mult < 1 ? 'weak' : 'normal'))
 const impact = new Promise<void>((r) => { onImpact = r; });
-const fx = moveFx(scene, type, from, to, { power, camera, miss, onImpact });
-void me?.lunge(spot);                     // runs on its own; its recovery overlaps the reaction
-await (miss ? fx : Promise.race([impact, fx]));   // return at impact, so `damage` plays next frame
+const lunge = me?.lunge(spot);
+await wait(140);
+const fx = moveFx(scene, type, from, to, { power, camera, miss, severity, onImpact });
+if (miss) await Promise.all([lunge, fx, dodge]);          // a whiff plays out whole, as today
+else { void lunge; await Promise.race([impact, fx]); }     // hit: return at impact, `damage` plays next frame
 ```
 
-`damage` then runs `hit()`, `tweenHp` and the shake within 1–2 frames of the impact frame. Keep the
-miss path (`whiffPx`, `dodge`) awaiting the whole whiff. Do not shorten `say()`.
+`damage` then runs `hit()`, `tweenHp` and the shake within 1–2 frames of the impact frame. The
+lunge's return/settle overlaps the reaction (never awaited on a hit). Do not shorten `say()`.
 
 ## 4. Hit feedback hooks (`render/creature.ts`, `scenes/battle.ts`, `scenes/hd2dBattle.ts`)
 
 - `CreatureView.hit(strong, crit)`: sets `material.emissive` white (1.0 strong / 0.85 normal), a
   spring knockback lean on `body.quaternion` + squash + `inner.position` kick, blinks via
   `blinkOff` (the sprite baker hides the sprite) for 70 % of 320/420 ms, `acting++`; crit only: a
-  70 ms frozen squash first. Make the hold a parameter: `hit(strong, crit, { hitStopFrames })` =
-  `tween(frames · 16.7, () => {})` with the pose frozen and the flash on, then the knockback.
+  70 ms frozen squash first. Make the hold a parameter: `hit(strong, crit, { holdFrames, whiteFrames,
+  blinks, knockback })` = `tween((holdFrames - 0.5) * 1000 / 60, () => {})` with the pose frozen and
+  the flash on, then the knockback. The `- 0.5` matters: `frames · 16.7` overshoots 1000/60 and the
+  tween clock steps in 16.667 ms, so a whole-frame duration can land one frame late. `fx_timeline`
+  reports the hold as the number of frames the target stays bit-identical from the flash frame on
+  (a hold of N reads N; it reads 0 when the knockback starts on the flash frame).
 - **Hit-stop that freezes the idle too**: `CreatureView.update(t)` keeps breathing during the hold
   because `animClock.time` advances unscaled; the hold is inside `hit()` (`acting > 0` suppresses
   idle), so the target is bit-identical for exactly N frames: that is what `fx_timeline` counts.

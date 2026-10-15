@@ -3,11 +3,16 @@
 
   python3 book_from_renders.py --id spark-arc --out DIR --ramp spark --w 32 --h 48 FRAME_DIR [FRAME_DIR2 ...]
       [--edges 0.3,0.6,0.92] [--thr 0.25] [--dither 0.1] [--mode 1] [--close 0] [--no-band] [--gamma 1.0]
-      [--blank 2,5] [--fit] [--keep-hot] [--json]
+      [--blank 2,5] [--fit] [--keep-hot] [--passthrough] [--orphans 8|4|0] [--json]
+
+Hand-drawn frames already painted on the ramp's colours (impact_book.py output, your own painter):
+use --passthrough: every texel takes the nearest ramp colour by exact/nearest RGB (no re-banding by
+luminance, no mode filter, no edge band, no orphan cleanup), so the frames stay as drawn. Rendered
+frames (Blender, anything with gradients) go through the full pipeline below.
 
 Frames are the PNGs of each FRAME_DIR in name order, concatenated (put hand-ruled impact key frames
 from impact_book.py in the first dir, the Blender body in the second). Pipeline per frame
-(battle-vfx-motion.md section 5.1, measured here):
+(the recipe in references/elements.md section 4, measured here):
   1. premultiplied BOX downscale to --w x --h texels (alpha-weighted area average; never bilinear);
      frames already at the target size pass through untouched. --fit first crops every frame to the
      union content box (same box for all frames, so nothing swims) and pads to the aspect.
@@ -17,10 +22,14 @@ from impact_book.py in the first dir, the Blender body in the second). Pipeline 
   4. optional morphological closing (--close N, merges droplets a texel apart).
   5. --mode N passes of a 3x3 mode filter over the index image, transparency included as a class
      (kills interior speckle and lone holes; the "avoid noise" rule).
-  6. orphan cleanup: lone texels with no 4-neighbour are removed; the count per frame is reported.
+  6. orphan cleanup (--orphans 8, default): lone texels with no 8-neighbour are removed (a diagonal
+     neighbour keeps dotted lines and diagonal rays); --orphans 4 is stricter, 0 disables; the count
+     per frame is reported.
   7. dark edge band: outer texels become ramp index 1 unless they are the hot (top) index
      (--keep-hot keeps every index >= top-1 unbanded; --no-band skips it).
   8. --blank i,j forces those frame indices empty (electric "on twos": blanks at 2 and 5).
+Frames already at the target size skip only the downscale (step 1); they still go through steps
+2-8 unless --passthrough.
 Writes DIR/<id>.json {id, w, h, frames, ramp, idx[frame][w*h]} (the FlipBatch book), DIR/<id>.png
 (frames side by side, RGBA, nearest) and DIR/<id>.x4.png (a 4x preview strip), and prints stats.
 Ramps: the FX_RAMPS names in game/src/render/hd2d/fx.ts or "#hex,#hex,..." (index 0 transparent,
@@ -117,13 +126,27 @@ def mode3(idx, n_classes):
     return np.where(keep, centre, counts.argmax(0))
 
 
-def despeckle(idx):
+def despeckle(idx, conn=8):
+    if not conn:
+        return 0
     m = idx > 0
     nb = np.zeros_like(m)
     nb[1:, :] |= m[:-1, :]; nb[:-1, :] |= m[1:, :]; nb[:, 1:] |= m[:, :-1]; nb[:, :-1] |= m[:, 1:]
+    if conn == 8:
+        nb[1:, 1:] |= m[:-1, :-1]; nb[1:, :-1] |= m[:-1, 1:]; nb[:-1, 1:] |= m[1:, :-1]; nb[:-1, :-1] |= m[1:, 1:]
     lone = m & ~nb
     idx[lone] = 0
     return int(lone.sum())
+
+
+def nearest_ramp(f, rgb, thr):
+    """Passthrough: each texel -> the nearest ramp entry by RGB distance (transparent below thr)."""
+    px = f[..., :3][..., None, :]
+    pal = np.asarray(rgb, dtype=np.float32)[None, None, 1:, :] / 255
+    d = ((px - pal) ** 2).sum(-1)
+    idx = d.argmin(-1).astype(np.int64) + 1
+    idx[f[..., 3] < thr] = 0
+    return idx
 
 
 def edge_band(idx, keep_from):
@@ -143,7 +166,7 @@ def main(argv):
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a in ('--no-band', '--fit', '--keep-hot', '--json'):
+        if a in ('--no-band', '--fit', '--keep-hot', '--json', '--passthrough'):
             o[a] = True; i += 1
         elif a.startswith('--'):
             o[a] = argv[i + 1]; i += 2
@@ -179,7 +202,16 @@ def main(argv):
     by, bx = np.indices((h, w))
     bayer = BAYER4[by % 4, bx % 4] - 0.5
     books, stats = [], []
+    rgb = [hex_rgb(c) for c in ramp]
     for fi, (f, l) in enumerate(zip(small, lum)):
+        if o.get('--passthrough'):
+            idx = nearest_ramp(f, rgb, thr)
+            if fi in blanks:
+                idx[:] = 0
+            books.append(idx)
+            used = sorted(set(np.unique(idx).tolist()) - {0})
+            stats.append({'frame': fi, 'src': os.path.basename(paths[fi]), 'fill': round(float((idx > 0).mean()), 3), 'colours': used, 'orphansRemoved': 0})
+            continue
         v = np.clip(l / norm, 0, 1) ** gamma
         idx = np.ones((h, w), dtype=np.int64)
         for e in edges:
@@ -194,7 +226,7 @@ def main(argv):
             idx = closing(idx, c)
         for _ in range(int(o.get('--mode', '1'))):
             idx = mode3(idx, n)
-        orphans = despeckle(idx)
+        orphans = despeckle(idx, int(o.get('--orphans', '8')))
         if not o.get('--no-band'):
             idx = edge_band(idx, top - 1 if o.get('--keep-hot') else top)
         books.append(idx)
@@ -204,7 +236,7 @@ def main(argv):
     book = {'id': bid, 'w': w, 'h': h, 'frames': len(books), 'ramp': ramp, 'idx': [b.flatten().tolist() for b in books]}
     with open(os.path.join(o['--out'], f'{bid}.json'), 'w') as fh:
         json.dump(book, fh)
-    rgb = np.array([hex_rgb(c) for c in ramp], dtype=np.uint8)
+    rgb = np.array(rgb, dtype=np.uint8)
     atlas = np.zeros((h, w * len(books), 4), dtype=np.uint8)
     for fi, b in enumerate(books):
         atlas[:, fi * w:(fi + 1) * w, :3] = rgb[b]

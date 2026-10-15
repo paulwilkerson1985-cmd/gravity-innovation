@@ -83,7 +83,7 @@ and safety at the end).
 | `dither_scan.py RUN` | clustered checkerboard texels per strip frame vs the launch frame | 1 = dither dissolve |
 | `strip_judge.py --candidate A --baseline B` | blind pairwise strip judge, canary, both orders | 0 better · 1 not · 3 invalid |
 | `impact_book.py DIR --ramp spark` | contrast / white / blast / broken key frames as PNGs | |
-| `book_from_renders.py --id ID --out DIR --ramp R --w W --h H FRAMES…` | renders or hand frames → palette-locked JSON book + atlas + ×4 preview, orphan count | |
+| `book_from_renders.py --id ID --out DIR --ramp R --w W --h H FRAMES…` | renders → palette-locked JSON book + atlas + ×4 preview (`--passthrough` for hand frames on the ramp) | |
 | `blender_fx.py -- arc\|splash\|fire DIR` (via `"$ORBKIN_BPY" -I`) | Cycles sources: bevelled arcs, metaball splash, 4D-noise fire volume | |
 
 ## Budget per effect (phones first)
@@ -108,6 +108,18 @@ shadows · books ≤ 12 frames of ≤ 48×48 texels, ≤ 6 colours (+ transparen
   Pyrelord L30 (60) moves first and the harness then logs the foe's move. A kin's menu holds its
   **last four** learnset moves (Storm Lance from L24).
 - `hit()` sets emissive 0.85 on a normal hit (1.0 strong): the harness's flash threshold is 0.8.
+- Raw draw calls move with sprite re-bakes (+2 per acting kin per frame, +2 on 10 fps bake ticks),
+  so the budget gates **FX draw calls** = FX meshes + points in the scene at the peak (≤ 4); the raw
+  idle/peak numbers are informational. Hit-stop reads as frames held, flash frame included (a hold of
+  N reads N). Set dim is read from the key light's intensity vs idle.
+- `FlipBatch.run(maxMs)` keeps an empty batch in the scene until `maxMs`: dispose when `alive()` is 0.
+  Exact frame holds: one sprite per key frame with `fps ≈ 0`, `life = (n + 0.5) / 60` (fx-api §2).
+- The move FX learns its severity from the engine's lookahead event (`play(e, next)`: `next.t ===
+  'damage'` carries `crit` and `mult`) before `damage` plays; it does not compute anything.
+- "Checkerboard pixels in the strip = 0" is `dither_scan.py` on the after run (clustered count per
+  strip frame); `book_from_renders.py`'s orphan count is a per-book-frame stat, not the gate.
+- `book_from_renders.py` re-bands rendered frames by luminance; hand-drawn frames already on the
+  ramp (impact_book.py, your own painter) need `--passthrough` or they lose colours and dots.
 - `animClock.time` advances unscaled, so `animClock.speed = 0` freezes tweens but not idle bobs;
   hit-stop is a hold inside `hit()` (idle is suppressed while `acting > 0`).
 - `impactGlow` is a 1-px Bayer gradient: it is a checkerboard to `dither_scan`. Use the light.

@@ -85,13 +85,17 @@ and resolves only when the whole dissipation is over; then `battle.ts` `case 'mo
   the first frame after launch on which ≥ 3 FX objects enter at once (today's impact layers).
 - **flash**: first frame the target's `material.emissive` ≥ 0.8 (`hit()` sets 1.0 strong / 0.85
   normal). **reaction**: first frame the target `acting`/`busy` flag is set, or it flashes, blinks or
-  its HP bar drops. **hit-stop**: consecutive frames after the flash on which the target's pose
-  (inner position, body quaternion, body scale) is bit-identical while its flash is still on;
-  **attacker held**: those frames on which the attacker did not move either.
+  its HP bar drops. **hit-stop**: the number of frames, the flash frame included, on which the target's pose
+  (inner position, body quaternion, body scale) stays bit-identical while its flash is still on
+  (a hold of N frames reads N; 0 when the knockback starts on the flash frame); **attacker held**:
+  those frames on which the attacker did not move either. **set dim**: 1 − key light intensity /
+  idle, peak and frames.
 - **shake**: frames with a non-zero camera view offset (whole internal px); *kick* = the first two
   offsets share a sign, *buzz* = they alternate. **settle**: the last frame with an FX object in the
   scene or the target still acting (HP drain and the next move's text are excluded).
-- **counters**: draw calls idle (median of 6 idle frames) vs the peak inside launch..settle; linked
+- **counters**: **FX draw calls peak** = FX meshes + points in the scene (the budget's number);
+  raw draw calls idle (quietest idle frame) vs the peak inside launch..settle, which also moves with
+  sprite re-bakes (+2 per acting kin per frame, +2 on bake ticks: informational); linked
   programs idle vs peak; PointLights in the scene per frame and the peak number lit; live points;
   FX objects by kind (`flip` FlipBatch, `points`, `glow` impactGlow disc, `decal`, `mesh3d` = any
   other FX mesh, i.e. a 3D ribbon/primitive).

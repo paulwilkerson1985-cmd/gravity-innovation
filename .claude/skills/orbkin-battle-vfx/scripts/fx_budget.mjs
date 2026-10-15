@@ -6,8 +6,8 @@
 //        [--max-extra-calls 4] [--max-points 120] [--max-frames 12] [--max-size 48] [--max-colors 6]
 //        [--max-book-kb 80] [--max-launch-to-settle 60] [--require-light] [--allow-3d-mesh]
 //
-// Budget (GRAPHICS_PLAYBOOK.md section 6, "FX per move"): <= 1.0 s launch->settle, <= 4 extra draw
-// calls over the idle frame, one pre-allocated FX light (point-light count constant across every
+// Budget (SKILL.md "Budget per effect"): <= 1.0 s launch->settle, <= 4 FX draw calls at the peak
+// (FX meshes + points; raw calls also move with sprite re-bakes), one pre-allocated FX light (point-light count constant across every
 // frame and the program count unchanged idle->impact), <= 12 frames of <= 48x48 texels per book,
 // <= 6 colours per ramp (+ transparent), <= 80 KB RGBA per book, <= 120 live points, and no 3D
 // ribbon/primitive FX mesh in a pixel scene.
@@ -24,7 +24,8 @@ const c = tl.counters, e = tl.events, frames = tl.frames ?? [];
 const rows = [];
 const row = (name, value, limit, ok, note = '') => rows.push({ name, value, limit, ok: !!ok, note });
 
-row('extra draw calls at the peak (over idle)', c.extraCalls, `<= ${lim.extraCalls}`, c.extraCalls !== null && c.extraCalls <= lim.extraCalls, `idle ${c.idleCalls}, peak ${c.peakCalls}`);
+const fxDraws = c.fxDrawsPeak ?? frames.reduce((m, f) => Math.max(m, (f.fxKinds ?? []).filter((k) => k !== 'light').length), 0);
+row('FX draw calls at the peak (FX meshes + points in the scene)', fxDraws, `<= ${lim.extraCalls}`, fxDraws <= lim.extraCalls, `raw calls idle ${c.idleCalls}, peak ${c.peakCalls} (+${c.extraCalls}; raw includes +2 per acting kin re-bake per frame, informational)`);
 row('live points at the peak', c.pointsAlivePeak, `<= ${lim.points}`, c.pointsAlivePeak <= lim.points, `capacity ${c.pointsCapPeak}`);
 row('launch -> settle (frames)', e.launchToSettle, `<= ${lim.settle}`, e.launchToSettle !== null && e.launchToSettle <= lim.settle);
 const pl = frames.map((f) => f.pointLights);
@@ -72,4 +73,4 @@ function parse(argv) {
   return o;
 }
 function num(v, d) { return v === undefined ? d : Number(v); }
-function usage() { console.log(fs.readFileSync(new URL(import.meta.url)).toString().split('\n').slice(1, 14).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); }
+function usage() { console.log(fs.readFileSync(new URL(import.meta.url)).toString().split('\n').slice(1, 13).map((l) => l.replace(/^\/\/ ?/, '')).join('\n')); }
