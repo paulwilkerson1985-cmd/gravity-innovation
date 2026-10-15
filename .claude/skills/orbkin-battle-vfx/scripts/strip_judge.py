@@ -24,7 +24,10 @@ PROMPT_MOTION = (
     "blink, knockback, a camera kick) starting on the impact frame, not several frames later; a hit-stop that reads as "
     "weight; the effect dissipating by shape (shrinking, breaking into clumps, sparks falling) rather than a checkerboard "
     "dither; FX pixels the same size as the sprite pixels, with no smooth 3D ribbons or gradients; snappy, not lingering. "
-    "Busier or brighter earns nothing. You must pick one, even if they are close. "
+    "Count these AGAINST a strip: a bloom halo or glow larger than the target that hides it, the target held pure white for more "
+    "than a few frames, effect pieces occluded behind the target, cells after the hit with nothing left of the effect, a bolt or "
+    "body so thin or so close to the set's own colour that it has no silhouette. Busier or brighter earns nothing. You must pick "
+    "one, even if they are close. "
     'Reply with only JSON: {"winner": "A" or "B", "confidence": 1-5, "reason": "<= 25 words"}'
 )
 PROMPT_FRAME = (

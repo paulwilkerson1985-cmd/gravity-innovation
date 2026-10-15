@@ -36,7 +36,9 @@ blank frames** (15 fps, blanks at 2 and 5, every other frame after 60 %); flipbo
 | Critical | **8 f** + 1 pre-impact freeze | 4 px, 16 f | 3 white frames, optional 1 inverted | 0.35 | ×1.6 | 20 % |
 | KO blow | 10–12 f | 4–5 px, 20 f | hold white 4 f | launch | ×1.8 | 30 %, then fade |
 
-Shake is a **directional kick**: the first offset is along the hit direction (away from the attacker),
+Target flash = the table's white frames (2 normal / 3 super / 3 crit), then blinks every 4 f; the
+rest of the hold shows the hurt pose in its own colours (or one inverted frame on a crit). Holding
+the sprite white for the whole 6–8 f hold is a whiteout. Shake is a **directional kick**: the first offset is along the hit direction (away from the attacker),
 then it decays with one overshoot over 8–16 f in whole internal pixels. Never a sin/cos buzz at
 24–30 Hz (today: `round(amount·28)` px alternating every frame, which the strip reads as jitter).
 Electric moves dim the **set** (not the sprites, not the FX) 15–35 % so the bolt pops (Emerald dims

@@ -2,7 +2,14 @@
 """Deterministic texel-grid lightning bolt book (electric "on twos" sequence) as PNG frames.
 
   python3 bolt_book.py OUT_DIR [--ramp spark] [--w 24 --h 48] [--from-sky] [--seed 7] [--branches 2]
-                       [--strike x,y] [--sparks 10]
+                       [--strike x,y] [--sparks 10] [--edge #hex] [--lance]
+
+--lance (the default with --from-sky): a 2-texel core along the whole length, runs of 8-16 texels
+with at most 5 corners, the strike row at h-8: reads as a lance, not a noodle (a 3-texel zigzag with
+4-9 texel jogs and a 1-texel core read as a thin orange line on the orange cave). --edge replaces
+ramp index 1 (the dark edge) with a contrasting outline colour: on a set that shares the element's
+hue the edge must be >= 40 luma darker than the local set and hue-opposed (spark on the quarry cave:
+an indigo such as #2a1b4e, tying to Stormoth's violet).
 
 Frames (saint11 electricity + the Spark signature in references/elements.md), all on the ramp
 colours at texel size, ready for `book_from_renders.py --passthrough`:
@@ -76,18 +83,20 @@ class Grid:
             self.g[y][x] = v
 
 
-def bolt_path(rng, w, h, strike, from_sky):
+def bolt_path(rng, w, h, strike, from_sky, lance=False):
     """Vertices from the top edge to the strike point: straight runs, sharp alternating corners."""
     sx, sy = strike
+    lo, hi = (8, 16) if lance else (4, 9)
+    jlo, jhi = (3, 6) if lance else (3, 7)
     x = sx if from_sky else rng.randint(1, max(1, w // 3))
     x = min(max(x + (rng.randint(-5, 5) if from_sky else 0), 1), w - 2)
     pts = [(x, 0)]
     y = 0
     side = rng.choice((-1, 1))
     while y < sy - 4:
-        run = rng.randint(4, 9)
+        run = rng.randint(lo, hi)
         y = min(sy - 3, y + run)
-        jump = rng.randint(3, 7) * side
+        jump = rng.randint(jlo, jhi) * side
         side = -side
         # pull toward the strike as we get close
         x = x + jump + round((sx - x) * (y / sy) * 0.5)
@@ -130,16 +139,16 @@ def draw_bolt(g, pts, core, glow, white_tail, branches, rng, core_width=1):
         g.line(mx, my, ex, ey, core, 1)
 
 
-def frames(w, h, ramp, seed, from_sky, branches, strike, n_sparks):
+def frames(w, h, ramp, seed, from_sky, branches, strike, n_sparks, lance=False):
     rng = random.Random(seed)
     top = len(ramp) - 1
     core, glow, edge = min(3, top), min(2, top), 1
     sx, sy = strike
     out = []
-    p0 = bolt_path(rng, w, h, strike, from_sky)
-    p1 = bolt_path(rng, w, h, strike, from_sky)
+    p0 = bolt_path(rng, w, h, strike, from_sky, lance)
+    p1 = bolt_path(rng, w, h, strike, from_sky, lance)
     # f0 first shock
-    g = Grid(w, h); draw_bolt(g, p0, core, glow, True, branches, rng); dilate(g, core, glow); dilate(g, glow, edge)
+    g = Grid(w, h); draw_bolt(g, p0, core, glow, True, branches, rng, core_width=2 if lance else 1); dilate(g, core, glow); dilate(g, glow, edge)
     out.append(g)
     # f1 second shock: white along the whole length, strike flare
     g = Grid(w, h); draw_bolt(g, p1, top, glow, True, branches, rng, core_width=2)
@@ -188,11 +197,14 @@ def main(argv):
     ramp = RAMPS[rname] if rname in RAMPS else rname.split(',')
     w, h = int(o.get('--w', '24')), int(o.get('--h', '48'))
     seed = int(o.get('--seed', '7')); branches = int(o.get('--branches', '2')); n_sparks = int(o.get('--sparks', '10'))
-    strike = tuple(int(v) for v in o['--strike'].split(',')) if '--strike' in o else (w // 2, h - 6)
     from_sky = '--from-sky' in argv
+    lance = '--lance' in argv or (from_sky and '--no-lance' not in argv)
+    strike = tuple(int(v) for v in o['--strike'].split(',')) if '--strike' in o else (w // 2, h - (8 if lance else 6))
+    if '--edge' in o:
+        ramp = [ramp[0], o['--edge']] + list(ramp[2:])
     os.makedirs(out, exist_ok=True)
     rgb = [hex_rgb(c) for c in ramp]
-    fr = frames(w, h, ramp, seed, from_sky, branches, strike, n_sparks)
+    fr = frames(w, h, ramp, seed, from_sky, branches, strike, n_sparks, lance)
     tiles = []
     for i, g in enumerate(fr):
         im = Image.new('RGBA', (w, h), (0, 0, 0, 0)); px = im.load()
@@ -207,7 +219,7 @@ def main(argv):
     for i, t in enumerate(tiles):
         sheet.alpha_composite(t.resize((w * 4, h * 4), Image.NEAREST), (i * (w + 2) * 4, 0))
     sheet.convert('RGB').save(os.path.join(out, 'sheet-x4.png'))
-    print(f'bolt_book: {len(fr)} frames of {w}x{h} on {len(ramp) - 1} colours -> {out} (strike {strike}, seed {seed}); next: book_from_renders.py --passthrough')
+    print(f'bolt_book: {len(fr)} frames of {w}x{h} on {len(ramp) - 1} colours -> {out} (strike {strike}, seed {seed}, {"lance" if lance else "zigzag"}, edge {ramp[1]}); next: book_from_renders.py --passthrough --ramp "{",".join(ramp)}"')
     return 0
 
 

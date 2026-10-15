@@ -277,6 +277,9 @@ function deriveEvents(frames, s) {
     }
     if (hitStop > 0) { hitStop++; attackerHeld++; }
   }
+  // White frames: how long the target is held white (emissive >= 0.8) from the flash on.
+  let whiteFrames = 0;
+  if (flash !== null) for (let n = flash; n <= last; n++) { const f = F(n); if (!f || f.foeEmissive < 0.8) break; whiteFrames++; }
   // Set dim: the key light's intensity drop vs idle (sprites and FX are unlit by it, so this is the set).
   let dimPeak = 0, dimFrames = 0;
   if (s.idleKeyI) for (const f of frames) { const d = 1 - f.keyI / s.idleKeyI; if (d > 0.02) { dimFrames++; dimPeak = Math.max(dimPeak, d); } }
@@ -306,7 +309,7 @@ function deriveEvents(frames, s) {
   const kindsAdded = {};
   for (const f of win) for (const a of f.added) kindsAdded[a.k] = (kindsAdded[a.k] ?? 0) + 1;
   const events = {
-    text: textFrame, launch, impact, impactMarked: s.impactMarked, flash, reaction, hitStop, attackerHeld, severity, ko, hpBefore: hp0, hpAfter: F(last)?.hp, hpDrainStart: hpStart, hpDrainEnd: hpEnd, settle,
+    text: textFrame, launch, impact, impactMarked: s.impactMarked, flash, reaction, hitStop, attackerHeld, whiteFrames, severity, ko, hpBefore: hp0, hpAfter: F(last)?.hp, hpDrainStart: hpStart, hpDrainEnd: hpEnd, settle,
     textToLaunch: launch !== null && textFrame !== null ? launch - textFrame : null,
     launchToImpact: impact !== null && launch !== null ? impact - launch : null,
     impactToReaction: impact !== null && reaction !== null ? reaction - impact : null,
@@ -331,7 +334,7 @@ function eventsText(r) {
   const L = [];
   L.push(`# fx timeline: ${r.config.moveName} (${r.config.lead} L${r.config.leadLevel} -> ${r.config.foe} L${r.config.foeLevel}), seed ${r.config.seed}, ${r.config.arena || r.config.route + '/' + r.config.hotspot}`);
   L.push(`text ${e.text}  launch ${e.launch}  impact ${e.impact}${e.impactMarked ? ' (marked)' : ''}  flash ${e.flash}  reaction ${e.reaction}  hp ${e.hpDrainStart}..${e.hpDrainEnd}  settle ${e.settle}`);
-  L.push(`text->launch ${e.textToLaunch} f | launch->impact ${e.launchToImpact} f | impact->flash ${e.impactToFlash} f | impact->reaction ${e.impactToReaction} f | hit-stop ${e.hitStop} f (attacker held ${e.attackerHeld}) | launch->settle ${e.launchToSettle} f | aftermath (impact->settle) ${e.aftermath} f | hp drain ${e.hpDrainFrames} f`);
+  L.push(`text->launch ${e.textToLaunch} f | launch->impact ${e.launchToImpact} f | impact->flash ${e.impactToFlash} f | impact->reaction ${e.impactToReaction} f | hit-stop ${e.hitStop} f (attacker held ${e.attackerHeld}, white ${e.whiteFrames} f) | launch->settle ${e.launchToSettle} f | aftermath (impact->settle) ${e.aftermath} f | hp drain ${e.hpDrainFrames} f`);
   L.push(`severity ${e.severity}${e.ko ? ' (KO)' : ''}: foe HP ${e.hpBefore} -> ${e.hpAfter} %`);
   L.push(`shake: start ${e.shake.start} frames ${e.shake.frames} peak ${e.shake.peakPx} px ${e.shake.directional === null ? '' : e.shake.directional ? 'directional kick' : 'alternating buzz'} ${JSON.stringify(e.shake.pattern)}`);
   L.push(`set dim peak ${Math.round((e.setDimPeak ?? 0) * 100)} % over ${e.setDimFrames ?? 0} f (key light intensity vs idle)`);

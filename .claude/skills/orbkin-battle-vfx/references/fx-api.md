@@ -153,10 +153,12 @@ lunge's return/settle overlaps the reaction (never awaited on a hit). Do not sho
   `Hd2dBattleStage` constructor with `userData.fx = true`, `castShadow = false`, add it to the scene,
   and animate only `intensity`, `color`, `position`. Verify: `fx_timeline` reports point lights
   constant across frames and programs idle == peak.
-- Curve = the flipbook curve: peak on the flash frame (severity × the element's peak), then decay
+- Curve = the flipbook curve, offset from the disc: ≤ 0.4× peak while the white disc is on
+  (impact+1/+2), peak on the blast frame (impact+3/+4, severity × the element's peak), then decay
   with the element's flicker (spark: on/off with the blank frames). Intensity units are physical
-  (the cave lantern uses 18 at distance 8): start around 25–40 for a normal flash at the target's
-  centre + 0.3 units toward the camera.
+  (the cave lantern uses 18 at distance 8): distance 3–4, decay 1.5, 16–24 at the peak at the
+  target's centre + 0.3 units toward the camera; 38 at distance 6 lit a 350-px pool and, with the
+  disc, a 3.9× halo (`flash_scan` halo metric).
 - Sprites do not see scene lights; they see `rig.spriteLight` (`keyDir, keyColor, sky, ground, rim,
   spriteGain`) through `SpriteBaker`. Tint hook: each frame while the light is lit,
   `keyColor = base + fxColor · k · 0.35`, `rim = lerp(baseRim, fxColor, 0.6 · k)`, and

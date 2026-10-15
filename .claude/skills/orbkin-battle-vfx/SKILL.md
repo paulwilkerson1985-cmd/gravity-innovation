@@ -41,9 +41,17 @@ and safety at the end).
 7. **Keep the battle rules.** Rendering plays back engine events; nothing in `src/engine`, damage,
    accuracy or the event order changes.
 8. **The flash is a shape, not an orb.** A disc/crescent about the target's size in an **additive**
-   front batch with book `glow ≤ 1.0`; the FX light makes the bloom (a 40-texel disc at glow 1.25
-   bloomed into an orb 1.5× the sprite and hid it). `flash_scan.py` must pass.
-9. **A hit has an aftermath.** After the flash: blast 2 f, broken blast 2 f, then sparks with 2-texel
+   front batch with book `glow ≤ 1.0`, and the **disc and the FX light peak never coincide**: the
+   disc owns impact+1/+2 with the light ≤ 0.4× its peak, the light peaks on the blast frame
+   (impact+3/+4) at distance 3–4 with a pool ≤ 2× the target's height. A disc at glow 1.0 plus a
+   light of 38 at distance 6 on the same frames made a warm halo 3.9× the target box that passed
+   the white test (pilot 2). The target stays white for the table's 2/3/3 frames, never for the
+   whole hold. `flash_scan.py` (white, halo, pool) and the white-frames check must pass.
+9. **A hit has an aftermath, and a bolt has a silhouette.** The edge colour must read against the
+   set (≥ 40 luma darker, hue-opposed where the arena shares the element's hue: `bolt_book.py
+   --edge '#2a1b4e'` for spark on the quarry cave); a from-the-sky bolt is a lance (`--from-sky`:
+   2-texel core, runs of 8–16 texels, ≤ 5 corners, 24×64–32×96 with `fx_budget --tall`) whose
+   strike quarter is drawn in the front batch so the sprite does not occlude it. After the flash: blast 2 f, broken blast 2 f, then sparks with 2-texel
    heads and 3-texel trails, ≥ 24 grit points of size 2, the light decaying: FX still visible at
    impact+10 and +20, impact → settle 20–48 f (a two-frame blip read as a blink, not a strike).
 10. **Place impact pieces at the target's screen centre**, layered by `renderOrder` only: `behind()`
@@ -62,8 +70,10 @@ and safety at the end).
 - **S1 Signature frames.** Read `references/elements.md` §2 for the element now; pick its
   signature frames and ramp; read `references/timing.md` §1–2 for the beat sheet and severity table.
 - **S2 Timing fix.** Read `references/fx-api.md` §3–4. Add `onImpact`, remove every `return tail`,
-  let the lunge overlap, mark the impact frame with `window.__fxEvents`. Re-run S0: impact →
-  reaction ≤ 2 f before anything else.
+  let the lunge overlap, mark the impact frame with `window.__fxEvents`. Re-run S0 into
+  `OUT/timing` **before any book exists** (a required artifact the report cites): impact →
+  reaction ≤ 2 f (reads 1 f at best) before anything else. Pilot 2 merged S2–S4 and could not
+  attribute its hold off-by-one.
 - **S3 Impact book + hit feedback by severity.** Hand-ruled key frames (`impact_book.py` →
   `book_from_renders.py --passthrough --holds 1,2,2,2`, played at 60 fps) at the target's centre:
   contrast → white flash (additive, in front) → sharp blast → broken blast (behind); `hit()` hold =

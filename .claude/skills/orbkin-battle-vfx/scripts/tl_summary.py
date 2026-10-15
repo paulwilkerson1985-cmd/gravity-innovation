@@ -34,7 +34,7 @@ def row(r):
         'move': r['config']['moveName'], 'severity': sev, 'hpBefore': e.get('hpBefore'), 'hpAfter': e.get('hpAfter'),
         'text->launch': e['textToLaunch'], 'launch->impact': e['launchToImpact'], 'impact->flash': e['impactToFlash'],
         'impact->reaction': e['impactToReaction'], 'hit-stop': hs, 'hit-stop target': f'{lo}-{hi}' if lo != hi else str(lo),
-        'attacker held': e.get('attackerHeld'), 'shake frames': e['shake']['frames'], 'shake peak px': e['shake']['peakPx'],
+        'attacker held': e.get('attackerHeld'), 'white frames': e.get('whiteFrames'), 'shake frames': e['shake']['frames'], 'shake peak px': e['shake']['peakPx'],
         'shake kind': 'kick' if e['shake']['directional'] else ('buzz' if e['shake']['directional'] is False else '-'),
         'hp drain f': e['hpDrainFrames'], 'launch->settle': e['launchToSettle'], 'aftermath f': e.get('aftermath'), 'set dim peak %': round((e.get('setDimPeak') or 0) * 100),
         'FX draw calls peak': c.get('fxDrawsPeak'), 'raw calls idle': c['idleCalls'], 'raw calls peak': c['peakCalls'], 'raw extra calls': c['extraCalls'],
@@ -59,6 +59,8 @@ def checks(r, severity=None):
     chk(f'hit-stop {lo}-{hi} f for {sev}', hs is not None and lo <= hs <= hi, f'{hs} f')
     ls = e['launchToSettle']
     chk('launch->settle <= 60 f', ls is not None and ls <= 60, f'{ls} f')
+    wf = e.get('whiteFrames')
+    chk('target held white <= 4 f (the hurt pose shows in its own colours after the white frames)', wf is None or wf <= 4, f'{wf} f')
     am = e.get('aftermath')
     if sev in ('normal', 'super-effective', 'critical', 'ko'):
         chk('aftermath (impact->settle) 20-48 f: blast, body, dissipation still visible', am is not None and 20 <= am <= 48, f'{am} f')

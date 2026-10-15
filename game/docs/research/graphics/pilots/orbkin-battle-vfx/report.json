@@ -1,0 +1,110 @@
+{
+ "name": "orbkin-battle-vfx",
+ "iterations": [
+  {
+   "outputs": [
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter1-strip-before.jpg",
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter1-strip-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter1-mid-impact-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter1-books.jpg"
+   ],
+   "log": "Fresh Opus agent in its own worktree, skill only (no research notes, no playbook). S0 baseline on seed 13 (crit), seed 14 (normal) and seed 14 vs Maelstrode L30 (super-effective): impact->reaction 104 f, hit-stop 0 (4 on the crit from the old 70 ms squash), 24 Hz buzz shake, launch->settle 130-141 f, four 3D ribbon meshes, dither_scan checkerboard-dissolve, fx_budget OVER on 4 rows. S2 timing fix: onImpact + __fxEvents marker in movefx.ts, `void tail` instead of `return tail`, battle.ts races the impact promise against the FX on a hit (misses still await lunge/whiff/dodge): impact->reaction 104 -> 0 f. Books: impact_book.py (40x40, 4 frames) and a hand-painted 24x48 8-frame arc (the Blender arc was rejected as curvy) through book_from_renders.py (three attempts: luminance re-banding lost the yellow and dots; worked with --edges 0.53,0.78,0.945 --mode 0 --no-band --dither 0). Code: external books in fx.ts, FlipBatch/PixelPoints.run dispose when empty, new sparkPx without 3D mesh or impactGlow (charge glint, arc at the foe's rect.px, contrast frame = impact, additive white flash in front, blast/broken blast behind, grit; FX light on/off with the blank frames; set dim 20/25/30 % by severity), one PointLight pre-allocated in the Hd2dBattleStage constructor with sprite-light tint (keyColor, rim, keyDir, distance falloff), HIT_FEEDBACK table in battle.ts driven by the engine's lookahead damage event, directional kick on every HD-2D hit, hit(strong, crit, {holdFrames, whiteFrames, blinks, knockback}) in creature.ts; DECISIONS.md entry. Two measured rounds on the draw-call row. Result, seed 13 crit (before -> after, 60 fps frames): text->launch 67 -> 67; launch->impact 7 -> 14; impact->flash 104 -> 0; impact->reaction 104 -> 0; hit-stop 4 -> 8 (target 8-10); shake 10 f 2 px buzz -> 12 f 4 px kick; launch->settle 141 -> 48; HP drain 41 -> 40; raw draw calls 38/46 -> 36/44; programs 91->91 both; point lights 0 -> 1 (lit); points peak 29 -> 12; 3D meshes 4 -> 0. Normal (seed 14): hit-stop 0 -> 3, reaction 104 -> 0, settle 130 -> 41, kick 2 px. Super-effective: hit-stop 0 -> 6, reaction 104 -> 0, settle 138 -> 46, kick 3 px. Gates: tl_summary every check ok on all three severities; dither_scan pass (clustered 0 on every strip frame, before 1222/507/374); fx_budget: one row over (raw extra calls +8/+6/+6 > 4: sprite re-bakes, not FX), every other row ok; strip_judge motion view `better` 4/4 votes with the canary passed; frozen-frame view `worse` 0/4 (recorded only; the judges named a 'smooth radial bloom orb'); typecheck clean; 279/279 unit tests; src/engine untouched. Re-measured by the author with the fixed harness after the pilot: FX draw calls peak 2, hit-stop 9 f (frames held), set dim 30 % on the key light but 2 % on the visible set (emissive lava), impact marked by the game code.",
+   "skillProblems": [
+    "Draw-call budget could not be met as measured: raw calls include +2 per acting kin re-bake per frame and 2-call bake ticks; the idle median flips 36/38; FX never had more than 2 batches (fixed: fx_budget now gates FX meshes + points in the scene, raw calls are informational).",
+    "Hit-stop off-by-one: the harness counted frozen transitions after the flash, so a hold of N read N-1; fx-api's `tween(frames * 16.7)` overshoots 1000/60 (fixed: frames held are counted, the reference says (N - 0.5) * 1000 / 60).",
+    "book_from_renders.py damaged hand-drawn frames (luminance re-banding lost the yellow and the sparks; 4-connected orphan cleanup deleted the dotted light lines; 'pass through untouched' only meant the resize) (fixed: --passthrough, 8-connected orphans, doc).",
+    "blender_fx.py arc produced curvy bolts against the 'sharp angles' rule (fixed: fewer longer segments; bolt_book.py added as the committed texel bolt generator).",
+    "impact_book.py drew 3 lobes, not the 6 rays it promised (fixed).",
+    "No guidance on exact frame holds in FlipBatch; the pilot used fps 0.001 and fractional life (fixed: --holds bakes holds into the book, played at fps 60).",
+    "FlipBatch.run keeps an empty batch alive for maxMs and inflates settle (documented).",
+    "No guidance on how the move FX learns the severity before the damage event (documented: the play loop's lookahead event).",
+    "fx-api section 3 sample dropped the lunge/dodge await on misses (fixed).",
+    "fx_budget --help printed a stray import line (fixed); script headers cited research notes outside the skill (fixed); the 'orphan counter' criterion did not name a script (documented: dither_scan).",
+    "Set dim was not measured and is invisible in the cave where emissive lava dominates (fixed: flash_scan measures the achieved dim; the reference says to dim emissive set materials too).",
+    "Step 0's bootstrap.sh does not exist on this branch (documented fallback: ORBKIN_BPY)."
+   ],
+   "judge": {
+    "score": 6,
+    "vsCurrent": "Yes, clearly: the hit now lands on the impact frame (impact->reaction 104 f -> 0 f on all three severities), the 3D ribbon and the dithered glow pool are gone, the bolt is at sprite texel density, and there is a real FX light, hit-stop and a directional kick. But it trades the old bolt's spectacle for a two-frame blip with a bloom orb over the target, so it reads as a correct skeleton, not a finished Storm Lance.",
+    "strengths": [
+     "Timing is fixed structurally, not patched: onImpact + Promise.race in battle.ts and the removal of `return tail` give impact->flash 0 f, hit-stop 8/6/3 f by severity, kick patterns [[-4,2],[-3,1],...], launch->settle 141 -> 48 f, and the misses still await the whiff.",
+     "Style break removed: fx objects go from {flip:3, mesh3d:4, points:2, glow:2} to {flip:2, points:1}; dither_scan passes (clustered 0 on every frame vs 1182/483/345 before); the +10f strip frame shows a 1-texel bolt with an orange edge at the same density as the Cindertail sprite.",
+     "One pre-allocated PointLight with programs 91->91 constant, plus the sprite-light tint so the FX light reaches the sprites; the warm pool on the floor around the target at +20f is the first FX light that actually sits on the set.",
+     "Process discipline: all three severities measured, two budget rounds then stop, strip judge 4/4 with canary passed, frozen frame recorded and not gated, DECISIONS.md entry, src/engine untouched, severity derived from the engine's own damage event."
+    ],
+    "weaknesses": [
+     "The white flash is a gradient blob: a 40x40 white disc at glow 1.25 plus the post bloom becomes a soft orb ~1.5x the sprite that hides the target; the front batch is normal blend at renderOrder 8, so the opaque disc covers the sprite instead of the additive flash the reference asks for.",
+     "No readable aftermath: the effect exists only at +10f (bolt) and +20f (flash/blast); +30f..+70f are empty; the arc's broken-edge frame is three orange dashes, its spark frames 6-10 isolated dots, grit 12 one-pixel points, so the crit reads as a blink rather than a strike with weight.",
+     "The blast is off-centre and wrong shape: three fat lobes instead of six sharp rays, placed with behind() so it projects up-left of the sprite and does not sit on the hit point.",
+     "The bolt is a generic symmetric W zigzag with no branching, no 2-texel core near the strike, entering diagonally rather than from the sky, thinner and smaller than the old ribbon.",
+     "book_from_renders.py's orphan cleanup and mode filter deleted the light lines impact_book.py drew; fx_budget still exited 1 on raw draw calls; set dim 20-30 % was invisible (emissive lava); the arc was painted with an ad hoc /tmp tool, so the book is not reproducible; frame holds hacked with fps 0.001."
+    ],
+    "skillFixes": [
+     "Add a flash-shape rule (glow <= 1.0 on books over 24 texels, additive front batch, FX light for the bloom) and a flash_scan that fails when the saturated-white region exceeds 1.3x the target box; use the frame-view reasons as a critique feed.",
+     "Add an impact strip (impact-2, impact, +1, +2, +4, +8, +16, +32) next to the 10-frame motion strip and gate on both.",
+     "Require a visible aftermath (FX still covering the target at impact+10 and +20; sparks with heads and trails, >= 24 grit points of size 2) and a 24-36 f aftermath window on strong hits.",
+     "Add scripts/bolt_book.py (texel-grid bolt with 60-120 degree corners, branches, 2-texel white core before the strike, re-seeded second frame, broken-edge and spark frames, --from-sky tall book); allow tall books in fx_budget; retire the Blender arc for Spark.",
+     "impact_book.py: six thin tapered rays in three value bands, solid light lines, blast placed at the target's screen centre; fx-api: layer with renderOrder, not behind().",
+     "book_from_renders.py: a passthrough for palette-locked hand frames that skips the mode filter, orphan cleanup and edge band.",
+     "fx_budget/timeline: count FX draw calls directly from userData.fx objects and report bake re-renders separately.",
+     "Set dim must include emissive set materials; measure the achieved dim on the impact frames.",
+     "A proper frame-hold idiom instead of fps 0.001 / fractional life hacks.",
+     "Any book painter must live in scripts/ and the exact command be recorded."
+    ]
+   }
+  },
+  {
+   "outputs": [
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter2-strip-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter2-impact-strip-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter2-mid-impact-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-battle-vfx/iter2-books.jpg"
+   ],
+   "log": "Fresh Opus agent, new worktree at the revised skill (rules 8-11, impact strip, flash_scan, bolt_book, --holds, --passthrough), skill only. Its worktree was created at an unrelated commit; it reset to the branch tip. The run was interrupted once by the account's API session limit (judge calls came back 'session limit', verdict invalid) and resumed after the reset. S0 baselines on seed 13 (crit), seed 14 (normal), seed 14 vs Maelstrode (super-effective); the first two runs landed in the volcanic arena because ridge/vent-cave resolves there, re-run with --arena cave. Code: tween(ms, fn, paused); creature.ts holdFor(frames) + hit(strong, crit, {holdFrames, whiteFrames, blinks, knockback}); movefx.ts onImpact/severity/stage options, `void tail` everywhere, new sparkPx with the spark-arc (bolt_book.py --from-sky 24x48, passthrough) and spark-impact (impact_book.py 32, --holds 1,2,2,2) books at the sprite texel, impact marked in __fxEvents, light peaking on the flash then flickering out, set dim ramped 4 f in / 8 f out, 28 size-2 grit points, at most 4 FX batches; hd2dBattle.ts one pre-allocated PointLight, setFxLight sprite tint with falloff, dimSet over lights, Lambert emissiveIntensity, MeshBasic colours and shader uniforms; battle.ts severity from the lookahead damage event, Promise.race on hits, HIT_FEEDBACK table, directional kick on every HD-2D hit. Three measured rounds: hit-stop read 7 (hold formula off by one, fixed with N+0.5), light peak 34 -> 24, nominal dim raised to 20/30/33/35 % so the achieved dim passed 10 %. Result (before -> after, crit / normal / super): impact->flash 104 -> 1 (all); impact->reaction 104 -> 1 (all); hit-stop 5/0/0 -> 8/3/6 with the attacker held the same frames; shake buzz -> 4/2/3 px kick; launch->settle 141/130/138 -> 49/46/46; aftermath 32/30/30 f; set dim 35/30/33 % nominal, 13/11/12 % achieved; FX draw calls 6 -> 3; point lights 0 -> 1; 3D meshes 4/2/4 -> 0; text->launch 67 unchanged. Gates: tl_summary every check ok on all three; fx_budget within budget on all three; dither_scan pass (clustered 0 on every strip frame); flash_scan pass (white 0.8/0.82/0.63x the target box); strip_judge motion view `better` 2/2 in both orders with the canary passed; impact view `better` 2/2 both orders; frozen frame `worse` 0/4 (recorded only; the judges named the bloom halo); typecheck clean, 279/279 tests, src/engine untouched. Author's post-check with the halo metric added after this run: bright pixels of any hue at impact+1/+2 = 3.8x the target box (the warm halo passed the white test).",
+   "skillProblems": [
+    "The timeline defaulted to route ridge/vent-cave, which resolves to the volcanic arena, while SKILL.md said 'cave' (fixed: --arena cave is the default).",
+    "fx-api's hit-stop formula (N - 0.5) read N - 1 because hit() starts from the damage event's microtask after the frame's tweens stepped; (N + 0.5) reads N; impact->flash/reaction can only read 1, never 0, for the same reason (fixed in the references and gotchas).",
+    "Step 0 of the Setup block names bootstrap.sh, orbkin_compat.py and safe_extract.py, which do not exist on this branch (documented: skip Step 0 when absent).",
+    "--help exited 2 on the Python scripts (fixed: 0).",
+    "strip_judge reported the API session limit as an invalid canary (fixed: it names the rate limit and exits 3 with a retry message).",
+    "SKILL.md's `env -u CLAUDE_CODE_SESSION_ID` note was refused by the worktree sandbox; the judge ran without it (documented).",
+    "Set-dim targets were ambiguous (nominal 15-35 % vs 'none' for normal vs flash_scan's 10 % achieved); in the cave the achieved dim is about 0.37x nominal; the cave's shader uniforms (uIntensity/uColor) were not listed (documented with the ratio and the uniform names).",
+    "The Spark signature put the impact after the bolt's blank frame, 9 f after the first shock, and the white-frame count conflicted with the hold (documented: the strike is the impact frame; white frames are the table's count, then the hurt pose).",
+    "PixelPoints cannot make 2-texel spark heads (size is 1-2 internal px); the bolt's strike texel is not on the book's bottom row (documented).",
+    "The FX light's bloom halo passed flash_scan's white test because tone mapping tints it warm (fixed after the run: a halo metric of any-hue bright pixels, fails above 2x; disc and light peak must not coincide).",
+    "No timing-only measurement artifact: the pilot merged S2 with S3-S4 (fixed: S2 requires OUT/timing before any book exists)."
+   ],
+   "judge": {
+    "score": 7,
+    "vsCurrent": "Yes, clearly. The reaction now lands 1 frame after impact instead of 104, the smooth 3D ribbon bolt and bloom floor disc are gone in favour of sprite-texel books with a real contrast/flash/blast/broken-blast anatomy, hit-stop, directional kick, FX light and set dim scale by severity, and the budget drops from 6 FX draw calls + 4 3D meshes to 3 calls + 0 meshes with no dither. It falls short of shippable because the flash still blooms into a warm orb that hides the target and the new bolt reads as a thin orange noodle on a same-hue set.",
+    "strengths": [
+     "Timing is genuinely fixed and measured across all three severities: impact->reaction 1 f, hit-stop 8/3/6 f with the attacker held for the same frames (paused tweens + holdFor), launch->settle 49/46/46 f, blinks every 4 f, knockback peaking at i+14.",
+     "Architecture is the right shape for the skill to build on: MoveFxOptions.onImpact + FxStage contract, HIT_FEEDBACK table and Promise.race in battle.ts, one pre-allocated PointLight with sprite-light tint and a dimSet covering lights, Lambert emissive, MeshBasic colours and shader uniforms; src/engine untouched, 279 tests pass, programs 94->94.",
+     "The impact book reads at sprite density: the 6-ray starburst at i+4 is crisp, centred on the target's screen centre and matches the 2 px texel of the sprites; the books are tiny (36 KB + 28 KB, 4 colours).",
+     "Light sits on the set and the sprite: at +10f the warm pool on the floor plus the keyColor/rim tint lifts the target with the bolt, and the 35 % set dim is held through hit-stop and released over 8 f.",
+     "The log is honest and reproducible: exact book commands, the N+0.5 hold fix, the arena mistake, the API-limit judge rerun, and the frozen-frame 'worse' verdict recorded rather than hidden."
+    ],
+    "weaknesses": [
+     "The flash is still an orb: at impact+1/+2 a smooth radial bloom halo about 2.5x the sprite's width surrounds a fully white silhouette (bright pixels of any hue 3.9x the box area) while flash_scan's white ratio reads 0.80 and passes because the halo is warm-tinted; source: additive white disc (glow 1.0) + FX light peak 38 at distance 6 on the same frames, both bloomed by the pipeline.",
+     "The bolt does not read as a lance: a 3-texel-wide zigzag with many 4-9 texel jogs and a 1-texel yellow core; its white strike segment is drawn behind the sprite, and the dark-orange edge has no silhouette against the orange-brown wall.",
+     "Crits hold the sprite pure white for 8 frames (white = max(whiteFrames, hold)), super for 6, against the table's 3 white frames: a whiteout combined with the halo.",
+     "Aftermath is thin: by +40f the motion strip is static; the bolt's fade frame lasts 3 f, the spark frames are 8-texel specks, and 28 grit points satisfy the 32 f aftermath while the strip is empty.",
+     "The FX light pool at distance 6 / decay 1.5 is a 350-px smooth gradient that flattens the dirt texture; the contrast frame is an opaque dark-orange disc over the torso for 1 f; the timing-only S2 measurement was skipped."
+    ],
+    "skillFixes": [
+     "flash_scan.py: add a halo metric (bright pixels of any hue inside 2.5x the target box at impact+1/+2 minus impact-2, over the box area; fail above 2.0) and report the floor-pool radius.",
+     "Rule 8 / fx-api section 5: the white disc and the FX light peak must not coincide; the disc owns impact+1/+2 (light <= 0.4x peak), the light peaks on the blast frame, distance 3-4, pool <= 2x the target height.",
+     "timing.md / fx-api section 4: white frames are the table's count (2/3/3), never max(white, hold); timeline reports white frames and tl_summary checks <= 4.",
+     "bolt_book.py: --from-sky draws a lance (2-texel core along the length, 8-16 texel runs, <= 5 corners, strike row at h-8, default h 96) and the strike quarter goes in the front additive batch.",
+     "elements.md + scripts: a ramp-contrast rule (edge >= 40 luma darker than the local set, hue-opposed where the arena shares the element's hue) with an --edge override; indigo for spark on the quarry cave.",
+     "strip_judge.py prompt: name the failure modes as negatives (halo larger than the target, sprite white > 4 f, FX occluded behind the target, empty +30f/+40f cells) and show impact+1 at 2x.",
+     "SKILL.md S2: the timing-only measurement is a required artifact produced before any book exists.",
+     "make_strip.py: label blink-off cells and shift a motion sample that lands on one; rule 9 / tl_summary: gate the aftermath on visible FX texels at impact+16/+24, with a 2-band ground glow or scorch for ~20 f.",
+     "Gotchas: the contrast disc is opaque over the sprite for 1 f (keep it at ramp index 1, <= 0.42 radius); a warm-tinted bloom passes the white threshold, use the halo metric."
+    ]
+   }
+  }
+ ],
+ "finalScore": 7,
+ "note": "Two pilot iterations (the brief's maximum). After pilot 2 the skill received the judge's script-level fixes (flash_scan halo metric and pool radius, white-frames count and check, bolt_book lance defaults and --edge, strip_judge negatives, S2 timing artifact, disc/light offset rule, edge-contrast rule); these were verified on the pilot-2 run data here but not re-piloted. Not applied: blink-off labelling in make_strip, a texel-based aftermath gate, a dedicated front-batch strike segment (documented as rules only). SKILL.md is about 7k tokens including the mandated Setup and safety block (about 1.4k), above the playbook's 4k-token target; the standing rules and workflow sit in the first 5k. Timing baselines: the research's 'seed 13 in the cave' resolves to the volcanic arena via ridge/vent-cave; pilot 1 measured there, pilot 2 in the quarry cave (--arena cave, now the default)."
+}
