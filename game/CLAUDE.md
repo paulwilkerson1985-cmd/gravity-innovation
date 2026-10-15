@@ -24,6 +24,9 @@ Low-poly creature collector & battler. Three.js + TypeScript + Vite. Lives in `g
 - Touch targets ≥ 44px; every action reachable by mouse, keyboard, touch.
 - Log taste/number changes in `docs/DECISIONS.md`; tick `docs/PLAN.md` only with evidence; update `docs/PROGRESS.md`.
 
+## Graphics
+Before changing how anything looks or moves, read `docs/GRAPHICS_PLAYBOOK.md` (decisions, look bible, budgets) and use the project skills in `../.claude/skills/`: `orbkin-art-direction` (what to change), `orbkin-render-look` (pipeline/post/camera/perf), `orbkin-sprite-creature` (kin and people), `orbkin-battle-vfx` (move FX, hit feedback) and `orbkin-visual-gate` (capture and blind judge; every visual change ends here). Research notes: `docs/research/graphics/README.md`.
+
 ## Test hooks
 URL: `?seed=N`, `?scene=title|starter|route|battle|party|model`, `?debug=1` (fps/draw calls), plus scene args (`route=`, `hotspot=`, `species=`).
 `window.__game`: `scene()`, `player()`, `battle()`, `goto()`, `setFast()`, `skip()`, `waitIdle()`, `canvasStats()`, `renderInfo()`.

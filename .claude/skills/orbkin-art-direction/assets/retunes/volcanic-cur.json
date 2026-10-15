@@ -1,0 +1,12 @@
+{
+ "_doc": "The ACCEPTED volcanic grade (volcanicGrade() at HEAD 3e82e65) in grade_preview.py form: pass it as --from. Verified: grade_preview.py --verify on base/raw/volcanic-desk.clean.png and -phone round-trips with p99 3.27 / 3.03 of 255 and max 10.95 (clipped 4 % excluded); the wrong grade (volcanic-next) fails with p99 14.8. Re-derive when volcanic.ts changes.",
+ "lift": [0.01, 0.004, 0.0],
+ "gain": [1.05, 0.98, 0.9],
+ "gamma": [1.08, 1.08, 1.08],
+ "saturation": 0.86,
+ "contrast": 1.08,
+ "shadowDesat": 0.3,
+ "shadowTint": "#24140e",
+ "highTint": "#ffc890",
+ "splitAmount": 0.14
+}

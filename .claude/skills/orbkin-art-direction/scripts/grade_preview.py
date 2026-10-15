@@ -20,6 +20,13 @@ Run isolated:
           [--sweep saturation=0.8,0.86,0.92] [--sweep splitAmount=0.14,0.2] [--layout capture.json:ID]
           [--emitter x,y] [--sheet] [--json]
   python3 -I grade_preview.py --template            # prints a grade JSON with every field and its default
+  python3 -I grade_preview.py CLEAN.png --from cur.json --verify [--layout ...] [--arena volcanic]
+          # round trip only: un-grade with --from and re-grade with it; PASS when p99 error <= 4/255 and max
+          # (excluding clipped pixels) <= 12/255, else exit 1 with the numbers. Run it once per arena before
+          # trusting any preview, and quote its numbers in the report (measured on the volcanic base: see
+          # look-bible §grade-doctrine e).
+  --arena NAME   takes the protected floor emitter for the frame's viewport from assets/emitters.json
+                 (needs --layout for the viewport, or --vp) and reports *_excl_emitter numbers too.
 
 Grade JSON (sRGB hex for tints, numbers as in arenas/<arena>.ts; omitted fields take makeGrade's
 defaults from arenas/localKit.ts + GRADE_DEFAULTS: lift 0, gamma 1, saturation 0.8, contrast 1.05,
@@ -31,6 +38,10 @@ all of them explicitly: copy its values):
 --sweep KEY=v1,v2,...   one preview per value, applied on top of --to (several --sweep = several
                         1-D series, never a cartesian grid). Scalars only (saturation, contrast,
                         splitAmount, shadowDesat, bottomShade) or a vector as r:g:b.
+Every variant's numbers are also written as PREFIX[_<variant>].json (PREFIX.json = the CURRENT frame), in
+critique.py's key names, so `verdict_risk.py PREFIX.json PREFIX_<variant>.json --arena <a> --change grade`
+predicts the judge BEFORE any capture (grade-only moves; a light-rig or SpriteLight change still needs a
+capture: the volcanic key cut 70 -> 55 took near_bstar from 0.81x (preview, grade alone) to 0.65x captured).
 Outputs: PREFIX.png (the --to preview), PREFIX_<key>=<v>.png per sweep value, PREFIX_sheet.png with
 --sheet (frame + numbers per variant), and one JSON per preview on stdout with the critique numbers
 (bstar_lights, chroma_p95, chroma_mean, chromatic_share, cool_share, dark_share, and the focal /
@@ -69,8 +80,17 @@ def tint_vec(h):
 
 
 def load_grade(path):
+    """A grade JSON: flat fields, or a retune file with the fields under "grade" (assets/retunes/*.json).
+    Keys starting with "_" are comments; any other unknown key is an error (a typo would silently preview
+    the defaults, which is exactly what happened with a nested file on 2026-10-15)."""
     with open(path) as f:
         g = json.load(f)
+    if isinstance(g.get('grade'), dict):
+        g = g['grade']
+    g = {k: v for k, v in g.items() if not k.startswith('_')}
+    unknown = sorted(k for k in g if k not in DEFAULTS)
+    if unknown:
+        raise ValueError(f'{path}: unknown grade field(s) {unknown}; fields: {sorted(DEFAULTS)} (or put them under "grade")')
     out = dict(DEFAULTS)
     out.update(g)
     for k in ('lift', 'gain', 'gamma'):
@@ -142,10 +162,14 @@ def quick_numbers(rgb8, keep, focal_px=None, emitter=None, radii=(0, 100, 250), 
     L, a_, b_ = lab[..., 0], lab[..., 1], lab[..., 2]
     C = np.hypot(a_, b_)
     Lk, Ck, Bk = L[k], C[k], b_[k]
-    lo, hi = np.percentile(Lk, [20, 80])
-    out = {'bstar_lights': A.r(Bk[Lk >= hi].mean(), 1), 'bstar_shadows': A.r(Bk[Lk <= lo].mean(), 1),
-           'chroma_p95': A.r(np.percentile(Ck, 95), 1), 'chroma_mean': A.r(Ck.mean(), 1), 'chromatic_share': A.r((Ck > 15).mean()),
-           'cool_share': A.r((Bk < 0).mean()), 'dark_share': A.r((Lk < 33).mean()), 'L_mean': A.r(Lk.mean(), 1)}
+    out = CR.colour_block(Lk, Ck, Bk)
+    if emitter:
+        W0, H0 = rgb8.shape[1], rgb8.shape[0]
+        ex, ey = CR.emitter_px(emitter, W0, H0, css_scale)
+        disc = A.disc_mask(640, H, ex / W0, ey / H0, max(radii), css_scale, s)
+        kx = k & ~disc
+        for kk, v in CR.colour_block(L[kx], C[kx], b_[kx]).items():
+            out[kk + '_excl_emitter'] = v
     e = np.zeros_like(L)
     e[:-1, :-1] = np.abs(np.diff(L, axis=1))[:-1, :] + np.abs(np.diff(L, axis=0))[:, :-1]
     if focal_px:
@@ -177,8 +201,11 @@ def main():
     ap.add_argument('--sweep', action='append', default=[], help='KEY=v1,v2,... on top of --to')
     ap.add_argument('--layout', help='capture.json:ID for focal boxes (foe by default) and the CSS scale')
     ap.add_argument('--subjects', default='auto')
-    ap.add_argument('--emitter', help='x,y of the light source base (fractions or CSS px)')
+    ap.add_argument('--emitter', help='x,y of the light source base (fractions or CSS px); overrides --arena')
+    ap.add_argument('--arena', help='arena name: emitter from assets/emitters.json for the viewport (--layout or --vp)')
+    ap.add_argument('--vp', choices=['desk', 'phone'])
     ap.add_argument('--radii', default='0,100,250')
+    ap.add_argument('--verify', action='store_true', help='round trip --from only (no --to); exit 1 when the error bound is exceeded')
     ap.add_argument('--sheet', action='store_true')
     ap.add_argument('--json', action='store_true')
     ap.add_argument('--template', action='store_true', help='print a grade JSON template and exit')
@@ -186,8 +213,11 @@ def main():
     if a.template:
         print(json.dumps(DEFAULTS, indent=1))
         return
+    if a.verify:
+        a.dst = a.dst or a.src
+        a.out = a.out or '/dev/null'
     if not (a.image and a.src and a.dst and a.out):
-        ap.error('IMAGE --from --to --out are required (or --template)')
+        ap.error('IMAGE --from --to --out are required (or --template / --verify)')
     try:
         g0, g1 = load_grade(a.src), load_grade(a.dst)
         im = Image.open(a.image).convert('RGB')
@@ -214,16 +244,42 @@ def main():
         except (OSError, ValueError, json.JSONDecodeError) as ex:
             print(f'error: --layout: {ex}', file=sys.stderr)
             sys.exit(2)
-        css_scale = A.layout_scale(shot, W0)
-        have = [n for n, _ in A.layout_entries(shot, css_scale)]
+        css_scale = A.css_scale(shot, W0)
+        box_scale = A.layout_scale(shot, W0)
+        have = [n for n, _ in A.layout_entries(shot, box_scale)]
         names = (('foe',) if 'foe' in have else ('mine',) if 'mine' in have else tuple(have)) if a.subjects == 'auto' else \
             (('mine', 'foe') if a.subjects == 'both' else tuple(a.subjects.split(',')))
-        focal_px = [A.parse_box(b, W0, H0) for b in A.layout_boxes(shot, names, css_scale)]
+        focal_px = [A.parse_box(b, W0, H0) for b in A.layout_boxes(shot, names, box_scale)]
         if not focal_px:
             print(f'WARNING: --layout gives no boxes for {names} (have {have}); focal numbers skipped', file=sys.stderr)
+    if a.vp == 'phone' and not a.layout:
+        css_scale = 2.75
+    if a.arena and not a.emitter:
+        vp = (shot.get('vp') if a.layout else None) or a.vp
+        if not vp:
+            print('error: --arena needs --layout capture.json:ID or --vp desk|phone', file=sys.stderr)
+            sys.exit(2)
+        try:
+            ex, ey, trad, status = A.emitter_for(a.arena, vp)
+        except (KeyError, OSError) as ex_:
+            print(f'error: --arena: {ex_}', file=sys.stderr)
+            sys.exit(2)
+        if ex is None:
+            print(f'note: {a.arena} has no located {vp} emitter (status {status}); no falloff numbers', file=sys.stderr)
+        else:
+            emitter = [ex, ey]
+            a.radii = ','.join(str(int(r)) for r in trad)
+            if status != 'verified':
+                print(f'WARNING: {a.arena} {vp} emitter is status {status}', file=sys.stderr)
     if a.emitter:
         emitter = [float(v) for v in a.emitter.split(',')]
     radii = [float(v) for v in a.radii.split(',')]
+    if a.verify:
+        ok = rt_p99 <= 4.0 and rt_max <= 12.0
+        print(json.dumps({'verify': 'PASS' if ok else 'FAIL', 'image': a.image, 'grade': a.src, 'round_trip_err_255_p99': round(rt_p99, 2),
+                          'round_trip_err_255_max': round(rt_max, 2), 'clipped_share_excluded': A.r(clipped.mean(), 4),
+                          'bound': 'p99 <= 4/255 and max <= 12/255 on unclipped pixels (dither 2/255 + 8-bit quantisation through the inverse); FAIL = the frame was not captured with --from (wrong arena JSON, nograde, or a shader change)'}))
+        sys.exit(0 if ok else 1)
 
     variants = [('to', g1)]
     for sp in a.sweep:
@@ -239,6 +295,9 @@ def main():
                 'note': 'p99 <= 4/255 expected (dither + quantisation); more means the frame was not captured with --from. Clipped pixels (lava cores, crushed blacks) keep their captured value.'}]
     if rt_p99 > 4:
         print(f'WARNING: round trip p99 {rt_p99:.1f}/255: --from does not match the grade this frame was captured with', file=sys.stderr)
+    q0 = quick_numbers(rgb8, keep, focal_px, emitter, radii, css_scale)
+    q0.update({'variant': 'current', 'out': a.image, 'note': 'the frame as captured (numbers from the same maths as the previews; pass this JSON as BEFORE to verdict_risk.py)'})
+    results.append(q0)
     tiles = []
     for name, g in variants:
         outp = a.out + ('.png' if name == 'to' else f'_{name}.png')
@@ -250,13 +309,14 @@ def main():
         results.append(q)
         if a.sheet:
             t = Image.fromarray(pv).resize((480, max(1, round(H0 * 480 / W0))), Image.BOX)
-            cap = f"{name}  b*L {q['bstar_lights']} C95 {q['chroma_p95']} chrom {q['chromatic_share']} cool {q['cool_share']} dark {q['dark_share']}"
+            cap = f"{name}  b*L {q.get('bstar_lights_excl_emitter', q['bstar_lights'])} C95 {q.get('chroma_p95_excl_emitter', q['chroma_p95'])} chrom {q['chromatic_share']} cool {q['cool_share']} dark {q['dark_share']}"
+            if 'falloff' in q:
+                cap += f" nearb* {q['falloff'].get('near_bstar')}"
             if 'focal_dL_vs_ring' in q:
                 cap += f" dL {q['focal_dL_vs_ring']}"
             tiles.append((t, cap))
     if a.sheet:
         cur = Image.fromarray(rgb8).resize((480, max(1, round(H0 * 480 / W0))), Image.BOX)
-        q0 = quick_numbers(rgb8, keep, focal_px, emitter, radii, css_scale)
         tiles.insert(0, (cur, f"CURRENT  b*L {q0['bstar_lights']} C95 {q0['chroma_p95']} chrom {q0['chromatic_share']} cool {q0['cool_share']} dark {q0['dark_share']}"))
         A.compose_sheet(tiles, 2).save(a.out + '_sheet.png')
         results[0]['sheet'] = a.out + '_sheet.png'
@@ -265,6 +325,11 @@ def main():
     else:
         for r in results:
             print(json.dumps(r))
+    if a.out and a.out != '/dev/null':
+        # one JSON per variant beside the previews, in critique.py shape, so verdict_risk.py BEFORE/AFTER can be run offline
+        for r in results[1:]:
+            with open(a.out + ('' if r['variant'] == 'current' else '_' + r['variant']) + '.json', 'w') as f:
+                json.dump(r, f, indent=1)
 
 
 if __name__ == '__main__':

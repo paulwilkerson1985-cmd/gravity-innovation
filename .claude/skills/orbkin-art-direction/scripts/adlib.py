@@ -134,11 +134,27 @@ def load_capture_shot(spec):
 CSS_WIDTH = {'desk': 1280, 'phone': 393, 'land': 844}   # harness viewports (CSS px)
 
 
-def layout_scale(shot, image_width):
-    """Layout boxes in capture.json are CSS px; phone captures are device px (DPR 2.75).
-    Returns the factor that maps box coordinates onto the image."""
+def css_scale(shot, image_width):
+    """Device px per CSS px of a harness shot (phone 2.75, desk 1): for --emitter given in CSS px and for
+    the falloff ring radii, which are specified in CSS px whatever the capture format."""
     css_w = CSS_WIDTH.get(shot.get('vp'))
     if css_w and image_width >= css_w * 1.5:
+        return image_width / css_w
+    return 1.0
+
+
+def layout_scale(shot, image_width):
+    """Factor that maps capture.json layout boxes onto the image. Two harness formats exist: the gate's
+    capture.mjs since d579229 writes boxes in DEVICE px and records `layoutDpr` (factor 1); older captures
+    (the pilot's, the refine harness) wrote CSS px, so phone boxes need x2.75. A box that already exceeds the
+    CSS viewport is treated as device px as well."""
+    if shot.get('layoutDpr') is not None:
+        return 1.0
+    css_w = CSS_WIDTH.get(shot.get('vp'))
+    if css_w and image_width >= css_w * 1.5:
+        lay = layout_list(shot)
+        if lay and max(b['x'] + b['w'] for b in lay) > css_w * 1.05:
+            return 1.0
         return image_width / css_w
     return 1.0
 
@@ -194,6 +210,39 @@ def capture_sanity(shot):
     if isinstance(calls, (int, float)) and calls < 10:
         bad.append(f'only {calls} draw calls: the scene is probably missing')
     return bad
+
+
+EMITTERS_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'emitters.json')
+
+
+def load_emitters(path=None):
+    with open(path or EMITTERS_JSON) as f:
+        return json.load(f)
+
+
+def emitter_for(arena, vp, path=None):
+    """(x_frac, y_frac, radii, status) of the arena's protected floor emitter for a harness viewport
+    ('desk' | 'phone'), from assets/emitters.json; (None, None, radii, status) when the arena has none or
+    it is unlocated for that view. Raises KeyError for an arena the table does not know."""
+    tab = load_emitters(path)['arenas']
+    if arena not in tab:
+        raise KeyError(f'arena {arena!r} not in emitters.json (known: {", ".join(sorted(tab))})')
+    e = tab[arena]
+    radii = e.get('radii_css_px') or [0, 100, 250]
+    if isinstance(radii, dict):
+        radii = radii.get(vp) or radii.get('desk') or [0, 100, 250]
+    pos = e.get(vp) if e.get('emitter') else None
+    if not pos:
+        return None, None, radii, e.get('status', 'none')
+    return float(pos[0]), float(pos[1]), radii, e.get('status', 'proposed')
+
+
+def disc_mask(width, H, cx_frac, cy_frac, radius_css_px, css_scale, s):
+    """Boolean (H, width) mask of the disc of `radius_css_px` CSS px around a frame-fraction centre, at the
+    working scale `s` (working px per original px); css_scale = original px per CSS px."""
+    yy, xx = np.mgrid[0:H, 0:width]
+    cx, cy = cx_frac * width, cy_frac * H
+    return np.hypot(xx - cx, yy - cy) <= radius_css_px * css_scale * s
 
 
 def resolve_clean(raw_path):

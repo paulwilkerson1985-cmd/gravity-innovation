@@ -1,0 +1,25 @@
+{
+ "_doc": "The queued next experiment for the volcanic arena (ledger: game/docs/research/retunes/volcanic.md). GRADE ONLY: this is a grade_preview.py grade JSON; apply it to volcanicGrade() in game/src/render/hd2d/arenas/volcanic.ts and touch nothing else (key SpotLight stays #ff9a52 70, hemisphere/top fill stay, SpriteLight stays). Preview it first: python3 -I scripts/grade_preview.py <accepted>/raw/volcanic-desk.clean.png --from assets/retunes/volcanic-cur.json --to assets/retunes/volcanic-next.json --out <scratch>/pv --layout <accepted>/capture.json:volcanic-desk --arena volcanic --sheet, then verdict_risk.py pv.json pv_to.json --arena volcanic --change grade (and the same on the phone frame).",
+ "queued": "2026-10-15",
+ "arena": "volcanic",
+ "subsystem": "environment grade (one subsystem)",
+ "grade": {
+  "lift": [0.022, 0.022, 0.034],
+  "gain": [1.0, 0.975, 0.955],
+  "gamma": [1.28, 1.28, 1.28],
+  "saturation": 0.86,
+  "contrast": 1.04,
+  "shadowDesat": 0.4,
+  "shadowTint": "#2c2238",
+  "highTint": "#ffdcb4",
+  "splitAmount": 0.21
+ },
+ "unchanged": {"key": "SpotLight #ff9a52 intensity 70", "hemi": "#a08a7a / #9a4a26 2.4", "top": "#e6cdb4 1.3", "spriteLight": "baseline (keyColor #ffa060 x0.66, sky #9a8070 x0.55, rim #ffb46a x0.95)"},
+ "predicted_offline": {
+  "desk": {"bstar_lights_excl_emitter": 28.1, "chroma_p95_excl_emitter": 37.3, "chromatic_share": 0.586, "cool_share": 0.094, "dark_share": 0.443, "near_bstar_ratio": 0.86, "gradient_L_ratio": 0.84, "verdict_risk": "no known punishment"},
+  "phone": {"bstar_lights_excl_emitter": 28.3, "chroma_p95_excl_emitter": 38.1, "chromatic_share": 0.451, "cool_share": 0.035, "dark_share": 0.568, "near_bstar_ratio": 0.83, "gradient_L_ratio": 0.76, "verdict_risk": "worse: light_source_pasted_on (gradient_L < 0.8x)"}
+ },
+ "expected_outcome": "desk: floors pass, no `worse`, queued for the owner (family grade_strength); phone: likely `worse` or no_difference because the portrait floor gradient is only 6 L* and any gamma lift flattens it; report it and hand the phone to orbkin-render-look as its own change (tier-specific grade or an apron light source), never fix the desk and assume the phone (rule 8).",
+ "why_not_the_pilot_variants": "every captured variant A-J and the environment-only Fenv cut the key (70 -> 40..55) and/or desaturated it; critique.py --arena volcanic shows near_bstar 0.31-0.72x the accepted frame on every one of them, verdict_risk predicts `worse` for all, and the three that were judged (H, J, Fenv) lost 0/4 twice each. Keep the key.",
+ "budget": "1 desk + 1 phone capture (~4 + 2 min at load < 10), craft_check + verdict_risk (seconds), 2 judge calls ($0.45, ~2 min), owner kit."
+}

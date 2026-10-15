@@ -1,0 +1,97 @@
+{
+ "_doc": "Per-arena light emitters whose floor falloff is a PROTECTED feature (look-bible \u00a7grade-doctrine b). critique.py, grade_preview.py and verdict_risk.py read this table with --arena <name> so --emitter is never guessed. Positions are FRACTIONS of the captured frame (x right, y down) per harness viewport (desk 1280x720 high tier, phone 393x851 @2.75 low tier) and name the point on the FLOOR where the emitter meets it (the base of a lava fall, the centre of a window's light pool), not the emitter geometry itself. radii_css_px are the falloff rings critique.py measures per view (ring 0 = the emitter itself, near = second, far = last); the phone rings are smaller because its viewport is 393 CSS px wide and the pool spans fewer CSS px (a 250 px disc would cover 45 % of the portrait frame). status: verified = read off a gridded zoom of the named capture; proposed = located by eye on a capture, re-check before trusting the numbers; none = the arena has no floor emitter (falloff is not a protected feature there).",
+ "format": 1,
+ "arenas": {
+  "volcanic": {
+   "emitter": "lava fall base (the sheet meets the floor pool); the floor pool and the glowing cracks fan out from here",
+   "desk": [
+    0.465,
+    0.483
+   ],
+   "phone": [
+    0.268,
+    0.329
+   ],
+   "radii_css_px": {
+    "desk": [
+     0,
+     100,
+     250
+    ],
+    "phone": [
+     0,
+     60,
+     150
+    ]
+   },
+   "status": "verified",
+   "source": "pilot/orbkin-art-direction-1/base/raw/volcanic-{desk,phone}.clean.png (HEAD 3e82e65, frame 208), gridded 3x zoom 2026-10-15; desk fall base x 590-600 px, y 340-355 px; phone x 280-300, y 750-790 device px",
+   "baseline_numbers_hint": "accepted frame HEAD 3e82e65 (critique.py --arena volcanic): desk near_bstar 39.8, gradient_L 22.3, far_bstar 27.4; phone near_bstar 26.3, gradient_L 11.5; full rows in game/docs/research/retunes/volcanic.md"
+  },
+  "cave": {
+   "emitter": "window light pool on the floor (the two shafts from the back-wall windows land here)",
+   "desk": [
+    0.55,
+    0.5
+   ],
+   "phone": null,
+   "radii_css_px": {
+    "desk": [
+     0,
+     100,
+     250
+    ],
+    "phone": [
+     0,
+     60,
+     150
+    ]
+   },
+   "status": "proposed",
+   "source": "jc/current/raw/cave-desk.clean.png (HEAD fa40185), by eye; the phone pool was not located (the portrait frame crops the shafts): run critique.py --emitter by hand after reading the phone capture"
+  },
+  "hollow": {
+   "emitter": null,
+   "status": "none",
+   "note": "canopy-gap dapple, no single floor emitter; falloff is not a protected feature here"
+  },
+  "meadow": {
+   "emitter": null,
+   "status": "none",
+   "note": "sun key + gobo pool; the focal pool under the kin is a dressing/gobo feature, measure it with --focal, not --emitter"
+  },
+  "flowers": {
+   "emitter": null,
+   "status": "none"
+  },
+  "scrub": {
+   "emitter": null,
+   "status": "none",
+   "note": "sunset key from the frame edge"
+  },
+  "coast": {
+   "emitter": null,
+   "status": "none"
+  },
+  "shallows": {
+   "emitter": null,
+   "status": "none"
+  },
+  "cliff": {
+   "emitter": null,
+   "status": "none"
+  },
+  "summit": {
+   "emitter": "summit flames (night set)",
+   "desk": null,
+   "phone": null,
+   "status": "unlocated",
+   "note": "night set with brazier flames: locate on a capture (gridded zoom) before a retune and move it to verified"
+  },
+  "stadium": {
+   "emitter": null,
+   "status": "none",
+   "note": "night floodlights from above; no floor emitter"
+  }
+ }
+}

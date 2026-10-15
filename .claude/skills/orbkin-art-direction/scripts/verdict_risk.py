@@ -12,14 +12,29 @@ tested against a change the judge accepted, so treat a clean pass as "no known p
 "will win".
 
 Run isolated:
-  python3 -I verdict_risk.py BEFORE.json AFTER.json [--json]
-      BEFORE/AFTER come from critique.py with the same --layout/--subjects (and --emitter when the
-      arena has a light source on the floor: lava, window pool, fire, lamp).
-Exit codes: 0 no signature triggered, 1 at least one triggered (explain or fix before S5), 2 bad input.
+  python3 -I verdict_risk.py BEFORE.json AFTER.json [--arena volcanic] [--change grade|light|sprite|dof|dressing|ui]
+          [--json]
+      BEFORE/AFTER come from critique.py with the same --layout/--subjects and the same --arena/--emitter.
+  --arena   looks the arena up in assets/emitters.json: when it has a protected floor emitter, the
+            falloff signature's inputs MUST be present on both sides, otherwise the result is UNPROVEN
+            (exit 3), never a clean pass. The pilot's JSONs printed light_source_pasted_on triggered:false
+            only because falloff was missing, which is exactly the regression that shipped.
+  --change  what moved: a `dof` or `blur` change exempts the `mush` signature (hf_ratio falls by design
+            inside the tilt bands), a `ui` change exempts the scene signatures; `grade`, `light` and `sprite`
+            REQUIRE the focal rows (battle layout) and, with --arena, the falloff, else UNPROVEN. `camera`,
+            `dressing`, `any`: every signature counts, nothing is required. Calibration on 11 accepted pairs
+            (title, starter, logo, route, evolution, shallows water; look-bible §judge-punishes): 0 false
+            positives after the two baseline-relative fixes of 2026-10-15, 5 before them.
+Exit codes: 0 no signature triggered, 1 at least one triggered (explain or fix before S5), 2 bad input,
+            3 unproven (a protected signature could not be evaluated).
 """
 import argparse
 import json
+import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import adlib as A  # noqa: E402
 
 
 def g(d, k, default=None):
@@ -42,11 +57,14 @@ def signatures(b, a):
 
     # 1. washed out: the frame lost its chroma globally (grade saturation / gain cut / desaturated lights)
     cm = ratio(g(a, 'chroma_mean'), g(b, 'chroma_mean'))
-    cs = g(a, 'chromatic_share')
+    cs, csb = g(a, 'chromatic_share'), g(b, 'chromatic_share')
+    csr = ratio(cs, csb)
     cf = ratio(g(a, 'colorfulness_hasler'), g(b, 'colorfulness_hasler'))
+    # the absolute share clause is relative to the accepted frame: a room or sea that is low-chroma by design
+    # (evolution room 0.15-0.24, shallows 0.40) must not trip it when its chroma did not fall (calibration 2026-10-15)
     row('washed_out', '"washed out", "desaturated", "flattening materials", "muddier palette"',
-        (cm is not None and cm < 0.65) or (cs is not None and cs < 0.40) or (cf is not None and cf < 0.70),
-        {'chroma_mean_ratio': cm, 'chromatic_share': cs, 'colorfulness_ratio': cf, 'limits': 'ratio >= 0.65, share >= 0.40, colourfulness ratio >= 0.70'},
+        (cm is not None and cm < 0.65) or (cs is not None and cs < 0.40 and (csr is None or csr < 0.80)) or (cf is not None and cf < 0.70),
+        {'chroma_mean_ratio': cm, 'chromatic_share': cs, 'chromatic_share_ratio': csr, 'colorfulness_ratio': cf, 'limits': 'chroma ratio >= 0.65; share >= 0.40 unless it kept >= 0.80x the baseline; colourfulness ratio >= 0.70'},
         'reach the ranges from the shadow side (shadowTint, splitAmount, lift, hemisphere sky) and the far plane; keep saturation >= 0.85 and the key within 25 % unless that cut has its own A/B',
         'medium (base 0.57-0.67 vs H/J 0.30-0.36 on both views)')
 
@@ -96,9 +114,15 @@ def signatures(b, a):
         'never blur the subject or the hotspots; check tilt bands and any resampling', 'high (the canary degradations trigger it every time)')
 
     # 7. value structure: dark share left the range or the frame went light-dominant
-    ds = g(a, 'dark_share')
-    row('value_out_of_range', '"too dark to read" / "flat, light-dominant"', ds is not None and (ds < 0.35 or ds > 0.70),
-        {'dark_share': ds, 'limits': '0.35-0.70 (bible 0.40-0.60)'}, 'phone needs its own lever (bottomShade, apron lift); do not fix the desk and assume the phone', 'low (range evidence only)')
+    ds, dsb = g(a, 'dark_share'), g(b, 'dark_share')
+    out_a = ds is not None and (ds < 0.35 or ds > 0.70)
+    out_b = dsb is not None and (dsb < 0.35 or dsb > 0.70)
+    moved_out = ds is not None and dsb is not None and ((ds < 0.35 and ds < dsb - 0.05) or (ds > 0.70 and ds > dsb + 0.05))
+    # a frame that is outside the range by design (route map 0.09/0.20/0.71 light-dominant; evolution room 0.77 dark)
+    # only trips this when the change pushed it further out (calibration 2026-10-15: route cam 4/4 and evo push 4/4 fired it)
+    row('value_out_of_range', '"too dark to read" / "flat, light-dominant"', out_a and (not out_b or moved_out),
+        {'dark_share_before': dsb, 'dark_share': ds, 'limits': '0.35-0.70 (arena mood decides inside it); a frame already outside only fails when it moved further out by > 0.05'},
+        'move the dark share with light sources and dressing (a lit lip, apron matter, a source in frame), never with lift or gamma; phone has its own lever', 'low (range evidence only)')
 
     # 8. UI outranks the scene more than before
     ub, ua = g(b, 'ui_minus_scene_luma'), g(a, 'ui_minus_scene_luma')
@@ -111,6 +135,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('before')
     ap.add_argument('after')
+    ap.add_argument('--arena', help='arena name (assets/emitters.json): makes the falloff signature mandatory when the arena has a protected emitter')
+    ap.add_argument('--change', choices=['grade', 'light', 'sprite', 'dof', 'blur', 'dressing', 'camera', 'ui', 'any'], default='any', help='what moved: exempts signatures that fire by design for that change; grade/light/sprite REQUIRE focal numbers (battle layout) and, with --arena, the falloff')
     ap.add_argument('--json', action='store_true')
     a = ap.parse_args()
     try:
@@ -128,17 +154,40 @@ def main():
     if b.get('focal_subjects') != c.get('focal_subjects'):
         print(f'WARNING: focal subjects differ: {b.get("focal_subjects")} vs {c.get("focal_subjects")}; focal rows are not comparable', file=sys.stderr)
     rows = signatures(b, c)
+    exempt = {'dof': ['mush'], 'blur': ['mush'], 'ui': ['washed_out', 'bleached_subject', 'sprite_flattened', 'sprite_decoupled_from_light', 'light_source_pasted_on', 'mush', 'value_out_of_range']}.get(a.change, [])
+    for r in rows:
+        if r['signature'] in exempt and r['triggered']:
+            r['triggered'] = False
+            r['exempt'] = f'fires by design for a {a.change} change; judge it on the crop/blur view instead'
+    unproven = []
+    protected = False
+    if a.arena:
+        try:
+            ex, _, _, status = A.emitter_for(a.arena, b.get('vp') or c.get('vp') or 'desk')
+        except KeyError as exc:
+            print(f'error: {exc}', file=sys.stderr)
+            sys.exit(2)
+        protected = ex is not None or status in ('unlocated',)
+    if protected:
+        for side, d in (('before', b), ('after', c)):
+            fo = d.get('falloff') or {}
+            if fo.get('near_bstar') is None or fo.get('gradient_L') is None:
+                unproven.append(f'{side}: no falloff numbers (run critique.py --arena {a.arena} --layout ... on it); the protected emitter falloff cannot be checked')
+    for side, d in (('before', b), ('after', c)):
+        if d.get('focal_dL_vs_ring') is None and a.change in ('sprite', 'grade', 'light'):
+            unproven.append(f'{side}: no focal numbers (critique.py --layout failed or was not given); bleached/flattened/decoupled signatures cannot be checked')
     trig = [r['signature'] for r in rows if r['triggered']]
-    out = {'before': a.before, 'after': a.after, 'predicted': ('worse' if trig else 'no known punishment (not a prediction of better)'),
-           'triggered': trig, 'rows': rows,
-           'note': 'one-sided: these signatures only predict punishments; the pairwise judge and the owner decide'}
+    predicted = 'worse' if trig else ('UNPROVEN: a protected signature has no inputs' if unproven else 'no known punishment (not a prediction of better)')
+    out = {'before': a.before, 'after': a.after, 'arena': a.arena, 'change': a.change, 'predicted': predicted,
+           'triggered': trig, 'unproven': unproven, 'rows': rows,
+           'note': 'one-sided: these signatures only predict punishments; the pairwise judge and the owner decide. Calibration: look-bible §judge-punishes (two losing rounds + the accepted pairs listed there)'}
     if a.json:
         print(json.dumps(out, indent=1))
     else:
-        print(json.dumps({'predicted': out['predicted'], 'triggered': trig}))
+        print(json.dumps({'predicted': out['predicted'], 'triggered': trig, 'unproven': unproven}))
         for r in rows:
             print(json.dumps({k: r[k] for k in ('signature', 'triggered', 'numbers')}))
-    sys.exit(1 if trig else 0)
+    sys.exit(1 if trig else (3 if unproven else 0))
 
 
 if __name__ == '__main__':

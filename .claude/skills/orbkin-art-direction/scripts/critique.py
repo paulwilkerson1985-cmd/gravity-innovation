@@ -20,11 +20,18 @@ Run isolated:
              "focal_by_subject", so the critique can name the kin a number refers to.
              If --layout yields no boxes the script prints a WARNING and exits 3 (never silently
              measures a frame without focal numbers).
+  --arena    name from assets/emitters.json (volcanic, cave, ...): takes the protected floor emitter
+             of that arena for the shot's viewport (desk/phone from --layout, else --vp) so --emitter
+             is never guessed, and records "arena" / "emitter_status" in the JSON. An arena with
+             status none has no protected falloff; "unlocated"/"proposed" entries print a WARNING.
   --emitter  x,y of the light source's base on the floor (fractions or ORIGINAL px; phone boxes in
-             CSS px are scaled like the layout). Reports the emitter-local falloff: median floor L*
-             and b* in rings at 0 / 100 / 250 CSS px (--radii to change), UI and subjects excluded.
-             The warm radial falloff is a protected feature of every emitter-lit arena: compare
-             falloff_gradient_L before/after (keep >= 0.8 of the baseline; look-bible §colour-light).
+             CSS px are scaled like the layout). Overrides --arena. Reports the emitter-local falloff:
+             median floor L* and b* in rings at 0 / 100 / 250 CSS px (--radii to change), UI and
+             subjects excluded. The warm radial falloff is a protected feature of every emitter-lit
+             arena: compare falloff near_bstar / gradient_L before/after (keep >= 0.75x / 0.8x the
+             baseline; look-bible §grade-doctrine). With an emitter the colour ranges are ALSO
+             reported outside its far ring (*_excl_emitter: lit pixels outside the 250 CSS px disc)
+             and the hints judge THOSE: an emitter-lit warm arena keeps its warm pool by design.
   --clean    UI-free version of the same frame: UI pixels are masked out of the scene statistics
              and ui_* numbers are reported. Auto-resolved from <frame>.clean.png when present.
   --preset   battle-desk: mask the three standard HUD regions when no clean frame exists.
@@ -53,7 +60,7 @@ RANGES = {
     'bstar_lights': {'range': (None, 28), 'unit': 'b*', 'note': 'lit pixels too yellow (Octopath median 16, max 29); cool the key or lower the warm split'},
     'chroma_p95': {'range': (None, 40), 'unit': 'C*', 'note': 'over-saturated (Octopath median 37); lower grade saturation or desaturate the lights'},
     'cool_share': {'range': (0.05, None), 'unit': 'frac', 'note': 'almost no cool pixels (Octopath median 0.14); plum/blue shadows and far plane, even in warm arenas'},
-    'dark_share': {'range': (0.40, 0.60), 'unit': 'frac', 'note': 'HD-2D field frames are dark-dominant (Octopath median 0.51); light should be a minority pool'},
+    'dark_share': {'range': (0.35, 0.70), 'unit': 'frac', 'note': 'outside 0.35-0.70 (Octopath 0.30-0.93, median 0.51; arena mood decides inside it): move it with light sources and dressing (a lit lip, apron matter, a source in frame), never with lift or gamma (pilot J lifted blacks 0.59 -> 0.47 and the terraces lost their dark mass, "flattened")'},
     'hue_top2_share': {'range': (None, 0.90), 'unit': 'frac', 'note': 'near-monochrome frame; reserve one hue family for kin + UI accents (the reference is 0.94, so this is weak)'},
     'focal_dL_vs_ring': {'range': (-25, 10), 'unit': 'L*', 'note': 'DIAGNOSTIC ONLY (never a target): far below = the kin is a hole in the lit floor, fix with edge/rim/temperature, never by lifting the body; above +8 = bleached (pilot H: +2.6 dL*, 0/4 "washed out, pasted on")'},
     'focal_warmth_coupling': {'range': (-12, 12), 'unit': 'b*', 'note': 'subject b* minus ring b*: a cool kin on a warm floor (or the reverse) reads as "lit by another light / pasted on" unless the key-side rim carries the floor colour'},
@@ -67,18 +74,36 @@ RANGES = {
 }
 
 
+EXCL = ('bstar_lights', 'chroma_p95', 'cool_share', 'chromatic_share')   # judged outside the emitter disc when one is given
+
+
 def hints(res):
     out = []
     for k, spec in RANGES.items():
-        v = res.get(k)
+        key = k
+        if k in EXCL and res.get(k + '_excl_emitter') is not None:
+            key = k + '_excl_emitter'
+        v = res.get(key)
         if v is None:
             continue
         lo, hi = spec['range']
         bad = (lo is not None and v < lo) or (hi is not None and v > hi)
         if bad:
             rng = f"{'' if lo is None else lo}..{'' if hi is None else hi}"
-            out.append({'metric': k, 'value': v, 'range': rng, 'hint': spec['note']})
+            out.append({'metric': key, 'value': v, 'range': rng, 'hint': spec['note'] + (' (judged OUTSIDE the emitter disc; the emitter pool itself is protected)' if key != k else '')})
     return out
+
+
+def colour_block(Lk, Ck, Bk):
+    """The colour/light numbers a grade moves, for one pixel set (used for the whole scene and for the
+    scene outside the emitter disc). Lk, Ck, Bk: 1-D arrays of L*, chroma, b*."""
+    if Lk.size < 64:
+        return {}
+    lo, hi = np.percentile(Lk, [20, 80])
+    mb = lambda m: float(Bk[m].mean()) if m.any() else np.nan
+    return {'bstar_lights': A.r(mb(Lk >= hi), 1), 'bstar_shadows': A.r(mb(Lk <= lo), 1), 'chroma_mean': A.r(Ck.mean(), 1),
+            'chroma_p95': A.r(np.percentile(Ck, 95), 1), 'chromatic_share': A.r((Ck > 15).mean()), 'cool_share': A.r((Bk < 0).mean()),
+            'dark_share': A.r((Lk < 33).mean()), 'L_mean': A.r(Lk.mean(), 1)}
 
 
 def focal_block(L, b_, e, C, keep, boxes, width, H, s):
@@ -101,15 +126,17 @@ def focal_block(L, b_, e, C, keep, boxes, width, H, s):
     return r, fm, ring
 
 
+def emitter_px(emitter, W0, H0, css_scale):
+    """--emitter x,y (fractions, or CSS px of the viewport) -> ORIGINAL image px."""
+    ex, ey = emitter
+    if 0 <= ex <= 1 and 0 <= ey <= 1:
+        return ex * W0, ey * H0
+    return ex * css_scale, ey * css_scale
+
+
 def falloff_block(L, b_, keep, emitter, radii, width, H, s, css_scale):
     """Median floor L* / b* in rings around the emitter base (CSS px radii, +-25 px), UI/subjects excluded."""
-    ex, ey = emitter
-    W0 = width / s
-    H0 = H / s
-    if 0 <= ex <= 1 and 0 <= ey <= 1:
-        ex, ey = ex * W0, ey * H0
-    else:
-        ex, ey = ex * css_scale, ey * css_scale
+    ex, ey = emitter_px(emitter, width / s, H / s, css_scale)
     yy, xx = np.mgrid[0:H, 0:width]
     d = np.hypot(xx - ex * s, yy - ey * s) / (s * css_scale)   # distance in CSS px
     Ls, Bs, ns = [], [], []
@@ -135,6 +162,7 @@ def falloff_block(L, b_, keep, emitter, radii, width, H, s, css_scale):
 
 def measure(path, focal=(), masks=(), crop=None, clean=None, width=640, out=None, sheet=False, subject_boxes=None,
             emitter=None, radii=(0, 100, 250), css_scale=1.0):
+    radii = list(radii)
     im = Image.open(path).convert('RGB')
     W0, H0 = im.size
     cb = None
@@ -185,7 +213,16 @@ def measure(path, focal=(), masks=(), crop=None, clean=None, width=640, out=None
     res['squint_notan'] = [A.r(float((Lbk < 33).mean())), A.r(float(((Lbk >= 33) & (Lbk < 66)).mean())), A.r(float((Lbk >= 66).mean()))]
     res['squint_value_std'] = A.r(Lbk.std(), 2)
 
-    # ---- colour and light
+    # ---- colour and light (whole scene, then outside the emitter's far ring when an emitter is given)
+    em_disc = None
+    if emitter:
+        ex, ey = emitter_px(emitter, W0, H0, css_scale)
+        far = max(radii) if radii else 250
+        em_disc = A.disc_mask(width, H, ex / W0, ey / H0, far, css_scale, s)
+        keep_x = keep & ~em_disc
+        res['emitter_disc_share'] = A.r(float((keep & em_disc).mean()))
+        for k, v in colour_block(L[keep_x], C[keep_x], b_[keep_x]).items():
+            res[k + '_excl_emitter'] = v
     R_, G_, B_ = rgb[..., 0][keep], rgb[..., 1][keep], rgb[..., 2][keep]
     rg = R_ - G_
     yb = 0.5 * (R_ + G_) - B_
@@ -329,7 +366,9 @@ def main():
     ap.add_argument('images', nargs='+')
     ap.add_argument('--layout', help='capture.json:ID (focal boxes + clean frame from the harness)')
     ap.add_argument('--subjects', default='auto', help="layout names used as the focal set: foe | mine | player | both | a,b,c (default auto = foe when the layout has one, else mine, else every entry)")
-    ap.add_argument('--emitter', help='x,y of the light source base (fractions or original/CSS px): emitter-local floor falloff')
+    ap.add_argument('--arena', help='arena name: take the protected floor emitter from assets/emitters.json for the shot viewport')
+    ap.add_argument('--vp', choices=['desk', 'phone'], help='viewport for --arena when no --layout shot says it')
+    ap.add_argument('--emitter', help='x,y of the light source base (fractions or original/CSS px): emitter-local floor falloff (overrides --arena)')
     ap.add_argument('--radii', default='0,100,250', help='ring radii in CSS px for --emitter (default 0,100,250; each ring is +-25 px)')
     ap.add_argument('--focal', action='append', default=[])
     ap.add_argument('--mask', action='append', default=[])
@@ -381,6 +420,29 @@ def main():
         focal_subjects = list(names)
         if not a.clean and shot.get('clean') and os.path.exists(shot['clean']):
             a.clean = shot['clean']
+    arena_info = None
+    if a.arena:
+        vp = (shot.get('vp') if a.layout else None) or a.vp
+        if not vp:
+            print('error: --arena needs the viewport: pass --layout capture.json:ID or --vp desk|phone', file=sys.stderr)
+            sys.exit(2)
+        try:
+            ex, ey, trad, status = A.emitter_for(a.arena, vp)
+        except (KeyError, OSError, json.JSONDecodeError) as exc:
+            print(f'error: --arena: {exc}', file=sys.stderr)
+            sys.exit(2)
+        arena_info = {'arena': a.arena, 'vp': vp, 'emitter_status': status}
+        if ex is None:
+            if status not in ('none',):
+                print(f'WARNING: emitters.json has no {vp} position for {a.arena} (status {status}): falloff NOT measured; locate it on a gridded zoom and pass --emitter', file=sys.stderr)
+            arena_info['protected_falloff'] = False
+        else:
+            arena_info['protected_falloff'] = True
+            if status != 'verified':
+                print(f'WARNING: {a.arena} {vp} emitter is status {status}: check it on a gridded zoom of the capture before trusting falloff numbers', file=sys.stderr)
+            if not a.emitter:
+                emitter = [ex, ey]
+                a.radii = ','.join(str(int(r)) for r in trad)
     anchor = None
     if a.anchor:
         with open(a.anchor) as f:
@@ -391,10 +453,15 @@ def main():
         out = a.out if (a.out and len(a.images) == 1) else (a.out + '_' + os.path.splitext(os.path.basename(p))[0] if a.out else None)
         try:
             with Image.open(p) as im0:
-                em_scale = A.layout_scale(shot, im0.width) if a.layout else 1.0
+                em_scale = A.css_scale(shot, im0.width) if a.layout else (2.75 if a.vp == 'phone' else 1.0)
             m = measure(p, focal, masks, a.crop, clean, a.width, out, a.sheet, subject_boxes,
                         emitter=emitter, radii=[float(v) for v in a.radii.split(',')], css_scale=em_scale)
             m['focal_subjects'] = focal_subjects
+            if arena_info:
+                m.update(arena_info)
+            if a.layout and isinstance(shot.get('perf'), dict) and shot['perf'].get('internal'):
+                with Image.open(p) as im0:
+                    m['texel_px'] = A.r(im0.width / shot['perf']['internal'][0], 2)
             if sanity:
                 m['capture_sanity'] = sanity
                 m['hints'].append({'metric': 'capture_sanity', 'value': sanity, 'range': 'none', 'hint': 'the capture itself is suspect: open the PNG with Read before trusting any number'})

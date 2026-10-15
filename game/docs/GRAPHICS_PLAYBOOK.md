@@ -2,9 +2,11 @@
 
 How to make Orbkin's graphics stunning and professional with free tools and Claude Opus, and
 what to stop doing. Synthesised 2026-10-15 from 28 research notes (≈ 1.3 MB, 60+ headless
-experiments, ≈ 2,400 blind Opus judge votes) and two independent audits. Notes live in the
-session scratchpad under `scratchpad/research/*.md`; the audits are `audit-1.md` and
-`audit-2.md`. Where the audits rated a claim doubtful, this document says so or drops it.
+experiments, ≈ 2,400 blind Opus judge votes) and two independent audits. The notes are in
+[`research/graphics/`](research/graphics/README.md) (index with one line per angle); the audits
+are `audit-1.md` and `audit-2.md` there. Where the audits rated a claim doubtful, this document
+says so or drops it. The knowledge is encoded as project skills in
+[`/.claude/skills/`](../../.claude/skills/) (§10).
 
 Confidence tags: **[high]** measured here with controls or read in a primary source;
 **[medium]** measured with small n (3–6 votes per pair is the norm here) or one good
@@ -571,7 +573,25 @@ for motion) and prune any skill rule the no-skill arm already follows.
 
 ## 10. Skills (summary; full specs in the skill set)
 
-Six project skills in `/home/user/gravity-innovation/.claude/skills/` (repo root, so they
+**Shipped skills** (repo root `.claude/skills/`; each has a `SKILL.md` and its own scripts):
+
+| Skill | Use it for | Pilot score |
+|---|---|---|
+| [`orbkin-visual-gate`](../../.claude/skills/orbkin-visual-gate/SKILL.md) | Frozen-clock captures, defect floor, blind pairwise judge, originality check, owner A/B kit. Every pixel or motion change ends here. | 7/10 |
+| [`orbkin-art-direction`](../../.claude/skills/orbkin-art-direction/SKILL.md) | Look bible, critique, per-screen style sheet, grade and light targets; routes to the specialists. | 5/10 |
+| [`orbkin-render-look`](../../.claude/skills/orbkin-render-look/SKILL.md) | HD-2D pipeline passes, tiers, DoF and tilt bands, bloom, grade, camera, frame-time budgets, phone bench. | 7/10 |
+| [`orbkin-sprite-creature`](../../.claude/skills/orbkin-sprite-creature/SKILL.md) | New or redesigned kin and people, silhouette lineups, faces, bake options, attack/hit/walk key tables. | 4.5/10 |
+| [`orbkin-battle-vfx`](../../.claude/skills/orbkin-battle-vfx/SKILL.md) | Move effects, impact frames, hit-stop, shake, FX light, pixel flipbooks, frame-exact timing. | 6/10 |
+
+`orbkin-blender-forge` was built and piloted but not installed (refused at install review over
+an apt install step); its brief is in `research/graphics/skill-briefs/`. Pilot scores, judge
+critiques and a few pilot renders are in the [research index](research/graphics/README.md#skill-briefs-and-pilots).
+The pilots confirm §0 item 9: the skills make the process measurable and honest, but none of
+them has yet moved a frame clearly toward the reference. The weaknesses each pilot surfaced are
+the next round of work on that skill.
+
+Original plan (six skills) and the design rules they were built to. Skills live in
+`/home/user/gravity-innovation/.claude/skills/` (repo root, so they
 trigger on the first message; `game/.claude/skills/` stays invisible until a file under `game/`
 is read). Each ≤ 4,000 measured tokens (≈ 10k chars; the tokenizer is 2.4–2.5 chars/token on
 Markdown), scripts first, per-step "read §N now" pointers, no end-of-file reference table,
@@ -596,7 +616,7 @@ the scripts the RED runs kept re-writing, test triggering (20 queries × 3 runs)
 
 ## 11. Sources
 
-Research notes (scratchpad `research/`): `ingame-vertical-slice.md`, `human-ground-truth.md`,
+Research notes ([`research/graphics/`](research/graphics/README.md)): `ingame-vertical-slice.md`, `human-ground-truth.md`,
 `judge-calibration.md`, `reference-board-measurement.md`, `frame-architecture-hybrid.md`,
 `mobile-perf-budget.md`, `showcases.md`, `blender-llm.md`, `lab.md`, `asset-pipeline.md`,
 `creature-design.md`, `hd2d-pixel.md`, `threejs-render.md`, `art-direction.md`,
