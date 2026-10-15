@@ -121,6 +121,11 @@ export interface Grade {
   bloomThreshold?: number;
   bloomStrength?: number;
   bloomCap?: number;
+  /**
+   * Tier multiplier for the tilt-shift radius, overriding TierSettings.tilt (1 high / 0.45 low).
+   * For screens whose depth band IS the composition (title, starter) the phone keeps the full blur.
+   */
+  tiltScale?: number;
 }
 
 /** Defaults of the optional Grade fields. */
@@ -413,7 +418,7 @@ export class Hd2dPipeline {
       u.uVig.value = g.vignette; u.uVigSoft.value = g.vignetteSoft; u.uDither.value = g.dither;
       u.uBottom.value = g.bottomShade ?? GRADE_DEFAULTS.bottomShade; u.uBottomH.value = g.bottomShadeHeight ?? GRADE_DEFAULTS.bottomShadeHeight;
     }
-    const tilt = this.settings.tiltShift && !off ? this.settings.tilt : 0;
+    const tilt = this.settings.tiltShift && !off ? (g.tiltScale ?? this.settings.tilt) : 0;
     u.uTiltTop.value = g.tiltTop * tilt; u.uTiltBottom.value = g.tiltBottom * tilt;
     u.uFocusTop.value = g.focusTop; u.uFocusBottom.value = g.focusBottom;
   }

@@ -233,7 +233,8 @@ Evidence (frames, plans, every vote and reason): `scratchpad/gfx1/world-ui/` of 
   opening on the foe during a locked whole-pixel intro pan, kin materialising as white silhouettes.
   Timings from pokeemerald and the motion research; the default renderer keeps the curtain, and
   reduced motion / fast mode skip it. Flashes measured on the frame strips: 1 in any second (the
-  cover/reveal pair), max frame-to-frame luminance step 0.10–0.11 (the wipe). The first version
+  cover/reveal pair), max frame-to-frame luminance step 0.10–0.11 on the meadow/trainer wipes, 0.25 on the cave iris
+  (the cover closing, counted once). The first version
   pulsed to a flat 40% grey and counted 3 flashes in a second on the bright route map: hence the
   per-pixel luminance cap.
 - **Pan locks** (sprite feet snapped in a grid that travels with the pan, Bayer dither phase moved
@@ -244,6 +245,12 @@ Evidence (frames, plans, every vote and reason): `scratchpad/gfx1/world-ui/` of 
   phone **3/3, conf 3.3, gap +2.0**; calibration (softened strip) 2/2. Judges: "staged reveal",
   "iris opens on the arena", old: "flat blind wipe, muddy crossfade"; one noted the black hold
   runs a little long.
+
+- **Title and starter get a depth band** (tilt-shift 3.6 px above 60–66% / below 34–36% of the
+  height, full radius on the phone tier too via the new `Grade.tiltScale`, vignette 0.5–0.6), from
+  the non-battle-screens research (`ttilt`/`stilt`): the trio and the daises stay crisp, the far
+  canopy and near bank go soft. Re-gated in this build: title desktop/phone and starter
+  desktop/phone **4/4 decisive** (3/3, conf 3.7–4.0, gap +1.33…+1.67), calibration 1/1.
 
 ## GPU PC node: pinned tool chain (`docs/GPU_PC_SETUP.md`)
 The owner's RTX 3090 PC runs Claude Code inside WSL2 Ubuntu 24.04 as a GPU node. Its tools are pinned and checked by hand, not taken from distribution channels, so that a later session does not "upgrade" them away or swap the download path for a less checkable one:

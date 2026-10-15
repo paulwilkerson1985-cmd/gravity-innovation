@@ -213,7 +213,7 @@ branches on `hd2dRequested()` in a few places; the default path is untouched).
 
 | Screen | Set (`src/render/hd2d/screens/`) | Scene |
 |---|---|---|
-| Title | `buildTitleSet` — the flower-field arena (`buildMeadowSet(…, 'flowers')`) at golden hour + foreground flora; the camera drifts ±0.55 units in whole texels; three hero kin (Pyrelord, Maelstrode, Verdantusk) as sprites in the lit clearing | `scenes/title.ts` |
+| Title | `buildTitleSet` — the flower-field arena (`buildMeadowSet(…, 'flowers')`) at golden hour + foreground flora; the camera drifts ±0.55 units in whole texels; three hero kin (Pyrelord, Maelstrode, Verdantusk) as sprites in the lit clearing; a tilt-shift depth band (canopy and near bank soft, full radius on phones: `Grade.tiltScale`) | `scenes/title.ts` |
 | Starter | `buildStarterSet` — the meadow clearing, three cut octagonal stone daises (`octSlab` + loose kit boulders); `placeSpot()` lights the chosen dais: a steep shaft from a canopy gap, motes, a warm floor pool and a pool on the dais top (rebuilt per selection: beams/motes are world-space) | `scenes/starter.ts` |
 | Route maps + menu | `buildIslandSet(q, theme, spots, { player })` — one floating island per theme (below) | `scenes/route.ts` |
 | Party, box, bestiary, bag, shop | `buildRoomSet` — warm stone room, plinth (`PLINTH_TOP`), window cookie key, shaft + motes, rug, shelf, sconces; turntable in 22.5° steps; vertex-coloured item models are baked sprites too | `scenes/meta.ts` |
