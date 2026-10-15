@@ -1,5 +1,9 @@
 # Progress
 
+## 2026-10-15 — UI skin: slab2 (owner's pick)
+- The whole HTML UI (battle HUD, command/move menus, title, starter, route, menu hub, party/box/bestiary/bag/shop, settings, arena, Hall of Fame) now uses the HD-2D slab: dark translucent 9-slice panels with a one-texel gold hairline and the Alegreya superfamily (six vendored OFL woff2, awaited before the first scene). Pixel font retired from every screen. Decision, vote counts and numbers: `docs/DECISIONS.md` "UI skin: slab2"; system: `docs/UI.md`; before/after: `docs/screenshots/ui-slab/`.
+- Evidence: `npm run verify` (typecheck, lint, unit tests, build, Playwright incl. `e2e/layout.spec.ts` one-line labels / floors / overlaps on 4 viewports); `legibility.mjs` floors all PASS; UI-only judge 8/8 `better` (cave/meadow/volcanic/coast, desktop + phone), battle canvas frames byte-identical.
+
 ## 2026-10-15 — Graphics pass 1 integrated (`?gfx=hd2d`)
 - Merged `gfx1/battle-feel` (hits land on the impact frame, directional camera kick plus a Screen shake & flashes setting, pixel-rigid pans, keyed attack cels, hurt cels, blink cels) and `gfx1/world-ui` (shallows band water, UI readability floors, HD-2D battle-in transition, title/starter depth band). The two pan-lock implementations were unified on one view-offset path (`docs/DECISIONS.md` "Graphics pass 1 integrated").
 - Evidence: `npm run verify`: typecheck, lint, 289 unit tests, build and Playwright (99 passed, 25 skipped, 0 failed). Overall blind check of 10 frames, merged build vs the build before the pass: preferred in 29 of 30 votes and in every pair except one 2–1. By the strict rule no pair was decisive (confidence 2.0–3.0, gap ≤ +0.67). The calibration pair passed. Draw calls max 62. Sheets and a hit MP4 are in `docs/screenshots/gfx1/`.

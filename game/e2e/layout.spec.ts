@@ -210,14 +210,15 @@ async function clippedLabels(page: Page, sel: string): Promise<string[]> {
 
 /**
  * Battle HUD check (UI research, docs/research/graphics/ui-hud-typography.md §10):
- *  - every label is exactly ONE line box (names, levels, HP numbers, chips, tags). Move names
- *    (`.mn`) are excluded: phone move buttons are designed for two lines (line-clamp 2), and
- *    clippedLabels already proves they show in full;
+ *  - every label is exactly ONE line box (names, levels, HP numbers, chips, tags, and the
+ *    command / move / item names `.mn`: the slab's small caps step down in size on phones
+ *    instead of wrapping);
  *  - neither info box (yours, the foe's) intersects another HUD panel (the bag/kin sheet is meant
  *    to cover the dialog on phones);
  *  - legibility floor: no visible text with an x-height under 7 CSS px on desktop, or under
  *    18 device px at the research's reference phone (DPR 2.75), i.e. 6.5 CSS px, on touch screens.
- *    Orbkin Pixel's x-height is 0.5 em. `--f0` (decoration) is not used by the battle HUD.
+ *    x-height per face (fontTools, vendored woff2): UI Caps (Alegreya Sans SC) 0.501 em, UI Sans
+ *    0.464, UI Serif (Alegreya) 0.456. `--f0` (decoration) is not used by the battle HUD.
  */
 async function hudIssues(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -230,7 +231,7 @@ async function hudIssues(page: Page): Promise<string[]> {
       return r.width > 0 && r.height > 0;
     };
     const root = document.querySelector('.battle-ui') ?? document.body;
-    for (const e of root.querySelectorAll('.pname, .plevel, .hpnums, .chip, .badge, .hplabel, .xplabel, .eff')) {
+    for (const e of root.querySelectorAll('.pname, .plevel, .hpnums, .chip, .badge, .hplabel, .xplabel, .eff, .bt-menu .mn')) {
       if (!vis(e) || !e.textContent?.trim()) continue;
       // Line boxes = clusters of vertically overlapping text rects.
       const rows: [number, number][] = [];
@@ -261,7 +262,10 @@ async function hudIssues(page: Page): Promise<string[]> {
       const el = t.parentElement;
       if (!el || seen.has(el) || !t.textContent?.trim() || !vis(el)) continue;
       seen.add(el);
-      const x = parseFloat(getComputedStyle(el).fontSize) * 0.5;
+      const cs = getComputedStyle(el);
+      const fam = cs.fontFamily.split(',')[0]!.replace(/["']/g, '').trim();
+      const xr = fam === 'UI Serif' ? 0.456 : fam === 'UI Sans' ? 0.464 : 0.501;
+      const x = parseFloat(cs.fontSize) * xr;
       if (x < floor - 0.01) out.push(`x-height ${x} CSS px < ${floor.toFixed(2)}: ${el.className} "${t.textContent.trim().slice(0, 20)}"`);
     }
     return out;

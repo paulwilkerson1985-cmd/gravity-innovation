@@ -53,5 +53,8 @@ installHooks(game);
 const sceneParam = (params.get('scene') ?? 'title') as SceneName;
 const sceneArgs: Record<string, unknown> = {};
 for (const [k, v] of params) if (!['scene', 'seed', 'debug'].includes(k)) sceneArgs[k] = v;
-// The pixel font is tiny; wait for it so the first layout (text paging, camera framing) measures real glyphs.
-void (document.fonts?.load('20px "Orbkin Pixel"') ?? Promise.resolve()).catch(() => undefined).then(() => game.goto(sceneParam, sceneArgs));
+// Wait for every UI face (style.css @font-face, font-display: block) so the first layout (text
+// paging, camera framing around the panels) measures real glyphs, never a fallback face.
+const UI_FACES = ['500 20px "UI Caps"', '700 20px "UI Caps"', '500 20px "UI Sans"', '700 20px "UI Sans"', '400 20px "UI Serif"', '500 20px "UI Serif"'];
+const fontsReady = document.fonts ? Promise.all(UI_FACES.map((f) => document.fonts.load(f))) : Promise.resolve();
+void fontsReady.catch(() => undefined).then(() => game.goto(sceneParam, sceneArgs));
