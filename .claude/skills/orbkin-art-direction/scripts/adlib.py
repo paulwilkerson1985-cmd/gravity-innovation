@@ -143,11 +143,22 @@ def layout_scale(shot, image_width):
     return 1.0
 
 
+def layout_list(shot):
+    """The layout boxes of a harness shot, wherever the harness version put them.
+    capture.mjs (orbkin-visual-gate) writes shot['layout'] at the top level; the older refine harness
+    wrote shot['stats']['layout']. Entries are {name, x, y, w, h} in CSS px. [] when absent."""
+    lay = shot.get('layout')
+    if isinstance(lay, dict):
+        lay = lay.get('subjects')
+    if not lay:
+        lay = (shot.get('stats') or {}).get('layout')
+    return [b for b in (lay or []) if isinstance(b, dict) and all(k in b for k in ('name', 'x', 'y', 'w', 'h'))]
+
+
 def layout_boxes(shot, names=('mine', 'foe'), scale=1.0):
     """Pixel boxes 'x0,y0,x1,y1' (image pixels) for the named layout entries of a harness shot."""
-    lay = (shot.get('stats') or {}).get('layout') or []
     out = []
-    for b in lay:
+    for b in layout_list(shot):
         if b.get('name') in names:
             out.append('%d,%d,%d,%d' % (round(b['x'] * scale), round(b['y'] * scale),
                                          round((b['x'] + b['w']) * scale), round((b['y'] + b['h']) * scale)))
@@ -157,9 +168,32 @@ def layout_boxes(shot, names=('mine', 'foe'), scale=1.0):
 def layout_entries(shot, scale=1.0):
     """[(name, (x0, y0, x1, y1)) ...] in image pixels."""
     out = []
-    for b in (shot.get('stats') or {}).get('layout') or []:
+    for b in layout_list(shot):
         out.append((b['name'], (round(b['x'] * scale), round(b['y'] * scale), round((b['x'] + b['w']) * scale), round((b['y'] + b['h']) * scale))))
     return out
+
+
+def capture_sanity(shot):
+    """Why a harness shot must not be trusted even when ok:true (the pilot saw a blank phone frame and a
+    black-walled desk frame both reported ok). Returns a list of strings; empty = nothing suspicious."""
+    bad = []
+    if shot.get('ok') is False:
+        bad.append('shot.ok is false')
+    for e in shot.get('errors') or []:
+        bad.append(f'capture error: {str(e)[:120]}')
+    for w in shot.get('warnings') or []:
+        bad.append(f'capture warning: {str(w)[:120]}')
+    sc = shot.get('selfCheck')
+    if isinstance(sc, dict) and sc.get('identical') is False:
+        bad.append('self-check not identical (unfrozen clock or a loaded box)')
+    if isinstance(sc, str) and sc not in ('identical', 'ok'):
+        bad.append(f'self-check: {sc}')
+    if not layout_list(shot):
+        bad.append('no layout boxes in capture.json (window.__game.layout() failed or the scene never mounted)')
+    calls = shot.get('calls')
+    if isinstance(calls, (int, float)) and calls < 10:
+        bad.append(f'only {calls} draw calls: the scene is probably missing')
+    return bad
 
 
 def resolve_clean(raw_path):

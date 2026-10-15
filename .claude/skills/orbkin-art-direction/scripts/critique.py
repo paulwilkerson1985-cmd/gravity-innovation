@@ -11,8 +11,20 @@ Run isolated:
           [--focal x0,y0,x1,y1 ...] [--mask x0,y0,x1,y1 ...] [--preset battle-desk] [--crop box]
           [--width 640] [--out PREFIX] [--sheet] [--anchor sealed.json] [--json]
 
-  --layout   take the focal boxes (mine/foe by default; --subjects to change) and the matching
-             .clean.png from an orbkin-visual-gate / refine-harness capture.json. Recommended.
+  --layout   take the focal boxes and the matching .clean.png from an orbkin-visual-gate /
+             refine-harness capture.json (capture.mjs writes shot.layout; the old harness wrote
+             shot.stats.layout; both are read). Recommended. The focal_* numbers then describe ONE
+             subject set, named in "focal_subjects": --subjects foe (default for battle frames: the
+             wild/enemy kin is the one that must read off the lit floor), mine, player, both (mine+foe
+             union) or any comma list of layout names. Every layout entry also gets its own row in
+             "focal_by_subject", so the critique can name the kin a number refers to.
+             If --layout yields no boxes the script prints a WARNING and exits 3 (never silently
+             measures a frame without focal numbers).
+  --emitter  x,y of the light source's base on the floor (fractions or ORIGINAL px; phone boxes in
+             CSS px are scaled like the layout). Reports the emitter-local falloff: median floor L*
+             and b* in rings at 0 / 100 / 250 CSS px (--radii to change), UI and subjects excluded.
+             The warm radial falloff is a protected feature of every emitter-lit arena: compare
+             falloff_gradient_L before/after (keep >= 0.8 of the baseline; look-bible §colour-light).
   --clean    UI-free version of the same frame: UI pixels are masked out of the scene statistics
              and ui_* numbers are reported. Auto-resolved from <frame>.clean.png when present.
   --preset   battle-desk: mask the three standard HUD regions when no clean frame exists.
@@ -43,8 +55,10 @@ RANGES = {
     'cool_share': {'range': (0.05, None), 'unit': 'frac', 'note': 'almost no cool pixels (Octopath median 0.14); plum/blue shadows and far plane, even in warm arenas'},
     'dark_share': {'range': (0.40, 0.60), 'unit': 'frac', 'note': 'HD-2D field frames are dark-dominant (Octopath median 0.51); light should be a minority pool'},
     'hue_top2_share': {'range': (None, 0.90), 'unit': 'frac', 'note': 'near-monochrome frame; reserve one hue family for kin + UI accents (the reference is 0.94, so this is weak)'},
-    'focal_dL_vs_ring': {'range': (-6, None), 'unit': 'L*', 'note': 'subjects darker than their ring; judges rewarded lighter-than-ground subjects (rho +0.65)'},
-    'focal_edge_ratio': {'range': (1.3, None), 'unit': 'x', 'note': 'subjects not crisper than their surroundings (Octopath 1.8-9.5)'},
+    'focal_dL_vs_ring': {'range': (-25, 10), 'unit': 'L*', 'note': 'DIAGNOSTIC ONLY (never a target): far below = the kin is a hole in the lit floor, fix with edge/rim/temperature, never by lifting the body; above +8 = bleached (pilot H: +2.6 dL*, 0/4 "washed out, pasted on")'},
+    'focal_warmth_coupling': {'range': (-12, 12), 'unit': 'b*', 'note': 'subject b* minus ring b*: a cool kin on a warm floor (or the reverse) reads as "lit by another light / pasted on" unless the key-side rim carries the floor colour'},
+    'focal_edge_ratio': {'range': (1.8, 9.5), 'unit': 'x', 'note': 'subject/ground separation lives here (Octopath 1.8-9.5): below = the kin is not crisper than its ring (outline, rim, calm floor patch); above = noise or a magnified texel'},
+    'chromatic_share': {'range': (0.40, None), 'unit': 'frac', 'note': '"washed out" signature: fewer than 40 % of scene pixels have chroma > 15 (pilot H/J 0.30-0.36 -> 0/4; baseline 0.57-0.67)'},
     'squint_value_std': {'range': (12, None), 'unit': 'L*', 'note': 'big value masses too flat (defect floor 12; reference 19)'},
     'value_range_p5_p95': {'range': (55, None), 'unit': 'L*', 'note': 'values flattened (defect floor 55; reference 80)'},
     'hf_ratio': {'range': (0.30, None), 'unit': 'x', 'note': 'frame soft/blurred (defect floor 0.30; reference 0.34)'},
@@ -67,7 +81,60 @@ def hints(res):
     return out
 
 
-def measure(path, focal=(), masks=(), crop=None, clean=None, width=640, out=None, sheet=False, subject_boxes=None):
+def focal_block(L, b_, e, C, keep, boxes, width, H, s):
+    """Subject boxes vs a ring (each box grown by 60 %): the numbers behind look-bible rows 2 and 6."""
+    fm = A.box_mask(boxes, width, H, s, s) & keep
+    if fm.sum() < 16:
+        return None
+    grown = [[x0 - 0.6 * (x1 - x0), y0 - 0.6 * (y1 - y0), x1 + 0.6 * (x1 - x0), y1 + 0.6 * (y1 - y0)] for x0, y0, x1, y1 in boxes]
+    ring = A.box_mask(grown, width, H, s, s) & ~A.box_mask(boxes, width, H, s, s) & keep
+    if ring.sum() < 16:
+        return None
+    ratio = lambda a, b: a / b if b > 1e-6 else np.nan
+    r = {'dL_vs_ring': A.r(L[fm].mean() - L[ring].mean(), 1),
+         'mean_L_in_ring': [A.r(L[fm].mean(), 1), A.r(L[ring].mean(), 1)],
+         'mean_bstar_in_ring': [A.r(b_[fm].mean(), 1), A.r(b_[ring].mean(), 1)],
+         'edge_ratio': A.r(ratio(np.nanmean(np.where(fm, e, np.nan)), np.nanmean(np.where(ring, e, np.nan)))),
+         'Lstd_ratio': A.r(ratio(L[fm].std(), L[ring].std())),
+         'chroma_ratio': A.r(ratio(C[fm].mean(), C[ring].mean()))}
+    r['warmth_coupling'] = A.r(b_[fm].mean() - b_[ring].mean(), 1)   # subject b* minus ring b*: a jump toward negative = "lit by another light"
+    return r, fm, ring
+
+
+def falloff_block(L, b_, keep, emitter, radii, width, H, s, css_scale):
+    """Median floor L* / b* in rings around the emitter base (CSS px radii, +-25 px), UI/subjects excluded."""
+    ex, ey = emitter
+    W0 = width / s
+    H0 = H / s
+    if 0 <= ex <= 1 and 0 <= ey <= 1:
+        ex, ey = ex * W0, ey * H0
+    else:
+        ex, ey = ex * css_scale, ey * css_scale
+    yy, xx = np.mgrid[0:H, 0:width]
+    d = np.hypot(xx - ex * s, yy - ey * s) / (s * css_scale)   # distance in CSS px
+    Ls, Bs, ns = [], [], []
+    for rad in radii:
+        m = keep & (np.abs(d - rad) <= 25) if rad > 0 else keep & (d <= 40)
+        ns.append(int(m.sum()))
+        Ls.append(A.r(np.median(L[m]), 1) if m.sum() >= 16 else None)
+        Bs.append(A.r(np.median(b_[m]), 1) if m.sum() >= 16 else None)
+    out = {'emitter_css_px': [A.r(ex, 1), A.r(ey, 1)], 'radii_css_px': radii, 'L': Ls, 'bstar': Bs, 'n': ns}
+    # The ring at radius 0 usually contains the emitter geometry itself (pier, pool rim); the falloff
+    # that the judge reads is between the NEAR ring (second radius) and the FAR ring (last radius).
+    i0 = 1 if len(radii) >= 3 else 0
+    out['near_radius'] = radii[i0]
+    out['near_L'], out['far_L'] = Ls[i0], Ls[-1]
+    out['near_bstar'], out['far_bstar'] = Bs[i0], Bs[-1]
+    if Ls[i0] is not None and Ls[-1] is not None:
+        out['gradient_L'] = A.r(Ls[i0] - Ls[-1], 1)
+    if Bs[i0] is not None and Bs[-1] is not None:
+        out['gradient_bstar'] = A.r(Bs[i0] - Bs[-1], 1)
+    out['note'] = 'protected feature: near_bstar >= 0.75x and gradient_L >= 0.8x the accepted baseline (pilot J lost 41 % of near_bstar -> "light source pasted on")'
+    return out
+
+
+def measure(path, focal=(), masks=(), crop=None, clean=None, width=640, out=None, sheet=False, subject_boxes=None,
+            emitter=None, radii=(0, 100, 250), css_scale=1.0):
     im = Image.open(path).convert('RGB')
     W0, H0 = im.size
     cb = None
@@ -187,33 +254,40 @@ def measure(path, focal=(), masks=(), crop=None, clean=None, width=640, out=None
     ys, xs = np.unravel_index(np.argsort(sal.ravel())[-max(1, int(sal.size * 0.02)):], sal.shape)
     res['saliency_peak_xy'] = [A.r(xs.mean() / width), A.r(ys.mean() / H)]
 
-    # ---- focal boxes vs ring
+    # ---- focal boxes vs ring (the named subject set), plus one row per layout entry
     fb = [A.parse_box(f, W0, H0) for f in focal]
     if fb:
-        fm = A.box_mask(fb, width, H, s, s) & keep
-        if fm.sum() >= 16:
-            grown = [[x0 - 0.6 * (x1 - x0), y0 - 0.6 * (y1 - y0), x1 + 0.6 * (x1 - x0), y1 + 0.6 * (y1 - y0)] for x0, y0, x1, y1 in fb]
-            ring = A.box_mask(grown, width, H, s, s) & ~A.box_mask(fb, width, H, s, s) & keep
-            ratio = lambda a, b: a / b if b > 1e-6 else np.nan
-            Lstd = ratio(L[fm].std(), L[ring].std())
-            edg = ratio(np.nanmean(np.where(fm, e, np.nan)), np.nanmean(np.where(ring, e, np.nan)))
-            chr_ = ratio(C[fm].mean(), C[ring].mean())
-            res['focal_Lstd_ratio'] = A.r(Lstd)
-            res['focal_edge_ratio'] = A.r(edg)
-            res['focal_chroma_ratio'] = A.r(chr_)
-            vals = [v for v in (Lstd, edg, chr_) if np.isfinite(v) and v > 0]
+        blk = focal_block(L, b_, e, C, keep, fb, width, H, s)
+        if blk:
+            r_, fm, _ = blk
+            res['focal_Lstd_ratio'] = r_['Lstd_ratio']
+            res['focal_edge_ratio'] = r_['edge_ratio']
+            res['focal_chroma_ratio'] = r_['chroma_ratio']
+            vals = [v for v in (r_['Lstd_ratio'], r_['edge_ratio'], r_['chroma_ratio']) if v is not None and np.isfinite(v) and v > 0]
             res['focal_contrast_gmean'] = A.r(float(np.exp(np.mean(np.log(vals))))) if vals else None
-            res['focal_dL_vs_ring'] = A.r(L[fm].mean() - L[ring].mean(), 1)
-            res['focal_mean_L_in_ring'] = [A.r(L[fm].mean(), 1), A.r(L[ring].mean(), 1)]
-            res['focal_mean_bstar_in_ring'] = [A.r(b_[fm].mean(), 1), A.r(b_[ring].mean(), 1)]
-            res['focal_saliency_ratio'] = A.r(ratio(sal[fm].mean(), sal[keep & ~fm].mean()))
+            res['focal_dL_vs_ring'] = r_['dL_vs_ring']
+            res['focal_mean_L_in_ring'] = r_['mean_L_in_ring']
+            res['focal_mean_bstar_in_ring'] = r_['mean_bstar_in_ring']
+            res['focal_warmth_coupling'] = r_['warmth_coupling']
+            res['focal_saliency_ratio'] = A.r(sal[fm].mean() / sal[keep & ~fm].mean() if sal[keep & ~fm].mean() > 1e-6 else np.nan)
             res['focal_area'] = A.r(fm.mean(), 4)
-            res['focal_in_blur_band'] = None
         res['focal_boxes_px'] = fb
     if subject_boxes:
         res['subjects'] = [{'name': n, 'height_frac': A.r((y1 - y0) / H0), 'cx': A.r((x0 + x1) / 2 / W0), 'cy': A.r((y0 + y1) / 2 / H0)} for n, (x0, y0, x1, y1) in subject_boxes]
+        by = {}
+        for n, box in subject_boxes:
+            blk = focal_block(L, b_, e, C, keep, [list(box)], width, H, s)
+            if blk:
+                by[n] = blk[0]
+        res['focal_by_subject'] = by
+    if emitter:
+        res['falloff'] = falloff_block(L, b_, keep, emitter, list(radii), width, H, s, css_scale)
 
     res['hints'] = hints(res)
+    if (res.get('value_range_p5_p95') or 0) < 15 or (res.get('thumb_near_black_share') or 0) > 0.9:
+        res['hints'].append({'metric': 'frame_blank', 'value': [res.get('value_range_p5_p95'), res.get('thumb_near_black_share')], 'range': 'none',
+                             'hint': 'the frame is (nearly) blank or black: a failed capture reported ok (seen in the pilot when / was full); do not measure or judge it'})
+        print(f'WARNING: {path} looks blank/black (value range {res.get("value_range_p5_p95")}, near-black {res.get("thumb_near_black_share")})', file=sys.stderr)
     res['note'] = 'ranges are critique context from the look bible, never gate thresholds; the gate is the pairwise judge'
 
     if out:
@@ -254,7 +328,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('images', nargs='+')
     ap.add_argument('--layout', help='capture.json:ID (focal boxes + clean frame from the harness)')
-    ap.add_argument('--subjects', default='mine,foe', help='layout names used as focal boxes (default mine,foe)')
+    ap.add_argument('--subjects', default='auto', help="layout names used as the focal set: foe | mine | player | both | a,b,c (default auto = foe when the layout has one, else mine, else every entry)")
+    ap.add_argument('--emitter', help='x,y of the light source base (fractions or original/CSS px): emitter-local floor falloff')
+    ap.add_argument('--radii', default='0,100,250', help='ring radii in CSS px for --emitter (default 0,100,250; each ring is +-25 px)')
     ap.add_argument('--focal', action='append', default=[])
     ap.add_argument('--mask', action='append', default=[])
     ap.add_argument('--preset', choices=['battle-desk', 'none'], default='none')
@@ -270,6 +346,14 @@ def main():
 
     focal = list(a.focal)
     subject_boxes = None
+    focal_subjects = ['--focal boxes'] if a.focal else []
+    sanity = []
+    emitter = None
+    if a.emitter:
+        emitter = [float(v) for v in a.emitter.split(',')]
+        if len(emitter) != 2:
+            print('error: --emitter needs x,y', file=sys.stderr)
+            sys.exit(2)
     masks = list(a.mask) + (A.BATTLE_DESK_MASKS if a.preset == 'battle-desk' else [])
     if a.layout:
         try:
@@ -277,11 +361,24 @@ def main():
         except (OSError, ValueError, json.JSONDecodeError) as ex:
             print(f'error: --layout: {ex}', file=sys.stderr)
             sys.exit(2)
-        names = tuple(a.subjects.split(','))
         with Image.open(a.images[0]) as im0:
             scale = A.layout_scale(shot, im0.width)
-        focal += A.layout_boxes(shot, names, scale)
         subject_boxes = A.layout_entries(shot, scale)
+        have = [n for n, _ in subject_boxes]
+        if a.subjects == 'auto':
+            names = ('foe',) if 'foe' in have else ('mine',) if 'mine' in have else tuple(have)
+        elif a.subjects == 'both':
+            names = ('mine', 'foe')
+        else:
+            names = tuple(a.subjects.split(','))
+        lay_boxes = A.layout_boxes(shot, names, scale)
+        sanity = A.capture_sanity(shot)
+        if not lay_boxes and not a.focal:
+            print(f'WARNING: --layout {a.layout}: no focal boxes for subjects {list(names)} (layout entries: {have or "none"}). '
+                  f'focal_* numbers would be missing; pass --subjects or --focal. capture sanity: {sanity or "ok"}', file=sys.stderr)
+            sys.exit(3)
+        focal += lay_boxes
+        focal_subjects = list(names)
         if not a.clean and shot.get('clean') and os.path.exists(shot['clean']):
             a.clean = shot['clean']
     anchor = None
@@ -293,7 +390,14 @@ def main():
         clean = a.clean if (a.clean and len(a.images) == 1) else (None if a.no_clean else A.resolve_clean(p))
         out = a.out if (a.out and len(a.images) == 1) else (a.out + '_' + os.path.splitext(os.path.basename(p))[0] if a.out else None)
         try:
-            m = measure(p, focal, masks, a.crop, clean, a.width, out, a.sheet, subject_boxes)
+            with Image.open(p) as im0:
+                em_scale = A.layout_scale(shot, im0.width) if a.layout else 1.0
+            m = measure(p, focal, masks, a.crop, clean, a.width, out, a.sheet, subject_boxes,
+                        emitter=emitter, radii=[float(v) for v in a.radii.split(',')], css_scale=em_scale)
+            m['focal_subjects'] = focal_subjects
+            if sanity:
+                m['capture_sanity'] = sanity
+                m['hints'].append({'metric': 'capture_sanity', 'value': sanity, 'range': 'none', 'hint': 'the capture itself is suspect: open the PNG with Read before trusting any number'})
         except (OSError, ValueError) as ex:
             print(f'error: {p}: {ex}', file=sys.stderr)
             sys.exit(2)

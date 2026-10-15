@@ -11,7 +11,9 @@
     "can you grade the volcanic arena so it feels premium like Octopath?",
     "why does the fox disappear into the floor? it looks like a sticker",
     "the evolution scene is too dark and boring, plan the fix",
-    "do a light retune for the coast: it's too yellow"
+    "do a light retune for the coast: it's too yellow",
+    "the volcanic arena looks washed out on the phone after my grade change, what did I break?",
+    "Vulcrag reads as a dark hole on the lava floor, plan the fix without bleaching it"
   ],
   "should_not": [
     "add a bloom threshold knob to the HD-2D pipeline and expose it on ?post=",
@@ -21,6 +23,7 @@
     "the HP bar tween is 700 ms, make it faster",
     "vite throws Unexpected token when GLTFLoader loads models/foo.glb",
     "write the unit test for resolveTurn with a paralysed attacker",
-    "capture before/after screenshots of the stadium and tell me which is better"
+    "capture before/after screenshots of the stadium and tell me which is better",
+    "run the owner A/B kit for the grade pair and compute the trust table"
   ]
 }

@@ -24,7 +24,15 @@ Gamut JSON: {"arena", "source", "tol", "ramps": [{"name", "hue", "colors": ["#rr
 Edit it by hand to add ramp colours (hex) or adjust reserved ranges; re-derive after an accepted
 grade change (the gamut is per arena per ACCEPTED frame).
 
-Exit codes: 0 pass, 1 fail, 2 bad input.
+  python3 -I gamut_check.py report IMG.png --gamut gamut.json [--baseline ACCEPTED.png] [--layout ...] [--json]
+      For an INTENTIONAL grade retune (one that is supposed to add cool shadows or move the far
+      plane): never fails. Lists the chromatic cells (30-degree hue bin x L* third) outside the
+      gamut with their shares, and marks each cell NEW when the accepted baseline frame has < 0.1 %
+      of its pixels there. The S1 critique must list the NEW cells and say which ones the change
+      meant to add; `check` is the gate for painters/tiles and for changes that must stay inside
+      the gamut. Re-derive the gamut after the owner accepts the retune.
+
+Exit codes: 0 pass, 1 fail (check only), 2 bad input.
 """
 import argparse
 import json
@@ -159,9 +167,64 @@ def check(a):
     sys.exit(1 if failed else 0)
 
 
+def cells(lab, cols, tol):
+    """Outside-gamut chromatic pixels binned by (hue bin, L third): {(hbin, lband): share of chromatic pixels}."""
+    C = np.hypot(lab[:, 1], lab[:, 2])
+    chrom = lab[C > CHROMA_MIN]
+    if len(chrom) == 0:
+        return {}, 0, 0.0
+    X = chrom[::max(1, len(chrom) // 120000)]
+    d = np.sqrt(((X[:, None, :] - cols[None]) ** 2).sum(-1)).min(1)
+    off = X[d > tol]
+    hb = (hue_of(off) // 30).astype(int)
+    lb = np.clip((off[:, 0] // 33.4).astype(int), 0, 2)
+    out = {}
+    for h, l in zip(hb, lb):
+        out[(int(h), int(l))] = out.get((int(h), int(l)), 0) + 1
+    return {k: v / len(X) for k, v in out.items()}, len(X), float((d > tol).mean())
+
+
+def report(a):
+    with open(a.gamut) as f:
+        gam = json.load(f)
+    cols = np.array([A.to_lab(np.array(A.hex_to_rgb(c), float)) for rr in gam['ramps'] for c in rr['colors']])
+    tol = a.tol if a.tol is not None else gam.get('tol', 14)
+    try:
+        lab, _ = env_pixels(a.image, a.layout, False)
+        base_cells = {}
+        if a.baseline:
+            blab, _ = env_pixels(a.baseline, a.layout, False)
+            base_cells, _, base_outside = cells(blab, cols, tol)
+    except (OSError, ValueError, json.JSONDecodeError) as ex:
+        print(f'error: {ex}', file=sys.stderr)
+        sys.exit(2)
+    cc, n, outside = cells(lab, cols, tol)
+    names = ['red', 'orange', 'yellow', 'yellow-green', 'green', 'green-cyan', 'cyan', 'blue', 'blue-violet', 'violet', 'magenta', 'rose']
+    bands = ['dark', 'mid', 'light']
+    rows = []
+    for (h, l), share in sorted(cc.items(), key=lambda kv: -kv[1]):
+        if share < 0.002:
+            continue
+        rows.append({'hue_bin': h * 30, 'hue': names[h], 'L_band': bands[l], 'share': round(share, 4),
+                     'baseline_share': round(base_cells.get((h, l), 0.0), 4) if a.baseline else None,
+                     'new': (base_cells.get((h, l), 0.0) < 0.001) if a.baseline else None})
+    out = {'file': a.image, 'arena': gam.get('arena'), 'tol': tol, 'outside_share': round(outside, 4),
+           'baseline_outside_share': round(base_outside, 4) if a.baseline else None,
+           'cells_outside': rows, 'new_cells': [r for r in rows if r.get('new')],
+           'note': 'report mode never fails: list the NEW cells in the S1 critique and say which the change meant to add (cool shadows, far-plane haze); unexplained new cells are a defect. Re-derive the gamut after acceptance.'}
+    print(json.dumps(out, indent=1 if a.json else None))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
+    rp = sub.add_parser('report')
+    rp.add_argument('image')
+    rp.add_argument('--gamut', required=True)
+    rp.add_argument('--baseline', help='the accepted frame (same view): marks cells it did not use as NEW')
+    rp.add_argument('--layout')
+    rp.add_argument('--tol', type=float)
+    rp.add_argument('--json', action='store_true')
     d = sub.add_parser('derive')
     d.add_argument('image')
     d.add_argument('--arena', required=True)
@@ -180,7 +243,7 @@ def main():
     c.add_argument('--max-reserved', type=float, default=0.01)
     c.add_argument('--json', action='store_true')
     a = ap.parse_args()
-    (derive if a.cmd == 'derive' else check)(a)
+    {'derive': derive, 'check': check, 'report': report}[a.cmd](a)
 
 
 if __name__ == '__main__':
