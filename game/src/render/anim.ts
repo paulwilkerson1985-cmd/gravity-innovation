@@ -4,10 +4,12 @@
 type Tween = { elapsed: number; duration: number; fn: (k: number) => void; done: () => void };
 
 const active: Tween[] = [];
-export const animClock = { speed: 1, instant: false, time: 0 };
+/** `frame` counts main-loop ticks (timing marks and tests count frames, not ms). */
+export const animClock = { speed: 1, instant: false, time: 0, frame: 0 };
 
 export function stepTweens(dt: number) {
   animClock.time += dt;
+  animClock.frame++;
   const scaled = dt * animClock.speed;
   for (let i = active.length - 1; i >= 0; i--) {
     const tw = active[i]!;

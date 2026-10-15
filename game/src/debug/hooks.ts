@@ -1,5 +1,6 @@
 // window.__game: deterministic test/debug surface used by Playwright.
 import { animClock, flushTweens, pendingTweens } from '../render/anim';
+import { readMarks, type Mark } from './marks';
 import type { Game } from '../game/game';
 import type { SceneName } from '../scenes/base';
 import type { BattleScene } from '../scenes/battle';
@@ -21,6 +22,8 @@ export interface GameHooks {
   skip(): void;
   idle(): boolean;
   waitIdle(timeoutMs?: number): Promise<boolean>;
+  /** Frame-stamped playback marks (move impact, hit reaction), newest last. */
+  marks(): Mark[];
   canvasStats(): { distinct: number; nonBlack: number; samples: number } | null;
   renderInfo(): { calls: number; triangles: number };
   /** HD-2D pipeline stats of the current scene (`?gfx=hd2d`), else null. */
@@ -66,6 +69,7 @@ export function installHooks(game: Game) {
     setSpeed: (k) => { animClock.speed = k; },
     skip: () => flushTweens(),
     idle: () => game.idle && pendingTweens() === 0,
+    marks: () => readMarks(),
     waitIdle: (timeoutMs = 10000) => new Promise((resolve) => {
       const t0 = performance.now();
       const tick = () => {

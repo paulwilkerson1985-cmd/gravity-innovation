@@ -15,6 +15,9 @@ import { effTag, moveInfoBox, wireMoveInfo, type MoveInfoData } from '../ui/pixe
 import { ambient, moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
 import { animClock, ease, tween, wait } from '../render/anim';
+import { Kick, kickPx } from '../render/hitfeel';
+import { screenShake } from '../ui/prefs';
+import { mark } from '../debug/marks';
 import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import { audio, type TrackName } from '../audio/audio';
 import {
@@ -186,7 +189,8 @@ export class BattleScene extends BaseScene {
 
   private ambientUpdate: ((t: number) => void) | null = null;
 
-  override update(_dt: number, t: number) {
+  override update(dt: number, t: number) {
+    this.stepHitFeel(dt);
     this.ambientUpdate?.(t);
     this.views.forEach((v) => v?.update(t));
     if (this.hd2d) { this.hd2d.update(t); return; }
@@ -617,6 +621,13 @@ export class BattleScene extends BaseScene {
   }
 
   private busyGuard = false;
+  /** Animations left running after their beat (an attacker's recovery); settled before the next move and at turn end. */
+  private tails: Promise<unknown>[] = [];
+  /** The hit reaction a move started on its impact frame, picked up by the matching `damage` event. */
+  private reaction: { ev: BattleEvent; done: Promise<void> } | null = null;
+  /** The camera kick of the last hit (stepped in real time by `update`). */
+  private kick = new Kick();
+  private kickBase: THREE.Vector3 | null = null;
 
   async submit(action: Action) {
     if (this.busyGuard || !this.introDone) return;
@@ -633,8 +644,14 @@ export class BattleScene extends BaseScene {
   }
 
   private async play(events: BattleEvent[]) {
-    // The next event is passed along: a move followed by its `miss` plays a whiff, not a hit.
+    // The next event is passed along: a move followed by its `miss` plays a whiff, not a hit,
+    // and a move followed by its `damage` starts the hit reaction on the impact frame.
     for (let i = 0; i < events.length; i++) await this.playOne(events[i]!, events[i + 1]);
+    await this.settleTails();
+  }
+
+  private async settleTails() {
+    while (this.tails.length) await Promise.all(this.tails.splice(0));
   }
 
   private disposeView(side: 0 | 1) {
@@ -699,18 +716,27 @@ export class BattleScene extends BaseScene {
         return;
       }
       case 'move': {
+        await this.settleTails();
         await this.say(`${this.label(e.side, e.name)} used ${e.moveName}!`, 250);
         const data = getMove(e.move);
         const me = v(e.side);
         audio.move(data.type);
         if (data.category === 'attack') {
-          const from = this.spots[e.side].clone().lerp(this.spots[e.side === 0 ? 1 : 0], 0.28).add(new THREE.Vector3(0, 0.8, 0));
-          const to = this.spots[e.side === 0 ? 1 : 0].clone().add(new THREE.Vector3(0, 0.6, 0));
-          const lunge = me?.lunge(this.spots[e.side === 0 ? 1 : 0]);
+          const foe = e.side === 0 ? 1 : 0;
+          const from = this.spots[e.side].clone().lerp(this.spots[foe], 0.28).add(new THREE.Vector3(0, 0.8, 0));
+          const to = this.spots[foe].clone().add(new THREE.Vector3(0, 0.6, 0));
+          // Only the strike gates the beat; the hop back and landing run on under the reaction.
+          let struck!: () => void;
+          const strike = new Promise<void>((r) => { struck = r; });
+          if (me) this.tails.push(me.lunge(this.spots[foe], struck).finally(struck)); else struck();
           await wait(140);
           const miss = next?.t === 'miss' && next.side === e.side;
-          const dodge = miss ? wait(330).then(() => v(e.side === 0 ? 1 : 0)?.dodge()) : null;
-          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, { power: data.power, camera: this.camera, miss }), dodge]);
+          const dodge = miss ? wait(330).then(() => v(foe)?.dodge()) : null;
+          // The engine always follows a connecting attack with its `damage` event: play its hit
+          // reaction (flash, SFX, shake, HP drain) on the impact frame, not after the effect's tail.
+          const hit = next?.t === 'damage' && next.source === 'move' && next.side === foe ? next : null;
+          const onImpact = hit ? () => { mark('impact'); this.reaction = { ev: hit, done: this.react(hit) }; } : undefined;
+          await Promise.all([strike, moveFx(this.scene, data.type, from, to, { power: data.power, camera: this.camera, miss, onImpact }), dodge]);
         } else await me?.pulse(TYPE_COLORS[data.type]!);
         return;
       }
@@ -721,12 +747,9 @@ export class BattleScene extends BaseScene {
         const target = v(e.side);
         const from = e.hp + e.amount;
         if (e.source === 'move') {
-          audio.sfx(e.crit ? 'crit' : e.mult > 1 ? 'superHit' : e.mult < 1 ? 'weakHit' : 'hit');
-          if (e.mult > 1 || e.crit) {
-            void burst(this.scene, this.spots[e.side].clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4);
-            this.shake(e.crit && e.mult > 1 ? 0.16 : 0.1);
-          }
-          await Promise.all([target?.hit(e.mult > 1 || e.crit, e.crit), this.tweenHp(e.side, from, e.hp, e.maxHp)]);
+          const r = this.reaction?.ev === e ? this.reaction.done : this.react(e);
+          this.reaction = null;
+          await r;
           if (e.crit) await this.say('A critical hit!', 400);
           if (e.mult > 1) await this.say("It's super effective!", 450);
           else if (e.mult < 1) await this.say("It's not very effective…", 450);
@@ -802,6 +825,18 @@ export class BattleScene extends BaseScene {
     }
   }
 
+  /** A move's hit landing on its target: SFX, flash and recoil, camera kick, HP drain (all from frame 1). */
+  private react(e: Extract<BattleEvent, { t: 'damage' }>): Promise<void> {
+    mark('react');
+    const target = this.views[e.side];
+    const calm = !screenShake();
+    audio.sfx(e.crit ? 'crit' : e.mult > 1 ? 'superHit' : e.mult < 1 ? 'weakHit' : 'hit');
+    const kick = kickPx(e);
+    if (kick && !calm) this.kickAlong(e.side === 0 ? 1 : 0, e.side, kick);
+    if (e.mult > 1 || e.crit) void burst(this.scene, this.spots[e.side].clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4);
+    return Promise.all([target?.hit(e.mult > 1 || e.crit, { crit: e.crit, calm }), this.tweenHp(e.side, e.hp + e.amount, e.hp, e.maxHp)]).then(() => {});
+  }
+
   /** Status/heal/stat cue (render/movefx statusFx) around the kin on `side`, sized to it. */
   private cue(side: 0 | 1, type: StatusCue): Promise<void> {
     const v = this.views[side];
@@ -834,26 +869,33 @@ export class BattleScene extends BaseScene {
     void burst(this.scene, land, '#ffffff', 0.7, 8);
   }
 
-  /** Brief camera shake for big hits. */
-  private shake(amount: number) {
+  /**
+   * Camera kick for a hit: one damped push along the blow (attacker → target on screen), in
+   * whole internal pixels on HD-2D (view offset), so the pixel grid never smears.
+   */
+  private kickAlong(fromSide: 0 | 1, toSide: 0 | 1, px: number) {
     if (animClock.instant) return;
-    const hd = this.hd2d;
-    if (hd) {
-      // HD-2D: shake in whole internal pixels (view offset), so the pixel grid never smears.
-      const a0 = Math.max(1, Math.round(amount * 28));
-      void tween(260, (k) => {
-        const a = k >= 1 ? 0 : a0 * (1 - k);
-        hd.shake(Math.sin(k * 40) * a, Math.cos(k * 33) * a * 0.6);
-      });
-      return;
-    }
     const cam = this.camera;
-    const base = cam.position.clone();
-    void tween(260, (k) => {
-      const a = amount * (1 - k);
-      cam.position.set(base.x + Math.sin(k * 40) * a, base.y + Math.cos(k * 33) * a * 0.6, base.z);
-      if (k >= 1) cam.position.copy(base);
-    });
+    cam.updateMatrixWorld();
+    const a = this.spots[fromSide].clone().project(cam), b = this.spots[toSide].clone().project(cam);
+    // NDC y is up; the kick works in screen terms (y down).
+    this.kick.start(px, b.x - a.x, -(b.y - a.y));
+  }
+
+  /** Per frame: the camera kick. */
+  private stepHitFeel(dt: number) {
+    if (!this.kick.active && !this.kickBase) return;
+    const [cx, cy] = this.kick.step(dt);
+    const hd = this.hd2d;
+    // View offset moves the window: content shifts the other way.
+    if (hd) { hd.shake(-cx, -cy); return; }
+    const cam = this.camera;
+    if (!this.kickBase) this.kickBase = cam.position.clone();
+    if (!this.kick.active) { cam.position.copy(this.kickBase); this.kickBase = null; return; }
+    // Default renderer: ≈ 0.03 world units per internal px; the camera moves against the content.
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+    cam.position.copy(this.kickBase).addScaledVector(right, -cx * 0.03).addScaledVector(up, cy * 0.03);
   }
 
   private async sparkleAt(side: 0 | 1, color: string) {

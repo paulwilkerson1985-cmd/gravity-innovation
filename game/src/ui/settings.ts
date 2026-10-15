@@ -62,7 +62,8 @@ export function openSettings(game: Game): ModalHandle {
       toggle('Mute all', 'toggle-mute', vol.muted, (on) => { audio.mute(on); if (!on) audio.sfx('select'); })),
     h('section', { class: 'set-group' },
       h('h3', {}, 'Comfort'),
-      toggle('Reduce motion', 'toggle-motion', reduceMotion(), (on) => { savePrefs({ reduceMotion: on }); audio.sfx('cursor'); })),
+      toggle('Reduce motion', 'toggle-motion', reduceMotion(), (on) => { savePrefs({ reduceMotion: on }); audio.sfx('cursor'); }),
+      toggle('Screen shake & flashes', 'toggle-shake', loadPrefs().shake ?? true, (on) => { savePrefs({ shake: on }); audio.sfx('cursor'); })),
     h('p', { class: 'set-note' }, 'Sound and motion settings are kept on this device. Text speed is also stored in your save.'),
   );
   (seg.querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus({ preventScroll: true });

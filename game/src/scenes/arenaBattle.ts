@@ -8,6 +8,7 @@ import { CreatureView } from '../render/creature';
 import { burst } from '../render/fx';
 import { moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { animClock, ease, tween, wait } from '../render/anim';
+import { screenShake } from '../ui/prefs';
 import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import { audio } from '../audio/audio';
 import {
@@ -74,6 +75,10 @@ export class ArenaBattleScene extends BaseScene {
   /** Hotseat: a turn was just played out in front of both players. */
   private watchedTurn = false;
   private playing = false;
+  /** Animations left running after their beat (an attacker's recovery); settled before the next move and at turn end. */
+  private tails: Promise<unknown>[] = [];
+  /** The hit reaction a move started on its impact frame, picked up by the matching `damage` event. */
+  private reaction: { ev: BattleEvent; done: Promise<void> } | null = null;
   private kos: [number, number] = [0, 0];
   private localStep = 0;
   private deadlineAt: number | null = null;
@@ -725,8 +730,22 @@ export class ArenaBattleScene extends BaseScene {
       // The next event rides along: a move followed by its `miss` plays a whiff, not a hit.
       await this.playOne(events[i]!, events[i + 1]);
     }
+    await this.settleTails();
     for (const seat of [0, 1] as const) this.updatePips(seat);
     this.playing = false;
+  }
+
+  private async settleTails() {
+    while (this.tails.length) await Promise.all(this.tails.splice(0));
+  }
+
+  /** A move's hit landing on its target: SFX, flash and recoil, HP drain (all from frame 1). */
+  private react(e: Extract<BattleEvent, { t: 'damage' }>): Promise<void> {
+    const target = this.views[e.side];
+    const calm = !screenShake();
+    audio.sfx(e.crit ? 'crit' : e.mult > 1 ? 'superHit' : e.mult < 1 ? 'weakHit' : 'hit');
+    if (e.mult > 1 || e.crit) { void burst(this.scene, this.spot(e.side).clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4); this.set.cheer(1.2); }
+    return Promise.all([target?.hit(e.mult > 1 || e.crit, { crit: e.crit, calm }), this.tweenHp(e.side, e.hp + e.amount, e.hp, e.maxHp)]).then(() => {});
   }
 
   private async playOne(e: BattleEvent, next?: BattleEvent) {
@@ -748,6 +767,7 @@ export class ArenaBattleScene extends BaseScene {
         return;
       }
       case 'move': {
+        await this.settleTails();
         await this.say(`${this.label(e.side, e.name)} used ${e.moveName}!`, 250);
         const data = getMove(e.move);
         const me = v(e.side);
@@ -756,11 +776,17 @@ export class ArenaBattleScene extends BaseScene {
         if (data.category === 'attack') {
           const from = this.spot(e.side).clone().lerp(this.spot(foe), 0.28).add(new THREE.Vector3(0, 0.8, 0));
           const to = this.spot(foe).clone().add(new THREE.Vector3(0, 0.6, 0));
-          const lunge = me?.lunge(this.spot(foe));
+          // Only the strike gates the beat; the hop back and landing run on under the reaction.
+          let struck!: () => void;
+          const strike = new Promise<void>((r) => { struck = r; });
+          if (me) this.tails.push(me.lunge(this.spot(foe), struck).finally(struck)); else struck();
           await wait(140);
           const miss = next?.t === 'miss' && next.side === e.side;
           const dodge = miss ? wait(330).then(() => v(foe)?.dodge()) : null;
-          await Promise.all([lunge, moveFx(this.scene, data.type, from, to, { power: data.power, camera: this.camera, miss }), dodge]);
+          // The hit reaction plays on the impact frame (see BattleScene).
+          const hit = next?.t === 'damage' && next.source === 'move' && next.side === foe ? next : null;
+          const onImpact = hit ? () => { this.reaction = { ev: hit, done: this.react(hit) }; } : undefined;
+          await Promise.all([strike, moveFx(this.scene, data.type, from, to, { power: data.power, camera: this.camera, miss, onImpact }), dodge]);
         } else {
           await me?.pulse(TYPE_COLORS[data.type]!);
         }
@@ -773,9 +799,9 @@ export class ArenaBattleScene extends BaseScene {
         const target = v(e.side);
         const from = e.hp + e.amount;
         if (e.source === 'move') {
-          audio.sfx(e.crit ? 'crit' : e.mult > 1 ? 'superHit' : e.mult < 1 ? 'weakHit' : 'hit');
-          if (e.mult > 1 || e.crit) { void burst(this.scene, this.spot(e.side).clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4); this.set.cheer(1.2); }
-          await Promise.all([target?.hit(e.mult > 1 || e.crit, e.crit), this.tweenHp(e.side, from, e.hp, e.maxHp)]);
+          const r = this.reaction?.ev === e ? this.reaction.done : this.react(e);
+          this.reaction = null;
+          await r;
           if (e.crit) await this.say('A critical hit!', 400);
           if (e.mult > 1) await this.say("It's super effective!", 450);
           else if (e.mult < 1) await this.say("It's not very effective…", 450);
