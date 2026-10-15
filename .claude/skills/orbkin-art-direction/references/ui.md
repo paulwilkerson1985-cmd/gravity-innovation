@@ -31,7 +31,7 @@ predate the pixel UI (never judge the UI from them; capture fresh).
 
 ## §sheet (rules; fail the change if violated)
 
-- **One panel material across the game**: cream handheld (current) **or** dark slab (candidate). Never
+- **One panel material across the game**: the dark slab (decided; cream retired). Never
   both, never a third. Frames are 9-slice grids on the world texel (2 CSS px at 720p, `ui/pixel/skin.ts`):
   ≥ 1-texel outer line, 1-texel accent line, square or notched corners. No radii, soft shadows, glass blur
   or gradients on frames (slab exception: selection ribbon and heading dividers may fade horizontally).
@@ -66,6 +66,8 @@ predate the pixel UI (never judge the UI from them; capture fresh).
 | Contrast | ink on paper 13.9:1; disabled ≥ 3:1 for info text; chip text ≥ 4.5:1 | chip text 2.3:1 (fail) |
 
 ## §fork: cream handheld vs dark HD-2D slab (owner decision)
+
+**DECIDED 2026-10-15: slab2.** The owner's blind vote chose slab2 over cream 5-0 (3 no-difference) and over pxdark 7-1; shipped in commit e239b08 (see game/docs/DECISIONS.md and game/docs/UI.md). Treat the slab as the one panel material; cream is retired. The notes below are kept as history.
 
 - Same scene pixels, UI-only swap: old web -> cream pixel **84/84**; cream -> slab2 **78/84 (13/14 shots)**
   with a neutral prompt and **83/84** with the UI prompt; canaries passed.
