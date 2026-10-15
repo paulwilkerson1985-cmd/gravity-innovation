@@ -79,6 +79,8 @@ def pairs_from_verdicts(d, family, device):
             continue
         if not v.get('decision') or not (v.get('candidate') and v.get('baseline') and os.path.isfile(v['candidate']) and os.path.isfile(v['baseline'])):
             continue  # only judge verdicts (floor / ip / lint JSONs also sit in the run dir)
+        if v.get('role', 'target') != 'target' or v.get('decision') == 'invalid':
+            continue  # controls (synthetic degradations, identical pairs) and invalid runs are never owner pairs; the kit adds its own golds
         pid = f'P{k + 1:02d}'
         p = {'id': pid, 'kind': 'main', 'family': v.get('family') or family or 'unassigned', 'arena': v.get('arena'),
              'device': device or device_of(v['candidate']), 'verdict_file': f,

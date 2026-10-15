@@ -13,6 +13,9 @@ Canaries (baseline strip vs a degraded baseline strip, both orders):
   hitstop  held frames removed from the attacker strip (needs a capture DIR). Judges the motion read itself;
            medium confidence only (skill-pilot-ablation.md: the strip judge needs more known orderings). A
            failed hitstop canary invalidates the run like blur does; pass --canary none to skip canaries.
+           When the baseline strip holds fewer than 4 frames in the window (a smooth-60 attack; motionlint
+           hold_frames 0) there is nothing to remove and the canary is recorded as "skipped", not failed
+           (re-test: the Flame strip dropped 1 frame and the canary wrongly invalidated an identical pair).
   blur,hitstop  both (recommended for an attack strip that will be ACCEPTED: the blur canary passed only at
            confidence 2 in the pilot, which the protocol calls a coin flip; the result marks a canary whose
            confidence is <= 2 in either order as "canary_strength": "weak", and a weak-only canary never
@@ -73,8 +76,22 @@ def canary_image(kind, base_png, base_dir):
         out = os.path.join(base_dir, 'strips', 'attacker.canary-hitstop.png')
         if not os.path.isfile(out):
             raise RuntimeError('hitstop canary failed: ' + r.stderr[-300:])
+        dropped = None
+        try:
+            dropped = json.loads(r.stdout.strip().splitlines()[-1]).get('dropped_held_frames')
+        except (ValueError, IndexError, AttributeError):
+            pass
+        if dropped is not None and dropped < MIN_HELD_FRAMES:
+            # a smooth-60 attack holds no frames: removing "held frames" changes nothing, so the judge CANNOT prefer
+            # the original and the canary would always fail. Not applicable, not a failure (re-test: Flame strip
+            # dropped 1 frame and invalidated an identical pair).
+            return {'skipped': f'baseline strip has {dropped} held frame(s) in the window (< {MIN_HELD_FRAMES}): '
+                               'hitstop canary not applicable; motionlint hold_frames says the same'}
         return out
     return None
+
+
+MIN_HELD_FRAMES = 4  # fewer held frames than this and the hitstop canary has nothing to remove
 
 
 def main():
@@ -117,6 +134,8 @@ def main():
             cpath = canary_image(ck, base_png, base_dir)
         except (RuntimeError, ValueError) as e:
             print(f'error: {e}', file=sys.stderr); sys.exit(2)
+        if isinstance(cpath, dict):
+            res['canary'].append({'kind': ck, 'decision': 'skipped', 'why': cpath['skipped']}); continue
         can = run_set(base, Image.open(cpath).convert('RGB'), prompt, None, 1, a.model, 'canary-' + ck)
         res['votes'] += can
         cd, _ = decide(can)

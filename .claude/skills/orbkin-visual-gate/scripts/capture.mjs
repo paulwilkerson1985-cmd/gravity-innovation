@@ -30,8 +30,9 @@
 // advances the game clock by exactly --dt ms per frame, nothing depends on machine load), drives the scene
 // to idle, then runs to an ABSOLUTE frame number max(idle frame, --min-frame) + --settle so every variant
 // shares one animation phase, and screenshots with CSS animations disabled.
-// Writes DIR/raw/<id>.png, <id>.clean.png (UI hidden), <id>.crop.png (2x nearest creature crop, battle
-// shots), <id>.fail.png on error, and DIR/capture.json: per shot {ok, frame, layout: creature boxes in CSS px,
+// Writes DIR/raw/<id>.png, <id>.clean.png (UI hidden), <id>.crop.png (2x nearest mine+foe crop, battle shots),
+// <id>.scene.png (mine, foe, player AND trainer: the crop ip_check --scene wants), <id>.fail.png on error, and
+// DIR/capture.json: per shot {ok, frame, layout: subject boxes in DEVICE px (phone = CSS x 2.75; layoutDpr says),
 // calls, triangles, warnings, errors, url}. --baseline DIR adds DIR/compare.json: per id changed % and
 // whether the capture frame matched (pixdiff.py). --self-check re-captures a shot in a fresh browser and
 // asserts pixel identity (default: the first shot; "all" doubles the time).
@@ -83,26 +84,7 @@ const require = createRequire(path.join(GAME, 'package.json'));
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (e) { console.error(`error: playwright not found in ${GAME}/node_modules (${e.message})`); process.exit(2); }
 
-// ------------------------------------------------------------------ build + serve
-const T0 = Date.now();
-fs.mkdirSync(RAW, { recursive: true });
-if (args['no-build'] !== 'true' && !args.dist) {
-  const log = path.join(OUT, 'build.log');
-  const r = spawnSync('npx', ['vite', 'build', '--outDir', DIST, '--emptyOutDir'], { cwd: GAME, encoding: 'utf8' });
-  fs.writeFileSync(log, (r.stdout ?? '') + (r.stderr ?? ''));
-  if (r.status !== 0) { console.log(JSON.stringify({ ok: false, error: `vite build failed, see ${log}` })); process.exit(2); }
-  console.error(`[capture] built ${GAME} -> ${DIST} in ${((Date.now() - T0) / 1000).toFixed(0)}s`);
-}
-if (!fs.existsSync(path.join(DIST, 'index.html'))) { console.log(JSON.stringify({ ok: false, error: `no build at ${DIST}` })); process.exit(2); }
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.otf': 'font/otf', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.glb': 'model/gltf-binary', '.webp': 'image/webp', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg' };
-const server = http.createServer((req, res) => {
-  let p = path.join(DIST, decodeURIComponent(new URL(req.url, 'http://x').pathname));
-  if (p.endsWith('/')) p += 'index.html';
-  fs.readFile(p, (err, data) => { if (err) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' }); res.end(data); });
-});
-await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const BASE = `http://127.0.0.1:${server.address().port}`;
-
+// ------------------------------------------------------------------ shot selection + validation (BEFORE the build: fail in 1 s, not after a 60 s build)
 let extra = [];
 if (args['shots-json']) {
   extra = JSON.parse(fs.readFileSync(args['shots-json'], 'utf8'));
@@ -135,6 +117,27 @@ for (const s of shots) {
   if (s.kind === 'lineup' || s.kind === 'baked') { try { s.line = lineupIndex(s.line); if (s.line === 'all' && s.kind === 'baked') problems.push(`${s.id}: baked needs one line, not all`); } catch (e) { problems.push(`${s.id}: ${e.message}`); } }
 }
 if (problems.length) { console.log(JSON.stringify({ ok: false, error: 'shot validation failed', problems })); process.exit(2); }
+
+// ------------------------------------------------------------------ build + serve
+const T0 = Date.now();
+fs.mkdirSync(RAW, { recursive: true });
+if (args['no-build'] !== 'true' && !args.dist) {
+  const log = path.join(OUT, 'build.log');
+  const r = spawnSync('npx', ['vite', 'build', '--outDir', DIST, '--emptyOutDir'], { cwd: GAME, encoding: 'utf8' });
+  fs.writeFileSync(log, (r.stdout ?? '') + (r.stderr ?? ''));
+  if (r.status !== 0) { console.log(JSON.stringify({ ok: false, error: `vite build failed, see ${log}` })); process.exit(2); }
+  console.error(`[capture] built ${GAME} -> ${DIST} in ${((Date.now() - T0) / 1000).toFixed(0)}s`);
+}
+if (!fs.existsSync(path.join(DIST, 'index.html'))) { console.log(JSON.stringify({ ok: false, error: `no build at ${DIST}` })); process.exit(2); }
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.otf': 'font/otf', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.glb': 'model/gltf-binary', '.webp': 'image/webp', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg' };
+const server = http.createServer((req, res) => {
+  let p = path.join(DIST, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  if (p.endsWith('/')) p += 'index.html';
+  fs.readFile(p, (err, data) => { if (err) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' }); res.end(data); });
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
+const BASE = `http://127.0.0.1:${server.address().port}`;
+
 
 // ------------------------------------------------------------------ in-page frame clock
 function clockInit(dt) {
@@ -429,7 +432,14 @@ sheet.save(out); print(json.dumps({'sheet': out, 'size': sheet.size}))`;
       await page.evaluate((id) => document.getElementById(id)?.remove(), id);
     }
     result.calls = st.ri.calls; result.triangles = st.ri.triangles; result.perf = st.perf; result.arenaId = st.arenaId;
-    try { result.layout = (await page.evaluate(() => window.__game.layout())).subjects; } catch { /* optional */ }
+    try {
+      // layout() is in CSS px; the screenshot is in DEVICE px (phone DPR 2.75). Record boxes in device px so that
+      // crop.py, pixdiff --inside and visual_judge --layout address the right pixels on every viewport.
+      const dpr = vp.ctx.deviceScaleFactor ?? 1;
+      const lay = await page.evaluate(() => window.__game.layout());
+      result.layoutDpr = dpr; result.layoutCss = { w: lay.w, h: lay.h };
+      result.layout = (lay.subjects || []).map((b) => ({ name: b.name, x: Math.round(b.x * dpr), y: Math.round(b.y * dpr), w: Math.round(b.w * dpr), h: Math.round(b.h * dpr) }));
+    } catch { /* optional */ }
     result.ok = true;
   } catch (e) {
     ctx.errors.unshift(String(e.message ?? e).split('\n')[0]);

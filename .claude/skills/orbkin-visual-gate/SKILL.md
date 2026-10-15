@@ -70,12 +70,16 @@ RUN-relative paths. Every judge/floor result carries `provenance` (sha256 per in
       `--role control --expect <decision>` so the report keeps them out of the improvement signal.
       At most 2 judge rounds per change; start them in the background and keep working.
 - [ ] **S4 originality** for any new or changed creature/person design, and whenever a verdict lists
-      `franchise_hits`: `python3 -I $S/ip_check.py $RUN/cand/raw/lineup-<N>-desk.png --raw-out $RUN/raw-ip --out
-      $RUN/ip-lineup.json` and `python3 -I $S/ip_check.py $RUN/cand/raw/<id>.scene.png --scene --out $RUN/ip-scene.json`
+      `franchise_hits`: the shipped look first, `python3 -I $S/ip_check.py $RUN/cand/raw/lineup-<N>-baked-desk.png
+      --raw-out $RUN/raw-ip --out $RUN/ip-baked.json` (toon-baked battle sprites, 3x; 135 s to capture a 2-species
+      line), the design itself with `lineup-<N>-desk.png` (unbaked meshes), and the staged figures with
+      `python3 -I $S/ip_check.py $RUN/cand/raw/<id>.scene.png --scene --raw-out $RUN/raw-ip --out $RUN/ip-scene.json`
       (`.scene.png` covers mine, foe, player AND trainer; `.crop.png` is mine/foe only). For a new or recomposed
       arena: `python3 -I $S/ip_check.py $RUN/cand/raw/<id>.png --composition --out $RUN/ip-composition.json`
-      (closest known game location / screen layout, layout similarity). The `creatures` / `locations` table
-      records the closest name per run even on PASS.
+      (it swaps in `<id>.clean.png`; closest known game location / screen layout, layout similarity; re-test on the
+      Brann cave: REVIEW, "Oreburgh-style rock gym, leader upper-right by the stairs" 5/10 generic, so the owner
+      decides). The `creatures` / `locations` table records the closest name per run even on PASS (re-test: Brock,
+      Ethan, Silver, Roggenrola, Foxparks, all 3-4 generic) and `--raw-out` keeps every raw judge JSON by image.
 - [ ] **S5 report**: read `references/families.md`; if the change's family is human-gated, queue it:
       `python3 -I $S/owner_kit.py $RUN/kit --from-verdicts $RUN --family <f> --inline`; then
       `bash $S/report.sh $RUN --title "<what changed>"` (refuses to overwrite without `--force`) and fill the
@@ -106,9 +110,11 @@ RUN-relative paths. Every judge/floor result carries `provenance` (sha256 per in
    you inflicted; run every control with `--role control --expect ...` and never quote its critique as a gap.
 9. **Budget and honesty.** Measured on this box at load 20-40: desk capture 4-7 min, phone 1.5-2 min, strip
    18 min, judge 3.5-4.5 min and $0.10-0.15 per shot (+$0.10-0.15 with `--layout`), ip_check $0.06-0.16 per
-   image; about half the time at load < 4. At most 2 rounds per change, sweep only at milestones; `invalid`
-   (canary failed) means nothing is claimed; the report quotes verdict words verbatim; a `weak` motion canary
-   (confidence <= 2) never supports acceptance on its own.
+   image. Re-test at load 5-19: build + two lineup captures 42 s, phone 64 s, desk 177 s, baked 2-species sheet
+   135 s, identical early exit 22 s / $0.011, ip_check 22-26 s per image. At most 2 rounds per change, sweep only
+   at milestones; `invalid` (canary failed) means nothing is claimed; the report quotes verdict words verbatim; a
+   `weak` motion canary (confidence <= 2) never supports acceptance on its own (every strip blur canary in the
+   pilot and re-test was weak: the strip judge is thin evidence until anchored).
 
 ## Decision rule
 | floors | judge (target shots) | ip_check | family | sealed | result |
@@ -144,5 +150,12 @@ kit; kappa, contradictions, per-device Bradley-Terry, trust table) · `report.sh
   Phone runs the low tier (no point lights, frozen shadows): a light-only change may not show there.
 - `fx-*-desk` stills are for look checks only; portrait floors are WARN-only; `--no-critique` on judge
   re-runs saves a call; the identical early exit skips the second round and the critique by itself.
+- Background judges: start each from a script file with `nohup` and keep its PID; never `pkill -f <script name>`
+  (it matches the wrapper shells' command lines and kills every background job at once; re-test lost 3 verdicts).
 - The model-scene lineup is the unbaked mesh on a grey stage; `lineup-<N>-baked-desk` is the shipped sprite.
   A capture into a dir that already has a `capture.json` with other settings drops the earlier shots.
+- `capture.json` boxes are in DEVICE px (`layoutDpr`; phone = CSS x 2.75). Before this fix the phone `.crop.png`
+  / `.scene.png`, `outside_changed` and `--layout` votes addressed the HUD corner, not the creatures: re-capture
+  phone shots made before 2026-10-15 05:30 before judging their crops.
+- `--canary hitstop` is recorded `skipped` when the baseline attack holds < 4 frames (smooth-60 moves such as
+  Pyre Crash today); only `blur` then guards the strip run, and it is weak evidence (rule 9).

@@ -117,11 +117,11 @@ def main():
     # ---- gather JSON by content
     files = sorted(glob.glob(os.path.join(run, '*.json')))
     nested = {}
-    for sub in sorted(glob.glob(os.path.join(run, '*', ''))):
+    for sub in sorted(glob.glob(os.path.join(run, '*', '')) + glob.glob(os.path.join(run, '*', '*', ''))):
         for name in ('capture.json', 'compare.json', 'repeat.json'):
             p = os.path.join(sub, name)
             if os.path.isfile(p):
-                nested.setdefault(os.path.basename(sub.rstrip('/')), {})[name] = p
+                nested.setdefault(os.path.relpath(sub.rstrip('/'), run), {})[name] = p
     kinds = {'verdict': {}, 'floor': {}, 'ip': {}, 'lint': {}, 'repeat': {}, 'capture': {}, 'compare': {}, 'key': {}, 'pixdiff': {}}
     for p in files:
         if os.path.basename(p) in ('run.json',):

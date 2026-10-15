@@ -48,8 +48,10 @@ JSON; common-word names such as Red/Gold/Crystal only count when capitalised out
 to a franchise word): judges volunteer names unprompted ("clean Dragonair silhouette") [medium-high].
 `--composition` on the UI-free full frame names the closest known game location / screen layout and rates
 layout similarity (light shafts, stairs, platforms, camera, combatant placement): the pilot cave read as a
-generic rock gym / HD-2D interior at 3-5 (PASS), while the **HUD**, judged separately with `--hud`, read as
-the Gen 3/4 Pokemon battle screen at 8/10 distinctive in 3/3 runs [medium: unsealed, one frame]. HUD layout
+generic rock gym / HD-2D interior at 3-5 (PASS); the Brann re-test of the same arena came back REVIEW
+("Oreburgh-style mining gym, leader upper-right beside the stairs", 5/10 generic in 1 of 3 runs), which is the
+layout concern of rule 5 and an owner decision, not a block [medium: unsealed, two frames]. The **HUD**, judged
+separately with `--hud`, read as the Gen 3/4 Pokemon battle screen at 8/10 distinctive in 3/3 runs [medium]. HUD layout
 is a `ui_skin` decision for the owner, never an arena block; it is reported as `hud_decision`.
 
 `artgate_compare.py`: exit 1 = a FAIL rule fired (values flattened, frame blurred); fix before anything
@@ -131,7 +133,8 @@ pilot, 22 gate runs produced 0 reads of sealed files and 0 false claims [high].
 |---|---|---|---|
 | desk battle capture (one shot, SwiftShader) | 0 | 0 | 4-7 min (+ the same for a self-check) |
 | phone capture | 0 | 0 | 1.5-3 min |
-| model-scene lineup capture | 0 | 0 | 45 s |
+| model-scene lineup capture (`lineup-<N>-desk`) | 0 | 0 | 13 s at load 5 (re-test), 45 s loaded; `repeat.sh` on one lineup incl. build: 42 s |
+| phone battle capture at load 5-13 (re-test) | 0 | 0 | 64 s |
 | strip.mjs (one move, 240 probe + 100 shot frames) | 0 | 0 | 18 min |
 | repeat.sh (desk + phone, twice) | 0 | 0 | 15-20 min |
 | defect floor | 0 | 0 | 3-9 s |
@@ -139,8 +142,10 @@ pilot, 22 gate runs produced 0 reads of sealed files and 0 false claims [high].
 | full view with `--layout` crop votes + critique | 2 + 4 + 4 + 1 | 0.20-0.30 | 5-6 min |
 | identical early exit | 2 + 2 | 0.02-0.06 | 40-90 s |
 | element / ui / blur view | 2 + 4 (+1) | 0.10-0.20 | 3-4 min |
-| motion strip (one kind, blur canary) | 2 + 4 | 0.13 | 20 s - 4 min |
-| ip_check (one image, 3 runs) | 3 | 0.06-0.16 | 25-80 s |
+| motion strip (one kind, blur canary) | 2 + 4 | 0.13 | 20 s - 4 min (re-test 34 s) |
+| ip_check (one image, 3 runs) | 3 | 0.06-0.16 | 25-80 s (re-test 22-26 s per mode) |
+| desk battle via `--url` + phone, one build reused, 2 workers (re-test, load 5-19) | 0 | 0 | 178 s total (desk 177 s, phone 64 s) |
+| `lineup-<N>-baked-desk` (2 species) | 0 | 0 | 135 s at load 15 |
 | full-scene sweep at a milestone (15 desk shots) | ~100 | 2-3 | 60-100 min captures + 45 min judging |
 
 Gate only the shots a change touches; the sweep is for milestones. Drop the `--layout` crop votes for grade,
@@ -173,10 +178,13 @@ so report.sh lists it under "Instrument checks" (expected vs got, pass/fail) and
 - Strips: `make_strips.py DIR --stepped 2` writes a held-frame copy (30-frame steps). Judging the real strip
   against it (`--expect better`) checks that the judge prefers continuous motion (pilot 4/4 at confidence 4);
   it is a straw man for "can the gate separate two plausible timings". The **real motion test** is two timing
-  variants of the SAME move captured by strip.mjs from two trees (or one tree with the game's timing override
-  in `--qs`), judged with `judge_motion.py --kind attack --canary blur,hitstop` in both orders, plus
-  `--kind sync`; the blur canary alone passed only at confidence 2 in the pilot, which section 4 calls a coin
-  flip, so the result marks it `weak` and a weak-only canary never supports acceptance [medium].
+  variants of the SAME move captured by strip.mjs from two trees (`baseline.sh --rev <commit>` exports the
+  accepted tree; the battle scene has no timing query parameter today, so `--qs` cannot select a variant;
+  only the model scene reads `anim=`), judged with `judge_motion.py --kind attack --canary blur,hitstop` in
+  both orders, plus `--kind sync`; the blur canary alone passed only at confidence 2 in the pilot, which
+  section 4 calls a coin flip, so the result marks it `weak` and a weak-only canary never supports acceptance
+  [medium]. Known orderings for the strip judge are still few (pilot: 4/4 vs the stepped control, 1 pair):
+  `motion_timing` stays human-gated until the owner batch anchors it (families.md).
 - Repeatability: `repeat.sh` (two captures from one dist, sha256 + pixdiff tol 0 per id and file) replaces
   the per-shot self-check when a run will be accepted or claims repeatability; the pilot's two captures were
   byte-identical on all 6 files, and the model-scene lineup repeated byte-identically in the re-test.

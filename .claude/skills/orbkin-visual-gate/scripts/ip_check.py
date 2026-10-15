@@ -79,6 +79,11 @@ def main():
     jobs = [(p, k) for p in a.images for k in range(a.runs)]
     if a.raw_out:
         os.makedirs(a.raw_out, exist_ok=True)
+    # raw-file stems: the image basename, prefixed with its index when two images share a name (cap1/x.png, cap2/x.png)
+    stems = [os.path.splitext(os.path.basename(p))[0] for p in a.images]
+    if len(set(stems)) != len(stems):
+        stems = [f'{i:02d}-{s}' for i, s in enumerate(stems)]
+    stem_of = dict(zip(a.images, stems))
     models = []
 
     def one(j):
@@ -88,7 +93,7 @@ def main():
         if out.get('model'):
             models.append(out['model'])
         if a.raw_out:
-            stem = os.path.splitext(os.path.basename(p))[0]
+            stem = stem_of[p]
             with open(os.path.join(a.raw_out, f'{stem}.run{k}.json'), 'w') as fh:
                 json.dump({'image': p, 'run': k, 'mode': mode, 'json': out.get('json'), 'text': out.get('text'),
                            'cost': out.get('cost'), 'ms': out.get('ms'), 'error': out.get('error'), 'model': out.get('model')}, fh, indent=1)
@@ -115,6 +120,7 @@ def main():
                         if (r['similarity'] or 0) >= 5 or r['overlap'] == 'distinctive'}, key=lambda t: -(t[1] or 0))
         max_sim = max([r['similarity'] or 0 for r in table] or [0])
         entry = {'image': p, 'image_rel': J.rel_to(p, RUN), 'mode': mode, 'decision': decision, 'run_verdicts': verdicts,
+                 'raw_files': [os.path.join(a.raw_out, f'{stem_of[p]}.run{k}.json') for k in range(a.runs)] if a.raw_out else None,
                  'max_similarity': max_sim, 'flags': flags,
                  'fixes': sorted({r['change_to_differentiate'] for r in table if (r['similarity'] or 0) >= 5} - {None}),
                  rows_key: table, 'why': [js.get('why') for _, js in runs], 'note': note}
