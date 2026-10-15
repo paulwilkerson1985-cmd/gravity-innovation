@@ -152,6 +152,8 @@ export function kinSpriteOptions(view: CreatureView, extra: SpriteOptions = {}):
   view.idleGain = 1.8;
   // Actions play as pose-aligned cels; the sprite re-bakes when the cel changes.
   view.cels = true;
+  // Blinks are drawn on the idle bake clock (10 fps, 8 on the low tier).
+  view.blinkFps = detectQuality() === 'low' ? 8 : 10;
   return {
     rig: view.uniforms, emissiveFrom: view.material, ground: view.root,
     texelHeight: TEXELS.kin[stageOf(view.speciesId)],

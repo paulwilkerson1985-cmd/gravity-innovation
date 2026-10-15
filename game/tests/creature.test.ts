@@ -130,6 +130,34 @@ describe('creature models', () => {
     }
   });
 
+  it('HD-2D blinks are drawn cels: every blink shows a fully shut eye on exactly one sprite tick', () => {
+    // The sprite bakes the rig at whole ticks of uTime (10 fps); sample uBlink there over 60 s.
+    for (const [id, fps] of [['cindertail', 10], ['dropple', 8], ['mossling', 10]] as const) {
+      const v = new CreatureView(dex.species.get(id)!.look, 3);
+      v.blinkFps = fps;
+      const shutPerCycle = new Map<number, number>();
+      let lastTick = -1;
+      const every = (v as unknown as { blinkEvery: number }).blinkEvery;
+      for (let f = 0; f < 60 * 60; f++) {
+        v.update(f / 60);
+        const tt = v.uniforms.uTime.value;
+        const tick = Math.floor(tt * fps);
+        if (tick === lastTick) continue;
+        lastTick = tick;
+        const cycle = Math.floor(tick / (every * fps) + 1e-9);
+        if (v.uniforms.uBlink.value === 1) shutPerCycle.set(cycle, (shutPerCycle.get(cycle) ?? 0) + 1);
+      }
+      v.update(0);
+      const c0 = Math.floor(v.uniforms.uTime.value / every) + 1;
+      v.update(60);
+      const c1 = Math.floor(v.uniforms.uTime.value / every) - 1;
+      // (a cycle is counted by the tick its blink is baked on, as the sprite does)
+      expect(c1 - c0).toBeGreaterThan(8);
+      for (let c = c0; c <= c1; c++) expect(shutPerCycle.get(c), `${id} blink ${c}`).toBe(c % 3 === 1 ? 2 : 1);
+      v.dispose();
+    }
+  });
+
   it('unknown looks still build with the generic generator', () => {
     const g = buildCreatureGeometry({ body: 'quad', scale: 1, colors: { main: '#ff0000', belly: '#ffffff', accent: '#00ff00' }, parts: ['tail', 'ears'] });
     expect(g.attributes.position!.count).toBeGreaterThan(100);

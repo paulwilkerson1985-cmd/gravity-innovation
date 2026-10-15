@@ -441,6 +441,37 @@ export class CreatureView {
     return this.darkCache;
   }
 
+  /**
+   * Sprite frame rate the blink is drawn on (HD-2D: the idle bake rate, 10 / 8 fps); 0 = a smooth
+   * blink (3D renderer).
+   */
+  blinkFps = 0;
+
+  private smoothBlink(tt: number): number {
+    const bt = tt % this.blinkEvery;
+    const blink = (x: number) => (x >= 0 && x < 0.13 ? Math.sin((x / 0.13) * Math.PI) : 0);
+    const dbl = Math.floor(tt / this.blinkEvery) % 3 === 1;
+    return Math.max(blink(bt), dbl ? blink(bt - 0.2) : 0);
+  }
+
+  /**
+   * Blink as drawn cels on the sprite frame clock (the bake samples the rig at whole ticks of the
+   * same time): fully shut for exactly one tick, half open for the next (closing is faster than
+   * opening). A smooth 130 ms lid sampled at 10 fps never showed a closed eye on most blinks.
+   */
+  private celBlink(tt: number): number {
+    // Whole ticks throughout (the bake's tick is floor(uTime · fps)), so a cycle boundary can
+    // never fall inside the first tick of its blink.
+    const tick = Math.floor(tt * this.blinkFps);
+    const per = this.blinkEvery * this.blinkFps;
+    const cycle = Math.floor(tick / per + 1e-9);
+    const d = tick - Math.ceil(cycle * per - 1e-9);
+    const dbl = cycle % 3 === 1;
+    if (d === 0 || (dbl && d === 3)) return 1;
+    if (d === 1 || (dbl && d === 4)) return 0.5;
+    return 0;
+  }
+
   private setShadow(lift: number, fade = 1) {
     const k = Math.max(0.55, 1 - lift * 0.9);
     this.shadow.scale.set(this.shadowBase.x * k, this.shadowBase.y * k, 1);
@@ -451,10 +482,7 @@ export class CreatureView {
     const tt = t + this.phase;
     this.u.uTime.value = tt;
     // Blink: a quick squint every few seconds, sometimes a double blink.
-    const bt = tt % this.blinkEvery;
-    const blink = (x: number) => (x >= 0 && x < 0.13 ? Math.sin((x / 0.13) * Math.PI) : 0);
-    const dbl = Math.floor(tt / this.blinkEvery) % 3 === 1;
-    this.u.uBlink.value = this.eyesShut ? 1 : Math.max(blink(bt), dbl ? blink(bt - 0.2) : 0);
+    this.u.uBlink.value = this.eyesShut ? 1 : this.blinkFps > 0 ? this.celBlink(tt) : this.smoothBlink(tt);
     if (!this.idleAllowed) return;
     const b = this.body;
     let y = this.hover, sy = 1, sxz = 1, pitch = 0, roll = 0;
