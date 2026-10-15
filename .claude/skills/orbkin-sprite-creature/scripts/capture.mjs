@@ -59,13 +59,15 @@ if (mode === 'build') process.exit(0);
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm', '.png': 'image/png', '.jpg': 'image/jpeg', '.json': 'application/json', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };
 const server = http.createServer((req, res) => {
   let p = path.join(DIST, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+  // Never serve anything outside the build folder.
+  if (p !== DIST && !p.startsWith(path.resolve(DIST) + path.sep)) { res.writeHead(403); res.end(); return; }
   if (p.endsWith('/') || !fs.existsSync(p)) p = path.join(DIST, 'index.html');
   fs.readFile(p, (err, data) => {
     if (err) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' });
     res.end(data);
   });
-}).listen(PORT);
+}).listen(PORT, '127.0.0.1');
 
 // Virtual clock: requestAnimationFrame callbacks only run when the test steps them, 16.667 ms
 // each; performance.now() follows the same clock so idle timeouts and the tween clock agree.

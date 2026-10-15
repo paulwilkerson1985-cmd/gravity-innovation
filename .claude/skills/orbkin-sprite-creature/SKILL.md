@@ -208,8 +208,8 @@ glTF-Transform. Ship the compressed GLB, never the raw export. Pin: Blender 5.2 
 - Binaries: none by default. KTX-Software ktx/toktx, basisu, a BasisU gltfpack build, ktx2-encoder,
   or any downloaded program need the owner's explicit approval first (name, version, URL, sha256,
   why, alternative). Default texture path: WebP via glTF-Transform.
-- Never sudo, never install globally, never add apt sources or registries. apt only through
-  bootstrap's fixed EGL list inside the cloud VM.
+- Never sudo, never install globally, never add apt sources or registries. Never run apt yourself:
+  system packages are installed by the owner or the environment setup.
 - Never read, print or send credentials (~/.ssh, ~/.aws, ~/.config/gh, ~/.netrc, ~/.git-credentials,
   .env*, tokens in env vars). Never send repo contents to unapproved services.
 - Never edit .claude/settings.json, .claude/hooks, CLAUDE.md or managed settings unless the owner asks.

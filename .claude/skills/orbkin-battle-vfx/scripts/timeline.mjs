@@ -55,12 +55,14 @@ if (!base) {
   const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm', '.png': 'image/png', '.json': 'application/json', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
   server = http.createServer((req, res) => {
     let p = path.join(dist, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    // Never serve anything outside the build folder.
+    if (p !== path.resolve(dist) && !p.startsWith(path.resolve(dist) + path.sep)) { res.writeHead(403); res.end(); return; }
     if (p.endsWith('/')) p += 'index.html';
     fs.readFile(p, (err, data) => {
       if (err) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { 'content-type': MIME[path.extname(p)] || 'application/octet-stream' }); res.end(data);
     });
-  }).listen(0);
+  }).listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
 }

@@ -94,7 +94,7 @@ def ask(blocks, model, timeout=420):
     env = {k: v for k, v in os.environ.items() if k not in ('CLAUDECODE', 'CLAUDE_CODE_SESSION_ID')}
     for attempt in range(2):
         try:
-            r = subprocess.run(['claude', '-p', '--model', model, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--tools', '', '--max-turns', '1'],
+            r = subprocess.run(['claude', '-p', '--model', model, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--tools', '', '--max-turns', '1', '--no-session-persistence'],
                                input=json.dumps(msg) + '\n', capture_output=True, text=True, env=env, timeout=timeout)
         except subprocess.TimeoutExpired:
             print(f'warning: judge vote timed out after {timeout}s (attempt {attempt + 1})', file=sys.stderr)
