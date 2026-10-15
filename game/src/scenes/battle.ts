@@ -33,6 +33,8 @@ import {
 } from '../game/progress';
 import type { Theme } from '../render/diorama';
 import { Hd2dBattleStage, hd2dTerrainFor } from './hd2dBattle';
+import { battleReveal, covered, resetScreenFx } from '../render/hd2d/transition';
+import { reduceMotion } from '../ui/prefs';
 
 const STAT_NAMES: Record<StageKey, string> = { atk: 'Attack', def: 'Defense', spe: 'Speed' };
 const STATUS_TEXT: Record<StatusId, [string, string, string, string]> = {
@@ -404,6 +406,15 @@ export class BattleScene extends BaseScene {
   // ------------------------------------------------------------------ flow
 
   private async intro(events: BattleEvent[]) {
+    // HD-2D battle-in (the route map's grade pass covered the screen, render/hd2d/transition.ts):
+    // an iris opens on the foe while the camera makes a locked whole-pixel pan into the framing.
+    if (covered()) {
+      const hd = this.hd2d;
+      if (hd && !animClock.instant) {
+        void hd.introPan(reduceMotion());
+        await battleReveal(() => hd.foeUv());
+      } else resetScreenFx();
+    }
     if (this.trainer) {
       let fig: THREE.Mesh;
       if (this.hd2d) fig = this.hd2d.trainer(this.trainer.id);
@@ -693,7 +704,7 @@ export class BattleScene extends BaseScene {
         this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
         if (e.side === 1) this.game.player = withSeen(this.game.player, e.species);
         // Your own kin arrives in an orb: a short arc in from the lower left and a pop.
-        const appear = e.side === 0 ? this.throwIn(e.species).then(() => view.appear()) : view.appear();
+        const appear = e.side === 0 ? this.throwIn(e.species).then(() => this.materialize(view)) : this.materialize(view);
         audio.cry(e.species);
         if (e.side === 1 && this.state.sides[1].isWild && !this.introDone) await this.say(`A wild ${e.name} appeared!`);
         else if (e.side === 1) await this.say(this.trainer ? `${this.trainerName()} sent out ${e.name}!` : `Foe sent out ${e.name}!`);
@@ -835,6 +846,21 @@ export class BattleScene extends BaseScene {
     const type = species(speciesId).types[0];
     void burst(this.scene, land, TYPE_COLORS[type ?? 'Neutral'] ?? '#ffffff', 1.1, 12);
     void burst(this.scene, land, '#ffffff', 0.7, 8);
+  }
+
+  /**
+   * A kin appears: the scale-up pop, and in HD-2D a white silhouette that resolves into the
+   * sprite (12 frames white, then 60% and 30% for 4 frames each: the classic "materialise").
+   */
+  private materialize(view: CreatureView): Promise<void> {
+    const pop = view.appear();
+    if (!this.hd2d || animClock.instant) return pop;
+    const m = view.material;
+    void tween(20 * (1000 / 60), (k) => {
+      const f = k * 20, v = f < 12 ? 1 : f < 16 ? 0.6 : f < 20 ? 0.3 : 0;
+      m.emissive.setRGB(v, v, v);
+    });
+    return pop;
   }
 
   /** Brief camera shake for big hits. */

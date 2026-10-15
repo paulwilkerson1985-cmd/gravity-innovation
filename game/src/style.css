@@ -367,6 +367,8 @@ h1, h2, h3, h4 { text-transform: uppercase; }
 .model-ui { position: absolute; top: 10px; left: 10px; padding: 4px 8px; font: var(--f0); }
 
 /* ============================================================================ scene transitions */
+/* HD-2D battle-in: the old scene's HTML UI steps out while the grade-pass wipe covers the canvas. */
+#overlay.tr-hide { opacity: 0; transition: opacity .15s steps(3); }
 #curtain { position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: 0; background: #1c1626; }
 #curtain.cover { pointer-events: auto; }
 #curtain.cover.plain { animation: cover .22s steps(4) forwards; }

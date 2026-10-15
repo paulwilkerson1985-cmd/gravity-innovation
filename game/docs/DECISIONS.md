@@ -227,6 +227,24 @@ Evidence (frames, plans, every vote and reason): `scratchpad/gfx1/world-ui/` of 
   cream HUD biases the judge), 3 judges each: **14/14 decisive** (3/3, conf 3.7–4.7, gap +1.5…+3.0),
   calibration pairs (UI pixels softened) 2/2 correct.
 
+- **Battle-in = grade-pass transition (HD-2D only), ≈ 1.7 s from tap to the open frame** instead of
+  the 0.8 s CSS stripe curtain: 2 grey pulses (2 per second, ≤ 40% toward `#5a5a5a`, luminance step
+  capped at 0.08 per pixel), a terrain × threat wipe in 10 whole steps over 30 frames, an iris
+  opening on the foe during a locked whole-pixel intro pan, kin materialising as white silhouettes.
+  Timings from pokeemerald and the motion research; the default renderer keeps the curtain, and
+  reduced motion / fast mode skip it. Flashes measured on the frame strips: 1 in any second (the
+  cover/reveal pair), max frame-to-frame luminance step 0.10–0.11 (the wipe). The first version
+  pulsed to a flat 40% grey and counted 3 flashes in a second on the bright route map: hence the
+  per-pixel luminance cap.
+- **Pan locks** (sprite feet snapped in a grid that travels with the pan, Bayer dither phase moved
+  with it) also apply to the hit shake. Live meadow battle-in, desktop: block-rigid residual
+  2.11 → 1.68, deforming blocks 6.4% → 5.5% (the rest is the live scene: foliage sway, sprite bakes).
+- Gate: 60 fps frame strips (every 6th frame, tap → +2 s, same seed/state; the old curtain's CSS
+  keyframes composited exactly over the old build's frames): desktop **3/3, conf 3.3, gap +2.0**,
+  phone **3/3, conf 3.3, gap +2.0**; calibration (softened strip) 2/2. Judges: "staged reveal",
+  "iris opens on the arena", old: "flat blind wipe, muddy crossfade"; one noted the black hold
+  runs a little long.
+
 ## GPU PC node: pinned tool chain (`docs/GPU_PC_SETUP.md`)
 The owner's RTX 3090 PC runs Claude Code inside WSL2 Ubuntu 24.04 as a GPU node. Its tools are pinned and checked by hand, not taken from distribution channels, so that a later session does not "upgrade" them away or swap the download path for a less checkable one:
 - **Node 22.23.3** from nodejs.org, checked against the GPG-signed `SHASUMS256.txt` (keyring from `nodejs/release-keys` at commit `481637f813e912c4aa3622d7964ab426c97b8e8d`) and the explicit tarball sha256 `df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de`. NodeSource's apt repository was rejected because it adds a third-party package source to the system; Ubuntu 24.04's own `nodejs` is 18.

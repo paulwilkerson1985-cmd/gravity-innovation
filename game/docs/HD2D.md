@@ -492,6 +492,33 @@ call sites are unchanged).
 - Draw calls after the pass (whole frame, SwiftShader): cave 52 desk / 46 phone, volcanic 52 / 49,
   hollow 43 / 39, outdoor/sea 37–65, night sets 45–78 (HoF desktop 78), screens 27–58.
 
+## Battle-in transition (`render/hd2d/transition.ts`)
+
+HD-2D battles start with a grade-pass transition instead of the CSS curtain (the default renderer
+keeps the curtain). Everything is drawn in the grade pass at the internal resolution, so every edge
+is a whole internal pixel; the state is one shared object (`screenFx`) that every `Hd2dPipeline`
+copies into its grade uniforms each frame, so the cover starts on the route map's pipeline and the
+reveal ends on the battle's. Timings in 60 fps frames (`BATTLE_IN`):
+
+1. **Overworld**: 2 grey pulses (12 frames each, one every 30 frames = 2 per second) toward
+   `#5a5a5a` by ≤ 40%, with the per-pixel change in relative luminance capped at 0.08 so a pulse is
+   never a WCAG 2.3.1 flash on any background. The route's HTML UI steps out as the wipe starts.
+2. **Cover**: a terrain × threat wipe (`wipeFor`), 30 frames in 10 whole steps, to `#1c1626`
+   (oxblood `#2a0c14` when the foe outlevels your lead): `shards` (wild grass/outdoor), `iris`
+   (cave), `mosaic` (water), `shards2` (trainers, from both sides), `dissolve` (stronger foe).
+3. **Reveal**: an iris opening on the foe spot (30 frames, 10 steps; centre re-projected each frame)
+   while the camera makes a **locked whole-pixel intro pan** (`Hd2dBattleStage.introPan`: from
+   −40 × −24 px on a 360-px grid back to the framing over 48 frames, ease-out cubic).
+4. **Kin appear** as a white silhouette (12 frames white, 4 at 60%, 4 at 30%) during the pop.
+
+Pan locks (also used by the hit shake): `Hd2dBattleStage.pan()/shake()` compose whole-pixel view
+offsets; `SpriteBaker.pan` snaps sprite feet in a grid that travels with the pan and
+`Hd2dPipeline.setPan` moves the grade's Bayer dither with it, so a pan moves the image rigidly
+(`?post=nopanlock` = unlocked, for A/B metrics). Measured on the meadow battle-in (desktop, live
+scene): block-rigid residual 2.11 → 1.68, deforming blocks 6.4% → 5.5%; WCAG flashes: 1 in any
+second (the cover/reveal pair; the pulses stay under the 0.10 luminance step). Reduced motion
+(setting or `prefers-reduced-motion`) and fast mode keep the old instant/CSS path.
+
 ## Conventions for new arenas
 
 - **Scale**: 1 unit ≈ a kin; people 1.55× scale of the ~1.05 unit figure (≈ 1.6 units);

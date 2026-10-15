@@ -18,6 +18,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { warmPrograms } from '../materials';
 import { warmPixelFx } from './fx';
+import { applyScreenFx } from './transition';
 
 export type Quality = 'high' | 'low';
 
@@ -161,7 +162,10 @@ const GradeShader = {
     uVig: { value: 0 }, uVigSoft: { value: 0.5 },
     uBottom: { value: 0 }, uBottomH: { value: 0.22 },
     uTiltTop: { value: 0 }, uTiltBottom: { value: 0 }, uFocusTop: { value: 0.6 }, uFocusBottom: { value: 0.15 },
-    uDither: { value: 0 },
+    uDither: { value: 0 }, uDitherOff: { value: new THREE.Vector2() },
+    // Screen transitions (render/hd2d/transition.ts): wipe mode, cover amount, iris centre, ink, pulse.
+    uTrMode: { value: 0 }, uTrK: { value: 0 }, uTrC: { value: new THREE.Vector2(0.5, 0.5) }, uTrInk: { value: new THREE.Vector3() },
+    uPulse: { value: new THREE.Vector4(0, 0, 0, 0) },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -173,6 +177,11 @@ const GradeShader = {
     uniform vec2 uToneHi, uDesatRange;
     uniform float uExposure, uToneHue, uSat, uContrast, uShadowDesat, uSplit, uVig, uVigSoft, uBottom, uBottomH;
     uniform float uTiltTop, uTiltBottom, uFocusTop, uFocusBottom, uDither;
+    uniform vec2 uDitherOff;
+    uniform float uTrMode, uTrK;
+    uniform vec2 uTrC;
+    uniform vec3 uTrInk;
+    uniform vec4 uPulse;
     uniform vec3 uShadowTint, uHighTint;
     varying vec2 vUv;
     const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -211,7 +220,13 @@ const GradeShader = {
       // is reached only toward the far top edge.
       float rt = smoothstep(uFocusTop, 1.0, y);
       float r = uTiltTop * rt * rt + uTiltBottom * (1.0 - smoothstep(0.0, uFocusBottom, y));
-      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      // Mosaic wipe: resample in square blocks growing to 12 internal px (2-px steps).
+      vec2 suv = vUv;
+      if (uTrMode == 4.0 && uTrK > 0.0) {
+        float bs = max(1.0, floor(min(uTrK / 0.6, 1.0) * 6.0 + 0.5) * 2.0);
+        suv = (floor(gl_FragCoord.xy / bs) * bs + bs * 0.5) / uRes;
+      }
+      vec3 c = texture2D(tDiffuse, suv).rgb;
       if (r > 0.25) {
         vec2 px = r / uRes;
         vec3 acc = c * 2.0;
@@ -260,8 +275,34 @@ const GradeShader = {
       c = mix(c, uHighTint * l, uSplit * smoothstep(0.5, 1.0, l));
       // Bottom-edge shade (foreground occluders), opt-in per arena.
       c *= 1.0 + uBottom * (1.0 - smoothstep(0.0, uBottomH, y));
-      // Ordered dither, so smooth gradients (light beams, bloom halos) read as pixel dither.
-      c += (bayer4(gl_FragCoord.xy) - 0.5) * uDither / 255.0;
+      // Ordered dither, so smooth gradients (light beams, bloom halos) read as pixel dither. Its
+      // phase travels with a whole-pixel camera pan (uDitherOff) instead of crawling over the image.
+      c += (bayer4(gl_FragCoord.xy + uDitherOff) - 0.5) * uDither / 255.0;
+      // Screen transitions, in whole internal pixels (edges stay crisp): 1 ordered dissolve in
+      // 2x2 cells, 2 angled shards from the left, 5 shards from both sides, 3 iris on uTrC,
+      // 4 mosaic then dissolve. uTrK = cover 0..1 (stepped by the driver).
+      if (uTrMode > 0.5) {
+        vec2 P = floor(gl_FragCoord.xy);
+        float cover = 0.0;
+        if (uTrMode < 1.5) cover = step(bayer4(floor(P / 2.0)), uTrK);
+        else if (uTrMode < 2.5 || uTrMode > 4.5) {
+          float band = floor(P.y / 30.0);
+          float x = (uTrMode > 4.5 && mod(band, 2.0) > 0.5) ? uRes.x - P.x : P.x;
+          cover = step(x + floor(mod(P.y, 30.0) / 2.0) * 2.0, uTrK * (uRes.x + 70.0) - 10.0);
+        } else if (uTrMode < 3.5) {
+          float R = floor((1.0 - uTrK) * length(uRes) / 4.0) * 4.0;
+          cover = step(R, length(P - uTrC * uRes));
+        } else cover = step(bayer4(floor(P / 2.0)), (uTrK - 0.6) / 0.4);
+        c = mix(c, uTrInk, cover);
+      }
+      // Whole-screen pulse (battle-in): toward uPulse.rgb by uPulse.a (<= 0.5), with the change
+      // in relative luminance capped at 0.08 per pixel, so a pulse is never a WCAG 2.3.1 flash
+      // (>= 0.10) on any background, bright sky or dark cave.
+      if (uPulse.a > 0.0) {
+        vec3 t = mix(c, uPulse.rgb, uPulse.a);
+        float dl = abs(dot(pow(t, vec3(2.2)), LUMA) - dot(pow(c, vec3(2.2)), LUMA));
+        c = mix(c, t, min(1.0, 0.08 / max(dl, 1e-4)));
+      }
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
     }`,
 };
@@ -377,6 +418,14 @@ export class Hd2dPipeline {
     u.uFocusTop.value = g.focusTop; u.uFocusBottom.value = g.focusBottom;
   }
 
+  /**
+   * A whole-pixel camera pan of (dx, dy) internal px of image content (buffer coordinates, y up):
+   * the grade's dither travels with it, so a pan moves the image rigidly.
+   */
+  setPan(dx: number, dy: number) {
+    (this.gradePass.uniforms as typeof GradeShader.uniforms).uDitherOff.value.set(-dx, -dy);
+  }
+
   /** Re-apply the grade after editing `this.grade` (A/B tools, live tuning). */
   regrade() { this.applyGrade(postFlags().has('nograde')); }
 
@@ -396,6 +445,7 @@ export class Hd2dPipeline {
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = this.grade.exposure;
     for (const f of this.beforeRender) f(r);
+    applyScreenFx(this.gradePass.uniforms as typeof GradeShader.uniforms);
     if (this.settings.staticShadows) {
       // Two refreshes after the arena is built (lights settle), then frozen.
       r.shadowMap.autoUpdate = false;

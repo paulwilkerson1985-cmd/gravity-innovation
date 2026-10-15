@@ -367,6 +367,7 @@ export class Hd2dBattleStage {
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     this.baseOffset = [(a[0] + b[0]) / 2 - tx, (a[1] + b[1]) / 2 - ty, w, h];
+    this.applyOffset(); // keep a pan / shake in progress across re-framing
     const [fogNear, fogFar] = this.terrain.def.fogRange ?? [6, 30];
     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + fogNear; this.scene.fog.far = dist + fogFar; }
     this.pipeline.setSize();
@@ -380,17 +381,64 @@ export class Hd2dBattleStage {
   }
 
   private baseOffset: [number, number, number, number] | null = null;
+  /** View-offset deltas from the framing in whole internal px (x right, y down): pan, shake. */
+  private panPx: [number, number] = [0, 0];
+  private shakePx: [number, number] = [0, 0];
 
   /**
    * Camera shake in WHOLE internal pixels (a view-offset jitter), so the pixel grid never
    * smears: (dx, dy) in internal px; (0, 0) restores the framing.
    */
   shake(dx: number, dy: number) {
+    this.shakePx = [Math.round(dx), Math.round(dy)];
+    this.applyOffset();
+  }
+
+  /**
+   * A camera pan in whole internal pixels (view offset, x right / y down; (0, 0) = the framing).
+   * The sprite feet snap and the grade dither travel with it, so the image moves rigidly
+   * (no texel crawl, no sprites slipping against the floor).
+   */
+  pan(dx: number, dy: number) {
+    this.panPx = [Math.round(dx), Math.round(dy)];
+    this.applyOffset();
+  }
+
+  private applyOffset() {
     const o = this.baseOffset;
     if (!o) return;
     const s = o[3] / Math.max(1, this.game.renderer.gl.getDrawingBufferSize(new THREE.Vector2()).y); // CSS px per internal px
-    this.camera.setViewOffset(o[2], o[3], o[0] + Math.round(dx) * s, o[1] + Math.round(dy) * s, o[2], o[3]);
+    const ox = this.panPx[0] + this.shakePx[0], oy = this.panPx[1] + this.shakePx[1];
+    this.camera.setViewOffset(o[2], o[3], o[0] + ox * s, o[1] + oy * s, o[2], o[3]);
     this.camera.updateProjectionMatrix();
+    // The content moves the other way: left for +x, up (+y in buffer coordinates) for +y.
+    // (`?post=nopanlock` leaves the sprite snap and dither screen-anchored, for A/B metrics.)
+    if (postFlags().has('nopanlock')) return;
+    this.baker.pan.set(-ox, oy);
+    this.pipeline.setPan(-ox, oy);
+  }
+
+  /**
+   * Battle-in camera: a locked whole-pixel pan from up-left of the framing (≈ 40 × 24 internal px
+   * on a 360-px grid) back to it over 48 frames, ease-out cubic. Skipped (no motion) when
+   * `still` (reduced motion).
+   */
+  async introPan(still = false): Promise<void> {
+    if (still) return;
+    const b = this.game.renderer.gl.getDrawingBufferSize(new THREE.Vector2());
+    const k = Math.min(b.x, b.y) / 360;
+    const x0 = -40 * k, y0 = -24 * k;
+    await tween(48 * (1000 / 60), (t) => {
+      const e = 1 - (1 - t) ** 3;
+      this.pan(x0 * (1 - e), y0 * (1 - e));
+    });
+    this.pan(0, 0);
+  }
+
+  /** The foe spot (a little above the floor) in drawing-buffer UV, y up: where the iris opens. */
+  foeUv(): [number, number] {
+    const v = this.spots[1].clone().add(new THREE.Vector3(0, 0.5, 0)).project(this.camera);
+    return [v.x * 0.5 + 0.5, v.y * 0.5 + 0.5];
   }
 
   update(t: number) {
