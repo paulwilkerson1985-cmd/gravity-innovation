@@ -106,6 +106,30 @@ describe('creature models', () => {
     }
   });
 
+  it('HD-2D cel actions (lunge, hit, faint) also survive instantly and settle back to rest', async () => {
+    const { animClock } = await import('../src/render/anim');
+    animClock.instant = true;
+    try {
+      for (const id of ['cindertail', 'dropple', 'stormoth', 'maelstrode', 'pyrelord']) {
+        const v = new CreatureView(dex.species.get(id)!.look, 1);
+        v.cels = true;
+        let struck = 0;
+        await v.lunge(new THREE.Vector3(2, 0, 2), () => { struck++; });
+        expect(struck, id).toBe(1);
+        expect(v.inner.position.length(), id).toBeCloseTo(0);
+        await v.hit(true);
+        await v.hit(false, { calm: true });
+        expect(v.blinkOff).toBe(false);
+        expect(v.animating).toBe(false);
+        await v.faint();
+        expect(v.root.visible).toBe(false);
+        v.dispose();
+      }
+    } finally {
+      animClock.instant = false;
+    }
+  });
+
   it('unknown looks still build with the generic generator', () => {
     const g = buildCreatureGeometry({ body: 'quad', scale: 1, colors: { main: '#ff0000', belly: '#ffffff', accent: '#00ff00' }, parts: ['tail', 'ears'] });
     expect(g.attributes.position!.count).toBeGreaterThan(100);

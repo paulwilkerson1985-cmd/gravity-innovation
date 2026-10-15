@@ -4,7 +4,7 @@
 // Every creature is built facing +Z, feet on y = 0, merged into ONE mesh (1 draw call + shadow).
 import * as THREE from 'three';
 import { GEO, MeshBuilder } from './builder';
-import { ease, tween } from './anim';
+import { animClock, ease, tween } from './anim';
 import type { LookData, PartKind } from '../engine/types';
 import { getDex } from '../engine/dex';
 import { Kit } from './creatures/kit';
@@ -249,6 +249,86 @@ const UP = new THREE.Vector3(0, 1, 0);
 /** Damped spring 1 → 0 with a couple of overshoots. */
 const spring = (k: number, freq = 3, decay = 4) => Math.exp(-decay * k) * Math.cos(k * Math.PI * 2 * freq * 0.5);
 
+// ---------------------------------------------------------------- key-table actions (HD-2D sprites)
+// Sprite-scale attacks are authored as pose keys, not tweens (docs/DECISIONS.md "Battle feel"):
+// wind-up → held anticipation → ONE stretched strike cel → contact squash → recovery past rest →
+// a decaying settle. Amplitudes are sized in texels: at 28–40 texels a wind-up must travel ≥ 10–15%
+// of the body, squash ≥ 15%, stretch ≥ 25% or it never moves a whole texel.
+
+/** A pose of the body pivot: squash sy (volume kept), lean (rad, + toward the target), fwd / up (units from rest). */
+interface Pose { sq: number; lean: number; fwd: number; up: number }
+/**
+ * [60 fps frames to reach the pose, the pose (missing fields hold), easing, tag]. `strike` is the
+ * single smear cel; the contact key fires `onStrike` as it starts.
+ */
+type Key = readonly [number, Partial<Pose>, ((k: number) => number)?, ('strike' | 'contact')?];
+const lin = (k: number) => k;
+const outQuart = (k: number) => 1 - (1 - k) ** 4;
+/** Contact distance toward the target (units), as in the tweened lunge. */
+const REACH = 0.95;
+
+export type Archetype = 'quad' | 'blob' | 'fly' | 'serp';
+export const archetypeOf = (idle: IdleStyle): Archetype =>
+  idle === 'bounce' ? 'blob' : idle === 'float' || idle === 'glide' ? 'fly' : idle === 'sway' ? 'serp' : 'quad';
+
+export const LUNGE_KEYS: Record<Archetype, readonly Key[]> = {
+  // Pounce: crouch and rock back, hold, explosive stretched leap, squash on contact, hop back past
+  // the start, land, settle.
+  quad: [
+    [9, { sq: 0.74, lean: -0.3, fwd: -0.2, up: 0 }, ease.outCubic],
+    [4, { sq: 0.72, lean: -0.32, fwd: -0.22 }],
+    [5, { sq: 1.38, lean: 0.38, fwd: REACH, up: 0.14 }, outQuart, 'strike'],
+    [4, { sq: 0.78, lean: 0.25, up: 0 }, outQuart, 'contact'],
+    [12, { sq: 1.08, lean: -0.1, fwd: -0.08, up: 0.22 }, ease.inOut],
+    [5, { sq: 0.8, lean: 0.04, fwd: -0.05, up: 0 }, ease.inCubic],
+    [10, { sq: 1, lean: 0, fwd: 0 }, ease.outBack],
+  ],
+  // Hop-splat: deep wide squash, hold, high stretched hop, splat, bounce home, jiggle.
+  blob: [
+    [10, { sq: 0.6, lean: -0.08, fwd: -0.1, up: 0 }, ease.outCubic],
+    [5, { sq: 0.58, lean: -0.1 }],
+    [6, { sq: 1.45, lean: 0.2, fwd: REACH * 0.6, up: 0.38 }, outQuart, 'strike'],
+    [4, { sq: 0.62, lean: 0.15, fwd: REACH, up: 0 }, ease.inCubic, 'contact'],
+    [3, { sq: 0.66, lean: 0.12 }],
+    [14, { sq: 1.15, lean: -0.05, fwd: -0.06, up: 0.3 }, ease.inOut],
+    [5, { sq: 0.75, lean: 0, fwd: 0, up: 0 }, ease.inCubic],
+    [6, { sq: 1.12 }, ease.outCubic],
+    [6, { sq: 0.95 }, ease.inOut],
+    [6, { sq: 1 }, ease.inOut],
+  ],
+  // Rise-swoop: rise and draw back, hold, swoop onto the target, rebound above the hover, settle.
+  fly: [
+    [11, { sq: 1.06, lean: -0.32, fwd: -0.22, up: 0.24 }, ease.outCubic],
+    [5, { lean: -0.34, fwd: -0.24, up: 0.26 }],
+    [6, { sq: 1.22, lean: 0.45, fwd: REACH, up: -0.04 }, outQuart, 'strike'],
+    [4, { sq: 0.86, lean: 0.3, up: 0 }, outQuart, 'contact'],
+    [14, { sq: 1.04, lean: -0.08, fwd: 0, up: 0.16 }, ease.inOut],
+    [12, { sq: 1, lean: 0, up: 0 }, ease.inOut],
+  ],
+  // Coil-whip: coil back (lean far back, compress), hold, whip from the coil (short travel, big
+  // lean), snap back past upright, settle.
+  serp: [
+    [12, { sq: 0.84, lean: -0.42, fwd: -0.14, up: 0 }, ease.outCubic],
+    [5, { sq: 0.83, lean: -0.44, fwd: -0.15 }],
+    [4, { sq: 1.3, lean: 0.55, fwd: REACH * 0.75, up: 0.05 }, outQuart, 'strike'],
+    [4, { sq: 1.1, lean: 0.48, up: 0 }, lin, 'contact'],
+    [12, { sq: 0.95, lean: -0.14, fwd: -0.04 }, ease.inOut],
+    [12, { sq: 1, lean: 0, fwd: 0 }, ease.outBack],
+  ],
+};
+
+/**
+ * Cels per key in pose-aligned playback: the strike is one held smear cel; other keys get one cel
+ * per ~5 frames, and more where the body travels far, so no cel-to-cel jump exceeds ~0.12 units
+ * (≈ 2 texels on the battle camera). Every cel shows the pose at the END of its slice, so each
+ * key pose is displayed and held.
+ */
+function celsFor(frames: number, from: Pose, to: Pose, tag?: string): number {
+  if (tag === 'strike') return 1;
+  const travel = Math.abs(to.fwd - from.fwd) + Math.abs(to.up - from.up) + 0.5 * Math.abs(to.sq - from.sq);
+  return Math.max(1, Math.round(frames / 5), Math.ceil(travel / 0.12));
+}
+
 /**
  * A creature in the scene with idle/attack/hit/faint animations.
  * Hierarchy: root (placement, facing) → inner (scene-owned scale/offset) → body (squash, tilt) → mesh (idle bob).
@@ -325,6 +405,23 @@ export class CreatureView {
 
   /** Acting (lunge, hit, dodge, faint, appear) or recalled: HD-2D sprites re-bake every frame. */
   get animating(): boolean { return this.acting > 0 || this.busy; }
+
+  /**
+   * Play acting as pose-aligned cels (HD-2D sprites: held key poses, re-baked only when the cel
+   * changes) instead of a smooth tween; set by the sprite stage.
+   */
+  cels = false;
+  /** Running actions that play as cels (the rest re-bake every frame). */
+  private keyed = 0;
+  /** animClock.frame of the last cel change. */
+  private celFrame = -1;
+
+  /** HD-2D live-bake gate: every frame while a smooth action runs; on cel changes in keyed ones. */
+  wantBake(): boolean {
+    if (!this.animating) return false;
+    if (this.busy || this.acting > this.keyed) return true;
+    return this.celFrame === animClock.frame;
+  }
 
   /** Idle motion multiplier (HD-2D sprites: big enough to move whole texels); 1 = default. */
   idleGain = 1;
@@ -448,6 +545,7 @@ export class CreatureView {
    * recovery (hop back, landing) overlap the target's reaction instead of delaying it.
    */
   async lunge(towards: THREE.Vector3, onStrike?: () => void) {
+    if (this.cels) return this.playKeys(towards, LUNGE_KEYS[archetypeOf(this.idle)], onStrike);
     this.acting++;
     const start = this.inner.position.clone();
     const dir = towards.clone().sub(this.root.position).setY(0).normalize().applyAxisAngle(UP, -this.root.rotation.y);
@@ -486,6 +584,42 @@ export class CreatureView {
       lean(0);
     });
     this.settleBody();
+    this.acting--;
+  }
+
+  /** Key-table action toward `towards`, played as pose-aligned cels; `onContact` fires on the contact key. */
+  private async playKeys(towards: THREE.Vector3, keys: readonly Key[], onContact?: () => void) {
+    this.acting++;
+    this.keyed++;
+    const start = this.inner.position.clone();
+    const dir = towards.clone().sub(this.root.position).setY(0).normalize().applyAxisAngle(UP, -this.root.rotation.y);
+    const axis = new THREE.Vector3(dir.z, 0, -dir.x).normalize();
+    const apply = (p: Pose) => {
+      this.squash(p.sq);
+      this.body.quaternion.setFromAxisAngle(axis, p.lean);
+      this.inner.position.copy(start).addScaledVector(dir, p.fwd);
+      this.inner.position.y = start.y + p.up;
+      this.celFrame = animClock.frame;
+    };
+    let cur: Pose = { sq: 1, lean: 0, fwd: 0, up: 0 };
+    for (const [frames, to, ez = lin, tag] of keys) {
+      const a = cur, b: Pose = { ...cur, ...to };
+      if (tag === 'contact') onContact?.();
+      const n = celsFor(frames, a, b, tag);
+      let shown = -1;
+      await tween((frames * 1000) / 60, (k) => {
+        const cel = Math.min(n - 1, Math.floor(k * n));
+        if (cel === shown) return;
+        shown = cel;
+        const t = ez((cel + 1) / n);
+        apply({ sq: a.sq + (b.sq - a.sq) * t, lean: a.lean + (b.lean - a.lean) * t, fwd: a.fwd + (b.fwd - a.fwd) * t, up: a.up + (b.up - a.up) * t });
+      });
+      cur = b;
+    }
+    this.inner.position.copy(start);
+    this.settleBody();
+    this.celFrame = animClock.frame;
+    this.keyed--;
     this.acting--;
   }
 

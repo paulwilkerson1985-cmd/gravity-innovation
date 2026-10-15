@@ -150,12 +150,14 @@ export function kinSpriteOptions(view: CreatureView, extra: SpriteOptions = {}):
   const pose = view.speciesId ? FLAT_POSES[view.speciesId] : undefined;
   // Idle bobs of a few hundredths of a unit would never move a 2-px texel: exaggerate them.
   view.idleGain = 1.8;
+  // Actions play as pose-aligned cels; the sprite re-bakes when the cel changes.
+  view.cels = true;
   return {
     rig: view.uniforms, emissiveFrom: view.material, ground: view.root,
     texelHeight: TEXELS.kin[stageOf(view.speciesId)],
     nominalHeight: () => kinHeight(view),
     bakePitch: pose?.bakePitch,
-    live: () => view.animating,
+    live: () => view.wantBake(),
     hidden: () => view.blinkOff,
     ...(view.speciesId ? KIN_SPRITE[view.speciesId] : undefined),
     ...extra,
