@@ -11,8 +11,9 @@ Table format (JSON or a plain-literal TS object; numbers only, no arithmetic):
               { "beat": "recover","frames": 12, "sq": 1.0,  "lean": 0.0,   "fwd": -0.08, "up": 0.22 },
               { "beat": "land",   "frames": 5,  "sq": 0.80, "fwd": 0.0 },
               { "beat": "settle", "frames": 10, "sq": 1.0,  "ease": "outBack" } ] }
-  Missing fields carry over from the previous key (rest = sq 1, lean 0, fwd 0, up 0). `fwd` is in
-  model-height units H (1.0 = one body height toward the target) unless "units": "world".
+  Missing fields carry over from the previous key (rest = sq 1, lean 0, fwd 0, up 0). `fwd` and `up`
+  are in MODEL UNITS toward the target (what playKeys uses; the battle reaches 0.95) unless
+  "units": "H" / --units H. A key whose beat starts with "hold" (or "hold": true) may move < 1 texel.
 Rules (character-animation-craft §4.1, §8; all amplitudes converted to texels at the species'
 battle size, 28/34/40 texels by stage):
   WINDUP   anticipation travel (max |fwd| before the strike) >= 10% H  (>= 3 texels at 34)
@@ -25,6 +26,7 @@ battle size, 28/34/40 texels by stage):
   TOTAL    0.8-1.1 s total (48-66 f); heavy archetype up to 1.5 s
   MASS     no explicit sxz/sx/sz in keys (the player must derive xz from 1/sqrt(sy)); if given, within 3%
 Exit 0 clean, 1 findings, 2 bad input. Prints JSON with per-key texel amplitudes and findings.
+Frames are what the player shows (playKeys holds each cel exactly its frames).
 """
 import argparse
 import json
@@ -44,8 +46,8 @@ def parse_ts(path, name, archetype):
     i = m.end()
     depth, j = 0, i
     while j < len(src):
-        if src[j] == '{': depth += 1
-        elif src[j] == '}':
+        if src[j] in '{[': depth += 1
+        elif src[j] in '}]':
             depth -= 1
             if depth == 0:
                 break
@@ -59,7 +61,8 @@ def parse_ts(path, name, archetype):
     try:
         obj = json.loads(lit)
     except ValueError as e:
-        sys.exit(f'error: could not parse {name} as a plain literal ({e}); keep the table to numbers, strings and booleans')
+        print(f'error: could not parse {name} as a plain literal ({e}); keep the table to numbers, strings and booleans', file=sys.stderr)
+        sys.exit(2)
     if archetype:
         if archetype not in obj:
             sys.exit(f'error: archetype {archetype} not in {name} (have {list(obj)})')
@@ -78,6 +81,7 @@ def main():
     p.add_argument('--height', type=float, help='model height in model units (bbox y)')
     p.add_argument('--stage', type=int, default=2, help='1, 2, 3 (single-stage rares are 2)')
     p.add_argument('--kind', default='lunge', choices=['lunge', 'hit'])
+    p.add_argument('--units', default=None, choices=['world', 'H'], help='fwd/up units: world = model units (what playKeys uses; default), H = fractions of body height')
     p.add_argument('--out')
     a = p.parse_args()
     table = parse_ts(a.ts, a.name, a.archetype) if a.ts else json.loads(Path(a.table).read_text())
@@ -90,7 +94,7 @@ def main():
         H, stage = a.height, a.stage
     texel_h = HEIGHT_TEXELS[stage]
     tx_per_unit = texel_h / H  # texels per model unit
-    units = table.get('units', 'H')
+    units = a.units or table.get('units', 'world')
     scale = H if units == 'H' else 1.0  # fwd/up in H-units -> model units
     keys = table['keys']
     state = {'sq': 1.0, 'lean': 0.0, 'fwd': 0.0, 'up': 0.0}
@@ -105,7 +109,8 @@ def main():
         fr = int(k.get('frames', 0))
         travel_tx = (abs(cur['fwd'] - prev['fwd']) * scale + abs(cur['up'] - prev['up']) * scale + 0.5 * abs(cur['sq'] - prev['sq']) * H) * tx_per_unit
         rows.append({'beat': k.get('beat', '?'), 'frames': fr, 't0': t, 'sq': cur['sq'], 'lean': cur['lean'], 'fwdTexels': round(cur['fwd'] * scale * tx_per_unit, 2), 'upTexels': round(cur['up'] * scale * tx_per_unit, 2), 'moveTexels': round(travel_tx, 2), 'squashTexels': round((1 - cur['sq']) * H * tx_per_unit, 2)})
-        if fr > 0 and travel_tx < 1 and not k.get('hold') and k.get('beat') != 'hold' and abs(cur['lean'] - prev['lean']) < 0.05:
+        is_hold = bool(k.get('hold')) or str(k.get('beat', '')).startswith('hold')
+        if fr > 0 and travel_tx < 1 and not is_hold and abs(cur['lean'] - prev['lean']) < 0.05:
             findings.append(f"SUBTEXEL key '{k.get('beat', '?')}' moves {travel_tx:.2f} texels (< 1): invisible or boils; merge it or enlarge it")
         t += fr
         prev = cur

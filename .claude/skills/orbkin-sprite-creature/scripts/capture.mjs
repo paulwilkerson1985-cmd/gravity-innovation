@@ -117,7 +117,37 @@ async function runToIdle(page, maxFrames, settle) {
   return { idle, frame: await page.evaluate(() => window.__vclock.frame) };
 }
 
-const layoutOf = (page) => page.evaluate(() => (window.__game.layout ? window.__game.layout() : null));
+const layoutOf = (page) => page.evaluate(() => {
+  const lay = window.__game.layout ? window.__game.layout() : null;
+  // Eye boxes: project the eye-tagged vertices (rigA.w == 5) of each HD-2D kin, in CSS px like layout().
+  const st = window.__hd2d;
+  if (lay && st && st.views) {
+    const cam = st.camera; cam.updateMatrixWorld();
+    const c = document.getElementById('view').getBoundingClientRect();
+    for (const [i, name] of [[0, 'mine'], [1, 'foe']]) {
+      const view = st.views[i]; const sub = lay.subjects.find((s) => s.name === name);
+      if (!view || !sub) continue;
+      const g = view.mesh.geometry; const pos = g.attributes.position; const rig = g.attributes.rigA;
+      view.mesh.updateWorldMatrix(true, false);
+      const box = { L: [Infinity, Infinity, -Infinity, -Infinity], R: [Infinity, Infinity, -Infinity, -Infinity] };
+      for (let k = 0; k < pos.count; k++) {
+        if (Math.round(rig.getW(k)) !== 5) continue;
+        const b = box[pos.getX(k) < 0 ? 'L' : 'R'];
+        const w = new (view.mesh.position.constructor)(pos.getX(k), pos.getY(k), pos.getZ(k)).applyMatrix4(view.mesh.matrixWorld).project(cam);
+        const sx = (w.x * 0.5 + 0.5) * c.width, sy = (-w.y * 0.5 + 0.5) * c.height;
+        b[0] = Math.min(b[0], sx); b[2] = Math.max(b[2], sx); b[1] = Math.min(b[1], sy); b[3] = Math.max(b[3], sy);
+      }
+      const toBox = (b) => (Number.isFinite(b[0]) ? { x: Math.round(b[0]), y: Math.round(b[1]), w: Math.round(b[2] - b[0]), h: Math.round(b[3] - b[1]) } : null);
+      const L = toBox(box.L), R = toBox(box.R);
+      // The near eye (larger on screen) is the one the sprite shows; the far one may be hidden by the head.
+      const near = !L ? R : !R ? L : (L.w * L.h >= R.w * R.h ? L : R);
+      const x0 = near ? near.x : Infinity;
+      if (near) sub.eyesAll = { L, R };
+      if (near) sub.eyes = near;
+    }
+  }
+  return lay;
+});
 
 if (mode === 'still') {
   const views = opt('--views', 'desk,phone').split(',');

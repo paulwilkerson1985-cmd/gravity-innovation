@@ -3,7 +3,8 @@
 
   python3 report.py --species kin19 --dir OUTDIR [--out OUTDIR/report.md]
 Looks for: sheet.json, lineup.json, keys-lint.json, hit-lint.json, blink.json, strips/*.json,
-gate-*.json (judge.py pair / strip), ip-*.json in --dir (any missing one is listed as NOT RUN).
+gate-*.json (judge.py pair / strip), ip-*.json anywhere under --dir (newest wins; a missing one is
+listed as NOT RUN).
 Fill the prose parts yourself: brief, divergence table, what is still weak, what was inferred.
 """
 import argparse
@@ -12,8 +13,15 @@ from pathlib import Path
 
 
 def load(p):
+    """Load p; if it is missing, the newest file of the same name anywhere under --dir."""
+    p = Path(p)
+    if not p.exists():
+        cands = sorted(p.parent.rglob(p.name), key=lambda x: x.stat().st_mtime)
+        if not cands:
+            return None
+        p = cands[-1]
     try:
-        return json.loads(Path(p).read_text())
+        return json.loads(p.read_text())
     except (OSError, ValueError):
         return None
 
@@ -34,7 +42,7 @@ def main():
         L += [f"- tris {x['tris']}/{x['trisBudget']}, draw calls {x['drawCalls']}, grounded {x['grounded']}, {x['texelHeight']} texels tall", f"- eyes (pupil) {x.get('eyeTexels')} texels; colour blocks {x.get('colourBlocks')} shares {x.get('colourShares')}", f"- flags: {sheet.get('flags', {}).get(s, [])}"]
         if sheet.get('battle'):
             for v, b in sheet['battle'].items():
-                L.append(f"- battle {v}: {b['file']} (crop {b['crop']}), draw calls {b['drawCalls']}, foe height px {b.get('foePxHeight')}")
+                L.append(f"- battle {v}: {b['file']} (crop {b['crop']}), draw calls {b['drawCalls']}, foe height px {b.get('foePxHeight')}, floor {b.get('floor', {}) and b['floor'].get('hex')} lum {b.get('floor', {}) and b['floor'].get('luminance')}, baked face contrast {b.get('face', {}) and b['face'].get('contrast')} ring-same-tone {b.get('face', {}) and b['face'].get('ringSameToneFraction')}")
     else:
         L.append('- NOT RUN')
     lu = load(d / 'lineup.json')
@@ -48,7 +56,7 @@ def main():
         L += ['', f'## {label}']
         L.append(f"- {json.dumps({k: v for k, v in j.items() if k != 'keys'})}" if j else '- NOT RUN')
     L += ['', '## Motion strips (strips.py measured lint)']
-    strips = sorted((d / 'strips').glob('*.json')) if (d / 'strips').exists() else []
+    strips = sorted({p for p in d.rglob('strips/*.json') if 'frames' not in p.name})
     for p in strips:
         j = load(p)
         if j:
@@ -56,15 +64,23 @@ def main():
     if not strips:
         L.append('- NOT RUN')
     L += ['', '## Gate verdicts (judge.py; quote the files, never "looks better")']
-    gates = sorted(d.glob('gate-*.json'))
+    gates = sorted(d.rglob('gate-*.json'))
     for p in gates:
         j = load(p)
         if j:
             L.append(f"- {p.name}: {j.get('verdict')} (canary {j.get('canary', {}).get('verdict', 'n/a')}, {[ (r['label'], r['verdict'], r['candidateWins']) for r in j.get('results', [])]}, ${j.get('cost', 0):.2f})")
     if not gates:
         L.append('- NOT RUN')
+    L += ['', '## Blind first read (judge.py read)']
+    reads = sorted(d.rglob('read-*.json'))
+    for p in reads:
+        j = load(p)
+        if j:
+            L.append(f"- {p.name}: {j.get('verdict')} elements {j.get('elementHits')} face {j.get('faceFound')} things {j.get('things')} archetypes {j.get('archetypes')}")
+    if not reads:
+        L.append('- NOT RUN')
     L += ['', '## Originality (judge.py ip)']
-    ips = sorted(d.glob('ip-*.json'))
+    ips = sorted(d.rglob('ip-*.json'))
     for p in ips:
         j = load(p)
         if j:

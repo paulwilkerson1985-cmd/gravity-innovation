@@ -1,26 +1,31 @@
 // Geometry facts and black silhouettes for Orbkin kin, straight from the design builders
 // (no browser). Run from the game directory with tsx:
-//   npx tsx <skill>/scripts/facts.ts --out DIR [--species a,b,c] [--heights 32,64] [--views front,q3,side]
+//   npx tsx <skill>/scripts/facts.ts --out DIR [--game DIR] [--species a,b,c] [--heights 32,64] [--views front,q3,side] [--stage N] [--extra kin19_a]
+// Ids may be DESIGNS entries that are not in the dex yet (concept blockouts), measured as stage 2 unless --stage.
 // Writes DIR/facts.json ({ species: { id: {...} } }) and DIR/sil/<id>_<view>_<h>.pgm masks (P5).
 // Used by read_sheet.py and lineup.py; you normally do not call it directly.
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as THREE from 'three';
-import { getDex } from '../../../../game/src/engine/dex';
-import { buildCreatureGeometry, CreatureView } from '../../../../game/src/render/creature';
-import { DESIGNS, LINES } from '../../../../game/src/render/creatures/designs';
-import { TEXELS, stageOf } from '../../../../game/src/scenes/hd2dBattle';
 
 const args = process.argv.slice(2);
 const opt = (k: string, d: string) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1]! : d; };
+// The game to measure: --game DIR (or $ORBKIN_GAME), else the repo's game/. Imported dynamically so a
+// scratch checkout or worktree measures ITS designs, not the repo's.
+const GAME = path.resolve(opt('--game', process.env.ORBKIN_GAME ?? path.resolve(path.dirname(process.argv[1]!), '../../../../game')));
+if (!fs.existsSync(path.join(GAME, 'src/render/creatures/designs.ts'))) { console.error(`error: no game at ${GAME} (pass --game DIR)`); process.exit(2); }
+
+async function main() {
+const { getDex } = await import(path.join(GAME, 'src/engine/dex.ts')) as typeof import('../../../../game/src/engine/dex');
+const { buildCreatureGeometry, CreatureView } = await import(path.join(GAME, 'src/render/creature.ts')) as typeof import('../../../../game/src/render/creature');
+const { DESIGNS, LINES } = await import(path.join(GAME, 'src/render/creatures/designs.ts')) as typeof import('../../../../game/src/render/creatures/designs');
+const { TEXELS, stageOf } = await import(path.join(GAME, 'src/scenes/hd2dBattle.ts')) as typeof import('../../../../game/src/scenes/hd2dBattle');
 const outDir = opt('--out', 'out/facts');
 const only = opt('--species', '').split(',').filter(Boolean);
 const heights = opt('--heights', '32,64').split(',').map(Number);
 const views = opt('--views', 'front,q3,side').split(',');
 fs.mkdirSync(path.join(outDir, 'sil'), { recursive: true });
 
-const dex = getDex();
-const ids = only.length ? only : [...dex.species.keys()];
 // View yaws (rad) about Y; the battle bake looks from the side with a little elevation.
 const VIEW: Record<string, { yaw: number; elev: number }> = { front: { yaw: 0, elev: 0.18 }, q3: { yaw: 0.7, elev: 0.18 }, side: { yaw: Math.PI / 2, elev: 0.18 }, back: { yaw: Math.PI, elev: 0.18 } };
 
@@ -53,10 +58,15 @@ function pgm(file: string, m: Uint8Array, w: number, h: number) {
   fs.writeFileSync(file, Buffer.concat([head, body]));
 }
 
+const dex = getDex();
+const extra = opt('--extra', '').split(',').filter(Boolean); // designs to add to the dex list (concept blockouts)
+const ids = [...new Set([...(only.length ? only : [...dex.species.keys()]), ...extra])];
+const forcedStage = Number(opt('--stage', '0'));
 const out: Record<string, unknown> = {};
 for (const id of ids) {
-  const sp = dex.species.get(id);
-  if (!sp) { console.error(`unknown species ${id}`); process.exitCode = 2; continue; }
+  // A design that is not (yet) in the dex (a concept blockout `kin19_a`) is measured as a stage-2 kin.
+  const sp = dex.species.get(id) ?? (DESIGNS[id] ? { id, name: id, types: [], evolvesTo: undefined, look: { body: 'quad' as const, scale: 1, colors: { main: '#888', belly: '#ccc', accent: '#f80' }, parts: [] } } : undefined);
+  if (!sp) { console.error(`unknown species ${id} (not in the dex and no DESIGNS entry)`); process.exitCode = 2; continue; }
   const g = buildCreatureGeometry(sp.look, id);
   const pos = g.attributes.position!;
   const col = g.attributes.color!;
@@ -66,7 +76,7 @@ for (const id of ids) {
   const view = new CreatureView(sp.look, 0, id);
   const baseScale = view.baseScale;
   let meshes = 0; view.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes++; });
-  const stage = stageOf(id);
+  const stage = (forcedStage || (dex.species.has(id) ? stageOf(id) : 2)) as 1 | 2 | 3;
   const texelHeight = TEXELS.kin[stage];
   const hModel = bb.max.y - bb.min.y;
   const hWorld = hModel * baseScale; // before the battle's fitKin normalisation (which scales root, not texels)
@@ -133,4 +143,6 @@ for (const id of ids) {
   g.dispose();
 }
 fs.writeFileSync(path.join(outDir, 'facts.json'), JSON.stringify({ lines: LINES, species: out }, null, 1));
-console.log(JSON.stringify({ ok: true, species: Object.keys(out).length, out: path.join(outDir, 'facts.json') }));
+console.log(JSON.stringify({ ok: true, game: GAME, species: Object.keys(out).length, out: path.join(outDir, 'facts.json') }));
+}
+main().catch((e) => { console.error(e); process.exit(3); });

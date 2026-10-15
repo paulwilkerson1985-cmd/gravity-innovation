@@ -81,9 +81,9 @@ add this method to `CreatureView` (before `lunge`)
 ```ts
   /**
    * Pose-aligned cel playback ("keyed2"): every key pose is shown at the END of its slice and held
-   * for its frames; a smear key is one cel; other keys get in-betweens only where a cel would
-   * jump more than ~2 texels (0.12 units at the battle camera). Never sample the action from the
-   * global clock at 8-12 fps: that skips the 4-6 f strike extreme.
+   * for its frames; a smear or impact key is ONE cel (the strongest pose lands on time); other keys
+   * get in-betweens only where a cel would jump more than ~2 texels (0.12 units at the battle
+   * camera). Never sample the action from the global clock at 8-12 fps: that skips the strike.
    */
   private async playKeys(keys: ActKey[], dir: THREE.Vector3, axis: THREE.Vector3, start: THREE.Vector3, onCel?: (k: ActKey, cel: number) => void) {
     const H = (this.mesh.geometry.boundingBox?.max.y ?? 1);
@@ -92,7 +92,7 @@ add this method to `CreatureView` (before `lunge`)
     for (const k of keys) {
       const cur = { sq: k.sq ?? prev.sq, lean: k.lean ?? prev.lean, fwd: k.fwd ?? prev.fwd, up: k.up ?? prev.up };
       const travel = Math.abs(cur.fwd - prev.fwd) + Math.abs(cur.up - prev.up) + 0.5 * Math.abs(cur.sq - prev.sq) * H;
-      const cels = k.smear ? 1 : Math.max(1, Math.round(k.frames / 5), Math.ceil(travel / 0.12));
+      const cels = k.smear || k.impact ? 1 : Math.max(1, Math.round(k.frames / 5), Math.ceil(travel / 0.12));
       const e = EASES[k.ease ?? 'outCubic'];
       for (let c = 1; c <= cels; c++) {
         const t = e(c / cels);
@@ -101,7 +101,9 @@ add this method to `CreatureView` (before `lunge`)
         this.inner.position.copy(start).addScaledVector(dir, prev.fwd + (cur.fwd - prev.fwd) * t);
         this.inner.position.y = start.y + prev.up + (cur.up - prev.up) * t;
         onCel?.(k, cel++);
-        await wait((k.frames / cels) * FRAME_MS);
+        // The pose set here is rendered on this frame; a wait of (n - 1) frames (+1 ms so the tween
+        // clock cannot stop one step short) shows the cel for exactly n frames.
+        await wait(Math.max(0, k.frames / cels - 1) * FRAME_MS + 1);
       }
       prev = cur;
     }
@@ -128,16 +130,27 @@ and at the top of `hit()` after `this.material.emissive.setRGB(1, 1, 1);`:
 ```ts
     const keys = designFor(this.speciesId)?.keys?.hit;
     if (keys && keyedMotion()) {
-      // Keyed hit: the first cel is the strongest (flash on it only), then blink-hide on 2-frame
-      // boundaries while recovering; strong hits hold the recoil cel 2 frames longer (hit-stop).
+      // Keyed hit: the recoil cel is the strongest pose and the only flashed one (0.7, so the pose
+      // still reads; a full white fill hides it); from its end, blink-hide 2 frames on / 2 off for
+      // at most 1/3 of the recovery, then settle visible.
       const start = this.inner.position.clone();
       const held = strong ? keys.map((k, i) => (i === 0 ? { ...k, frames: k.frames + 2, sq: (k.sq ?? 1) * 0.9 } : k)) : keys;
-      await this.playKeys(held, new THREE.Vector3(0, 0, 1), back, start, (k, cel) => {
-        const first = cel === 0;
-        const f = first ? (strong ? 1 : 0.85) : 0;
+      const total = held.reduce((n, k) => n + k.frames, 0);
+      const hideUntil = held[0]!.frames + Math.floor((total - held[0]!.frames) / 3);
+      let frame = 0, running = true;
+      const blinker = (async () => {
+        while (running) {
+          this.blinkOff = frame >= held[0]!.frames && frame < hideUntil && Math.floor((frame - held[0]!.frames) / 2) % 2 === 1;
+          await wait(FRAME_MS * 0.5 + 1);
+          frame++;
+        }
+      })();
+      await this.playKeys(held, new THREE.Vector3(0, 0, 1), back, start, (_k, cel) => {
+        const f = cel === 0 ? (strong ? 0.85 : 0.7) : 0;
         this.material.emissive.setRGB(f, f, f);
-        this.blinkOff = !first && k !== held[held.length - 1] && cel % 2 === 1;
       });
+      running = false;
+      await blinker;
       this.blinkOff = false;
       this.material.emissive.setRGB(0, 0, 0);
       this.inner.position.copy(start);
@@ -169,12 +182,20 @@ rest 5-8% of the reach or a lean past upright; one decaying settle ring; totals 
 Minimum visible amplitudes: wind-up >= 10-15% H (>= 3 texels at 34), squash >= 15% H, stretch
 >= 25% H, overshoot >= 1 texel; below one texel only light may move, not shape.
 
+What a key table CAN do: squash/stretch, lean, translate and lift the WHOLE body (one rigid card at
+sprite size), plus the rig's own secondary motion (wag, nod, flap, twitch, flicker) running on top.
+It cannot articulate legs, splay stilts or swing an arm: a brief may only promise acting made of
+those four channels (rear back = lean + squash; stamp = stretch + drop; splay = squash), or the
+promised behaviour will not be what plays. The lean pivots at the feet (`body` group), so a
+standing kin tips over its contact point.
+
 ## §hit, faint, appear, dodge (key tables, same player; not judged in the research)
 - Hit (Cassette Beasts hurt = 3 cels / 0.3 s): ONE strongest recoil cel marked `smear: true`
-  (lean -0.35..-0.45, sq 0.8, 2-3 texels back) held 4-6 f, white flash on that cel only; then
-  2-3 recovery cels over 12-18 f with blink-hide on alternate cels (never ninths of a tween: they
-  alias against the bake). Strong hits: +2 f on the recoil cel (hit-stop), sq x0.9. During
-  hit-stop freeze pose, position and rig clock of both kin; FX, flash and light keep running.
+  (lean -0.35..-0.45, sq 0.8, 2-3 texels back) held 4-6 f, flash 0.7 (not full white: the pose must
+  still read) on that cel only; then 2-3 recovery cels over 12-18 f; blink-hide 2 frames on / 2
+  off for at most a third of the recovery (the code above does this per FRAME, never per cel: a
+  per-cel hide blanks the sprite for 6-7 frames). Strong hits: +2 f on the recoil cel (hit-stop),
+  sq x0.9. Measured on Cragmaul: recoil 3.5 texels, first cel 5 f, 2 hidden frames, settles at 22 f.
 - Faint: cry; 1 hurt cel (eyes shut) 6-8 f; "give up" topple 2-3 cels over 12 f (head and limbs
   lag); hit the ground, overshoot 1 texel, rest; then a stepped sink of 1/8 H every 2 frames (~16 f)
   with a ground clip line, or a 500 ms drop + fade. Under 0.6 s after the cry (today 990 ms).
@@ -194,10 +215,22 @@ subjects so the whole screen never changes on the same frame.
 Closed for exactly ONE bake tick (100-125 ms), aligned to the tick grid: a window one tick long
 always contains exactly one tick boundary, so the closed cel is always baked and held. Optional
 half-closed cel before; open slower than close; every 2.5-6 s, irregular; a double blink 1 in 3.
-Implementation in `CreatureView.update`: `const tick = Math.floor(tt * 10) / 10` (10 = bake fps,
-8 on low) and set `uBlink = 1` while `tick` falls inside `[blinkStart, blinkStart + 0.1)` with
-`blinkStart` itself snapped to the tick grid; verify with `capture.mjs probe` + `blink_check.py
---probe` (>= 95% closed).
+Implementation (verified, replaces the sine blink in `CreatureView.update`; it changes every kin's
+blink, so re-capture one untouched kin and compare, S7):
+
+```ts
+    // Blink: closed for exactly ONE sprite-bake tick (10 fps; a one-tick window always contains
+    // one tick boundary, so the closed cel is always baked and held), every few seconds, sometimes
+    // doubled; a half-closed tick before it so the close reads faster than the open.
+    const TICK = 0.1;
+    const bt = tt % this.blinkEvery;
+    const blinkStart = Math.floor((this.blinkEvery * 0.5) / TICK) * TICK; // snapped to the tick grid
+    const lid = (x: number) => (x >= -TICK && x < 0 ? 0.5 : x >= 0 && x < TICK ? 1 : 0);
+    const dbl = Math.floor(tt / this.blinkEvery) % 3 === 1;
+    this.u.uBlink.value = this.eyesShut ? 1 : Math.max(lid(bt - blinkStart), dbl ? lid(bt - blinkStart - 3 * TICK) : 0);
+```
+
+Verify with `capture.mjs probe` + `blink_check.py --probe` (100% closed measured; the sine blink gave 40%).
 
 ## §drag spring (secondary motion lags the body; not implemented, the biggest remaining craft gap)
 Pure sines ignore the body: a tail does not trail a lunge, ears do not flick on landing. Cheap

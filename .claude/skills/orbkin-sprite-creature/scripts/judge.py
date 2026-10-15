@@ -14,10 +14,13 @@ skill's scripts when they exist (`.claude/skills/orbkin-visual-gate/`).
       motion strips (attacker only, every 2nd frame); neutral rubric; same verdict rule.
   judge.py ip    IMAGE [IMAGE...] [--runs 3] [--out ip.json]
       exit 0 PASS | 1 REVIEW | 4 FAIL  (FAIL = similarity >= 7 with distinctive overlap)
+  judge.py read  CROP.png --elements Flora,Terra [--runs 3] [--out read.json]
+      blind first read of the baked sprite: what is it, which elements, where is the face, archetype.
+      exit 0 = both elements named in >= 2 of 3 runs AND the face located in every run; 1 otherwise.
   judge.py floor --candidate NEW.png --baseline OLD.png
       free defect floor (value range, squint contrast, sharpness) printed as WARN lines; never a target.
 Options: --model opus (default; haiku has a 63% first-position bias and is only for dry runs).
-Cost: about $0.05-0.10 per opus vote; a pair with crops is ~10 votes.
+Cost: about $0.05-0.10 per opus vote; a pair with crops is ~14 votes. Run gates ONE AT A TIME.
 """
 import argparse
 import base64
@@ -51,12 +54,30 @@ CROP_PROMPT = (
     'the ground, no orphan pixels, a proper 1-texel outline. You must pick one. '
     'Reply with only JSON: {"winner": "A" or "B", "confidence": 1-5, "reason": "<= 25 words"}'
 )
-STRIP_PROMPT = (
+STRREAD_PROMPT = (
+    'This is a 2x crop of a creature-battle screenshot from an original pixel-art game. Look at the creature on the RIGHT '
+    '(the wild one; the left one belongs to the player). In one look, as a player would: what kind of animal or thing is '
+    'it, which of these elements does it read as (Flame, Tide, Flora, Terra, Spark, Gale; pick one or two), where is its '
+    'face (describe where the eyes are, or say "not found"), what is its one most distinctive part, and what generic '
+    'archetype does it fall into (e.g. spider, fox, blob, bird, rock-with-arms, sprout-on-a-critter)? '
+    'Reply with only JSON: {"thing": "...", "elements": ["..."], "face": "...", "faceFound": true or false, "signature": "...", "archetype": "..."}'
+)
+TAGS = ['face', 'eye', 'blob', 'blend', 'mud', 'outline', 'silhouette', 'texture', 'flat', 'dark', 'wash', 'read', 'detail', 'contrast', 'spider', 'generic']
+IP_PROMPT = (
     'These are two frame strips (left to right, top to bottom, every 2nd frame at 60 fps, frame numbers on the tiles) '
     'of the same creature sprite performing its attack animation in a turn-based creature game. Judge ONLY the '
     'creature\'s own motion: which attack animation is better? You must pick one. '
     'Reply with only JSON: {"winner": "A" or "B", "confidence": 1-5, "reason": "<= 25 words"}'
 )
+READ_PROMPT = (
+    'This is a 2x crop of a creature-battle screenshot from an original pixel-art game. Look at the creature on the RIGHT '
+    '(the wild one; the left one belongs to the player). In one look, as a player would: what kind of animal or thing is '
+    'it, which of these elements does it read as (Flame, Tide, Flora, Terra, Spark, Gale; pick one or two), where is its '
+    'face (describe where the eyes are, or say "not found"), what is its one most distinctive part, and what generic '
+    'archetype does it fall into (e.g. spider, fox, blob, bird, rock-with-arms, sprout-on-a-critter)? '
+    'Reply with only JSON: {"thing": "...", "elements": ["..."], "face": "...", "faceFound": true or false, "signature": "...", "archetype": "..."}'
+)
+TAGS = ['face', 'eye', 'blob', 'blend', 'mud', 'outline', 'silhouette', 'texture', 'flat', 'dark', 'wash', 'read', 'detail', 'contrast', 'spider', 'generic']
 IP_PROMPT = (
     'You are a character-design IP reviewer. For EVERY creature or human character you can see in this image, name '
     'the closest existing franchise character (Pokemon, Digimon, Palworld, Temtem, Dragon Quest, Monster Hunter, '
@@ -73,14 +94,30 @@ def b64img(path):
     return {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png', 'data': base64.b64encode(Path(path).read_bytes()).decode()}}
 
 
-def ask(blocks, model, timeout=240):
-    """One fresh, tool-less claude -p turn with inline images; returns parsed JSON (or None) and raw text."""
+def ask(blocks, model, timeout=420):
+    """One fresh, tool-less claude -p turn with inline images; returns parsed JSON (or None) and raw text.
+    A timeout or a 'could not be loaded' reply is retried once; then it counts as no vote (never a crash).
+    Run gates one at a time: parallel judge runs starve the nested CLI and hit the timeout."""
     msg = {'type': 'user', 'message': {'role': 'user', 'content': blocks}}
     env = {k: v for k, v in os.environ.items() if k not in ('CLAUDECODE', 'CLAUDE_CODE_SESSION_ID')}
-    r = subprocess.run(['claude', '-p', '--model', model, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--tools', '', '--max-turns', '1'],
-                       input=json.dumps(msg) + '\n', capture_output=True, text=True, env=env, timeout=timeout)
+    for attempt in range(2):
+        try:
+            r = subprocess.run(['claude', '-p', '--model', model, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--tools', '', '--max-turns', '1'],
+                               input=json.dumps(msg) + '\n', capture_output=True, text=True, env=env, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            print(f'warning: judge vote timed out after {timeout}s (attempt {attempt + 1})', file=sys.stderr)
+            continue
+        j, text, cost = parse_result(r.stdout)
+        if re.search(r'could not be loaded|cannot see|unable to view|no image', text, re.I):
+            print('warning: the judge says it could not see the images; retrying once', file=sys.stderr)
+            continue
+        return j, text, cost
+    return None, 'NO VOTE (timeout or images not seen)', 0.0
+
+
+def parse_result(stdout):
     text, cost = '', 0.0
-    for line in r.stdout.splitlines():
+    for line in stdout.splitlines():
         try:
             ev = json.loads(line)
         except ValueError:
@@ -177,7 +214,7 @@ def floor_metrics(path):
 
 def cmd_pair(a):
     out = {'candidate': a.candidate, 'baseline': a.baseline, 'model': a.model, 'results': [], 'cost': 0.0}
-    tmp = Path(a.candidate).with_name('canary-degraded.png')
+    tmp = Path(a.out).with_suffix('.canary.png') if a.out else Path(a.candidate).with_name('canary-degraded.png')
     degrade(a.baseline, tmp)
     canary = both_orders(str(a.baseline), str(tmp), PAIR_PROMPT, 1, a.model, 'canary (baseline vs degraded baseline)')
     out['canary'] = canary
@@ -200,11 +237,33 @@ def cmd_pair(a):
             verdict = 'no_difference'  # frame nicer, subjects worse: a human looks
         out['cropVerdict'] = crop['verdict']
     out['verdict'] = verdict
+    reasons = ' '.join(str(v.get('reason', '')) for r in out['results'] for v in r['votes']).lower()
+    out['reasonTags'] = {t: reasons.count(t) for t in TAGS if reasons.count(t)}
+    if all(v['winner'] == 'A' for r in out['results'] for v in r['votes']) or all(v['winner'] == 'B' for r in out['results'] for v in r['votes']):
+        out['positionBias'] = 'every vote went to the same display position: no_difference here means the judge could not tell them apart'
     # Franchise-name tripwire in the reasons.
     names = re.findall(r'\b(pokemon|pikachu|charmander|squirtle|bulbasaur|eevee|dragonair|geodude|digimon|slime|palworld|cubone|leafeon)\b', json.dumps(out), re.I)
     if names:
         out['ipTripwire'] = sorted(set(n.lower() for n in names))
     finish(out, a.out, 0 if verdict == 'better' else 1)
+
+
+def cmd_read(a):
+    out = {'image': a.image, 'elements': a.elements.split(','), 'runs': [], 'cost': 0.0}
+    for _ in range(a.runs):
+        j, text, cost = ask([b64img(a.image), {'type': 'text', 'text': READ_PROMPT}], a.model)
+        out['cost'] += cost
+        out['runs'].append(j or {'raw': text[:300]})
+    want = [e.lower() for e in out['elements']]
+    hits = {e: sum(1 for r in out['runs'] if any(e in str(x).lower() for x in (r.get('elements') or []))) for e in want}
+    faces = sum(1 for r in out['runs'] if r.get('faceFound'))
+    out['elementHits'] = hits
+    out['faceFound'] = f'{faces}/{a.runs}'
+    out['archetypes'] = [r.get('archetype') for r in out['runs']]
+    out['things'] = [r.get('thing') for r in out['runs']]
+    ok = all(h >= max(2, a.runs - 1) for h in hits.values()) and faces == a.runs
+    out['verdict'] = 'PASS' if ok else 'FAIL'
+    finish(out, a.out, 0 if ok else 1)
 
 
 def cmd_strip(a):
@@ -268,19 +327,25 @@ def main():
         s = sub.add_parser(name)
         s.add_argument('--candidate', required=True)
         s.add_argument('--baseline', required=True)
-        s.add_argument('--votes', type=int, default=2 if name == 'pair' else 3)
+        s.add_argument('--votes', type=int, default=3)
         s.add_argument('--model', default='opus')
         s.add_argument('--out')
         if name == 'pair':
             s.add_argument('--crop', action='store_true')
             s.add_argument('--crop-box')
+    s = sub.add_parser('read')
+    s.add_argument('image')
+    s.add_argument('--elements', required=True)
+    s.add_argument('--runs', type=int, default=3)
+    s.add_argument('--model', default='opus')
+    s.add_argument('--out')
     s = sub.add_parser('ip')
     s.add_argument('images', nargs='+')
     s.add_argument('--runs', type=int, default=3)
     s.add_argument('--model', default='opus')
     s.add_argument('--out')
     a = p.parse_args()
-    {'pair': cmd_pair, 'strip': cmd_strip, 'ip': cmd_ip, 'floor': cmd_floor}[a.cmd](a)
+    {'pair': cmd_pair, 'strip': cmd_strip, 'ip': cmd_ip, 'floor': cmd_floor, 'read': cmd_read}[a.cmd](a)
 
 
 if __name__ == '__main__':

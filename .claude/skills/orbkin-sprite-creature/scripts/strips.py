@@ -7,8 +7,10 @@ inner position / body scale). Output: a strip PNG (native nearest scale, frame n
 <= 2400 px wide) and a JSON next to it with the MEASURED lint (what actually played, in texels):
   anticipationFrames, backTexels (wind-up travel), strikeFrames, reachTexels, maxStretch, minSquash,
   overshootTexels, settleFrame, totalFrames, distinctCels (how many frames changed the pose).
-Flags: NO_ANTICIPATION (< 3 f or < 2 texels), TOO_FAST (anticipation + hold < 10 f), NO_STRETCH (< 1.25),
-NO_SQUASH (> 0.85), NO_OVERSHOOT, FLOATY_STRIKE (> 8 f). Exit 0 clean, 1 flags, 2 bad input.
+Lunge flags: NO_ANTICIPATION (< 3 f or < 2 texels), TOO_FAST (anticipation + hold < 10 f), NO_STRETCH (< 1.25),
+NO_SQUASH (> 0.85), NO_OVERSHOOT, FLOATY_STRIKE (> 8 f from the end of the hold to contact).
+Hit flags (action hit/crit): WEAK_FIRST_CEL, HOLD (first cel 4-8 f), NO_RECOIL (< 2 texels), NO_SQUASH, SLOW.
+Faint / idle / appear strips are tiled only. Exit 0 clean, 1 flags, 2 bad input.
 """
 import argparse
 import json
@@ -19,9 +21,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 
-def lint(log, tx_per_unit):
+def lint(log, tx_per_unit, kind='lunge'):
     if not log:
         return {'flags': ['EMPTY log']}
+    if kind == 'hit':
+        return lint_hit(log, tx_per_unit)
+    if kind not in ('lunge',):
+        return {'flags': [], 'note': f'no lint rules for {kind}; strip tiled only'}
     d = [math.hypot(s['x'], s['z']) * (1 if (s['x'] != 0 or s['z'] != 0) else 0) for s in log]
     # Direction sign: toward the target is the direction of the largest displacement.
     big = max(range(len(log)), key=lambda i: d[i])
@@ -33,14 +39,18 @@ def lint(log, tx_per_unit):
     back_i = min(range(len(fwd)), key=lambda i: fwd[i])
     reach_i = max(range(len(fwd)), key=lambda i: fwd[i])
     anticipation = back_i + 1 if fwd[back_i] < -1e-4 else 0
-    # Hold: frames around the back extreme within 0.2 texel of it.
-    hold = sum(1 for i in range(len(fwd)) if i < reach_i and abs(fwd[i] - fwd[back_i]) * tx_per_unit < 0.2) if anticipation else 0
-    strike_frames = max(0, reach_i - back_i)
+    # Hold: frames at the back extreme (within 0.2 texel of it); the strike starts when it ends.
+    held = [i for i in range(len(fwd)) if i < reach_i and abs(fwd[i] - fwd[back_i]) * tx_per_unit < 0.2] if anticipation else []
+    hold = len(held)
+    hold_end = max(held) if held else back_i
+    strike_frames = max(0, reach_i - hold_end)
     after = fwd[reach_i:]
     # Overshoot: most negative fwd after the reach (past rest).
     over = -min(after) if after else 0
-    moved = [i for i in range(1, len(log)) if abs(fwd[i] - fwd[i - 1]) > 1e-4 or abs(sy[i] - sy[i - 1]) > 1e-3]
-    settle = (moved[-1] + 1) if moved else 0
+    done = [i for i, s in enumerate(log) if s.get('done')]
+    end = done[0] if done else len(log)
+    moved = [i for i in range(1, end) if abs(fwd[i] - fwd[i - 1]) > 1e-4 or abs(sy[i] - sy[i - 1]) > 1e-3]
+    settle = end if done else (moved[-1] + 1 if moved else 0)
     res = {
         'anticipationFrames': anticipation, 'holdFrames': hold, 'backTexels': round(-fwd[back_i] * tx_per_unit, 2),
         'strikeFrames': strike_frames, 'reachTexels': round(fwd[reach_i] * tx_per_unit, 2), 'maxStretch': round(max(sy), 3), 'minSquash': round(min(sy), 3),
@@ -59,7 +69,39 @@ def lint(log, tx_per_unit):
     if res['overshootTexels'] < 1 and max(sy[reach_i + 4:] or [1]) < 1.05:
         flags.append('NO_OVERSHOOT recovery never passes rest by >= 1 texel and no settle ring')
     if strike_frames > 8:
-        flags.append(f'FLOATY_STRIKE {strike_frames} f from wind-up extreme to contact (> 8)')
+        flags.append(f'FLOATY_STRIKE {strike_frames} f from the end of the hold to contact (> 8)')
+    res['flags'] = flags
+    return res
+
+
+def lint_hit(log, tx_per_unit):
+    z = [s['z'] for s in log]  # local z: + is toward the attacker, so recoil is negative
+    sy = [s['sy'] for s in log]
+    back_i = min(range(len(z)), key=lambda i: z[i])
+    back_tx = -z[back_i] * tx_per_unit
+    first_hold = 0
+    for i in range(len(z)):
+        if abs(z[i] - z[0]) < 1e-4 and abs(sy[i] - sy[0]) < 1e-3:
+            first_hold += 1
+        else:
+            break
+    done = [i for i, s in enumerate(log) if s.get('done')]
+    end = done[0] if done else len(log)
+    moved = [i for i in range(1, end) if abs(z[i] - z[i - 1]) > 1e-4 or abs(sy[i] - sy[i - 1]) > 1e-3]
+    settle = end if done else (moved[-1] + 1 if moved else 0)
+    hidden = sum(1 for s in log if not s['visible'])
+    res = {'kind': 'hit', 'recoilTexels': round(back_tx, 2), 'recoilFrame': back_i, 'firstCelFrames': first_hold, 'minSquash': round(min(sy), 3), 'settleFrame': settle, 'hiddenFrames': hidden, 'distinctCels': len(moved) + 1, 'totalFrames': len(log)}
+    flags = []
+    if back_i > 1:
+        flags.append(f'WEAK_FIRST_CEL strongest recoil at frame {back_i}, not the first cel (saint11: the first frame is the strongest)')
+    if not 4 <= first_hold <= 8:
+        flags.append(f'HOLD first cel held {first_hold} f (want 4-6, +2 on strong hits)')
+    if back_tx < 2:
+        flags.append(f'NO_RECOIL {back_tx:.1f} texels back (< 2)')
+    if min(sy) > 0.85:
+        flags.append(f'NO_SQUASH min sy {min(sy)} > 0.85')
+    if settle > 36:
+        flags.append(f'SLOW hit settles at frame {settle} (> 36; hurt is ~0.3 s)')
     res['flags'] = flags
     return res
 
@@ -71,6 +113,7 @@ def main():
     p.add_argument('--facts')
     p.add_argument('--species')
     p.add_argument('--cols', type=int, default=8)
+    p.add_argument('--kind', default=None, choices=['lunge', 'hit', 'none'], help='lint rules (default from the capture action: lunge/hit; faint, idle, appear tile only)')
     p.add_argument('--max-width', type=int, default=2400)
     a = p.parse_args()
     d = json.loads(Path(a.capture).read_text())
@@ -102,7 +145,9 @@ def main():
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     strip.save(out)
-    res = lint(view['log'], tx_per_unit)
+    action = view.get('action') or 'lunge'
+    kind = a.kind or ('lunge' if action == 'lunge' else 'hit' if action in ('hit', 'crit') else 'none')
+    res = lint(view['log'], tx_per_unit, kind)
     res.update({'strip': str(out), 'frames': len(ims), 'every': view['every'], 'action': view.get('action')})
     s = json.dumps(res, indent=1)
     out.with_suffix('.json').write_text(s)

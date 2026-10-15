@@ -5,7 +5,9 @@
       Flags the species under review when any cast member has IoU > 0.8 with it (same view,
       both scaled to 64 px tall, centred), or its previous stage > 0.85 ("a scale-up"), or its
       solidity (area / convex hull area) is not below the cast median (a blob).
-      Writes DIR/lineup.json, DIR/lineup-64.png (3x nearest, one row per view) and DIR/lineup-32.png.
+      Writes DIR/lineup.json, DIR/lineup-64.png (3x nearest, one row per view), DIR/lineup-32.png and,
+      with --species, DIR/lineup-<id>-64.png (that kin alone: use THIS for the ip check, the whole
+      cast sheet carries the cast's known IP flags).
       Exit 0 = no flags for --species; 1 = flagged; 2 = bad args. Without --species: the whole
       cast matrix, exit 0.
 Reads geometry straight from src/render/creatures/designs.ts through facts.ts (no browser).
@@ -101,7 +103,7 @@ def main():
     game = game_dir(a.game)
     out = Path(a.out)
     views = a.views.split(',')
-    f = facts(game, out / 'facts', heights='32,64', views=a.views)
+    f = facts(game, out / 'facts', heights='32,64', views=a.views, extra=[a.species] if a.species else None)
     ids = list(f['species'].keys())
     H = 64
     raw = {vn: {sid: mask(f['species'][sid]['sil'][f'{vn}_{H}']['file']) for sid in ids} for vn in views}
@@ -142,6 +144,8 @@ def main():
         if s in prev and f'{prev[s]}' in rows and max(rows[prev[s]].values()) > a.stage_iou:
             res['flags'].append(f'IoU {max(rows[prev[s]].values())} with previous stage {prev[s]} > {a.stage_iou}: a scale-up, not an evolution')
         res['solidityOf'] = sol[s]
+        sheet([s], f, views, 64, 4, out / f'lineup-{s}-64.png')
+        res['speciesSheet'] = str(out / f'lineup-{s}-64.png')
         if sol[s] >= median_sol:
             res['flags'].append(f'solidity {sol[s]} >= cast median {median_sol}: reads as a blob; break the hull with a signature part')
     else:

@@ -38,13 +38,15 @@ def run(cmd, cwd=None, env=None, timeout=1800):
     return r.stdout
 
 
-def facts(game, out_dir, species=None, heights='32,64', views='front,q3,side'):
+def facts(game, out_dir, species=None, heights='32,64', views='front,q3,side', extra=None):
     """Run facts.ts and return the parsed facts.json."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ['npx', 'tsx', str(HERE / 'facts.ts'), '--out', str(out_dir), '--heights', heights, '--views', views]
+    cmd = ['npx', 'tsx', str(HERE / 'facts.ts'), '--game', str(game), '--out', str(out_dir), '--heights', heights, '--views', views]
     if species:
         cmd += ['--species', ','.join(species)]
+    if extra:
+        cmd += ['--extra', ','.join(extra)]
     run(cmd, cwd=game, env={'NODE_PATH': str(Path(game) / 'node_modules')})
     return json.loads((out_dir / 'facts.json').read_text())
 

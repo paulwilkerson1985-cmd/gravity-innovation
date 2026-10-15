@@ -7,12 +7,16 @@ Prints one line per species: tris / budget, draw calls, grounded, height in texe
 texels (the pupil box, L/R), colour blocks (shares >= 4%), and FLAGS:
   EYES  < 3x3 texels at battle size (the most violated rule in pilot runs)
   TRIS  over the unit-test budget (1800 for a stage 1 that evolves, else 2500)
-  CALLS more than one mesh, GROUND lowest vertex off y = 0, BLOCKS not 2-4 colour blocks.
+  CALLS more than one mesh, GROUND lowest vertex off y = 0, BLOCKS not 2-5 colour blocks (aim 3-4).
 Renders (unless --no-render): DIR/sheet-<id>-{front,q3,side}.png from ?scene=model (frozen idle)
 and DIR/proxy-<id>.png: the front view downscaled to the species' battle texel height and
 blown up 4x nearest (what the player actually sees; look at it, not at the 420 px model).
 --battle "scene=battle&...&foe=kin19": also a frozen desk + phone capture of the real battle with
-2x subject crops (DIR/battle-<id>-{desk,phone}.png, -crop.png).
+2x subject crops (DIR/battle-<foe>-{desk,phone}.png, -crop.png; <foe> is the foe= in the URL), the
+FLOOR colour under the foe (hex + luminance: what the kin must separate from) and the BAKED FACE
+read (near-eye pupil tone vs the 2-texel ring; FACE flag < 0.15, or > 50% of the ring in the pupil tone).
+These are cheap pre-checks; the real face gate is `judge.py read` on the battle crop.
+The game is rebuilt automatically when src/ is newer than the dist (no stale captures).
 Exit 0 = no flags for --species (or none at all); 1 = flags; 2 = bad args.
 """
 import argparse
@@ -30,7 +34,8 @@ def flags_for(d):
     fl = []
     e = d['eyes']['pupilTexels'] or (d['eyes']['R'] or {})
     if not e or e.get('w', 0) < 3 or e.get('h', 0) < 3:
-        fl.append(f"EYES pupil {e.get('w') if e else None}x{e.get('h') if e else None} texels < 3x3 (raise `size` in eyes(); 3x3 at {d['texelHeight']} texels tall means size >= {round(1.5 / d['texelsPerUnit'], 3)} model units)")
+        k = round(3 / max(0.01, min(e.get('w', 0.01), e.get('h', 0.01))), 2) if e else None
+        fl.append(f"EYES pupil {e.get('w') if e else None}x{e.get('h') if e else None} texels < 3x3 (multiply `size` in eyes() by >= {k or '?'}; yaw foreshortens the width, so measure again)")
     if d['tris'] > d['trisBudget']:
         fl.append(f"TRIS {d['tris']} > budget {d['trisBudget']}")
     if d['drawCalls'] != 1:
@@ -38,8 +43,52 @@ def flags_for(d):
     if not d['grounded']:
         fl.append('GROUND lowest vertex not on y = 0')
     if not 2 <= d['colours']['blocks'] <= 5:
-        fl.append(f"BLOCKS {d['colours']['blocks']} colour blocks >= 4% (aim for 3: main, belly/mask, accent)")
+        fl.append(f"BLOCKS {d['colours']['blocks']} colour blocks >= 4% (aim for 3-4: main, belly/mask, accent, one dark detail)")
     return fl
+
+
+def baked_face(png, sub, dpr, texel_h):
+    """Face read in the BAKED sprite: the near eye's box (projected blink-rig vertices) against a
+    2-texel ring around it. contrast = |pupil tone (10th or 90th percentile inside, whichever is
+    farther from the ring) - ring median| / 255; ringSameToneFraction = share of the ring within
+    25 levels of that pupil tone (knuckles, paws, a dark head fusing with 1-tone dark eyes)."""
+    import numpy as np
+    eyes = sub.get('eyes')
+    if not eyes or eyes['w'] < 1 or eyes['h'] < 1:
+        return None
+    im = np.asarray(Image.open(png).convert('L'), dtype=np.float32)
+    px_per_texel = max(1.0, sub['h'] * dpr / texel_h)
+    ring = int(round(2 * px_per_texel))
+    x0, y0 = int(eyes['x'] * dpr), int(eyes['y'] * dpr)
+    x1, y1 = int((eyes['x'] + eyes['w']) * dpr) + 1, int((eyes['y'] + eyes['h']) * dpr) + 1
+    inner = im[max(0, y0):y1, max(0, x0):x1]
+    outer = im[max(0, y0 - ring):y1 + ring, max(0, x0 - ring):x1 + ring].copy()
+    if inner.size == 0 or outer.size <= inner.size:
+        return None
+    mask = np.ones_like(outer, bool)
+    oy, ox = max(0, y0) - max(0, y0 - ring), max(0, x0) - max(0, x0 - ring)
+    mask[oy:oy + inner.shape[0], ox:ox + inner.shape[1]] = False
+    ringpx = outer[mask]
+    ring_med = float(np.median(ringpx))
+    lo, hi = float(np.percentile(inner, 10)), float(np.percentile(inner, 90))
+    pupil = lo if abs(lo - ring_med) >= abs(hi - ring_med) else hi
+    same = float((np.abs(ringpx - pupil) < 25).mean())
+    return {'eyeBoxPx': eyes, 'pupilTone': round(pupil, 1), 'ringMedian': round(ring_med, 1), 'contrast': round(abs(pupil - ring_med) / 255, 3), 'ringSameToneFraction': round(same, 3)}
+
+
+def floor_sample(png, sub, dpr):
+    """Median colour of the floor just below the subject's feet (the value the kin must separate from)."""
+    import numpy as np
+    im = np.asarray(Image.open(png).convert('RGB'))
+    y0 = int((sub['y'] + sub['h']) * dpr) + 2
+    y1 = min(im.shape[0], y0 + max(4, int(sub['h'] * dpr * 0.15)))
+    x0, x1 = max(0, int(sub['x'] * dpr)), min(im.shape[1], int((sub['x'] + sub['w']) * dpr))
+    patch = im[y0:y1, x0:x1].reshape(-1, 3)
+    if patch.size == 0:
+        return None
+    med = np.median(patch, axis=0).astype(int)
+    lum = int(0.2126 * med[0] + 0.7152 * med[1] + 0.0722 * med[2])
+    return {'hex': '#%02x%02x%02x' % tuple(int(v) for v in med), 'luminance': lum, 'note': 'median colour of the floor under the foe; separate the kin from it by value AND hue'}
 
 
 def proxy(src, texel_h, out):
@@ -86,17 +135,28 @@ def main():
                 res['species'][sid].setdefault('sheets', []).append(r['views']['desk']['file'])
             proxy(out / f'sheet-{sid}-front-desk.png', f['species'][sid]['texelHeight'], out / f'proxy-{sid}.png')
             res['species'][sid]['proxy'] = str(out / f'proxy-{sid}.png')
-        if a.battle:
-            sid = (ids or ['kin'])[0]
-            r = capture(game, 'still', a.battle, out, f'battle-{sid}', ['--views', 'desk,phone'], dist=a.dist)
-            from judge import crop_subjects
-            res['battle'] = {}
-            for v, d in r['views'].items():
-                c, box = crop_subjects(d['file'])
-                res['battle'][v] = {'file': d['file'], 'crop': str(c), 'subjects': d['subjects'], 'drawCalls': d['drawCalls'], 'idle': d['idle']}
-                foe = next((s for s in d['subjects'] if s['name'] == 'foe'), None)
-                if foe:
-                    res['battle'][v]['foePxHeight'] = foe['h'] * d['dpr']
+    if a.battle:
+        import re
+        m = re.search(r'foe=([a-z0-9_-]+)', a.battle)
+        sid = m.group(1) if m else (ids or ['kin'])[0]
+        r = capture(game, 'still', a.battle, out, f'battle-{sid}', ['--views', 'desk,phone'], dist=a.dist)
+        from judge import crop_subjects
+        res['battle'] = {}
+        for v, d in r['views'].items():
+            c, box = crop_subjects(d['file'])
+            res['battle'][v] = {'file': d['file'], 'crop': str(c), 'subjects': d['subjects'], 'drawCalls': d['drawCalls'], 'idle': d['idle']}
+            foe = next((s for s in d['subjects'] if s['name'] == 'foe'), None)
+            if foe:
+                res['battle'][v]['foePxHeight'] = foe['h'] * d['dpr']
+                res['battle'][v]['floor'] = floor_sample(d['file'], foe, d['dpr'])
+                th = f['species'][sid]['texelHeight'] if sid in f['species'] else 34
+                face = baked_face(d['file'], foe, d['dpr'], th)
+                res['battle'][v]['face'] = face
+                if face and sid in f['species']:
+                    if face['contrast'] < 0.15:
+                        res['flags'].setdefault(sid, []).append(f"FACE ({v}) near-eye pupil tone differs {face['contrast']:.2f} < 0.15 in value from the 2-texel ring around it: the face is lost in the sprite (two-tone eyes: sclera or iris; nothing in the eye's own tone next to it)")
+                    if face['ringSameToneFraction'] > 0.5:
+                        res['flags'].setdefault(sid, []).append(f"FACE ({v}) {face['ringSameToneFraction']:.0%} of the ring around the eyes is in the eyes' own tone: eyes fuse with knuckles / paws / a dark head; move dark parts below the chin line or lighten the head")
     emit(res, out / 'sheet.json')
     want = ids or []
     raise SystemExit(1 if any(s in res['flags'] for s in want) else 0)

@@ -3,30 +3,48 @@
 Contents: §brief · §divergence · §silhouette · §proportions by stage · §faces · §colour blocks and
 bake options · §builder craft (designs.ts) · §people · §open IP flags · §names
 
-## §brief (S1) — write `brief.md` before any geometry
-One paragraph plus a table. Fields: species id and working name; role (starter line / wild /
+## §brief (S1) — constraints only, before any concept
+S1 is a table of CONSTRAINTS and nothing else: no concept, no working name, no signature part, no
+behaviour yet (in the pilot the brief paragraph already contained the winning concept, so the
+divergence table was theatre). Fields: species id and working name; role (starter line / wild /
 rare single); element(s) and the hue family each owns (Flame red-orange + ember gold; Tide blue
 + foam white; Flora green + pink bloom; Terra sandstone + cyan crystal; Spark yellow + indigo /
 cyan; Gale sky blue + white + orange); stage and texels on screen (stage 1 = 28 texels tall,
 stage 2 and single-stage rares = 34, stage 3 = 40; a person = 44); the arena it will mostly be
-seen in and that arena's floor colour (the kin must separate from it by value AND hue);
-behaviour (how it idles, attacks, takes a hit: Monster Hunter's rule, a silhouette idea alone is
-not enough); the signature part (one shape that survives every stage and reads at 32 px);
-palette roles (main ~60% of the area, secondary/belly ~30%, accent <= 10%, plus one dark detail
-tone); the "forbidden" shape that would break the read; budgets (tris, one mesh).
+seen in and that arena's FLOOR colour and luminance as `read_sheet.py --battle` printed it in S0
+(`floor.hex`, `floor.luminance`; the meadow battle floor is a light warm sand path, #fde1a9 /
+luminance 226, NOT grass: a sand, cream or pale-lichen body melts into it; the kin must separate
+by value AND hue); budgets (tris, one mesh). The concept-level fields (signature part, behaviour,
+palette roles, forbidden shape, working name) are written per concept in S2 and copied into the
+brief only after the table has picked one.
 
-## §divergence (S2) — three concepts from three body plans
+## §divergence (S2) — three concepts from three body plans, measured
 All 12 pilot runs for a "duneskip" brief converged on the same desert hopper: the id primed the
 concept. So: never take the literal reading of the id or the element pair ("leaf + rock" for
-Flora/Terra is the literal reading; so is "a fox" for Flame). Generate three concepts from three
+Flora/Terra is the literal reading; so is "a fox" for Flame). Write three concepts from three
 DIFFERENT body plans / animal classes, e.g. pick from: arthropod (beetle, mantis, crab, isopod),
 mollusc (snail, slug, nautilus), amphibian or reptile (newt, tortoise, gecko, frog), bird
 (owl, wader, puffin), mammal quadruped (tapir, badger, pangolin, mole), mammal biped or climber
 (sloth, lemur), fish or ray, serpent or worm, fungus / plant-animal, mineral or construct, mythic
-hybrid. Score each 1-5 in a table on: silhouette distinctness vs the 18 kin (run `lineup.py`
-on a blockout if in doubt), element read at 32 px, sprite-size read (does the signature part
-survive at 28-34 texels?), behaviour fit, originality risk (no franchise reads, see §open IP
-flags). Pick by the table, not by taste; write one line on why the two losers lost.
+hybrid. Every concept gets the SAME fields: body plan, the signature part, behaviour (idle /
+attack / hit, in the four channels the player has: squash, lean, travel, lift), palette roles
+(main 60 / secondary 30 / accent 10 + one dark detail, with the element hue families), the
+forbidden shape, the archetype trap it must dodge (below), and a 2-4 primitive BLOCKOUT in
+designs.ts under the ids `<id>_a`, `<id>_b`, `<id>_c` (a design without a dex entry is fine:
+facts.ts measures it as stage 2). Then `lineup.py --species <id>_a` (and _b, _c): the table's
+"silhouette distinctness" column is the printed worst IoU and solidity, not a guess; the other
+columns (element read at 32 px, sprite-size read of the signature, behaviour fit, originality
+risk) are 1-5 with one line of reason each. Pick by the table; write why the losers lost; delete
+the losing blockouts.
+
+Archetype traps (the first blind read of the pilot kin was "spider" 3/3 although the brief said
+root-walker): four or more long, splayed, arched legs around a ball body = arachnid; a stalk with
+leaves on the head = "sprout on a critter" (Oddish / Paras / Pikmin read); a bulb on the back =
+Bulbasaur; a rock with two arms = Geodude; a blue serpent with white frills = Dragonair; a
+droplet with a curl = DQ Slime; a yellow mouse with cheek marks = Pikachu. A leg plan must break
+the trap (two long + two stubby legs, knees bending one way, visible feet shapes, a body that is
+not a sphere). `judge.py read` on the battle crop is the test: the elements must be named and the
+archetype must not be an off-element animal.
 
 ## §silhouette (S3) — black fill first
 - Build the primary masses only (2-4 orbs/tubes/lathes), run `lineup.py --species <id>`: black
@@ -54,7 +72,8 @@ accents, eyes higher and narrower, keep ONE juvenile cue (a tuft, a stubby propo
 eyes) so it stays catchable. `creature.test.ts` requires each stage's bounding diagonal x
 baseScale to grow >= 1.15x per stage.
 
-## §faces for the battle camera (the most violated rule: 2+ pilot runs shipped eyes under 3x3)
+## §faces for the battle camera (the most violated rule: 2+ pilot runs shipped eyes under 3x3,
+## and a 4x5-texel single-tone eye still vanished in the bake)
 The sprite bakes from a near-side view (the camera's yaw, pitch <= 12.6 deg); your kin shows its
 near eye, the foe shows its 3/4 face. The pupil box must be >= 3x3 texels at battle size:
 `eyes()` size >= 1.5 / texelsPerUnit model units (read_sheet prints the number per species;
@@ -62,8 +81,15 @@ near eye, the foe shows its 3/4 face. The pupil box must be >= 3x3 texels at bat
 camera side of the head's curvature (yaw 0.36-0.6 rad), never on the silhouette edge; one
 1-texel highlight on the key side (`shine`, default on); mouth or nose 1-2 dark texels; brows
 only at stage 3 as a shelf. Use `eyes(k, head, {...})` on the head's ellipsoid handle so they
-never sink; eye triangles carry the blink rig automatically. Faces that read: Ashkit (big low
-eyes, mask), Stormoth (iris + brow). Faces that vanish: Cragmaul (1.7x1.5 texels under the brow).
+never sink; eye triangles carry the blink rig automatically. The eye must CONTRAST in the baked
+sprite, not just be big: `read_sheet.py --battle` measures the eye box against a 2-texel ring
+around it (FACE flag below 0.20 value difference, or more than half the ring in the eyes' own
+tone). So: a 1-tone dark eye on a dark or mid head fuses with it; give eyes two tones (sclera
+`sclera: true` or a light `iris` ring behind a dark pupil) on any head darker than a cream mask,
+and keep every dark part (knuckles, paws, joints, nose) below the chin line and off the ring
+around the eyes (the pilot's knuckle orbs sat at eye height and merged with the eyes into one
+black mass). Faces that read: Ashkit (big low eyes on a cream mask). Faces that vanish: Cragmaul
+(1.7x1.5 texels under a brow, contrast 0.01), the pilot's stilt kin (4x5 texels, contrast 0.16).
 
 ## §colour blocks and bake options
 - Three colour blocks: main, belly/mask (countershade with `under(main, belly)` by face normal,
@@ -76,6 +102,10 @@ eyes, mask), Stormoth (iris + brow). Faces that vanish: Cragmaul (1.7x1.5 texels
   colours away from pure white/black so the ramp has room; bright greens are chroma-capped by
   the bake (`tameGreen`), so give green kin a dark bark/olive mass + a light moss top + a
   non-green accent (Verdantusk went muddy with green on green).
+- Markings: at least one 2-texel-wide marking in a value distinct from both neighbours and visible
+  at the battle yaw (a mask, a saddle band, a belly patch, a stripe), so the body is not a plain
+  sphere; the element hue families should both show on the baked sprite (the pilot's Terra read
+  was two cyan toes of 2 px: invisible).
 - Separation from the arena floor is a judged winner: lighter-than-ground subjects scored higher
   in every judge set. For warm floors (meadow dirt, scrub) avoid a sandstone/cream main colour
   unless the accent carries a strong hue contrast; the pilot's mid-value sand kin were judged
