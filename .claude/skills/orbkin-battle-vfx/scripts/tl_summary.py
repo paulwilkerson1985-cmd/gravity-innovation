@@ -70,6 +70,8 @@ def checks(r, severity=None):
 
 
 def main(argv):
+    if '--help' in argv or '-h' in argv:
+        print(__doc__); return 0
     args = [a for a in argv if not a.startswith('--')]
     as_json = '--json' in argv
     sev = None

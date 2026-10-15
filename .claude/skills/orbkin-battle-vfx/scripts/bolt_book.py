@@ -178,7 +178,9 @@ def frames(w, h, ramp, seed, from_sky, branches, strike, n_sparks):
 
 
 def main(argv):
-    if not argv or '--help' in argv:
+    if '--help' in argv:
+        print(__doc__); return 0
+    if not argv:
         print(__doc__); return 2
     out = argv[0]
     o = {argv[i]: argv[i + 1] for i in range(1, len(argv) - 1) if argv[i].startswith('--') and not argv[i + 1].startswith('--')}

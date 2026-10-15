@@ -61,7 +61,9 @@ def row(sf, tl, crop, scale, label, cols, impact=False):
 
 
 def main(argv):
-    if len(argv) < 2 or '--help' in argv:
+    if '--help' in argv:
+        print(__doc__); return 0
+    if len(argv) < 2:
         print(__doc__); return 2
     run, outp = argv[0], argv[1]
     argv = [a for a in argv if a != '--impact'] + (['--impact'] if '--impact' in argv else [])

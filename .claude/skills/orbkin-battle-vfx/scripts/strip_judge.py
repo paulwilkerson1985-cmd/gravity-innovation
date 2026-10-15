@@ -88,7 +88,9 @@ def call(a, b, prompt, model):
 
 
 def main(argv):
-    if '--help' in argv or '--candidate' not in argv or '--baseline' not in argv:
+    if '--help' in argv:
+        print(__doc__); return 0
+    if '--candidate' not in argv or '--baseline' not in argv:
         print(__doc__); return 2
     o = {argv[i]: argv[i + 1] for i in range(len(argv) - 1) if argv[i].startswith('--') and not argv[i + 1].startswith('--')}
     cand, base = o['--candidate'], o['--baseline']

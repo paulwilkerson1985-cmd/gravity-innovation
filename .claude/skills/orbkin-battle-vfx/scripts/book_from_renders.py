@@ -163,7 +163,9 @@ def edge_band(idx, keep_from):
 
 
 def main(argv):
-    if not argv or '--help' in argv:
+    if '--help' in argv:
+        print(__doc__); return 0
+    if not argv:
         print(__doc__); return 2
     o, dirs = {}, []
     i = 0

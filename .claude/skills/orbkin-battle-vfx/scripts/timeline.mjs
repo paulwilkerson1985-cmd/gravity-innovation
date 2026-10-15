@@ -12,7 +12,7 @@
 //
 // Usage (normally through fx_timeline.sh):
 //   node timeline.mjs --dist game/dist --out /tmp/tl --move storm-lance [--lead stormoth --lead-level 30]
-//        [--foe mossling --foe-level 12] [--route ridge --hotspot vent-cave] [--arena cave] [--seed 13]
+//        [--foe mossling --foe-level 12] [--route ridge --hotspot vent-cave] [--arena cave (default; '' = the route's own arena)] [--seed 13]
 //        [--qs "a=b&c=d"] [--every 0] [--max-frames 420] [--crop x0,y0,x1,y1] [--base http://host:port]
 // Output: <out>/timeline.json (frames + events + counters), <out>/events.txt, <out>/frames/f####.png,
 //         <out>/strip-frames.json; prints the summary JSON on stdout. Exit 0 = ran, 2 = usage/harness error.
@@ -32,7 +32,7 @@ const moveName = args['move-name'] ?? move.split('-').map((w) => w[0].toUpperCas
 const lead = args.lead ?? 'stormoth', leadLevel = Number(args['lead-level'] ?? 24);
 const foe = args.foe ?? 'cindertail', foeLevel = Number(args['foe-level'] ?? 30);
 const route = args.route ?? 'ridge', hotspot = args.hotspot ?? 'vent-cave';
-const arena = args.arena ?? '';
+const arena = args.arena ?? 'cave'; // ridge/vent-cave resolves to the volcanic arena without this
 const seed = Number(args.seed ?? 13);
 const every = Number(args.every ?? 0);
 const maxFrames = Number(args['max-frames'] ?? 420);
@@ -379,11 +379,11 @@ function findRepoRoot(d) {
 function die(msg) { console.error(`timeline: ${msg}`); process.exit(2); }
 function usage() {
   console.log(`node timeline.mjs --out DIR --move storm-lance [--lead stormoth --lead-level 24] [--foe cindertail --foe-level 30]
-  [--route ridge --hotspot vent-cave] [--arena cave] [--seed 13] [--dist game/dist | --base URL] [--qs "k=v&k2=v2"]
+  [--route ridge --hotspot vent-cave] [--arena cave (default; '' = the route's own arena)] [--seed 13] [--dist game/dist | --base URL] [--qs "k=v&k2=v2"]
   [--every N] [--max-frames 420] [--crop x0,y0,x1,y1] [--viewport 1280x720] [--move-name "Storm Lance"]
 Frame-exact (virtual 60 fps) log of one attack: beats, counters, the 8-frame motion strip (launch -> +70 f), every
 frame from launch to impact + 8 plus impact + 16 / + 32 (the impact strip), and the mid-impact frame.
-Defaults: Stormoth L24 moves first; foe cindertail L30 takes a plain 1x hit (~46%), --foe maelstrode --foe-level 30 a super-effective one (~50%).
+Defaults: the quarry cave arena (route ridge/vent-cave alone resolves to the VOLCANIC arena); Stormoth L24 moves first; foe cindertail L30 takes a plain 1x hit (~46%), --foe maelstrode --foe-level 30 a super-effective one (~50%).
 Seed 13 rolls a CRITICAL on the first Storm Lance (both foes); seed 14 rolls a plain hit; seeds 8, 9, 11, 12 miss.
 Mark the impact frame explicitly from game code with window.__fxEvents.push({ev:'impact'}) (else: first frame with >= 3 FX objects added).`);
 }

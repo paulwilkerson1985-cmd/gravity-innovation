@@ -55,7 +55,8 @@ and safety at the end).
 
 - **S0 Baseline.** `bash ${CLAUDE_SKILL_DIR}/scripts/fx_timeline.sh MOVE --out OUT/before` (builds
   the game, drives it on a virtual 60 fps clock, prints the beat table and checks; `events.txt` has
-  the per-frame log). Defaults: Storm Lance, Stormoth L24 vs Cindertail L30, cave, seed 13 (a crit);
+  the per-frame log). Defaults: Storm Lance, Stormoth L24 vs Cindertail L30, the quarry cave (`--arena cave`; the
+  ridge route alone resolves to the volcanic arena), seed 13 (a crit);
   `--seed 14` for a plain hit, `--foe maelstrode --foe-level 30` for super-effective. Note the
   impact → reaction gap, text → launch, extra draw calls and 3D meshes.
 - **S1 Signature frames.** Read `references/elements.md` §2 for the element now; pick its
@@ -124,6 +125,15 @@ shadows · books ≤ 12 frames of ≤ 48×48 texels, ≤ 6 colours (+ transparen
   8, 9, 11, 12 miss. Stormoth L24 (spe 51) outspeeds Cindertail L30 and Maelstrode L30, not Pyrelord.
   A kin's menu holds its **last four** learnset moves (Storm Lance from L24).
 - `hit()` sets emissive 0.85 on a normal hit (1.0 strong): the harness's flash threshold is 0.8.
+  Anything started from `onImpact` shows one frame later (microtasks run after the sample):
+  impact → flash/reaction reads 1 f at best; a hold of N frames needs `(N + 0.5) · 1000/60` ms.
+- Set dim: the severity table gives the nominal light dim; `flash_scan` measures the achieved dim
+  (lights **and** emissive set materials), ≈ 0.37× nominal in the quarry cave, and wants ≥ 10 %
+  on electric and strong hits.
+- Step 0 below names `bootstrap.sh`, `orbkin_compat.py` and `safe_extract.py`; none exist on this
+  branch yet. Skip Step 0 when they are absent (set `ORBKIN_BPY` yourself), keep every other line.
+  Nested `claude -p` runs inside `strip_judge.py` without `env -u` here; the `env -u` note applies
+  only when a hook writes into the live session.
 - Raw draw calls move with sprite re-bakes (+2 per acting kin per frame, +2 on 10 fps bake ticks),
   so the budget gates **FX draw calls** = FX meshes + points in the scene at the peak (≤ 4); the raw
   idle/peak numbers are informational. Hit-stop reads as frames held, flash frame included (a hold of

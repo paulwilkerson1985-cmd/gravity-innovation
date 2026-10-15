@@ -44,8 +44,10 @@ is a map, not a copy).
   empty, then disposes), `dispose()` (returns the material to the pool). Frames hold (floor), no
   interpolation. Pass `step(dt)` from an `animate(ms, (k, dt) => …)` loop (`render/particles.ts`;
   `dt` comes from the tween clock, so `animClock.speed` scales it).
-- `new PixelPoints(scene, capacity, blend = 'add', renderOrder = add ? 8 : 6)`: 1–2 px pixel-snapped
-  squares; `emit(p, v, { color, size: 1|2, life, gravity, drag, glow })`, `step`, `run`, `place`.
+- `new PixelPoints(scene, capacity, blend = 'add', renderOrder = add ? 8 : 6)`: 1–2 **internal px**
+  pixel-snapped squares (half a sprite texel at px 2); `emit(p, v, { color, size: 1|2, life, gravity,
+  drag, glow })`, `step`, `run`, `place`. Sparks with 2-texel heads and trails are book frames
+  (`bolt_book.py` f5–f7), not points; points are grit.
 - `impactGlow(scene, ground, color, radius, camera?)` → `{ set(k), dispose() }`: an additive
   **dithered** floor disc + wall quad at renderOrder 4 (lights the set, not the sprites). It is a
   Bayer gradient at 1 internal px: `dither_scan` counts it as checkerboard. Prefer the real FX
@@ -108,11 +110,14 @@ lunge's return/settle overlaps the reaction (never awaited on a hit). Do not sho
   spring knockback lean on `body.quaternion` + squash + `inner.position` kick, blinks via
   `blinkOff` (the sprite baker hides the sprite) for 70 % of 320/420 ms, `acting++`; crit only: a
   70 ms frozen squash first. Make the hold a parameter: `hit(strong, crit, { holdFrames, whiteFrames,
-  blinks, knockback })` = `tween((holdFrames - 0.5) * 1000 / 60, () => {})` with the pose frozen and
-  the flash on, then the knockback. The `- 0.5` matters: `frames · 16.7` overshoots 1000/60 and the
-  tween clock steps in 16.667 ms, so a whole-frame duration can land one frame late. `fx_timeline`
-  reports the hold as the number of frames the target stays bit-identical from the flash frame on
-  (a hold of N reads N; it reads 0 when the knockback starts on the flash frame).
+  blinks, knockback })` = `tween((holdFrames + 0.5) * 1000 / 60, () => {})` with the pose frozen and
+  the flash on, then the knockback. `hit()` starts from the `damage` event's microtask after that
+  frame's tweens have already stepped, so the hold's first step lands a frame later and `N + 0.5`
+  frames measure as exactly N (`N − 0.5` read N − 1 in the pilot; shift the white-frame and blink
+  indices the same way). Never `frames · 16.7`: it overshoots 1000/60. `fx_timeline` reports the
+  hold as the number of frames the target stays bit-identical from the flash frame on. For the same
+  reason impact → flash/reaction reads **1 f, never 0**, when the reaction is started from
+  `onImpact` (the harness samples before microtasks run): 1 is the floor, do not chase 0.
 - **Hit-stop that freezes the idle too**: `CreatureView.update(t)` keeps breathing during the hold
   because `animClock.time` advances unscaled; the hold is inside `hit()` (`acting > 0` suppresses
   idle), so the target is bit-identical for exactly N frames: that is what `fx_timeline` counts.
@@ -130,8 +135,13 @@ lunge's return/settle overlaps the reaction (never awaited on a hit). Do not sho
   ledges, window shafts, light pools) that no light drives: dim them too, by traversing
   `rig.group` materials once at scene start and remembering `emissiveIntensity` / unlit `color` /
   `uniforms.uAmt`-style strengths, then scaling them by `1 − dim` with the lights (a `dimSet(k)`
-  on the stage). `flash_scan.py` measures the dim the player sees; 20 % on the lights alone measured
-  ≈ 0 in the pilot. Do not touch `grade.exposure` (it dims the FX and sprites too).
+  on the stage). `flash_scan.py` measures the dim the player sees: the cave's shafts, motes and
+  light pools are `ShaderMaterial`s with `uIntensity`/`uColor`/`uAmt`/`uGain` uniforms, the lava is
+  `MeshBasicMaterial` colour, lanterns are Lambert `emissiveIntensity`. In the quarry cave the
+  achieved set dim is ≈ 0.37× the nominal light dim (22 % nominal → 8 % achieved): the severity
+  table's 15–35 % is the nominal figure, `flash_scan` wants ≥ 10 % achieved on electric and strong
+  hits, so nominal 30–35 % is the working range there. Ramp the dim in over 4 f before the strike
+  and release it over 8 f. Do not touch `grade.exposure` (it dims the FX and sprites too).
 - Flash cadence: `blinkOff` toggles are tick-aligned at the sprite bake rate while `acting`
   (`live()` → re-bake every frame), so 4-frame blinks land; keep ≤ 3 flashes per second.
 

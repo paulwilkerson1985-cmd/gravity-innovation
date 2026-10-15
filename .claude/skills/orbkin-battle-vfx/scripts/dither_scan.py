@@ -43,7 +43,9 @@ def scan(path, crop, texel):
 
 
 def main(argv):
-    if not argv or '--help' in argv:
+    if '--help' in argv:
+        print(__doc__); return 0
+    if not argv:
         print(__doc__); return 2
     texel = int(argv[argv.index('--texel') + 1]) if '--texel' in argv else 2
     crop = [int(v) for v in argv[argv.index('--crop') + 1].split(',')] if '--crop' in argv else None
