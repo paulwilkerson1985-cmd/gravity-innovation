@@ -20,10 +20,11 @@ work on any game checkout: `--game <dir>` or `export ORBKIN_GAME=<dir>` (default
    table became theatre). S2 writes 3 concepts from 3 body plans with identical fields and a
    2-4 primitive blockout each; `lineup.py` prints their IoU and solidity; pick by the table.
    The literal reading of the id or the element pair is banned as a concept.
-2. **The face must read in the BAKED sprite, not in model space.** Pupil >= 3x3 texels AND
-   two-tone eyes on any head darker than a cream mask AND nothing dark at eye height beside the
-   head; `read_sheet.py --battle` prints the near-eye contrast, and `judge.py read` on the battle
-   crop must locate the face 3/3 and name the elements. A 4x5-texel single-tone eye still fused
+2. **The face and the body plan must read in the BAKED sprite, not in model space.** Pupil >= 3x3
+   texels AND a dark pupil visible in the bake (>= 2 texels; a white sclera alone is not a face)
+   AND two-tone eyes on any head darker than a cream mask AND nothing dark at eye height beside
+   the head; `read_sheet.py --battle` prints the near-eye numbers, and `judge.py read` on the battle
+   crop must locate the face 3/3, name the elements, the body plan and the signature. A 4x5-texel single-tone eye still fused
    with the knuckles into one black mass and the first read was "spider".
 3. **Attacks are key tables, pose-aligned cels; never clock-sampled.** Wind-up >= 10% H, squash
    >= 15% H, stretch >= 25% H in TEXELS, hold the wind-up 4-5 f, one smear cel, overshoot past
@@ -71,9 +72,11 @@ work on any game checkout: `--game <dir>` or `export ORBKIN_GAME=<dir>` (default
       tris in budget, 1 mesh, grounded, no FACE flag on desk or phone (colour blocks are printed as
       information). Check the foe's pixel height in `sheet.json` against the S0 Cragmaul capture: the
       battle shrinks long or wide kin (design.md §builder craft). Then the blind read:
-      `python3 -I $S/judge.py read $OUT/s4/battle-<id>-desk-crop.png --elements <E1>,<E2> --out
-      $OUT/read-desk.json` (PASS = both elements named in >= 2/3 runs and the face found 3/3; an
-      off-element archetype re-plans from S2). Put `proxy-<id>.png` and the S4 crop next to the S0
+      `python3 -I $S/judge.py read $OUT/s4/battle-<id>-desk-crop.png --elements <E1>,<E2> --plan
+      "<body plan words>" --signature "<signature words>" --out $OUT/read-desk.json` (PASS = elements
+      named in >= 2/3 runs, face found 3/3, the body plan and the signature part read in >= 2/3, and
+      no blob / bush / ball / "holding an object" reading; the pilot's bird read as a bush-on-legs
+      holding a claw: a face on a blob is not a pass; an off-element archetype re-plans from S2). Put `proxy-<id>.png` and the S4 crop next to the S0
       crop and write down which parts of the face and signature are lost before S5.
 - [ ] **S5 motion** (read `references/motion.md` §keyed acting now; paste the verified code and the
       discrete blink): attack + hit tables on the design; `python3 -I $S/keys_lint.py --ts
@@ -102,8 +105,10 @@ work on any game checkout: `--game <dir>` or `export ORBKIN_GAME=<dir>` (default
       and `cmp` it with S0; if it differs, `judge.py pair` it (must not be `worse`). The S4 and S6
       captures were taken before the S5 code edits: re-run the S4 capture, the blind read and the
       two pairwise gates on the FINAL code (stills never land on a blink frame now) and report those. `python3 -I $S/report.py --species <id> --dir $OUT` writes the
-      skeleton: fill brief, divergence table, still weak, inferred. Never claim a verdict the JSON
-      does not contain.
+      skeleton with a "Final gates" block (read, ip, desk, phone, strip on the FINAL code; it prints
+      NOT DONE and the failing gates otherwise): fill brief, divergence table, still weak, inferred.
+      Never claim a verdict the JSON does not contain; a `positionBias` entry in a pair JSON means
+      inconclusive, not a tie.
 Bounded loop: one problem per round, at most 2 rounds without a measured gain, then re-plan from
 S2 or S3. Path A (Blender body) only when the S3 sheet shows the kit cannot make the form: read
 `references/blender-path.md` then hand to orbkin-blender-forge by name.

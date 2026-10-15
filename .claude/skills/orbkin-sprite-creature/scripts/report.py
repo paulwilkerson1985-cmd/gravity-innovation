@@ -92,6 +92,20 @@ def main():
             L.append(f"- {p.relative_to(d)}: {j.get('verdict')} " + '; '.join(f"{Path(i['image']).name}: {i['verdict']} max {i['maxSimilarity']}" for i in j.get('images', [])))
     if not ips:
         L.append('- NOT RUN')
+    # Done = the FINAL frame's gates, all of them, quoted from JSON.
+    need = {'read-desk.json': 'PASS', 'ip-kin.json': ('PASS', 'REVIEW'), 'gate-desk.json': 'better', 'gate-phone.json': ('better', 'no_difference'), 'gate-strip.json': 'better'}
+    L += ['', '## Final gates (the newest JSON of each; DONE only when every line passes on the final code)']
+    missing = []
+    for name, ok in need.items():
+        j = load(d / name)
+        v = (j or {}).get('verdict')
+        passed = v in (ok if isinstance(ok, tuple) else (ok,))
+        if name == 'gate-desk.json' and j and not passed:
+            passed = j.get('cropVerdict') == 'better' and v in ('better', 'no_difference')
+        L.append(f"- {name}: {v or 'NOT RUN'} {'ok' if passed else 'NOT OK'}" + (f" (position bias: {j['positionBias']})" if j and j.get('positionBias') else ''))
+        if not passed:
+            missing.append(name)
+    L.append('- STATUS: ' + ('DONE' if not missing else 'NOT DONE: ' + ', '.join(missing)))
     L += ['', '## Still weak', '- ', '', '## Inferred, not measured', '- ', '', '## Files changed', '- ']
     text = '\n'.join(L) + '\n'
     out = Path(args.out or d / 'report.md')

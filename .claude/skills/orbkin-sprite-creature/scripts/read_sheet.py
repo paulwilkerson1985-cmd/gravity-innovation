@@ -15,7 +15,8 @@ blown up 4x nearest (what the player actually sees; look at it, not at the 420 p
 --battle "scene=battle&...&foe=kin19": also a frozen desk + phone capture of the real battle with
 2x subject crops (DIR/battle-<foe>-{desk,phone}.png, -crop.png; <foe> is the foe= in the URL), the
 FLOOR colour under the foe (hex + luminance: what the kin must separate from) and the BAKED FACE
-read (near-eye pupil tone vs the 2-texel ring; FACE flag < 0.15, or > 50% of the ring in the pupil tone).
+read (near-eye pupil tone vs the 2-texel ring; FACE flag < 0.15, > 50% of the ring in the pupil tone,
+or fewer than 2 texels of dark pupil inside the eye box).
 These are cheap pre-checks; the real face gate is `judge.py read` on the battle crop.
 The game is rebuilt automatically when src/ is newer than the dist (no stale captures).
 Exit 0 = no flags for --species (or none at all); 1 = flags; 2 = bad args.
@@ -72,7 +73,12 @@ def baked_face(png, sub, dpr, texel_h):
     lo, hi = float(np.percentile(inner, 10)), float(np.percentile(inner, 90))
     pupil = lo if abs(lo - ring_med) >= abs(hi - ring_med) else hi
     same = float((np.abs(ringpx - pupil) < 25).mean())
-    return {'eyeBoxPx': eyes, 'pupilTone': round(pupil, 1), 'ringMedian': round(ring_med, 1), 'contrast': round(abs(pupil - ring_med) / 255, 3), 'ringSameToneFraction': round(same, 3)}
+    # The dark pupil on its own (the sclera carries contrast, the pupil carries the gaze): pixels
+    # inside the box darker than ring - 40, counted in texels.
+    dark = inner < min(ring_med - 40, 90)
+    dark_tx = round(float(dark.sum()) / (px_per_texel ** 2), 2)
+    return {'eyeBoxPx': eyes, 'pupilTone': round(pupil, 1), 'scleraTone': round(hi, 1), 'ringMedian': round(ring_med, 1), 'contrast': round(abs(pupil - ring_med) / 255, 3),
+            'ringSameToneFraction': round(same, 3), 'darkPupilTexels': dark_tx, 'eyeBoxTexels': [round(eyes['w'] * dpr / px_per_texel, 1), round(eyes['h'] * dpr / px_per_texel, 1)]}
 
 
 def floor_sample(png, sub, dpr):
@@ -154,6 +160,8 @@ def main():
                 if face and sid in f['species']:
                     if face['contrast'] < 0.15:
                         res['flags'].setdefault(sid, []).append(f"FACE ({v}) near-eye pupil tone differs {face['contrast']:.2f} < 0.15 in value from the 2-texel ring around it: the face is lost in the sprite (two-tone eyes: sclera or iris; nothing in the eye's own tone next to it)")
+                    if face['darkPupilTexels'] < 2:
+                        res['flags'].setdefault(sid, []).append(f"FACE ({v}) only {face['darkPupilTexels']} texels of dark pupil inside the baked eye box (want >= 2: a visible dark pupil; a white sclera alone is not a face, and eyes shut on this frame count too)")
                     if face['ringSameToneFraction'] > 0.5:
                         res['flags'].setdefault(sid, []).append(f"FACE ({v}) {face['ringSameToneFraction']:.0%} of the ring around the eyes is in the eyes' own tone: eyes fuse with knuckles / paws / a dark head; move dark parts below the chin line or lighten the head")
     emit(res, out / 'sheet.json')

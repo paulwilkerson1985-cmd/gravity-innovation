@@ -14,9 +14,10 @@ skill's scripts when they exist (`.claude/skills/orbkin-visual-gate/`).
       motion strips (attacker only, every 2nd frame); neutral rubric; same verdict rule.
   judge.py ip    IMAGE [IMAGE...] [--runs 3] [--out ip.json]
       exit 0 PASS | 1 REVIEW | 4 FAIL  (FAIL = similarity >= 7 with distinctive overlap)
-  judge.py read  CROP.png --elements Flora,Terra [--runs 3] [--out read.json]
-      blind first read of the baked sprite: what is it, which elements, where is the face, archetype.
-      exit 0 = both elements named in >= 2 of 3 runs AND the face located in every run; 1 otherwise.
+  judge.py read  CROP.png --elements Flora,Terra [--plan "bird|wader"] [--signature "bill|beak"] [--runs 3] [--out read.json]
+      blind first read of the baked sprite: what is it, which elements, where is the face, archetype, signature.
+      exit 0 = elements named in >= 2 of 3 runs, face located 3/3, body plan and signature read (when given),
+      and no blob / bush / ball / "holding an object" reading; 1 otherwise (the `fails` list says why).
   judge.py floor --candidate NEW.png --baseline OLD.png
       free defect floor (value range, squint contrast, sharpness) printed as WARN lines; never a target.
 Options: --model opus (default; haiku has a 63% first-position bias and is only for dry runs).
@@ -230,8 +231,11 @@ def cmd_pair(a):
     out['verdict'] = verdict
     reasons = ' '.join(str(v.get('reason', '')) for r in out['results'] for v in r['votes']).lower()
     out['reasonTags'] = {t: reasons.count(t) for t in TAGS if reasons.count(t)}
-    if all(v['winner'] == 'A' for r in out['results'] for v in r['votes']) or all(v['winner'] == 'B' for r in out['results'] for v in r['votes']):
-        out['positionBias'] = 'every vote went to the same display position: no_difference here means the judge could not tell them apart'
+    for r in out['results']:
+        f, sN = r['candidateWins']['shownFirst'].split('/'), r['candidateWins']['shownSecond'].split('/')
+        if abs(int(f[0]) - int(sN[0])) >= 2:
+            out['positionBias'] = f"{r['label']}: candidate won {f[0]} of {f[1]} shown first vs {sN[0]} of {sN[1]} shown second; the verdict follows display position, treat it as inconclusive, not as a tie"
+            r['positionBias'] = True
     # Franchise-name tripwire in the reasons.
     names = re.findall(r'\b(pokemon|pikachu|charmander|squirtle|bulbasaur|eevee|dragonair|geodude|digimon|slime|palworld|cubone|leafeon)\b', json.dumps(out), re.I)
     if names:
@@ -252,9 +256,29 @@ def cmd_read(a):
     out['faceFound'] = f'{faces}/{a.runs}'
     out['archetypes'] = [r.get('archetype') for r in out['runs']]
     out['things'] = [r.get('thing') for r in out['runs']]
-    ok = all(h >= max(2, a.runs - 1) for h in hits.values()) and faces == a.runs
-    out['verdict'] = 'PASS' if ok else 'FAIL'
-    finish(out, a.out, 0 if ok else 1)
+    out['signatures'] = [r.get('signature') for r in out['runs']]
+    fails = []
+    if not all(h >= max(2, a.runs - 1) for h in hits.values()):
+        fails.append('elements not named in >= 2 of 3 reads')
+    if faces != a.runs:
+        fails.append('face not located in every read')
+    blobtext = ' '.join(str(r.get('thing', '')) + ' ' + str(r.get('archetype', '')) for r in out['runs']).lower()
+    blobs = [w for w in ('blob', 'bush', 'ball', 'bulb', 'melon', 'puff', 'lump', 'holding', 'carrying') if w in blobtext]
+    if blobs:
+        fails.append(f"read as a blob or as holding an object ({', '.join(blobs)}): the body plan did not survive the bake")
+    if a.plan:
+        plan_hits = sum(1 for r in out['runs'] if any(w.strip().lower() in (str(r.get('thing', '')) + ' ' + str(r.get('archetype', ''))).lower() for w in a.plan.split('|')))
+        out['planHits'] = f'{plan_hits}/{a.runs}'
+        if plan_hits < max(2, a.runs - 1):
+            fails.append(f'body plan "{a.plan}" not read in >= 2 of 3 reads')
+    if a.signature:
+        sig_hits = sum(1 for r in out['runs'] if any(w.strip().lower() in str(r.get('signature', '')).lower() for w in a.signature.split('|')))
+        out['signatureHits'] = f'{sig_hits}/{a.runs}'
+        if sig_hits < max(2, a.runs - 1):
+            fails.append(f'signature "{a.signature}" not named as the most distinctive part in >= 2 of 3 reads')
+    out['fails'] = fails
+    out['verdict'] = 'PASS' if not fails else 'FAIL'
+    finish(out, a.out, 0 if not fails else 1)
 
 
 def cmd_strip(a):
@@ -327,6 +351,8 @@ def main():
     s = sub.add_parser('read')
     s.add_argument('image')
     s.add_argument('--elements', required=True)
+    s.add_argument('--plan', help='intended body plan words, | separated (e.g. "bird|kiwi|wader"); PASS needs it read in >= 2 of 3')
+    s.add_argument('--signature', help='intended signature part words, | separated (e.g. "bill|beak"); PASS needs it named in >= 2 of 3')
     s.add_argument('--runs', type=int, default=3)
     s.add_argument('--model', default='opus')
     s.add_argument('--out')
