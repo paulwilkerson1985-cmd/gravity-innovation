@@ -8,7 +8,11 @@
 //
 // Writes per screen × view:  <out>/<screen>-<view>.png        full page (DOM UI included)
 //                            <out>/<screen>-<view>.clean.png  canvas only (UI hidden) — judge/metrics input
-//                            <out>/<screen>-<view>.json       internal size, device px per internal px, calls, tris
+//                            <out>/<screen>-<view>.json       internal size, device px per internal px, calls, tris, subject boxes
+// --repeat-check: each shot is repeated in a fresh context; on a mismatch a third shot decides: the frame two shots
+// agree on is KEPT (the odd one out is dropped and `repeatRetried: true` is recorded); if all three differ the
+// capture is invalid (exit 2) and the .repeat files stay for inspection. A retried first attempt with extraSteps 0 is
+// a cold-start artefact (first context after launch), not a determinism problem; investigate only when it repeats.
 // and <out>/capture.json (everything). Exit 0 ok; 1 on a scene error; 2 on a repeat mismatch (--repeat-check).
 //
 // Deterministic: the page clock is faked and paused before load; the scene is advanced by exactly
@@ -73,6 +77,7 @@ for (const screen of String(args.screens).split(',').filter(Boolean)) {
       let b = await shoot(screen, view, '.repeat');
       let same = b && sha(path.join(out, `${a.name}.clean.png`)) === sha(path.join(out, `${b.name}.clean.png`));
       if (b && !same) {
+        console.error(`[capture] ${a.name}: first repeat differs (first-attempt extraSteps ${a.extraSteps}, repeat extraSteps ${b.extraSteps}); retrying once in a fresh context`);
         const c = await shoot(screen, view, '.repeat2');
         const bc = c && sha(path.join(out, `${b.name}.clean.png`)) === sha(path.join(out, `${c.name}.clean.png`));
         const ac = c && sha(path.join(out, `${a.name}.clean.png`)) === sha(path.join(out, `${c.name}.clean.png`));

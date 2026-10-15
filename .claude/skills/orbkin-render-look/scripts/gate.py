@@ -153,7 +153,8 @@ def main():
         cv = vote_pair(a.model, crop2x(cand, box), crop2x(base, box), PROMPT_CROP, max(1, a.votes // 2), f'crop{i}')
         res['votes'] += cv
         cd, cr, cc = decide(cv)
-        res['crops'].append({'box': box, 'decision': cd, 'candidateWinRate': round(cr, 2), 'meanConfidence': round(cc, 2)})
+        lean = 'baseline' if cr == 0 else 'candidate' if cr == 1 else None
+        res['crops'].append({'box': box, 'decision': cd, 'candidateWinRate': round(cr, 2), 'meanConfidence': round(cc, 2), 'lean': lean, 'note': 'unanimous low-confidence lean: attach the crop pair to the owner check, do not re-run' if lean and cc <= 2 and cd == 'no_difference' else None})
     final = d
     if d == 'better' and any(c['decision'] == 'worse' for c in res['crops']):
         final = 'no_difference'

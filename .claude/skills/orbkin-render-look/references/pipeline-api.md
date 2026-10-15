@@ -89,8 +89,10 @@ Contents: 1 pipeline.ts · 2 screens stage · 3 arena registry · 4 light rigs �
 - `SpriteBaker(scene, camera, light)`: `add(mesh, opts) → SpriteSubject`, `remove(s)`, `bake(gl)`
   (call from `pipeline.beforeRender`), `dispose()`. Bake rate 10 fps (8 low; `?post=bakeall` = every
   frame); px per texel = max(1, round(screenHeight/texelHeight)) internal px, shared per frame.
-- Feet anchor snapped to the texel grid in ABSOLUTE buffer px (line ≈ 1115: `round(sx/px)·px`);
-  contact + drop shadow in the same grid; `?post=nosnap` disables the palette snap.
+- Feet anchor snapped to the texel grid in ABSOLUTE buffer px inside `SpriteSubject.bake(renderer, camera,
+  light, buffer, sharedPx)` (`round(sx/px)·px`); contact + drop shadow in the same grid; `?post=nosnap`
+  disables the palette snap. A pan lock needs a `pan` parameter on `bake` and a `SpriteBaker.pan`
+  (camera.md §2–3); nothing of that exists yet.
 
 ## 6 URL switches (all read live from `location.search`)
 `gfx=hd2d` · `q=high|low` · `post=nobloom,nograde,notilt,gtao,pcf,bakeall,nosnap` · `seed=N` ·

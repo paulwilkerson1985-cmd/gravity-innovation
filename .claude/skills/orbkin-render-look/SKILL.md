@@ -9,7 +9,8 @@ breaking the pixel craft or the phone budget. Done = frozen-clock captures desk 
 after, `check-budget` PASS (or only pre-existing overages, none grown), motion metrics in range for
 any camera change, a pairwise gate verdict from a script, and a report with counters before/after.
 Scripts are the deliverable: run them (`--help` first), never re-write them; never self-attest.
-`OUT` below = your output folder (e.g. `/tmp/rl`), `SK=${CLAUDE_SKILL_DIR}/scripts`, cwd = repo root.
+`OUT` below = your output folder (e.g. `/tmp/rl`); `SK` = this skill's `scripts/` folder as an ABSOLUTE path
+(`${CLAUDE_SKILL_DIR}` is not set in a plain shell: `SK=/…/.claude/skills/orbkin-render-look/scripts`); cwd = repo root.
 
 ## Standing rules (each one cost a round in the research or the pilot)
 - **Integer grid, one texel density.** The scene and sprites render at the tier's integer grid
@@ -55,27 +56,38 @@ S2 Implement in the scratch workspace behind a switch so one build captures both
    fractions; screens need `tiltUnscaled`, see pipeline-api §1). `npm run typecheck` and
    `npx eslint src e2e` green; `npm run build`; then prove the switch:
    `capture.mjs … --extra 'post=<old flag>' --out OUT/after-old` and `cmp` every `.clean.png` with
-   `OUT/before` (byte-identical, else the A/B is invalid).
+   `OUT/before` (byte-identical, else the A/B is invalid). The untouched build cannot hold the camera,
+   so the held pair for S3 comes from the NEW build: `--out OUT/before-held --extra 'post=<old flag>&drift=0'`
+   and `--out OUT/after-held --extra 'drift=0'`.
 S3 `audit.mjs … --out OUT/after.json`, then
    `node $SK/check-budget.mjs OUT/after.json --baseline OUT/before.json` (exit 0 required; the
    criterion "passes" means `fullResPasses`), `capture.mjs … --out OUT/after --repeat-check`
-   (repeats must be identical), and for DoF/tilt work, with the camera held (`--extra drift=0`-style
-   on both sides):
-   `python3 -I $SK/screen_metrics.py OUT/after/<s>.clean.png --before OUT/before/<s>.clean.png --focal subjects --focus-band <focusBottom>,<focusTop>`
-   (measured on the internal grid; focus band kept within 0.03 of before, top and bottom bands
-   ≤ 0.6, subject crop identical; a 1-level vignette change on the crop fails here and must be
-   reported, with the gate's crop verdict as the read).
+   (repeats must be identical; a single retried first attempt with `extraSteps 0` is a cold-start
+   artefact, the agreed frame is kept), and for DoF/tilt work on the held pair:
+   `python3 -I $SK/screen_metrics.py OUT/after-held/<s>.clean.png --before OUT/before-held/<s>.clean.png --focal subjects --focus-band <focusBottom>,<focusTop>`
+   (measured on the internal grid; focus band kept within 0.03 of before (the absolute level is
+   content: starter rows sit at 0.85 before any change), top and bottom bands ≤ 0.6, subject crop
+   identical). A vignette increase changes the crop outside the vignette radius 0.85 − vignetteSoft:
+   title 0.6 → 0.07 % of the trio crop by 1 level, starter 0.32 → 0.5 → 18 % of the dais crop by ≤ 2
+   levels (`focalDiffRead: vignette ring`). Report it as an owner fork (vignette below 0.5, or a harder
+   `vignetteSoft`) with the gate's crop verdict as the read; `seamWarning` (band jump > 0.5) means a
+   visible line where the blur starts: widen the ramp before the owner sees it.
 S4 Camera/motion changes: `cam_capture.mjs` one clip at a time: 120 frames with the move on and an
    idle clip with it off, then
    `python3 -I $SK/cam_analyze.py OUT/cam/move --baseline OUT/cam/idle --relative --mp4 OUT/cam/move.mp4`
-   (excess rigid ≤ 0.05, flick ≤ 0.02 %, rigid_bad ≤ 0.5 %) and the 2-frame sign check of camera.md §3.
-   Attach the MP4 for the owner.
+   (EXCESS over idle: rigid ≤ 0.05, flick ≤ 0.02 %, rigid_bad ≤ 0.5 %; the title's idle floor alone is
+   rigid 0.32 / flick 0.015 %, so absolute values never pass) and the two-axis sign check of
+   camera.md §3 with `sign_check.py`. Attach the MP4 for the owner.
 S5 Gate every changed screen, desk and phone, candidate vs the last ACCEPTED capture (never vs your
    own previous attempt): orbkin-visual-gate if `.claude/skills/orbkin-visual-gate` exists, else
    `python3 -I $SK/gate.py --candidate OUT/after/<s>.clean.png --baseline OUT/before/<s>.clean.png --crop subjects --out OUT/gate/<s>.json`
-   (canary first; `better` only both orders; `no_difference` is normal for subtle work; exit 3 =
-   invalid, do not retry blindly; reasons stay in the JSON for the owner). At most 2 gate rounds.
-   Frame cost on this box: `node $SK/frametime.mjs --dist DIST --screens <s> --views desk,phone --a 'post=<old flag>' --b ''`.
+   (canary first; `better` only both orders; `no_difference` is normal for subtle work; a crop with
+   `lean: baseline` at confidence ≤ 2 goes to the owner check with the crop pair, not to a re-run;
+   exit 3 = invalid, do not retry blindly; reasons stay in the JSON for the owner). At most 2 gate rounds.
+   Frame cost on this box: `node $SK/frametime.mjs --dist DIST --screens <s> --views desk,phone --a 'post=<old flag>' --b ''`
+   (a second run with `--a 'drift=0' --b ''` attributes a camera change). Full-strength unscaled screen
+   bands cost +12–23 % SwiftShader (title-desk, starter-phone SLOWER in every round; the drift itself
+   0.97–1.04): that is expected and fails a "+10 %" bar; only the device bench decides for the low tier.
 S6 Report (template below); e2e `cd <workspace> && npx playwright test e2e/hd2d-screens.spec.ts`
    must pass. Shipping to a phone tier: `references/bench.md` (`bench_serve.sh`, `?bench=1&bvar=<old flag>`
    on the owner's phone, `bench_read.py` on the paste).
@@ -89,6 +101,7 @@ S6 Report (template below); e2e `cd <workspace> && npx playwright test e2e/hd2d-
 | `capture.mjs` | frozen-clock PNGs (full + `.clean`) + meta with subject boxes; `--repeat-check` retries a mismatch once | scene error (2 = repeats differ) |
 | `screen_metrics.py` | 12-band DoF profile on the internal grid, notan, L*, chroma p95, cool share, subject-crop diff | a requested check fails |
 | `cam_capture.mjs` / `cam_analyze.py` | 60 fps virtual frame dump (one at a time); rigid residual, deforming %, flicker %, excess over idle, MP4 | metrics over thresholds |
+| `sign_check.py HELD PANNED --expect=-1,0` | per-block shift histogram of a forced 1-px pan, exact % (frame and centre band) | dominant shift ≠ expected |
 | `gate.py` | fallback blind pairwise judge (canary, both orders × 2, `--crop subjects`) via `claude -p` | not `better` (3 = invalid) |
 | `frametime.mjs` | interleaved same-build A/B of `benchFrames` (SwiftShader ratio + noise band) | SLOWER in every round |
 | `make_cube.py OUT.cube` | 33³ display-referred LUT (CDL + split tone) for `LUTPass` after output | — |
@@ -99,7 +112,7 @@ S6 Report (template below); e2e `cd <workspace> && npx playwright test e2e/hd2d-
 |---|---|---|
 | Frame architecture | desk hybrid H (grid + device-res composite); phone L, H2 only after the bench | H ≡ L full-frame 6/6, H > L in bokeh crops 14/18; H = +27 MB/frame on a phone |
 | Native res / MSAA | never | no gain at equal sprite texels 3/3; 5–10× DRAM |
-| Screen tilt bands (until H ships) | title `tiltTop 3.6 @ 0.60`, `tiltBottom 3.6 @ 0.36`, vignette 0.6; starter `3.6 @ 0.66` / `3.6 @ 0.34`, vignette 0.5; route blur only > 0.84 and < 0.30; `tiltUnscaled` on screens | 4/4 desk + phone; subject crop reads the same (gate crop `no_difference`), vignette touches 1 % of its pixels by 1 level; pilot: starter-phone +14 % SwiftShader (bench it) |
+| Screen tilt bands (until H ships) | title `tiltTop 3.6 @ 0.60`, `tiltBottom 3.6 @ 0.36`, vignette 0.6; starter `3.6 @ 0.66` / `3.6 @ 0.34`, vignette 0.5; route blur only > 0.84 and < 0.30; `tiltUnscaled` on screens; always capture the lighter candidate (2.4 px, vignette 0.5 / 0.42) for the owner | 4/4 desk + phone, gate crops `no_difference`; held-camera crop diff: title 0.07 % by 1 level, starter desk 18 % by ≤ 2 levels (vignette ring); +12–23 % SwiftShader, device cost unknown |
 | Depth DoF (H) | CoC max 1.6 % of height desk; phone 0.6× or width units + ≥ 5-u near ramp; subject mask | bottom band 0.14–0.24 at 640 px vs Octopath 0.31–0.36; phone win only with the long ramp |
 | Bloom | threshold 1.0 + soft knee, cap 1.1, emitters only | judges: already right |
 | Shadows | 2048 PCF desk (PCFSoft deprecated r182), frozen 1024 PCF phone | 2048² live = 33 MB/frame |
@@ -109,12 +122,13 @@ S6 Report (template below); e2e `cd <workspace> && npx playwright test e2e/hd2d-
 
 ## Gotchas
 - `detectQuality()` says `low` on this 4-core box: always pass `?q=`; the scripts do (desk high, phone low).
-- Idle floors are large on live screens (title desk rigid 0.32, bad 2.3 %): only the excess over the idle clip means anything.
+- Idle floors are large on live screens (title desk rigid 0.32 / bad 2.3 % / flick 0.015 %; phone 0.27 / 1.9 % / 0.009 %): only the excess over the idle clip means anything, for rigid AND flick.
 - `getDrawingBufferSize` is read by five modules (sprite snap, view offset, shake, FX `uRes`): a device-res composite must patch it to keep returning the grid.
 - `titleGrade()` overrides `tiltTop/focusTop` only; the starter has NO grade of its own (`meadowGrade(false)`, shared with the meadow battle). `TIERS.low.tilt = 0.45` multiplies every grade's tilt.
 - `npm run lint` is red on the untouched repo (lab scripts under docs/): lint `src e2e`.
 - Nested judge: `env -u CLAUDECODE claude -p --tools "" ...` (gate.py does it); never paste judge prompts, reasons or vote counts into the generator's context: read verdicts, leave reasons to the owner.
 - `page.clock` freezes rAF; the capture reports `extraSteps` (non-zero = a scene waited on a timer: check determinism).
+- Screen lenses (vignette, tilt ramps) are screen-anchored by design: a 1-px pan is never 100 % exact with the grade on; `sign_check` judges the centre band (or run both captures with `post=nograde`).
 
 ## Report (write it; never "looks better" without a verdict file)
 ```
@@ -128,7 +142,7 @@ owner decisions (strength candidates, taste forks); still weak / inferred / not 
 ```
 
 ## Setup and safety (read first; applies to every step)
-The block below is the project's standard text (verbatim). `game/tools/bootstrap/bootstrap.sh` and the Blender steps land with Phase 0 and are not needed by this skill: until then `scripts/doctor.sh` is step 0 (it runs bootstrap's doctor when present). Keep scratch outputs under one `OUT` folder you choose; never hard-code another session's paths.
+The block below is the project's standard text (verbatim, shared by every Orbkin skill). For THIS skill only the Safety part applies: `game/tools/bootstrap/bootstrap.sh`, the Blender steps and the asset manifest land with Phase 0 / orbkin-blender-forge; `scripts/doctor.sh` is step 0 here (it runs bootstrap's doctor when present). Keep scratch outputs under one `OUT` folder you choose; never hard-code another session's paths.
 
 ### Step 0: check the toolchain (about 3 s, every time; do not skip, hooks may not have run)
     bash game/tools/bootstrap/bootstrap.sh doctor          # what works on this machine

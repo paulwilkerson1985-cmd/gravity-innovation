@@ -21,6 +21,9 @@ Checks (exit 1 when any fails):
                       (focalDiff = 0). Hold the camera (drift off, pan 0) when measuring this: a frozen
                       frame at a non-zero pan rasterises differently before/after a camera change, and a
                       vignette change reaches any subject wider than the frame's centre third.
+Also reported: focalDiffByRadiusPct (in the grade's vignette radius hypot((u−0.5)·aspect, v−0.5): a
+vignette change shows only beyond 0.85 − vignetteSoft, i.e. outside r ≈ 0.2–0.4; bands r<0.2 / 0.2–0.4 / ≥0.4), focalDiffMaxLevel, focalDiffRead, and maxBandJump with seamWarning (> 0.5
+between adjacent bands reads as a visible seam where the blur starts).
 Octopath field shots at 640 px for context: top 0.46–0.64, bottom 0.26–0.36, focus band at 0.5–0.67 of
 the height (non-battle-screens §1.2). These are critique context, not targets.
 """
@@ -129,7 +132,19 @@ def main():
             ca, cb = np.asarray(crop(im_full, box)).astype(int), np.asarray(crop(bim_full, box)).astype(int)
             diff = int(np.abs(ca - cb).sum()) if ca.shape == cb.shape else -1
             res['focalDiff'] = diff
-            res['focalDiffPixelsPct'] = round(100.0 * float((np.abs(ca - cb).sum(-1) > 0).mean()), 3) if ca.shape == cb.shape else None
+            if ca.shape == cb.shape:
+                d = np.abs(ca - cb)
+                changed = d.sum(-1) > 0
+                yy, xx = np.mgrid[0:ca.shape[0], 0:ca.shape[1]]
+                # the grade's vignette radius: r = hypot((u − 0.5)·aspect, v − 0.5); the vignette starts at 0.85 − vignetteSoft
+                aspect = im_full.width / im_full.height
+                u = box[0] + (box[2] - box[0]) * (xx + 0.5) / max(1, ca.shape[1])
+                v = box[1] + (box[3] - box[1]) * (yy + 0.5) / max(1, ca.shape[0])
+                rr = np.hypot((u - 0.5) * aspect, v - 0.5)
+                res['focalDiffPixelsPct'] = round(100.0 * float(changed.mean()), 3)
+                res['focalDiffMaxLevel'] = int(d.max())
+                res['focalDiffByRadiusPct'] = {'vignetteRadius': 'hypot((u-0.5)*aspect, v-0.5); vignette starts at 0.85 - vignetteSoft', 'r<0.2': round(100.0 * float(changed[rr < 0.2].mean()), 3) if (rr < 0.2).any() else None, '0.2-0.4': round(100.0 * float(changed[(rr >= 0.2) & (rr < 0.4)].mean()), 3) if ((rr >= 0.2) & (rr < 0.4)).any() else None, 'r>=0.4': round(100.0 * float(changed[rr >= 0.4].mean()), 3) if (rr >= 0.4).any() else None}
+                res['focalDiffRead'] = 'identical' if diff == 0 else ('vignette ring (centre r<0.2 untouched)' if (rr < 0.2).any() and changed[rr < 0.2].mean() < 0.001 and res['focalDiffMaxLevel'] <= 2 else 'subject pixels changed: inspect')
             res['checks']['focalIdentical'] = diff == 0
     if a.focus_band:
         bot, top = [float(v) for v in a.focus_band.split(',')]
@@ -150,6 +165,9 @@ def main():
             res['checks']['focusBandSharp'] = bool(inband) and min(inband) >= 0.9
         res['checks']['topBandBlurred'] = res['dof'][0] <= a.band_max
         res['checks']['bottomBandBlurred'] = res['dof'][-1] <= a.band_max
+    jumps = [abs(res['dof'][i + 1] - res['dof'][i]) for i in range(len(res['dof']) - 1)]
+    res['maxBandJump'] = round(max(jumps), 3)
+    res['seamWarning'] = res['maxBandJump'] > 0.5  # a hard line where the blur starts: widen the ramp (focus edges) before the owner sees it
     res['pass'] = all(res['checks'].values()) if res['checks'] else None
     txt = json.dumps(res, indent=1)
     if a.json:

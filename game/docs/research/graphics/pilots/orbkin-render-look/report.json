@@ -54,7 +54,65 @@
      "bench.md + bench.ts: define screen ablation cases and the decision rule for screen-grade changes; setup block: mark the missing bootstrap script and use an OUT variable instead of hard-coded /tmp paths; add an owner-taste step requiring a lighter candidate when a band or vignette is strengthened."
     ]
    }
+  },
+  {
+   "outputs": [
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter2-title-desk-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter2-starter-desk-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter2-title-phone-before-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter2-starter-phone-before-after.jpg"
+   ],
+   "log": "Fresh Opus subagent on the revised skill, scratch copy at /tmp/pilot/orbkin-render-look-2. S0 doctor ok; baseline audit + captures (title-desk needed the script's single retry, then identical). Implemented the same four-file change (titleGrade/starterGrade bands + vignette, Grade.tiltUnscaled, uPan dither lock, SpriteBaker.pan threaded into SpriteSubject.bake, view-offset drift with framed() resetting the pan) plus switches post=oldscreens, drift=0, dpx=x,y (forced pan) and post=lighttilt (2.4 px / vignette 0.5-0.42 lighter candidate). Proved post=oldscreens byte-identical to the untouched baseline (4/4). check-budget PASS, every counter unchanged (fullResPasses 3 on phone, programs 64/63 unchanged). screen_metrics on the internal grid with the camera held: title-desk 0.335/0.974/0.308 top/focus/bottom, title-phone 0.350/0.928/0.313, starter-desk 0.353/0.860 (0.852 before)/0.310, starter-phone 0.353/0.845 (unchanged)/0.335; subject crop identical on both phones, title-desk 0.073 % of crop px by 1 level, starter-desk 18.6 % by <= 2 levels (the vignette 0.32->0.5 ring; tilt never reaches the crop). Two-axis sign check: dpx=(1,0) -> every block (-1,0), dpx=(0,1) -> (0,+1 down); 72 % exact with the grade, 99.86 % centre, 99.97 % with post=nograde: found the y-sign error in the skill's recipe. cam_analyze excess over idle: desk rigid +0.0058 / flick +0.0143 % / bad 0.0; phone +0.0129 / +0.0108 % / +0.072 %; old truck +0.116 / +1.07 % bad (FAIL). Gate better 4/4 full frames, canary passed, crops no_difference (title-phone crop lean baseline at conf 2). frametime.mjs 5 interleaved rounds: title-desk 1.122 SLOWER, title-phone 1.167 within noise, starter-desk 1.061 ok, starter-phone 1.231 SLOWER; drift-only attribution 0.97/1.04 (the cost is the unscaled band area). e2e 6/6, typecheck + eslint src e2e green. Bench cases: ?bench=1&bcases=cave-low,title-low,starter-low,cave-low-again&bvar=oldscreens; owner checks: blind strength pick (full vs lighter) and the phone bench before the low tier ships.",
+   "skillProblems": [
+    "camera.md \u00a73 lock sign was wrong on y: decreasing offsetY moves the image down, so the lock pan must be (-nx, -ny); the recipe's sign check only tested x (fixed: recipe, two-axis check, expected shifts).",
+    "The sign check could not be done with shipped scripts (no per-block shift tool, no forced-pan switch, hand-assembled 2-frame clips) (fixed: sign_check.py; dpx= switch documented).",
+    "'rigid \u2248 0' in the sign check is unreachable with the screen-anchored vignette/tilt (72 % exact with the grade, 99.97 % with post=nograde) (fixed: expectations stated, centre-band criterion).",
+    "camera.md amplitude numbers were wrong for the current framing (\u00b144 px claimed; measured \u00b115 desk / \u00b127 phone, 28.2 / 49.5 px per unit) (fixed: formula + measured values).",
+    "S3 asked for a held-camera before capture that the untouched build cannot produce (fixed: before-held from the new build's old switch).",
+    "The defaults table understated the starter vignette's effect on the subject crop (18.6 % by <= 2 levels on desk, not 1 %) (fixed: numbers and the owner fork stated; screen_metrics reports the diff by vignette radius and max level).",
+    "Frame-cost claims were optimistic ('13 taps, cheap', '+14 %'): measured +12-23 % SwiftShader, SLOWER in every round, drift costs nothing (fixed: stated upfront; bench decides).",
+    "Absolute criteria (focus >= 0.9, flick <= 0.02 %, +10 % SwiftShader) conflict with the skill's relative thresholds and prescribed defaults (fixed: thresholds written as relative/excess everywhere; task criteria remain as given).",
+    "Recipe left out plumbing (SpriteSubject.bake pan parameter, W/H meaning, urlParam helper) (fixed in camera.md \u00a73 and pipeline-api).",
+    "Gate: no rule for a unanimous low-confidence crop loss (fixed: gate.py emits lean + note: owner check, no re-run).",
+    "Repeat-check policy undocumented (which frame is kept, when to investigate) (fixed in capture.mjs --help and S3).",
+    "${CLAUDE_SKILL_DIR} unset in a plain shell; setup block references bootstrap.sh/asset manifest that do not apply (fixed: absolute-path hint; scoped pointer above the verbatim block)."
+   ],
+   "judge": {
+    "score": 8,
+    "vsCurrent": "Yes, clearly: the before captures (the current title and starter) read as uniformly sharp, busy voxel fields, while the after frames read as a lit pixel diorama with a crisp subject band, blurred canopy and near bank, and the drift now shifts the whole image rigidly (gate 4/4 'better' in both orders, old truck excess rigid 0.116 vs 0.006). It does not move the art closer to the quarry bar (that is texture and set-dressing work the task did not cover), and the phone frame cost is still unverified on a device.",
+    "strengths": [
+     "The tilt bands and vignette give the title and starter a convincing HD-2D depth hierarchy on desk and phone: the kin trio and daises stay pixel-crisp (focus band 0.974 title desk, 0.928 phone; starter rows kept within 0.01 of before) while far field and near flowers soften to 0.31-0.35.",
+     "Sprites and DOM UI are untouched: outlines, 3-4 tone shading and the title logo/buttons sit cleanly on the softened bands.",
+     "The drift conversion is visibly rigid in the clip frames and measured as excess over the idle floor on desk and phone, with the old truck re-measured in the same build as a FAIL.",
+     "Evidence is coherent and honest: byte-identical old-switch proof, repeat-checked captures, unchanged counters, held-camera metrics with a radial diff, a two-axis sign check with a post=nograde isolation pair, five-round interleaved frame-time A/B with a drift-only attribution run, gate JSONs with canary and both orders, e2e green, bench cases spelled out.",
+     "The lighter candidate (2.4 px, vignette 0.5/0.42) makes the owner's blind pick a real decision.",
+     "The pilot found a real sign bug in the skill's recipe by measurement and corrected the amplitude figures from the actual framing."
+    ],
+    "weaknesses": [
+     "Frame time is SLOWER in every round on title-desk (+12 %) and starter-phone (+23 %) in SwiftShader; the low-tier result ships on faith until the owner benches it.",
+     "The starter-desk subject crop is not identical (18.6 % of crop pixels changed by 1-2 levels from the vignette ring); the spec's vignette >= 0.5 made the crop-identical criterion unachievable as written.",
+     "The blur ramp is steep (0.34 to 0.96 across one band on title desk) and reads as a seam where the near flowers go soft; the 13-tap grid blur is slightly blocky in the near band; vignette 0.6 darkens the lower corners heavily under the DOM buttons.",
+     "On the phone title the top band includes a smeared red roof edge, and the frozen-clock framing shifted slightly between before (truck) and after (pan).",
+     "The sign check, per-block histogram and radial crop diff needed ad-hoc numpy; the shipped scripts could not do what the skill prescribed.",
+     "The absolute criteria handed to the pilot conflict with the skill's relative thresholds, so three 'not met' rows are criterion mismatches."
+    ],
+    "skillFixes": [
+     "camera.md \u00a73: fix the lock sign to (-nx, -ny) with the offsetY comment; extend the sign check to both axes with expected shifts (applied).",
+     "Ship the sign check: a forced-pan switch and a sign_check.py with per-block shift histogram, exact % and centre-band exact % (applied: sign_check.py; dpx= switch recipe).",
+     "camera.md \u00a73: replace 'rigid \u2248 0' with the real expectation under screen lenses and the post=nograde isolation (applied).",
+     "camera.md \u00a73 amplitude: give the px-per-unit formula and measured values per view (applied).",
+     "SKILL.md S0/S3: prescribe before-held/after-held from the new build (applied).",
+     "Defaults table and S3: correct the vignette claim, state the starter magnitude and the owner fork; screen_metrics reports the crop diff by vignette radius and max level (applied).",
+     "Add a ramp-width check: screen_metrics reports maxBandJump with a seam warning (applied); a ramp parameter on the tilt is a future pipeline change.",
+     "Frame-cost text: state the measured +12-23 % for full-strength unscaled bands and that the device bench decides (applied); frametime attribution documented as a second run.",
+     "Make thresholds consistent (relative focus band, excess rigid/flick with the idle floors next to them) (applied).",
+     "Document the plumbing (bake pan parameter, W/H, tiltUnscaled, urlParam) (applied).",
+     "gate.py: define the read for a unanimous low-confidence crop loss (applied: lean + owner-check note).",
+     "capture.mjs --repeat-check: document which capture is kept and when to investigate (applied).",
+     "Housekeeping: absolute-path hint for the scripts folder; scope the Setup and safety boilerplate (applied as a pointer; the block itself stays verbatim as the brief requires)."
+    ]
+   }
   }
  ],
- "finalScore": 7
+ "finalScore": 8
 }

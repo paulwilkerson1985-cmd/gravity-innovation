@@ -27,6 +27,7 @@ Phone cost of all of this: zero extra passes (a projection-matrix update + two u
 | Bayer dither is screen-anchored → a whole-frame "screen door" crawl (2/255 on every gradient) | `pipeline.ts` GradeShader, the `bayer4(gl_FragCoord.xy)` line before `gl_FragColor` | `bayer4(gl_FragCoord.xy - uPan)` with `uPan` = the image shift in bottom-up buffer px (gl_FragCoord is bottom-up, same frame as the sprite `ay`); add the uniform and a `pipeline.setPan(x, y)`. One convention everywhere: pan = how far the IMAGE moved, +x right, +y up |
 | Pixel FX flipbooks / points snap to `uRes` px | `fx.ts` the `floor(… * uRes + 0.5)` lines in the flipbook and points vertex shaders | same subtraction with a `uPan` uniform (battles only; title/starter have none) |
 | Dust motes are world-space Points (`uSize` px) | `arena.ts` `dustMotes` / `DUST_VERT` | no lock needed (not screen-snapped); they move with the world |
+| Sprite feet snap is inside `SpriteSubject.bake`, not the baker | `sprite.ts` `bake(renderer, camera, light, buffer, sharedPx)` | add a `pan` parameter (default a shared zero Vector2) and pass `this.pan` from `SpriteBaker.bake` |
 | Bloom's half-res mip chain is not shift-invariant for odd shifts (window halos shimmer ≈ half the last residual) | `pipeline.ts` UnrealBloom | accept, or pan in 2-px steps during bloom-heavy shots |
 | Vignette, tilt bands, bottom shade | grade | screen lenses by design: leave them anchored |
 
@@ -35,33 +36,42 @@ Residual after each lock (whole-px pan): none 0.214 → dither lock 0.037 → + 
 ## 3 View-offset drift recipe (what replaces the title's 3D truck in `hd2dScreen.ts drift()`)
 
 The battle already does it for shakes (`hd2dBattle.ts shake(dx, dy)`): keep the snapped base offset
-and shift it by whole internal px. For the stage (`Hd2dScreenStage`):
+and shift it by whole internal px. For the stage (`Hd2dScreenStage`); verified by pilot 2 on both axes:
 ```ts
 // framed(): after snapping, keep the whole view-offset tuple and the CSS px per internal px; reset the pan
-const v = cam.view;                      // null/disabled when fitPoints never set an offset: then use (0, 0, w, h, w, h)
+const v = cam.view;   // null/disabled when fitPoints never set an offset: fall back to (0, 0, W, H, W, H), W/H = renderer.width/height (CSS px)
 this.base = { pos: cam.position.clone(), focus, s, off: v?.enabled ? [v.offsetX, v.offsetY, v.fullWidth, v.fullHeight, v.width, v.height] : [0, 0, W, H, W, H] };
 this.baker.pan.set(0, 0); this.pipeline.setPan(0, 0);
 // drift(d): world units at the focus depth → whole internal px (px = world units per internal px)
 const nx = Math.round(d.x / px), ny = Math.round(d.y / px);          // d.x = camera right, d.y = camera up
 const [ox, oy, fw, fh, w, h] = base.off;
-cam.setViewOffset(fw, fh, ox + nx * s, oy - ny * s, w, h);           // offset +x shows more of the right: the IMAGE moves −nx (left), +ny (up)
-cam.updateProjectionMatrix();
-this.baker.pan.set(-nx, ny); this.pipeline.setPan(-nx, ny);         // the locks of §2 take the IMAGE shift, bottom-up buffer px
+cam.setViewOffset(fw, fh, ox + nx * s, oy - ny * s, w, h);           // offset +x shows more of the right: the IMAGE moves −nx (left);
+cam.updateProjectionMatrix();                                        // offset −y shows more of the top: the IMAGE moves DOWN
+this.baker.pan.set(-nx, -ny); this.pipeline.setPan(-nx, -ny);       // the locks of §2 take the IMAGE shift in bottom-up buffer px
 ```
+- Plumbing that does not exist yet: `SpriteBaker.pan: Vector2`, threaded into `SpriteSubject.bake(renderer,
+  camera, light, buffer, sharedPx, pan = NO_PAN)` (the feet snap lives there, not on the baker);
+  `Hd2dPipeline.setPan(x, y)` + the `uPan` uniform; `Grade.tiltUnscaled`; a `urlParam(name)` helper
+  next to `postFlags()` for `drift=0` / `dpx=x,y` switches (hold the camera; force a pan for the sign check).
 - This keeps the old truck's direction (camera right ⇒ image moves left). `cam.position` stays at
   `base.pos`; `d.z` is dropped (or kept as a rare snapped move).
 - Pass the sub-window `w, h` (what `fitPoints` set), never `fullWidth, fullHeight`, or the framing changes.
-- Required sign check (S4, 1 minute): capture two frames with pan 0 and pan (1, 0) on a held world
-  (`setFast`/instant, or `drift=0` plus a forced 1-px offset); `cam_analyze` rigid must be ≈ 0 and
-  every block shift = (−1, 0) px. If sprites or the dither disagree the sign is wrong, not the idea.
+- Required sign check (S4, both axes, ≈ 2 min): capture the held frame (`--extra 'drift=0'`) and the
+  forced pans (`--extra 'dpx=1,0'`, `--extra 'dpx=0,1'`) with `cam_capture.mjs --frames 1 --skip 90`, then
+  `sign_check.py held/f0000.png panx/f0000.png --expect=-1,0` and `… pany/f0000.png --expect=0,1`
+  (top-down y: +1 = down). Expect: dominant shift 100 % of blocks, centre band ≥ 95 % exact (pilot 2:
+  96 %), whole frame ≈ 72 % exact with the grade on (the vignette and tilt ramps are screen-anchored
+  by design) and ≥ 99.9 % with `post=nograde`. `cam_analyze` rigid on such a pair is ≈ 0.2–0.3 from
+  those lenses: not a lock failure.
 - `framed()` runs on every resize: it re-derives the base and resets the pan, so the next `drift()`
   re-applies it.
-- The sky/backdrop planes are aimed from the camera frustum at `framed()` time with 4 % padding; a
-  ±0.55-unit drift at the title's distance stays inside it — check the frame edges on phone.
-- Amplitude: the title drifts ±0.55 u (≈ ±44 internal px at 720p) at `sin(t·0.11)`: ≈ 0.08 px/frame
-  at the zero crossing → 1-px steps every ~12 frames, held in between. That is the intended look.
+- Amplitude: px per world unit at the focus depth = bufferHeight / (2·focus·tan(fov/2)). Title desk:
+  28.2 px/u at focus 17.56 u (fov 40) → the ±0.55 u drift is ±15 internal px, ≈ 0.03 px/frame at the
+  zero crossing → a 1-px step every ~36 frames, held in between; phone 49.5 px/u → ±27 px. Read
+  `window.__hd2dScreen` in a headless page for the live numbers. A forced ±50 px pan shows no
+  uncovered edge on either view (the backdrop pad is 4 %).
 - Gate it (§6): rigid ≤ 0.05, flick ≤ 0.02 %, rigid_bad ≤ 0.5 % as EXCESS over the idle clip of the
-  same screen; MP4 for the owner.
+  same screen (pilot 2: +0.006 / +0.014 % / 0.0 desk, +0.013 / +0.011 % / +0.07 % phone); MP4 for the owner.
 
 ## 4 Intro pan + iris reveal (battle-in, ≈ 1.6 s, judge 4/4 over static)
 1. Overworld: 2 grey pulses (16 frames each to 40 % #5a5a5a, ≥ 20 frames apart; WCAG-safe, never 3 flashes/s).
