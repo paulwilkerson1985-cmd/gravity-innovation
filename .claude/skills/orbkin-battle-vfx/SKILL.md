@@ -22,38 +22,34 @@ and safety at the end).
 
 ## Standing rules (each one was violated in a pilot run without it)
 
-1. **Timing before art.** Measure the baseline, fix impact → reaction first, re-measure. The cause is
-   known: `return tail` in every element function (the awaited async promise adopts the tail) plus
-   `Promise.all` on the attacker's lunge in `battle.ts`. Never gate the `damage` playback on the
-   attacker's recovery; resolve `moveFx` at impact via `onImpact` (`references/fx-api.md` §3).
-2. **Dissipate by shape, never by dither.** No `fadeIn`/`fadeOut` on books, no Bayer dissolve, no
-   dithered glow discs as the light: shrink, break into clumps, burn-through holes, falling sparks,
-   rising smoke. `dither_scan.py` must exit 0 (most pilot runs still shipped a checkerboard fade).
-3. **FX texel = sprite texel.** Every piece of one effect uses `scale = targetSprite.rect.px`; never
-   `texScale()` or `k*2`/`k*3` mixes; no 3D `fxMesh` in the HD-2D path (the spark ribbon is the
-   clearest style break in the game). `fx_budget` fails on any `mesh3d`.
+1. **Timing before art.** Measure, fix impact → reaction, re-measure. Cause: `return tail` in every
+   element function (the awaited async promise adopts the tail) plus `Promise.all` on the lunge in
+   `battle.ts`. Never gate `damage` on the attacker's recovery; resolve `moveFx` at impact via
+   `onImpact` (`references/fx-api.md` §3).
+2. **Dissipate by shape, never by dither.** No `fadeIn`/`fadeOut`, no Bayer dissolve, no dithered
+   glow discs: shrink, clumps, burn-through holes, falling sparks, rising smoke. `dither_scan.py`
+   must exit 0 (most pilot runs still shipped a checkerboard fade).
+3. **FX texel = sprite texel.** Every piece uses `scale = targetSprite.rect.px`; never `texScale()`
+   or `k*2`/`k*3` mixes; no 3D `fxMesh` in the HD-2D path (`fx_budget` fails on any `mesh3d`).
 4. **One FX light, pre-allocated** in the stage constructor at intensity 0; animate intensity,
-   colour, position only, and tint `rig.spriteLight` from it with per-subject falloff. Adding a light
-   mid-battle relinks every program: `fx_budget` checks the program count idle vs impact.
+   colour, position only; tint `rig.spriteLight` from it with per-subject falloff. A light added
+   mid-battle relinks every program (`fx_budget` checks the program count idle vs impact).
 5. **The 67-frame text → launch beat is a project decision.** Report it in the table; do not trim
    `say()` unless the task asks.
-6. **Gate motion on the strip only.** The frozen mid-impact frame judged a correct timing fix
-   `worse` 8/8 because the target was mid-flash. Capture it for the record, never gate on it.
+6. **Gate motion on strips only.** The frozen mid-impact frame judged a correct timing fix `worse`
+   8/8 (the target was mid-flash): record it, never gate on it.
 7. **Keep the battle rules.** Rendering plays back engine events; nothing in `src/engine`, damage,
    accuracy or the event order changes.
-8. **The flash is a shape, not an orb.** Flash frames are a disc/crescent about the target's size,
-   drawn in an **additive** front batch with book `glow ≤ 1.0`; the FX light makes the bloom. The
-   pilot's 40-texel white disc at glow 1.25 bloomed into an orb 1.5× the sprite and hid it.
-   `flash_scan.py` must pass (saturated white ≤ 1.3× the target box at impact+1/+2).
+8. **The flash is a shape, not an orb.** A disc/crescent about the target's size in an **additive**
+   front batch with book `glow ≤ 1.0`; the FX light makes the bloom (a 40-texel disc at glow 1.25
+   bloomed into an orb 1.5× the sprite and hid it). `flash_scan.py` must pass.
 9. **A hit has an aftermath.** After the flash: blast 2 f, broken blast 2 f, then sparks with 2-texel
-   heads and 3-texel trails, ≥ 24 grit points of size 2 and the light decaying, so FX are still
-   visible at impact+10 and impact+20; impact → settle 20–48 f. The pilot's effect lived two frames
-   (+10f bolt, +20f flash) and read as a blink, not a strike.
-10. **Place impact pieces at the target's screen centre** and layer them by `renderOrder` only.
-    `behind(c, p, d)` pushes along the view ray and the high 3/4 camera projects that up-left, so the
-    pilot's blast sat beside the target instead of on the hit point.
-11. **Authoring tools live in `scripts/`** (`bolt_book.py`, `impact_book.py`, `book_from_renders.py`);
-    no ad hoc painters under /tmp. Record the exact commands in the report so a book is reproducible.
+   heads and 3-texel trails, ≥ 24 grit points of size 2, the light decaying: FX still visible at
+   impact+10 and +20, impact → settle 20–48 f (a two-frame blip read as a blink, not a strike).
+10. **Place impact pieces at the target's screen centre**, layered by `renderOrder` only: `behind()`
+    pushes along the view ray, which the 3/4 camera projects up-left, off the hit point.
+11. **Authoring tools live in `scripts/`** (`bolt_book.py`, `impact_book.py`, `book_from_renders.py`),
+    never ad hoc painters under /tmp; record the exact commands so a book is reproducible.
 
 ## Workflow
 
@@ -125,9 +121,8 @@ shadows · books ≤ 12 frames of ≤ 48×48 texels, ≤ 6 colours (+ transparen
 ## Gotchas (facts that defy assumptions)
 
 - Seed 13 rolls a **critical** on the first Storm Lance for every foe; seed 14 a plain hit; seeds
-  8, 9, 11, 12 miss. Stormoth L24 (spe 51) moves before Cindertail L30 (50) and Maelstrode L30 (48);
-  Pyrelord L30 (60) moves first and the harness then logs the foe's move. A kin's menu holds its
-  **last four** learnset moves (Storm Lance from L24).
+  8, 9, 11, 12 miss. Stormoth L24 (spe 51) outspeeds Cindertail L30 and Maelstrode L30, not Pyrelord.
+  A kin's menu holds its **last four** learnset moves (Storm Lance from L24).
 - `hit()` sets emissive 0.85 on a normal hit (1.0 strong): the harness's flash threshold is 0.8.
 - Raw draw calls move with sprite re-bakes (+2 per acting kin per frame, +2 on 10 fps bake ticks),
   so the budget gates **FX draw calls** = FX meshes + points in the scene at the peak (≤ 4); the raw
@@ -147,12 +142,11 @@ shadows · books ≤ 12 frames of ≤ 48×48 texels, ≤ 6 colours (+ transparen
 - The atlas is 256 px wide; a 12-frame 32-px book needs `W = 512`. `FlipBatch` rounds `scale` ≥ 1.
 - `fx_timeline` without an `__fxEvents` marker takes the first frame with ≥ 3 FX objects as the
   impact; mark it from your code, or a two-object impact layer is missed.
-- The harness steps `requestAnimationFrame` by hand: anything on `setTimeout` or CSS transitions
-  (the HP ghost) runs on wall time; tweens, FX and text run on the virtual clock.
-- Blender: `bootstrap.sh` may not exist on this branch; then `ORBKIN_BPY` = a venv python with
-  `bpy==5.2.2` (`python3.13 -m venv DIR && DIR/bin/pip install bpy==5.2.2`, ≈ 1 GB). Cycles CPU only;
-  EEVEE has no EGL here; Mantaflow aborts in the pip module. Arc 0.3 s, splash 2 s, fire ≈ 7 s per
-  128-px frame.
+- The harness steps `requestAnimationFrame` by hand: `setTimeout` and CSS transitions (the HP
+  ghost) run on wall time; tweens, FX and text run on the virtual clock.
+- Blender: without `bootstrap.sh`, `ORBKIN_BPY` = a venv python with `bpy==5.2.2` (`python3.13 -m
+  venv DIR && DIR/bin/pip install bpy==5.2.2`, ≈ 1 GB). Cycles CPU only; no EEVEE (no EGL);
+  Mantaflow aborts in the pip module. Arc 0.3 s, splash 2 s, fire ≈ 7 s per 128-px frame.
 - Tall projectile books (24×48 … 32×96) pass `fx_budget` with `--tall`; the 80 KB cap still holds.
 - Uneven frame holds (1,2,2,2) are baked into the book with `--holds` and played at `fps: 60`; never
   `fps: 0.001` / fractional `life` hacks.
