@@ -2,7 +2,8 @@
 // strip.mjs - frame-exact MOTION capture of one attack in the real game under a 60 fps virtual clock.
 //
 //   node strip.mjs --out DIR --move pyre-crash [--lead pyrelord] [--foe mossling] [--foe-level 12]
-//        [--arena cave --route ridge --hotspot vent-cave] [--seed 13] [--frames 150] [--dt 16.667]
+//        [--arena cave --route ridge --hotspot vent-cave] [--seed 13] [--frames 240] [--dt 16.667]
+//        [--lead-frames 16] [--shot-frames 100] [--all-frames]
 //        [--game game] [--dist DIR | --no-build] [--qs post=...] [--idle 0]
 //
 // Builds (or reuses --dist) and serves the game, sets the party (lead at level 30 with --move forced into
@@ -11,13 +12,13 @@
 // bar width, number of flashing materials, scene children added/removed (projectile launch and impact burst),
 // camera view offset. Two passes on the same deterministic clock: pass 1 probes only and finds the launch
 // frame; pass 2 replays and screenshots the full frame to DIR/frames/fNNN.png (NNN = frames since the click)
-// from launch-16 to settle (--lead-frames 16; --all-frames screenshots from the click). A miss retries with
-// the next seed. --idle N first records N frames of the idle loop into DIR/idle/.
+// from launch-16 for 100 frames (--lead-frames, --shot-frames; --all-frames screenshots from the click), while the
+// probe runs to --frames (240: the known late hit reaction lands ~127 f after impact). A miss retries with the next seed. --idle N first records N frames of the idle loop into DIR/idle/.
 // Writes DIR/timeline.json (per-frame log), DIR/events.txt (condensed), DIR/meta.json {clip, subjects
 // (attacker = "mine", target = "foe", boxes in CSS px at idle), launch, impact, first_reaction, first_hp,
 // first_flash, text_frame, settle}. Feed DIR to make_strips.py (strips + GIF), motionlint.py (beats and
 // amplitudes) and judge_motion.py (blind strip judge). Never judge motion from a single frozen frame.
-// Takes ~1 min build + 2-4 min capture (SwiftShader, ~1 s per frame with a screenshot).
+// Takes ~1 min build + 5-10 min on a loaded CPU box (probe pass ~1 s/frame, screenshot pass ~3-5 s/frame).
 // Exit 0 ok, 1 the attack missed with every seed / no impact detected, 2 usage or build error.
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -35,8 +36,8 @@ if (!A.out || !A.move) { console.error('usage: node strip.mjs --out DIR --move M
 const GAME = path.resolve(A.game ?? process.env.ORBKIN_GAME ?? 'game');
 const OUT = path.resolve(A.out);
 const DIST = path.resolve(A.dist ?? path.join(OUT, 'dist'));
-const DT = Number(A.dt ?? 16.667), MAXF = Number(A.frames ?? 150), IDLE_N = Number(A.idle ?? 0);
-const LEAD = Number(A['lead-frames'] ?? 16), ALL = A['all-frames'] === 'true';
+const DT = Number(A.dt ?? 16.667), MAXF = Number(A.frames ?? 240), IDLE_N = Number(A.idle ?? 0);
+const LEAD = Number(A['lead-frames'] ?? 16), SHOTN = Number(A['shot-frames'] ?? 100), ALL = A['all-frames'] === 'true';
 const SEED0 = Number(A.seed ?? 13);
 if (!fs.existsSync(path.join(GAME, 'package.json'))) { console.error(`error: no game at ${GAME}`); process.exit(2); }
 for (const bad of [path.join(GAME, 'dist'), GAME]) if (DIST === path.resolve(bad)) { console.error(`error: refusing to build into ${DIST}`); process.exit(2); }
@@ -143,7 +144,7 @@ async function replay(seed, shotFrom) {
     }, [idx, SETTLE_CSS]);
     const log = []; let missed = false, idleRun = 0, launch = -1;
     for (let i = 0; i < MAXF; i++) {
-      if (i >= shotFrom) await page.screenshot({ path: path.join(OUT, 'frames', `f${String(i).padStart(3, '0')}.png`), animations: 'disabled' });
+      if (i >= shotFrom && i < shotFrom + SHOTN) await page.screenshot({ path: path.join(OUT, 'frames', `f${String(i).padStart(3, '0')}.png`), animations: 'disabled' });
       const p = await page.evaluate(() => window.__probe());
       p.i = i; p.ms = Math.round(i * DT); log.push(p);
       if (/missed/.test(p.text)) { missed = true; break; }

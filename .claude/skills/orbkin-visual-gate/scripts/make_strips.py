@@ -62,6 +62,9 @@ def sync_box(meta, W, H):
     return (ev(max(0, x0)), ev(max(0, y0)), ev(min(W, x1)), ev(min(H, y1)))
 
 
+MAX_W = 2400  # the judge sees <= 2576 px on the long edge natively; keep strips under it (fewer columns, more rows)
+
+
 def strip(files, box, scale, cols, out, labels, title=''):
     ims = []
     for f in files:
@@ -70,6 +73,7 @@ def strip(files, box, scale, cols, out, labels, title=''):
             im = im.resize((round(im.width * scale), round(im.height * scale)), Image.NEAREST)
         ims.append(im)
     w, h = ims[0].size
+    cols = max(2, min(cols, MAX_W // (w + 3)))
     rows = (len(ims) + cols - 1) // cols
     th = 16 if title else 0
     sh = Image.new('RGB', (cols * (w + 3), th + rows * (h + LABEL_H + 3)), BG)

@@ -21,6 +21,9 @@ strike < 8 f), FLOATY_STRIKE (strike > 20 f; travel 6-20 f), NO_OVERSHOOT, SUB_T
 texels; the 1.3-texel lunge was a diagnosed defect), SMOOTH_60 (> 90 % distinct poses; keyed cels beat smooth
 44/48), LATE_REACTION (impact -> reaction > 2 f), SLOW_LAUNCH (text -> launch > 30 f), LONG_SETTLE (launch ->
 settle > 60 f), NO_IMPACT_DETECTED.
+Caveat: the travel curve follows whatever changes inside the attacker crop. For a LUNGE it is the body; for a
+PROJECTILE move it is the projectile's flight, so the body beats (anticipation, hold, overshoot) are about the
+cast pose and FLOATY_STRIKE measures the flight. Read the attacker strip alongside the numbers.
 Prints one JSON object. Exit 0 no flags, 1 flags present, 2 bad input. Advisory: the strip judge decides.
 """
 import argparse
