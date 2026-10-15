@@ -131,7 +131,7 @@ for (const id of ids) {
   }
   const design = DESIGNS[id];
   out[id] = {
-    name: sp.name, types: sp.types, stage, evolvesTo: sp.evolvesTo?.species ?? null, idle: design?.idle ?? null, hover: design?.hover ?? 0,
+    name: sp.name, types: sp.types, stage, inDex: dex.species.has(id), evolvesTo: sp.evolvesTo?.species ?? null, idle: design?.idle ?? null, hover: design?.hover ?? 0,
     tris, trisBudget: stage === 1 && sp.evolvesTo ? 1800 : 2500, meshes, drawCalls: meshes - 1, grounded: Math.abs(bb.min.y) < 0.01,
     bbox: { x: +(bb.max.x - bb.min.x).toFixed(3), y: +hModel.toFixed(3), z: +(bb.max.z - bb.min.z).toFixed(3), centreX: +((bb.max.x + bb.min.x) / 2).toFixed(3) },
     baseScale, worldHeight: +hWorld.toFixed(3), texelHeight, texelsPerUnit: +texelsPerUnit.toFixed(2),

@@ -75,7 +75,7 @@ def hull_area(m):
 
 
 def sheet(ids, f, view_list, H, scale, path):
-    cell = H + 6
+    cell = max([H + 6] + [mask(f['species'][sid]['sil'][f'{vn}_{H}']['file']).shape[1] + 4 for sid in ids for vn in view_list])
     cols = len(ids)
     im = Image.new('RGB', (cols * (cell + 2) * scale, (len(view_list) * cell + 12) * scale), 'white')
     d = ImageDraw.Draw(im)
@@ -84,7 +84,7 @@ def sheet(ids, f, view_list, H, scale, path):
             m = mask(f['species'][sid]['sil'][f'{vn}_{H}']['file'])
             tile = Image.fromarray(np.where(m, 0, 255).astype(np.uint8)).resize((m.shape[1] * scale, m.shape[0] * scale), Image.NEAREST)
             x = c * (cell + 2) * scale + max(0, (cell * scale - tile.width) // 2)
-            y = (r * cell + 12) * scale + (cell * scale - tile.height)
+            y = (r * cell + 12) * scale + max(0, cell * scale - tile.height)
             im.paste(tile, (x, y))
     for c, sid in enumerate(ids):
         d.text((c * (cell + 2) * scale + 2, 2), sid[:9], fill='black')
@@ -120,7 +120,7 @@ def main():
                 pairs.setdefault(f'{s1}|{s2}', {})[vn] = round(iou(masks[vn][s1], masks[vn][s2]), 3)
     maxpair = {k: max(v.values()) for k, v in pairs.items()}
     prev = {s: pid for pid, s in [(pid, f['species'][pid]['evolvesTo']) for pid in ids] if s}
-    median_sol = statistics.median(sol.values())
+    median_sol = statistics.median([v for k, v in sol.items() if f['species'][k].get('inDex', True)] or list(sol.values()))
     sheet(ids, f, views, 64, 3, out / 'lineup-64.png')
     sheet(ids, f, views, 32, 4, out / 'lineup-32.png')
     res = {'species': ids, 'solidity': sol, 'solidityMedian': median_sol, 'maxIoU': {}, 'flags': [], 'sheets': [str(out / 'lineup-64.png'), str(out / 'lineup-32.png')]}

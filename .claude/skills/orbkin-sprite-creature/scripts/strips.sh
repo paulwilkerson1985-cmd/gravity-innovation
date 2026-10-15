@@ -24,6 +24,6 @@ for A in "${ACTIONS[@]}"; do
     (cd "$GAME" && node "$HERE/capture.mjs" strip --game "$GAME" --url "$URL" --out "$OUT" --name "${SPECIES}-${A}${SUFFIX}" --action "$A" --frames "$FR" --every 2 >/dev/null)
     python3 -I "$HERE/strips.py" --capture "$OUT/${SPECIES}-${A}${SUFFIX}.json" --out "$OUT/${SPECIES}-${A}${SUFFIX}.png" ${FACTS:+--facts "$FACTS" --species "$SPECIES"} || true
   fi
-  echo "strip: $OUT/${SPECIES}-${A}${SUFFIX}.png  (lint: $OUT/${SPECIES}-${A}${SUFFIX}.json next to it; per-frame log in the capture JSON)"
+  echo "strip: $OUT/${SPECIES}-${A}${SUFFIX}.png  (lint: $OUT/${SPECIES}-${A}${SUFFIX}-lint.json; per-frame log: $OUT/${SPECIES}-${A}${SUFFIX}.json)"
 done
 # Run gates one at a time afterwards: judge.py votes in parallel hit the nested CLI's timeout.

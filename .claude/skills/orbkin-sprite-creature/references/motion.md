@@ -59,13 +59,14 @@ const QUAD_ATTACK: ActKey[] = [
 const QUAD_HIT: ActKey[] = [
   { beat: 'recoil', frames: 5, sq: 0.8, lean: -0.4, fwd: -0.16, smear: true },
   { beat: 'recover1', frames: 6, sq: 1.06, lean: -0.12, fwd: -0.06 },
-  { beat: 'recover2', frames: 7, sq: 0.98, lean: 0.04, fwd: 0 },
+  { beat: 'recover2', frames: 7, sq: 0.95, lean: 0.04, fwd: 0 },
   { beat: 'rest', frames: 4, sq: 1.0, lean: 0 },
 ];
 ```
 
 and on the design: `keys: { attack: QUAD_ATTACK, hit: QUAD_HIT }`. 3) `src/render/creature.ts`:
-import `wait` from './anim' and `type ActKey` from './creatures/designs', add near the top
+import `wait` from './anim' and `type ActKey` from './creatures/designs' (creature.ts already has
+`UP`, `spring` and `tween`: do not duplicate them), add near the top
 
 ```ts
 const FRAME_MS = 1000 / 60;
@@ -73,7 +74,6 @@ const EASES = { linear: (k: number) => k, outCubic: ease.outCubic, inOut: ease.i
 /** `?motion=tween` plays the old tween acting for A/B captures even when a design has key tables. */
 const keyedMotion = () => typeof location === 'undefined' || new URLSearchParams(location.search).get('motion') !== 'tween';
 /** Damped spring 1 → 0 with a couple of overshoots. */
-const spring = (k: number, freq = 3, decay = 4) => Math.exp(-decay * k) * Math.cos(k * Math.PI * 2 * freq * 0.5);
 ```
 
 add this method to `CreatureView` (before `lunge`)
@@ -230,7 +230,10 @@ blink, so re-capture one untouched kin and compare, S7):
     this.u.uBlink.value = this.eyesShut ? 1 : Math.max(lid(bt - blinkStart), dbl ? lid(bt - blinkStart - 3 * TICK) : 0);
 ```
 
-Verify with `capture.mjs probe` + `blink_check.py --probe` (100% closed measured; the sine blink gave 40%).
+Verify with `capture.mjs probe` + `blink_check.py --probe` (97-100% closed measured on two kin; the
+sine blink gave 40%). This edit changes every kin's blink: the S0 Cragmaul frame must be re-captured
+and compared in S7, and every gate still must be captured AFTER it (capture.mjs skips blink frames
+on stills, but a capture taken before the edit is a different frame).
 
 ## §drag spring (secondary motion lags the body; not implemented, the biggest remaining craft gap)
 Pure sines ignore the body: a tail does not trail a lunge, ears do not flick on landing. Cheap

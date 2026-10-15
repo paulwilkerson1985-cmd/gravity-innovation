@@ -12,11 +12,15 @@ import json
 from pathlib import Path
 
 
+SPECIES = ''
+
+
 def load(p):
-    """Load p; if it is missing, the newest file of the same name anywhere under --dir."""
+    """Load p; if it is missing, the newest file of the same name under --dir that mentions the species."""
     p = Path(p)
     if not p.exists():
         cands = sorted(p.parent.rglob(p.name), key=lambda x: x.stat().st_mtime)
+        cands = [c for c in cands if SPECIES and SPECIES in c.read_text()] or cands
         if not cands:
             return None
         p = cands[-1]
@@ -32,8 +36,9 @@ def main():
     a.add_argument('--dir', required=True)
     a.add_argument('--out')
     args = a.parse_args()
+    global SPECIES
     d = Path(args.dir)
-    s = args.species
+    s = SPECIES = args.species
     L = [f'# {s}: creature report', '', '## Brief and divergence', '(paste brief.md: role, element, stage, texels on screen, palette roles; the 3-concept table with scores and the pick)', '']
     sheet = load(d / 'sheet.json')
     L += ['## Geometry at battle size (read_sheet.py)']
@@ -56,7 +61,7 @@ def main():
         L += ['', f'## {label}']
         L.append(f"- {json.dumps({k: v for k, v in j.items() if k != 'keys'})}" if j else '- NOT RUN')
     L += ['', '## Motion strips (strips.py measured lint)']
-    strips = sorted({p for p in d.rglob('strips/*.json') if 'frames' not in p.name})
+    strips = sorted({p for p in d.rglob('strips/*-lint.json')})
     for p in strips:
         j = load(p)
         if j:
@@ -68,7 +73,7 @@ def main():
     for p in gates:
         j = load(p)
         if j:
-            L.append(f"- {p.name}: {j.get('verdict')} (canary {j.get('canary', {}).get('verdict', 'n/a')}, {[ (r['label'], r['verdict'], r['candidateWins']) for r in j.get('results', [])]}, ${j.get('cost', 0):.2f})")
+            L.append(f"- {p.relative_to(d)}: {j.get('verdict')} (canary {j.get('canary', {}).get('verdict', 'n/a')}, {[ (r['label'], r['verdict'], r['candidateWins']) for r in j.get('results', [])]}, ${j.get('cost', 0):.2f})")
     if not gates:
         L.append('- NOT RUN')
     L += ['', '## Blind first read (judge.py read)']
@@ -76,7 +81,7 @@ def main():
     for p in reads:
         j = load(p)
         if j:
-            L.append(f"- {p.name}: {j.get('verdict')} elements {j.get('elementHits')} face {j.get('faceFound')} things {j.get('things')} archetypes {j.get('archetypes')}")
+            L.append(f"- {p.relative_to(d)}: {j.get('verdict')} elements {j.get('elementHits')} face {j.get('faceFound')} things {j.get('things')} archetypes {j.get('archetypes')}")
     if not reads:
         L.append('- NOT RUN')
     L += ['', '## Originality (judge.py ip)']
@@ -84,14 +89,14 @@ def main():
     for p in ips:
         j = load(p)
         if j:
-            L.append(f"- {p.name}: {j.get('verdict')} " + '; '.join(f"{Path(i['image']).name}: {i['verdict']} max {i['maxSimilarity']}" for i in j.get('images', [])))
+            L.append(f"- {p.relative_to(d)}: {j.get('verdict')} " + '; '.join(f"{Path(i['image']).name}: {i['verdict']} max {i['maxSimilarity']}" for i in j.get('images', [])))
     if not ips:
         L.append('- NOT RUN')
     L += ['', '## Still weak', '- ', '', '## Inferred, not measured', '- ', '', '## Files changed', '- ']
     text = '\n'.join(L) + '\n'
     out = Path(args.out or d / 'report.md')
     out.write_text(text)
-    print(text)
+    print(f'wrote {out} ({len(L)} lines); NOT RUN sections: {text.count("NOT RUN")}')
 
 
 if __name__ == '__main__':

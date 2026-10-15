@@ -68,7 +68,9 @@ work on any game checkout: `--game <dir>` or `export ORBKIN_GAME=<dir>` (default
       (two-tone on a non-cream head, dark parts below the chin line), a `KIN_SPRITE` entry only if
       the material asks. `python3 -I $S/read_sheet.py --game $G --species <id> --out $OUT/s4 --battle
       "scene=battle&route=meadow&hotspot=tall-grass&gfx=hd2d&foe=<id>&seed=7"`: exit 0 = pupil >= 3x3,
-      tris in budget, 1 mesh, grounded, no FACE flag on desk or phone. Then the blind read:
+      tris in budget, 1 mesh, grounded, no FACE flag on desk or phone (colour blocks are printed as
+      information). Check the foe's pixel height in `sheet.json` against the S0 Cragmaul capture: the
+      battle shrinks long or wide kin (design.md §builder craft). Then the blind read:
       `python3 -I $S/judge.py read $OUT/s4/battle-<id>-desk-crop.png --elements <E1>,<E2> --out
       $OUT/read-desk.json` (PASS = both elements named in >= 2/3 runs and the face found 3/3; an
       off-element archetype re-plans from S2). Put `proxy-<id>.png` and the S4 crop next to the S0
@@ -80,7 +82,7 @@ work on any game checkout: `--game <dir>` or `export ORBKIN_GAME=<dir>` (default
       texel); `node $S/capture.mjs probe --game $G --url "<battle url>" --out $OUT/cap --name blink`
       then `python3 -I $S/blink_check.py --probe $OUT/cap/blink.json` (>= 95% closed);
       `bash $S/strips.sh <id> $OUT/strips lunge hit --game $G --facts $OUT/s4/facts/facts.json`
-      (lint flags empty) and the baseline `bash $S/strips.sh <id> $OUT/strips lunge --game $G --facts
+      (lint flags empty; `strips.py --tiles 8` makes the 8-frame overview strip) and the baseline `bash $S/strips.sh <id> $OUT/strips lunge --game $G --facts
       ... --extra motion=tween --suffix -tween`; judge: `python3 -I $S/judge.py strip --candidate
       $OUT/strips/<id>-lunge.png --baseline $OUT/strips/<id>-lunge-tween.png --out $OUT/gate-strip.json`.
 - [ ] **S6 gate.** `python3 -I $S/judge.py ip $OUT/s3/lineup-<id>-64.png $OUT/s4/battle-<id>-desk-crop.png
@@ -93,10 +95,13 @@ work on any game checkout: `--game <dir>` or `export ORBKIN_GAME=<dir>` (default
       `no_difference` is a legitimate result for subtle work, but after 2 rounds of it on a new kin
       re-plan from S2 on the most frequent `reasonTags` entry (face, blob, blend, outline ...).
 - [ ] **S7 verify and report.** `npm run typecheck && npm run lint && npm run test` in `$G` (raising
-      the species-cap test from 18 is the one allowed test edit). Shared-code regression: the blink
-      and playKeys edits touch every kin, so re-capture the S0 URL (`read_sheet.py ... --out
-      $OUT/s7 --battle "...foe=cragmaul..."`) and `cmp` it with S0; if it differs, `judge.py pair`
-      it (must not be `worse`). `python3 -I $S/report.py --species <id> --dir $OUT` writes the
+      the species-cap test from 18 is the one allowed test edit; `npm run lint` also lints
+      docs/research lab scripts that fail on the untouched baseline, so `npx eslint src tests` is
+      the check that must be clean). Shared-code regression: the blink and playKeys edits touch every
+      kin, so re-capture the S0 URL (`read_sheet.py ... --out $OUT/s7 --battle "...foe=cragmaul..."`)
+      and `cmp` it with S0; if it differs, `judge.py pair` it (must not be `worse`). The S4 and S6
+      captures were taken before the S5 code edits: re-run the S4 capture, the blind read and the
+      two pairwise gates on the FINAL code (stills never land on a blink frame now) and report those. `python3 -I $S/report.py --species <id> --dir $OUT` writes the
       skeleton: fill brief, divergence table, still weak, inferred. Never claim a verdict the JSON
       does not contain.
 Bounded loop: one problem per round, at most 2 rounds without a measured gain, then re-plan from
@@ -123,7 +128,10 @@ S2 or S3. Path A (Blender body) only when the S3 sheet shows the kit cannot make
 - Texels: kin 28 / 34 / 40 by stage (`TEXELS` in `src/scenes/hd2dBattle.ts`), people 44; one
   texel = 3.6 / 2.9 / 2.5% of height; parts >= 0.05 units thick, features >= 2 texels; an eye
   no taller than a third of the head.
-- Meadow battle floor (S0 measured): #fde1a9, luminance 226 under the foe, desk and phone.
+- Meadow battle floor (S0 measured under the foe): #fcd18d-#fde1a9, luminance 213-226; a sand,
+  cream or pale body melts into it.
+- The foe bakes nearly head-on (it faces a point near the player); your kin bakes in 3/4 profile.
+  A forward bill, snout or horn is a stub on the foe: design the signature to read head-on too.
 - Idle body/face 10 fps (8 low), flames/wings/sparks 15 fps; attack totals 0.8-1.1 s; hit ~0.3 s;
   faint < 0.6 s after the cry.
 - Draw calls per frame < 100 (today ~36 in the meadow); the kin adds none.

@@ -54,21 +54,6 @@ CROP_PROMPT = (
     'the ground, no orphan pixels, a proper 1-texel outline. You must pick one. '
     'Reply with only JSON: {"winner": "A" or "B", "confidence": 1-5, "reason": "<= 25 words"}'
 )
-STRREAD_PROMPT = (
-    'This is a 2x crop of a creature-battle screenshot from an original pixel-art game. Look at the creature on the RIGHT '
-    '(the wild one; the left one belongs to the player). In one look, as a player would: what kind of animal or thing is '
-    'it, which of these elements does it read as (Flame, Tide, Flora, Terra, Spark, Gale; pick one or two), where is its '
-    'face (describe where the eyes are, or say "not found"), what is its one most distinctive part, and what generic '
-    'archetype does it fall into (e.g. spider, fox, blob, bird, rock-with-arms, sprout-on-a-critter)? '
-    'Reply with only JSON: {"thing": "...", "elements": ["..."], "face": "...", "faceFound": true or false, "signature": "...", "archetype": "..."}'
-)
-TAGS = ['face', 'eye', 'blob', 'blend', 'mud', 'outline', 'silhouette', 'texture', 'flat', 'dark', 'wash', 'read', 'detail', 'contrast', 'spider', 'generic']
-IP_PROMPT = (
-    'These are two frame strips (left to right, top to bottom, every 2nd frame at 60 fps, frame numbers on the tiles) '
-    'of the same creature sprite performing its attack animation in a turn-based creature game. Judge ONLY the '
-    'creature\'s own motion: which attack animation is better? You must pick one. '
-    'Reply with only JSON: {"winner": "A" or "B", "confidence": 1-5, "reason": "<= 25 words"}'
-)
 READ_PROMPT = (
     'This is a 2x crop of a creature-battle screenshot from an original pixel-art game. Look at the creature on the RIGHT '
     '(the wild one; the left one belongs to the player). In one look, as a player would: what kind of animal or thing is '
@@ -78,6 +63,12 @@ READ_PROMPT = (
     'Reply with only JSON: {"thing": "...", "elements": ["..."], "face": "...", "faceFound": true or false, "signature": "...", "archetype": "..."}'
 )
 TAGS = ['face', 'eye', 'blob', 'blend', 'mud', 'outline', 'silhouette', 'texture', 'flat', 'dark', 'wash', 'read', 'detail', 'contrast', 'spider', 'generic']
+STRIP_PROMPT = (
+    'These are two frame strips (left to right, top to bottom, every 2nd frame at 60 fps, frame numbers on the tiles) '
+    'of the same creature sprite performing its attack animation in a turn-based creature game. Judge ONLY the '
+    'creature\'s own motion: which attack animation is better? You must pick one. '
+    'Reply with only JSON: {"winner": "A" or "B", "confidence": 1-5, "reason": "<= 25 words"}'
+)
 IP_PROMPT = (
     'You are a character-design IP reviewer. For EVERY creature or human character you can see in this image, name '
     'the closest existing franchise character (Pokemon, Digimon, Palworld, Temtem, Dragon Quest, Monster Hunter, '

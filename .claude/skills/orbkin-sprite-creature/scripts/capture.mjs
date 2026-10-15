@@ -158,12 +158,21 @@ if (mode === 'still') {
   for (const v of views) {
     const { ctx, page, errors } = await open(v, report.url);
     const r = requireIdle ? await runToIdle(page, maxFrames, settle) : { idle: true, frame: await page.evaluate((n) => window.__vclock.step(n), maxFrames + settle) };
+    // A gate frame must not catch a kin mid-blink (eyes shut flipped a face read 3/3 -> 1/3): step on
+    // until every kin's uBlink is 0 (at most 30 frames; the blink is <= 2 ticks long).
+    r.blinkSkipped = await page.evaluate(() => {
+      const st = window.__hd2d; if (!st || !st.views) return 0;
+      let n = 0;
+      while (n < 30 && st.views.some((v) => v && v.uniforms.uBlink.value > 0)) { window.__vclock.step(1); n++; }
+      return n;
+    });
+    r.frame += r.blinkSkipped;
     const file = path.join(OUT, `${name}-${v}.png`);
     await page.screenshot({ path: file });
     const layout = await layoutOf(page);
     const perf = await page.evaluate(() => (window.__game.perf ? window.__game.perf() : null));
     const info = await page.evaluate(() => window.__game.renderInfo());
-    report.views[v] = { file, ...VIEWPORTS[v].viewport, dpr: VIEWPORTS[v].deviceScaleFactor, idle: r.idle, frame: r.frame, subjects: layout?.subjects ?? [], drawCalls: info.calls, perf, errors };
+    report.views[v] = { file, ...VIEWPORTS[v].viewport, dpr: VIEWPORTS[v].deviceScaleFactor, idle: r.idle, frame: r.frame, blinkSkipped: r.blinkSkipped, subjects: layout?.subjects ?? [], drawCalls: info.calls, perf, errors };
     if (!r.idle || errors.length) failed = true;
     await ctx.close();
   }

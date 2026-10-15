@@ -4,7 +4,7 @@
   python3 strips.py --capture cap/kin19-attack.json --out strips/kin19-attack.png [--facts facts.json --species kin19] [--cols 9]
 Input: the JSON written by `capture.mjs strip` (frames every 2nd frame, per-frame log of the actor's
 inner position / body scale). Output: a strip PNG (native nearest scale, frame number on each tile,
-<= 2400 px wide) and a JSON next to it with the MEASURED lint (what actually played, in texels):
+<= 2400 px wide) and <name>-lint.json next to it with the MEASURED lint (what actually played, in texels):
   anticipationFrames, backTexels (wind-up travel), strikeFrames, reachTexels, maxStretch, minSquash,
   overshootTexels, settleFrame, totalFrames, distinctCels (how many frames changed the pose).
 Lunge flags: NO_ANTICIPATION (< 3 f or < 2 texels), TOO_FAST (anticipation + hold < 10 f), NO_STRETCH (< 1.25),
@@ -113,6 +113,7 @@ def main():
     p.add_argument('--facts')
     p.add_argument('--species')
     p.add_argument('--cols', type=int, default=8)
+    p.add_argument('--tiles', type=int, default=0, help='subsample to N evenly spaced tiles (e.g. 8 for the launch -> +1.2 s overview strip)')
     p.add_argument('--kind', default=None, choices=['lunge', 'hit', 'none'], help='lint rules (default from the capture action: lunge/hit; faint, idle, appear tile only)')
     p.add_argument('--max-width', type=int, default=2400)
     a = p.parse_args()
@@ -130,6 +131,9 @@ def main():
         sub = view['subject']
         tx_per_unit = 34 / 1.2
         print('warning: no --facts/--species; texel conversion is approximate', file=sys.stderr)
+    if a.tiles and a.tiles < len(frames):
+        step = (len(frames) - 1) / (a.tiles - 1)
+        frames = [frames[round(i * step)] for i in range(a.tiles)]
     ims = [Image.open(x) for x in frames]
     w, h = ims[0].size
     cols = min(a.cols, len(ims))
@@ -141,7 +145,7 @@ def main():
         x = (i % cols) * (w * scale + 2)
         y = (i // cols) * (h * scale + 14) + 12
         strip.paste(im.resize((w * scale, h * scale), Image.NEAREST), (x, y))
-        dr.text((x + 2, y - 11), f"f{i * view['every']}", fill=(255, 240, 200))
+        dr.text((x + 2, y - 11), f"f{int(frames[i].stem[1:])}", fill=(255, 240, 200))
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     strip.save(out)
@@ -150,7 +154,7 @@ def main():
     res = lint(view['log'], tx_per_unit, kind)
     res.update({'strip': str(out), 'frames': len(ims), 'every': view['every'], 'action': view.get('action')})
     s = json.dumps(res, indent=1)
-    out.with_suffix('.json').write_text(s)
+    out.with_name(out.stem + '-lint.json').write_text(s)  # never the capture JSON's name
     print(s)
     sys.exit(1 if res.get('flags') else 0)
 

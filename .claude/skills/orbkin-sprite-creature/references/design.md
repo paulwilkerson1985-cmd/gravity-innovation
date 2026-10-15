@@ -12,9 +12,9 @@ rare single); element(s) and the hue family each owns (Flame red-orange + ember 
 cyan; Gale sky blue + white + orange); stage and texels on screen (stage 1 = 28 texels tall,
 stage 2 and single-stage rares = 34, stage 3 = 40; a person = 44); the arena it will mostly be
 seen in and that arena's FLOOR colour and luminance as `read_sheet.py --battle` printed it in S0
-(`floor.hex`, `floor.luminance`; the meadow battle floor is a light warm sand path, #fde1a9 /
-luminance 226, NOT grass: a sand, cream or pale-lichen body melts into it; the kin must separate
-by value AND hue); budgets (tris, one mesh). The concept-level fields (signature part, behaviour,
+(`floor.hex`, `floor.luminance`; the meadow battle floor is a light warm sand path, measured
+#fcd18d-#fde1a9 / luminance 213-226 depending on the foe's spot, NOT grass: a sand, cream or
+pale-lichen body melts into it; the kin must separate by value AND hue); budgets (tris, one mesh). The concept-level fields (signature part, behaviour,
 palette roles, forbidden shape, working name) are written per concept in S2 and copied into the
 brief only after the table has picked one.
 
@@ -74,8 +74,13 @@ baseScale to grow >= 1.15x per stage.
 
 ## §faces for the battle camera (the most violated rule: 2+ pilot runs shipped eyes under 3x3,
 ## and a 4x5-texel single-tone eye still vanished in the bake)
-The sprite bakes from a near-side view (the camera's yaw, pitch <= 12.6 deg); your kin shows its
-near eye, the foe shows its 3/4 face. The pupil box must be >= 3x3 texels at battle size:
+The sprite bakes from a near-side view (the camera's yaw, pitch <= 12.6 deg). Your kin stands in a
+side / 3-4 profile turned 0.42 rad toward the camera (`FLAT_POSES.turn` overrides that for your
+kin only); the FOE faces a fixed point near the player (`spots[0] + (2, 0, 3)`), i.e. nearly
+HEAD-ON to the camera: a forward-pointing bill, snout or horn collapses to a stub, a crest
+across the head reads, and the face is what the foe shows. Design the signature so it reads
+head-on AND from the side (the model gallery `view=front` is close to the foe's bake), or cock the
+head in the builder (the pilot's long bill only read after a 0.75 rad head turn). The pupil box must be >= 3x3 texels at battle size:
 `eyes()` size >= 1.5 / texelsPerUnit model units (read_sheet prints the number per species;
 ~0.075 at 28 texels on a 1.4-unit kin, ~0.073 at 34 on 1.65 units). Put the eyes on the
 camera side of the head's curvature (yaw 0.36-0.6 rad), never on the silhouette edge; one
@@ -88,8 +93,14 @@ tone). So: a 1-tone dark eye on a dark or mid head fuses with it; give eyes two 
 `sclera: true` or a light `iris` ring behind a dark pupil) on any head darker than a cream mask,
 and keep every dark part (knuckles, paws, joints, nose) below the chin line and off the ring
 around the eyes (the pilot's knuckle orbs sat at eye height and merged with the eyes into one
-black mass). Faces that read: Ashkit (big low eyes on a cream mask). Faces that vanish: Cragmaul
-(1.7x1.5 texels under a brow, contrast 0.01), the pilot's stilt kin (4x5 texels, contrast 0.16).
+black mass). Sclera versus iris: `eyes()` draws the pupil at 0.62 x size when an `iris` is given, so a 3x3
+pupil with an iris needs size ~0.13 and exceeds a third of a small head; on small kin use
+`sclera: true` (white behind a full-size dark pupil) instead. Faces that read: Ashkit (big low
+eyes on a cream mask, contrast 0.48 desk). Faces that vanish: Cragmaul (1.7x1.5-texel pupils,
+contrasty but too small), the pilot's stilt kin (4x5-texel single-tone eyes beside dark knuckles,
+blind read "spider", face 0/3). The near-eye box the check uses is the projected eye geometry: if
+the bill or a brow covers the eye from the battle yaw the number is meaningless, so look at
+`eyebox` in `sheet.json` against the crop before trusting it.
 
 ## §colour blocks and bake options
 - Three colour blocks: main, belly/mask (countershade with `under(main, belly)` by face normal,
@@ -123,7 +134,11 @@ black mass). Faces that read: Ashkit (big low eyes on a cream mask). Faces that 
 ## §builder craft (`src/render/creatures/designs.ts`)
 - One `Design` per species: `{ scale, hover?, idle, keys?, build(k) }`, registered in `DESIGNS`
   and in `LINES` (the lineup test requires both). Model faces +Z, y up; `Kit.build()` grounds
-  the lowest vertex on y = 0. `scale` ~0.86-1.0 (the battle normalises size by stage).
+  the lowest vertex on y = 0. The battle normalises size (`fitKin`): the kin is scaled so that
+  `max(height, 0.8 x max(width, depth)) x scale` becomes ~1.1-1.2 units x a stage factor (with a
+  ^0.4 softening), so a LONG or WIDE kin is shrunk by its footprint and looks small next to a tall
+  one; a bill, tail or wingspan costs height. `scale` ~0.86-1.0 for compact kin; raise it (1.2+)
+  for slim or horizontal ones and check the foe's pixel height in `sheet.json` against Cragmaul's.
 - Primitives: `k.orb` (smooth low-poly sphere, heads/bodies), `k.ball` (ico, lumps), `k.tube`
   (Catmull-Rom tube with a radius function: necks, tails, bodies), `k.lathe` (droplets, cones),
   `k.limb`/`k.cone`/`k.blade` (tapered limbs, horns, ears), `k.slab` / `slabAt` / `frame().slab`

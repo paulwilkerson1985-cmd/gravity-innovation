@@ -7,7 +7,8 @@ Prints one line per species: tris / budget, draw calls, grounded, height in texe
 texels (the pupil box, L/R), colour blocks (shares >= 4%), and FLAGS:
   EYES  < 3x3 texels at battle size (the most violated rule in pilot runs)
   TRIS  over the unit-test budget (1800 for a stage 1 that evolves, else 2500)
-  CALLS more than one mesh, GROUND lowest vertex off y = 0, BLOCKS not 2-5 colour blocks (aim 3-4).
+  CALLS more than one mesh, GROUND lowest vertex off y = 0. Colour blocks (shares >= 4%) are printed
+  as information (aim 3-4 on the model; 11 of the 18 kin count more because of detail tones).
 Renders (unless --no-render): DIR/sheet-<id>-{front,q3,side}.png from ?scene=model (frozen idle)
 and DIR/proxy-<id>.png: the front view downscaled to the species' battle texel height and
 blown up 4x nearest (what the player actually sees; look at it, not at the 420 px model).
@@ -42,8 +43,6 @@ def flags_for(d):
         fl.append(f"CALLS {d['drawCalls']} meshes besides the shadow (must be one merged mesh)")
     if not d['grounded']:
         fl.append('GROUND lowest vertex not on y = 0')
-    if not 2 <= d['colours']['blocks'] <= 5:
-        fl.append(f"BLOCKS {d['colours']['blocks']} colour blocks >= 4% (aim for 3-4: main, belly/mask, accent, one dark detail)")
     return fl
 
 
