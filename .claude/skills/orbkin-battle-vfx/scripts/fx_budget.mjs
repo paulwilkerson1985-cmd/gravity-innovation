@@ -4,7 +4,8 @@
 //
 //   node fx_budget.mjs --timeline AFTER/timeline.json [--book path/to/book.json ...] [--json]
 //        [--max-extra-calls 4] [--max-points 120] [--max-frames 12] [--max-size 48] [--max-colors 6]
-//        [--max-book-kb 80] [--max-launch-to-settle 60] [--require-light] [--allow-3d-mesh]
+//        [--max-book-kb 80] [--max-launch-to-settle 60] [--require-light] [--allow-3d-mesh] [--tall]
+//   --tall allows projectile books up to 48 wide x 96 tall (a from-the-sky bolt); the texel count must still fit 80 KB.
 //
 // Budget (SKILL.md "Budget per effect"): <= 1.0 s launch->settle, <= 4 FX draw calls at the peak
 // (FX meshes + points; raw calls also move with sprite re-bakes), one pre-allocated FX light (point-light count constant across every
@@ -44,7 +45,8 @@ for (const p of books) {
   const kb = (b.w * b.h * nFrames * 4) / 1024;
   const id = b.id ?? p;
   row(`book ${id}: frames`, nFrames, `<= ${lim.frames}`, nFrames <= lim.frames);
-  row(`book ${id}: size (texels)`, `${b.w}x${b.h}`, `<= ${lim.size}x${lim.size}`, b.w <= lim.size && b.h <= lim.size);
+  const maxH = a.tall ? Math.max(lim.size, 96) : lim.size;
+  row(`book ${id}: size (texels)`, `${b.w}x${b.h}`, `<= ${lim.size}x${maxH}`, b.w <= lim.size && b.h <= maxH);
   row(`book ${id}: colours (ramp minus transparent)`, colours, `<= ${lim.colors}`, colours !== null && colours <= lim.colors);
   row(`book ${id}: RGBA KB`, Math.round(kb), `<= ${lim.bookKb}`, kb <= lim.bookKb);
   if (Array.isArray(b.idx)) {

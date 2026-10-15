@@ -126,7 +126,12 @@ lunge's return/settle overlaps the reaction (never awaited on a hit). Do not sho
 - **Set dim**: scale the arena lights the stage owns (`rig.key.intensity` and the hemisphere/fill
   found by `rig.group.traverse(o => o.isLight && !o.userData.fx)`) by `1 − dim` for the move and
   restore during dissipation. Sprites keep their own `spriteLight` and FX are unlit, so only the set
-  dims (Emerald/Showdown). Do not touch `grade.exposure` (it dims the FX and sprites too).
+  dims (Emerald/Showdown). The lit cave is dominated by **emissive** set pieces (lava falls, lit
+  ledges, window shafts, light pools) that no light drives: dim them too, by traversing
+  `rig.group` materials once at scene start and remembering `emissiveIntensity` / unlit `color` /
+  `uniforms.uAmt`-style strengths, then scaling them by `1 − dim` with the lights (a `dimSet(k)`
+  on the stage). `flash_scan.py` measures the dim the player sees; 20 % on the lights alone measured
+  ≈ 0 in the pilot. Do not touch `grade.exposure` (it dims the FX and sprites too).
 - Flash cadence: `blinkOff` toggles are tick-aligned at the sprite bake rate while `acting`
   (`live()` → re-bake every frame), so 4-frame blinks land; keep ≤ 3 flashes per second.
 

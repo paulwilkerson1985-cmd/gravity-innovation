@@ -65,7 +65,7 @@ def frames(size, n):
                 g[y][x] = top if d <= R * 0.6 - 1.2 else mid
     for k in range(int(R * 0.62), int(R * 0.98)):
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            x, y = int(round(c + dx * k)), int(round(c + dy * k))
+            x, y = int(math.floor(c + 0.5 + dx * k)), int(math.floor(c + 0.5 + dy * k))
             if 0 <= x < size and 0 <= y < size:
                 g[y][x] = top
     out.append(g)

@@ -41,6 +41,19 @@ and safety at the end).
    `worse` 8/8 because the target was mid-flash. Capture it for the record, never gate on it.
 7. **Keep the battle rules.** Rendering plays back engine events; nothing in `src/engine`, damage,
    accuracy or the event order changes.
+8. **The flash is a shape, not an orb.** Flash frames are a disc/crescent about the target's size,
+   drawn in an **additive** front batch with book `glow ≤ 1.0`; the FX light makes the bloom. The
+   pilot's 40-texel white disc at glow 1.25 bloomed into an orb 1.5× the sprite and hid it.
+   `flash_scan.py` must pass (saturated white ≤ 1.3× the target box at impact+1/+2).
+9. **A hit has an aftermath.** After the flash: blast 2 f, broken blast 2 f, then sparks with 2-texel
+   heads and 3-texel trails, ≥ 24 grit points of size 2 and the light decaying, so FX are still
+   visible at impact+10 and impact+20; impact → settle 20–48 f. The pilot's effect lived two frames
+   (+10f bolt, +20f flash) and read as a blink, not a strike.
+10. **Place impact pieces at the target's screen centre** and layer them by `renderOrder` only.
+    `behind(c, p, d)` pushes along the view ray and the high 3/4 camera projects that up-left, so the
+    pilot's blast sat beside the target instead of on the hit point.
+11. **Authoring tools live in `scripts/`** (`bolt_book.py`, `impact_book.py`, `book_from_renders.py`);
+    no ad hoc painters under /tmp. Record the exact commands in the report so a book is reproducible.
 
 ## Workflow
 
@@ -54,22 +67,28 @@ and safety at the end).
 - **S2 Timing fix.** Read `references/fx-api.md` §3–4. Add `onImpact`, remove every `return tail`,
   let the lunge overlap, mark the impact frame with `window.__fxEvents`. Re-run S0: impact →
   reaction ≤ 2 f before anything else.
-- **S3 Impact book + hit feedback by severity.** Hand-ruled key frames
-  (`impact_book.py`) over the target: contrast → white flash → sharp blast → broken blast; `hit()`
-  hold = hit-stop frames by severity (3 / 5–6 / 8), directional kick for every hit, flash + blinks,
-  knockback, FX light peak with the sprite-light tint, set dim 15–35 % for electric and strong moves.
-- **S4 Body and dissipation.** Author the body book (`book_from_renders.py`, Blender optional via
-  `blender_fx.py`), load it as an external book (`fx-api.md` §6), play at the sprite texel, shape
-  dissipation, light decay with the element's flicker.
+- **S3 Impact book + hit feedback by severity.** Hand-ruled key frames (`impact_book.py` →
+  `book_from_renders.py --passthrough --holds 1,2,2,2`, played at 60 fps) at the target's centre:
+  contrast → white flash (additive, in front) → sharp blast → broken blast (behind); `hit()` hold =
+  hit-stop frames by severity (3 / 5–6 / 8), directional kick for every hit, flash + blinks,
+  knockback, FX light peak with the sprite-light tint, set dim 15–35 % for electric and strong moves
+  (lights **and** emissive set materials; `flash_scan.py` reads the achieved dim).
+- **S4 Body, aftermath, dissipation.** Author the body book: electric with `bolt_book.py --from-sky`
+  (tall book, bottom at the target's centre), other elements by hand or `blender_fx.py`, both
+  through `book_from_renders.py`; load it as an external book (`fx-api.md` §6), play at the sprite
+  texel; then the aftermath (rule 9) and shape dissipation with the light decaying on the element's
+  flicker.
 - **S5 Measure.** `fx_timeline.sh MOVE --out OUT/after --before OUT/before/timeline.json` (same seed
   and foe) for each severity you touched; `node ${CLAUDE_SKILL_DIR}/scripts/fx_budget.mjs --timeline
   OUT/after/timeline.json --book BOOK.json --require-light`; `python3 -I
   ${CLAUDE_SKILL_DIR}/scripts/dither_scan.py OUT/after`. Fix and repeat; stop after two rounds
   without a measured gain and re-plan.
-- **S6 Gate.** `make_strip.py OUT/before before.png` then `make_strip.py OUT/after after.png --crop
-  <before's crop>`; `strip_judge.py --candidate after.png --baseline before.png --out verdict.json`
-  (fresh blind `claude -p` votes, canary first, both orders; exit 0 = `better`). `orbkin-visual-gate`
-  owns the full gate when it exists; this is its motion view. `npm run typecheck && npm test` in
+- **S6 Gate.** `flash_scan.py OUT/after` (flash shape + set dim); two strips, both judged:
+  `make_strip.py OUT/before before.png` / `make_strip.py OUT/after after.png --crop <before's crop>`
+  (motion view) and the same with `--impact` (impact view: i-2 … i+32); `strip_judge.py --candidate
+  after.png --baseline before.png --out verdict.json` per view (fresh blind `claude -p` votes, canary
+  first, both orders; exit 0 = `better`; the impact view may not be `worse`). `orbkin-visual-gate`
+  owns the full gate when it exists; these are its motion views. `npm run typecheck && npm test` in
   `game/`.
 - **S7 Report** with the template below.
 
@@ -79,8 +98,10 @@ and safety at the end).
 |---|---|---|
 | `fx_timeline.sh MOVE` → `timeline.mjs` + `tl_summary.py` | frame-exact beats, counters, 8-frame strip frames, before/after table | 1 = a beat outside the sheet |
 | `fx_budget.mjs --timeline T.json [--book B.json] [--require-light]` | extra draw calls ≤ 4, points ≤ 120, light pre-allocated, programs constant, no 3D mesh, book ≤ 12 f / 48² / 6 colours / 80 KB | 1 over |
-| `make_strip.py RUN out.png [--crop] [--pair RUN2]` | the gate's motion strip (launch → +70 f, 2×4) + `.mid.png` record frame | |
+| `make_strip.py RUN out.png [--crop] [--pair RUN2] [--impact]` | the motion strip (launch → +70 f, 2×4) or the impact strip (i-2 … i+32) + `.mid.png` record frame | |
 | `dither_scan.py RUN` | clustered checkerboard texels per strip frame vs the launch frame | 1 = dither dissolve |
+| `flash_scan.py RUN` | saturated-white area at impact+1/+2 vs the target box (≤ 1.3×); achieved set dim on the impact frames | 1 = orb or no dim |
+| `bolt_book.py DIR --w 24 --h 48 --from-sky` | 8-frame electric bolt: shock, second shock, blank, fade, blank, sparks (texel grid, sharp corners, branches, white core near the strike) | |
 | `strip_judge.py --candidate A --baseline B` | blind pairwise strip judge, canary, both orders | 0 better · 1 not · 3 invalid |
 | `impact_book.py DIR --ramp spark` | contrast / white / blast / broken key frames as PNGs | |
 | `book_from_renders.py --id ID --out DIR --ramp R --w W --h H FRAMES…` | renders → palette-locked JSON book + atlas + ×4 preview (`--passthrough` for hand frames on the ramp) | |
@@ -132,6 +153,9 @@ shadows · books ≤ 12 frames of ≤ 48×48 texels, ≤ 6 colours (+ transparen
   `bpy==5.2.2` (`python3.13 -m venv DIR && DIR/bin/pip install bpy==5.2.2`, ≈ 1 GB). Cycles CPU only;
   EEVEE has no EGL here; Mantaflow aborts in the pip module. Arc 0.3 s, splash 2 s, fire ≈ 7 s per
   128-px frame.
+- Tall projectile books (24×48 … 32×96) pass `fx_budget` with `--tall`; the 80 KB cap still holds.
+- Uneven frame holds (1,2,2,2) are baked into the book with `--holds` and played at `fps: 60`; never
+  `fps: 0.001` / fractional `life` hacks.
 - The strip judge sends images at native size (long edge ≤ 2576 px): keep `make_strip.py` at
   `--scale 1`, 2×4 layout. Judges with Opus; a run costs ≈ $0.30.
 

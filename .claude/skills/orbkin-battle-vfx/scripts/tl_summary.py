@@ -10,7 +10,8 @@ Exit 0 = every checked beat inside the beat sheet, 1 = at least one beat outside
 Checks (60 fps frames; see references/timing.md): impact->reaction <= 2, flash on the impact frame
 (impact->flash <= 1), hit-stop by severity (normal 3, super-effective 5-6, critical 8-10, KO 10-12;
 not-very-effective 0-2; counted as frames held, flash frame included: a hold of N frames reads N),
-launch->settle <= 60, text->launch reported only (project decision). Draw calls: "FX draw calls peak"
+launch->settle <= 60, aftermath (impact->settle) 20-48 f on normal and stronger hits (a two-frame
+blip is not a hit), text->launch reported only (project decision). Draw calls: "FX draw calls peak"
 is the number of FX meshes/points in the scene (what fx_budget gates, <= 4); raw calls include +2 per
 acting kin per frame for sprite re-bakes and bake ticks, so they are informational.
 """
@@ -35,7 +36,7 @@ def row(r):
         'impact->reaction': e['impactToReaction'], 'hit-stop': hs, 'hit-stop target': f'{lo}-{hi}' if lo != hi else str(lo),
         'attacker held': e.get('attackerHeld'), 'shake frames': e['shake']['frames'], 'shake peak px': e['shake']['peakPx'],
         'shake kind': 'kick' if e['shake']['directional'] else ('buzz' if e['shake']['directional'] is False else '-'),
-        'hp drain f': e['hpDrainFrames'], 'launch->settle': e['launchToSettle'], 'set dim peak %': round((e.get('setDimPeak') or 0) * 100),
+        'hp drain f': e['hpDrainFrames'], 'launch->settle': e['launchToSettle'], 'aftermath f': e.get('aftermath'), 'set dim peak %': round((e.get('setDimPeak') or 0) * 100),
         'FX draw calls peak': c.get('fxDrawsPeak'), 'raw calls idle': c['idleCalls'], 'raw calls peak': c['peakCalls'], 'raw extra calls': c['extraCalls'],
         'programs': f"{c['programsIdle']}->{c['programsPeak']}", 'point lights': c['pointLights'], 'lit peak': c['litPointLightsPeak'],
         'points peak': c['pointsAlivePeak'], '3D fx meshes': c['meshes3dAdded'], 'fx objects peak': c['fxObjectsPeak'],
@@ -58,6 +59,9 @@ def checks(r, severity=None):
     chk(f'hit-stop {lo}-{hi} f for {sev}', hs is not None and lo <= hs <= hi, f'{hs} f')
     ls = e['launchToSettle']
     chk('launch->settle <= 60 f', ls is not None and ls <= 60, f'{ls} f')
+    am = e.get('aftermath')
+    if sev in ('normal', 'super-effective', 'critical', 'ko'):
+        chk('aftermath (impact->settle) 20-48 f: blast, body, dissipation still visible', am is not None and 20 <= am <= 48, f'{am} f')
     sh = e['shake']
     chk('shake is a directional kick (not a buzz)', sh['frames'] == 0 or sh['directional'] is True, f"{sh['frames']} f, peak {sh['peakPx']} px, {sh['pattern'][:4]}")
     chk('programs unchanged idle->impact (light pre-allocated)', c['programsPeak'] == c['programsIdle'], f"{c['programsIdle']} -> {c['programsPeak']}")

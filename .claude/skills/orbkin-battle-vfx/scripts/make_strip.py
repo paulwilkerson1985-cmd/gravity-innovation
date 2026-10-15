@@ -3,6 +3,11 @@
 
   python3 make_strip.py RUN_DIR OUT.png [--crop x0,y0,x1,y1] [--scale 1] [--cols 4] [--label "after"]
   python3 make_strip.py RUN_DIR OUT.png --pair OTHER_RUN_DIR      # two rows, same crop (A over B)
+  python3 make_strip.py RUN_DIR OUT.png --impact                  # the impact strip instead
+
+Two strips, both gated: the MOTION strip (launch, +10 .. +70 f: does the whole hit read and settle)
+and the IMPACT strip (--impact: impact-2, impact, +1, +2, +4, +8, +16, +32 f: contrast frame, flash,
+hit-stop, blast, dissipation; an effect of 30 f fills only two frames of the motion strip).
 
 RUN_DIR is a timeline.mjs output dir (strip-frames.json + frames/*.png). The strip is the 8 frames
 from the launch frame every 10 frames (launch -> +70 f = 1.17 s), cropped around the target with the
@@ -24,8 +29,14 @@ def load_run(d):
     return sf, tl
 
 
-def row(sf, tl, crop, scale, label, cols):
+def row(sf, tl, crop, scale, label, cols, impact=False):
     frames = sf['frames']
+    labels = [f'+{i * sf["every"]}f' for i in range(len(frames))]
+    if impact:
+        frames = [x['file'] for x in sf.get('impactStrip', [])]
+        labels = [f"i{x['d']:+d}" for x in sf.get('impactStrip', [])]
+        if not frames:
+            sys.exit('make_strip: no impact strip in this run (no impact found); re-run timeline.mjs')
     missing = [i for i, p in enumerate(frames) if not p or not os.path.exists(p)]
     if missing:
         sys.exit(f'make_strip: frames missing in strip (indices {missing}); re-run timeline.mjs')
@@ -34,7 +45,7 @@ def row(sf, tl, crop, scale, label, cols):
         im = Image.open(p).convert('RGB').crop(crop)
         im = im.resize((im.width * scale, im.height * scale), Image.NEAREST)
         d = ImageDraw.Draw(im)
-        t = f'+{i * sf["every"]}f'
+        t = labels[i]
         d.rectangle([0, 0, 8 + 7 * len(t), 14], fill=(0, 0, 0))
         d.text((4, 2), t, fill=(255, 255, 255))
         tiles.append(im)
@@ -53,15 +64,17 @@ def main(argv):
     if len(argv) < 2 or '--help' in argv:
         print(__doc__); return 2
     run, outp = argv[0], argv[1]
-    opts = {argv[i]: argv[i + 1] for i in range(2, len(argv) - 1, 2) if argv[i].startswith('--')}
+    argv = [a for a in argv if a != '--impact'] + (['--impact'] if '--impact' in argv else [])
+    opts = {argv[i]: argv[i + 1] for i in range(2, len(argv) - 1) if argv[i].startswith('--') and not argv[i + 1].startswith('--')}
     sf, tl = load_run(run)
     crop = [int(v) for v in opts['--crop'].split(',')] if '--crop' in opts else tl['crop']
     scale = int(opts.get('--scale', '1'))
     cols = int(opts.get('--cols', '4'))
-    rows = [row(sf, tl, crop, scale, opts.get('--label', os.path.basename(os.path.normpath(run))), cols)]
+    impact = '--impact' in argv
+    rows = [row(sf, tl, crop, scale, opts.get('--label', os.path.basename(os.path.normpath(run))), cols, impact)]
     if '--pair' in opts:
         sf2, tl2 = load_run(opts['--pair'])
-        rows.append(row(sf2, tl2, crop, scale, os.path.basename(os.path.normpath(opts['--pair'])), cols))
+        rows.append(row(sf2, tl2, crop, scale, os.path.basename(os.path.normpath(opts['--pair'])), cols, impact))
     w = max(r.width for r in rows); h = sum(r.height for r in rows) + 4 * (len(rows) - 1)
     out = Image.new('RGB', (w, h), (24, 24, 24))
     y = 0
@@ -71,7 +84,7 @@ def main(argv):
     mid = sf.get('midImpact')
     if mid and os.path.exists(mid):
         Image.open(mid).save(os.path.splitext(outp)[0] + '.mid.png')
-    print(json.dumps({'strip': outp, 'crop': crop, 'frames': len(sf['frames']), 'every': sf['every'], 'launch': sf['launch'], 'size': out.size}))
+    print(json.dumps({'strip': outp, 'view': 'impact' if impact else 'motion', 'crop': crop, 'launch': sf['launch'], 'impact': sf.get('impact'), 'size': out.size}))
     return 0
 
 

@@ -3,7 +3,7 @@
 
   python3 book_from_renders.py --id spark-arc --out DIR --ramp spark --w 32 --h 48 FRAME_DIR [FRAME_DIR2 ...]
       [--edges 0.3,0.6,0.92] [--thr 0.25] [--dither 0.1] [--mode 1] [--close 0] [--no-band] [--gamma 1.0]
-      [--blank 2,5] [--fit] [--keep-hot] [--passthrough] [--orphans 8|4|0] [--json]
+      [--blank 2,5] [--fit] [--keep-hot] [--passthrough] [--orphans 8|4|0] [--holds 1,2,2,2] [--json]
 
 Hand-drawn frames already painted on the ramp's colours (impact_book.py output, your own painter):
 use --passthrough: every texel takes the nearest ramp colour by exact/nearest RGB (no re-banding by
@@ -28,6 +28,9 @@ from impact_book.py in the first dir, the Blender body in the second). Pipeline 
   7. dark edge band: outer texels become ramp index 1 unless they are the hot (top) index
      (--keep-hot keeps every index >= top-1 unbanded; --no-band skips it).
   8. --blank i,j forces those frame indices empty (electric "on twos": blanks at 2 and 5).
+  9. --holds n0,n1,... duplicates source frame i n_i times, so a book with uneven holds (impact:
+     1,2,2,2) plays at ONE fixed fps (60 for frame-exact holds, 30 for holds in pairs) with no
+     per-frame timing hacks; the frame budget counts the duplicated frames.
 Frames already at the target size skip only the downscale (step 1); they still go through steps
 2-8 unless --passthrough.
 Writes DIR/<id>.json {id, w, h, frames, ramp, idx[frame][w*h]} (the FlipBatch book), DIR/<id>.png
@@ -63,7 +66,7 @@ def load_frames(dirs):
     for d in dirs:
         if os.path.isfile(d):
             paths.append(d); continue
-        fs = sorted(f for f in os.listdir(d) if f.lower().endswith('.png'))
+        fs = sorted(f for f in os.listdir(d) if f.lower().endswith('.png') and 'sheet' not in f and 'preview' not in f)
         if not fs:
             sys.exit(f'book_from_renders: no PNG frames in {d}')
         paths += [os.path.join(d, f) for f in fs]
@@ -232,6 +235,12 @@ def main(argv):
         books.append(idx)
         used = sorted(set(np.unique(idx).tolist()) - {0})
         stats.append({'frame': fi, 'src': os.path.basename(paths[fi]), 'fill': round(float((idx > 0).mean()), 3), 'colours': used, 'orphansRemoved': orphans})
+    if o.get('--holds'):
+        holds = [int(v) for v in o['--holds'].split(',')]
+        if len(holds) != len(books):
+            sys.exit(f'book_from_renders: --holds needs {len(books)} values, got {len(holds)}')
+        books = [b for b, n in zip(books, holds) for _ in range(n)]
+        stats = [dict(st, hold=n) for st, n in zip(stats, holds)]
     os.makedirs(o['--out'], exist_ok=True)
     book = {'id': bid, 'w': w, 'h': h, 'frames': len(books), 'ramp': ramp, 'idx': [b.flatten().tolist() for b in books]}
     with open(os.path.join(o['--out'], f'{bid}.json'), 'w') as fh:

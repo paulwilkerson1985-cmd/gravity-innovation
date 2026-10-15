@@ -60,10 +60,14 @@ the flash is a thin white crescent, not a disc.
 | f2 sharp blast | 6 rays, long on alternating axes, three value bands, 1-texel dark edge band | behind the target (renderOrder 5) | 2 |
 | f3 broken blast | the rays with the centre blown out, 8 % smaller | behind | 2, then the element body |
 
-`scripts/impact_book.py` draws these four frames on any ramp; `book_from_renders.py` turns them
-(plus the body frames) into one book. The flash frames go **in front** of the target (an additive
-batch at renderOrder 8 keeps the sprite readable through it); blast and body go **behind** (5).
-Point the open side of any ring or crown toward the camera (`openArc` already does this).
+`scripts/impact_book.py` draws these four frames on any ramp; `book_from_renders.py --passthrough
+--holds 1,2,2,2` turns them into one 7-frame book that plays at `fps: 60` with the holds baked in.
+The flash frames go **in front** of the target in an **additive** batch (renderOrder 8, book glow
+≤ 1.0: additive white over the sprite keeps it readable and the FX light makes the bloom; an
+opaque or over-driven disc becomes an orb that hides the target); blast and body go **behind**
+(renderOrder 5) but at the **same screen position**, the target's centre: layer with renderOrder,
+not with `behind()` (the 3/4 camera projects a world-space push into an up-left slide). Point the
+open side of any ring or crown toward the camera (`openArc` already does this).
 
 ## 4. Flipbook authoring recipe (hand-ruled key frames first, Blender optional)
 

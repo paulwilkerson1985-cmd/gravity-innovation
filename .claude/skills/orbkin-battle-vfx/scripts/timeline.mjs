@@ -203,7 +203,10 @@ for (let i = 0; i < maxFrames; i++) {
     if (f.fxEvents.some((e) => e.ev === 'impact')) { impact = f.frame; impactMarked = true; }
     else if (f.added.length >= 3) impact = f.frame;
   }
-  const want = stripFrames.includes(f.frame) || (impact !== null && f.frame === impact + 2) || (every > 0 && launch !== null && (f.frame - launch) % every === 0);
+  // Capture: the 8 strip frames (launch, +10 .. +70), every frame from launch until impact + 8 (the
+  // impact strip: impact-2, impact, +1, +2, +4, +8), then impact + 16 and + 32.
+  const inWindow = launch !== null && f.frame >= launch && (impact === null || f.frame <= impact + 8);
+  const want = stripFrames.includes(f.frame) || inWindow || (impact !== null && [16, 32].includes(f.frame - impact)) || (every > 0 && launch !== null && (f.frame - launch) % every === 0);
   if (want) {
     const file = path.join(out, 'frames', `f${String(f.frame).padStart(4, '0')}.png`);
     await page.screenshot({ path: file });
@@ -221,10 +224,11 @@ const result = {
   config: { move, moveName, lead, leadLevel, foe, foeLevel, route, hotspot, arena, seed, viewport: [vw, vh], qs: args.qs ?? '', base, fps: FPS },
   events: E.events, counters: E.counters, crop, foeBox, mineBox,
   strip: stripFrames.map((fr) => shots.get(fr) ?? null), midImpact: E.events.impact !== null ? shots.get(E.events.impact + 2) ?? null : null,
+  impactStrip: E.events.impact !== null ? [-2, 0, 1, 2, 4, 8, 16, 32].map((d) => ({ d, file: shots.get(E.events.impact + d) ?? null })) : [],
   pageErrors, frames,
 };
 fs.writeFileSync(path.join(out, 'timeline.json'), JSON.stringify(result));
-fs.writeFileSync(path.join(out, 'strip-frames.json'), JSON.stringify({ frames: result.strip, midImpact: result.midImpact, crop, launch: E.events.launch, every: STRIP_EVERY }, null, 1));
+fs.writeFileSync(path.join(out, 'strip-frames.json'), JSON.stringify({ frames: result.strip, midImpact: result.midImpact, crop, launch: E.events.launch, every: STRIP_EVERY, impact: E.events.impact, impactStrip: result.impactStrip, foeBox, mineBox, launchFrame: shots.get(E.events.launch) ?? null }, null, 1));
 fs.writeFileSync(path.join(out, 'events.txt'), eventsText(result));
 const summary = { out, events: E.events, counters: E.counters, strip: result.strip.filter(Boolean).length, pageErrors: pageErrors.length };
 console.log(JSON.stringify(summary, null, 1));
@@ -308,6 +312,7 @@ function deriveEvents(frames, s) {
     impactToReaction: impact !== null && reaction !== null ? reaction - impact : null,
     impactToFlash: impact !== null && flash !== null ? flash - impact : null,
     launchToSettle: settle !== null && launch !== null ? settle - launch : null,
+    aftermath: settle !== null && impact !== null ? settle - impact : null,
     hpDrainFrames: hpStart !== null && hpEnd !== null ? hpEnd - hpStart : null,
     shake: sh, setDimPeak: Math.round(dimPeak * 100) / 100, setDimFrames: dimFrames, secondMoveText: s.secondUse, end: last,
   };
@@ -326,7 +331,7 @@ function eventsText(r) {
   const L = [];
   L.push(`# fx timeline: ${r.config.moveName} (${r.config.lead} L${r.config.leadLevel} -> ${r.config.foe} L${r.config.foeLevel}), seed ${r.config.seed}, ${r.config.arena || r.config.route + '/' + r.config.hotspot}`);
   L.push(`text ${e.text}  launch ${e.launch}  impact ${e.impact}${e.impactMarked ? ' (marked)' : ''}  flash ${e.flash}  reaction ${e.reaction}  hp ${e.hpDrainStart}..${e.hpDrainEnd}  settle ${e.settle}`);
-  L.push(`text->launch ${e.textToLaunch} f | launch->impact ${e.launchToImpact} f | impact->flash ${e.impactToFlash} f | impact->reaction ${e.impactToReaction} f | hit-stop ${e.hitStop} f (attacker held ${e.attackerHeld}) | launch->settle ${e.launchToSettle} f | hp drain ${e.hpDrainFrames} f`);
+  L.push(`text->launch ${e.textToLaunch} f | launch->impact ${e.launchToImpact} f | impact->flash ${e.impactToFlash} f | impact->reaction ${e.impactToReaction} f | hit-stop ${e.hitStop} f (attacker held ${e.attackerHeld}) | launch->settle ${e.launchToSettle} f | aftermath (impact->settle) ${e.aftermath} f | hp drain ${e.hpDrainFrames} f`);
   L.push(`severity ${e.severity}${e.ko ? ' (KO)' : ''}: foe HP ${e.hpBefore} -> ${e.hpAfter} %`);
   L.push(`shake: start ${e.shake.start} frames ${e.shake.frames} peak ${e.shake.peakPx} px ${e.shake.directional === null ? '' : e.shake.directional ? 'directional kick' : 'alternating buzz'} ${JSON.stringify(e.shake.pattern)}`);
   L.push(`set dim peak ${Math.round((e.setDimPeak ?? 0) * 100)} % over ${e.setDimFrames ?? 0} f (key light intensity vs idle)`);
@@ -376,7 +381,8 @@ function usage() {
   console.log(`node timeline.mjs --out DIR --move storm-lance [--lead stormoth --lead-level 24] [--foe cindertail --foe-level 30]
   [--route ridge --hotspot vent-cave] [--arena cave] [--seed 13] [--dist game/dist | --base URL] [--qs "k=v&k2=v2"]
   [--every N] [--max-frames 420] [--crop x0,y0,x1,y1] [--viewport 1280x720] [--move-name "Storm Lance"]
-Frame-exact (virtual 60 fps) log of one attack: beats, counters, 8-frame strip (launch -> +70 f), mid-impact frame.
+Frame-exact (virtual 60 fps) log of one attack: beats, counters, the 8-frame motion strip (launch -> +70 f), every
+frame from launch to impact + 8 plus impact + 16 / + 32 (the impact strip), and the mid-impact frame.
 Defaults: Stormoth L24 moves first; foe cindertail L30 takes a plain 1x hit (~46%), --foe maelstrode --foe-level 30 a super-effective one (~50%).
 Seed 13 rolls a CRITICAL on the first Storm Lance (both foes); seed 14 rolls a plain hit; seeds 8, 9, 11, 12 miss.
 Mark the impact frame explicitly from game code with window.__fxEvents.push({ev:'impact'}) (else: first frame with >= 3 FX objects added).`);
