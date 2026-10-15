@@ -62,6 +62,8 @@ per-vertex loop over 137 k tris never finished; vectorised: 0.1 s).
 
 ## 4 Sharp secondary parts
 
+Primitives: `kit.box(size)`, `ellipsoid(radii)`, `capsule(radius, length)` along Z, `cone(r1 bottom,
+r2 top, depth)`; a hanging stalactite is `cone(root, tip ≥ 0.08, length, rot=(π, 0, 0))`.
 Eyes (dark ellipsoid + emissive/white glint), claws, horns, crystal shards are separate bevelled
 objects joined last: `kit.bevel_normals(obj, width 0.003–0.02, segments 2, angle 30°)` = Bevel
 (angle limit, harden normals) + Weighted Normal. Flat shading for crystals. Parts must *enter* the

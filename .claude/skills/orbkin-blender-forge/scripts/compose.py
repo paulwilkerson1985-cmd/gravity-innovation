@@ -9,9 +9,11 @@ form.png (R top, G key-facing), pos.png (world position), contact.png (soft AO) 
 single masks.png path also works (then cells are keyed on UV space, not world position).
 
 Why cells (pilot 1, judged 4/10): per-texel rules on 1,600 small UV islands gave salt-and-pepper
-noise; the game's painters work in 3-5-texel cells with one flat tone per cell, a 1-texel lit top
-edge and a 1-texel dark bottom edge (the texel bevel). Cells here are jittered grid cells keyed on
-WORLD position, so they stay continuous across island boundaries.
+noise; the game's painters work in 3-6-texel cells with one flat tone per cell, a 1-texel lit top
+edge and a dark bottom edge (the texel bevel). --cells uv (default) grids each island into 6-texel
+cells: on a chisel-faceted low every facet is a block and the cells sub-divide it crisply (pilot 2).
+--cells world keys jittered cells on the baked world position so they cross island borders
+(blotchier on faceted lows; use it on smooth lows).
 Rules:
   tone     per cell = mean(0.45 top + 0.35 key-facing + 0.2 (1 - crack)), auto-levelled (p3..p97) over
            ramp[2 .. n-2]; whole-cell offsets: upward cells (top > 0.75) +1, downward (< 0.3) -1
@@ -111,7 +113,7 @@ def cell_mean(values, ids, cov):
     return out
 
 
-def compose(md, ramp, factor=2, cell_tex=6, cavity_pct=12.0, contact_pct=15.0, texels_per_unit=16.0, seed=0):
+def compose(md, ramp, factor=2, cell_tex=6, cavity_pct=12.0, contact_pct=15.0, texels_per_unit=16.0, seed=0, cells='uv'):
     masks = load(md['masks']); baked = masks[..., 3] > 0
     n = len(ramp)
     m, cov = masked_down(masks, baked, factor)
@@ -121,7 +123,7 @@ def compose(md, ramp, factor=2, cell_tex=6, cavity_pct=12.0, contact_pct=15.0, t
         form, _ = masked_down(load(md['form']), baked, factor); top, keyf = form[..., 0], form[..., 1]
     else:
         top, keyf = top_hi, np.full_like(top_hi, 0.5)
-    have_pos = md.get('pos') and os.path.exists(md['pos']) and md.get('bbox_size')
+    have_pos = cells == 'world' and md.get('pos') and os.path.exists(md['pos']) and md.get('bbox_size')
     if have_pos:
         pos, _ = masked_down(load(md['pos']), baked, factor)
         ids = cell_ids(pos, cov, cell_tex, texels_per_unit, md['bbox_size'], seed)
@@ -206,6 +208,7 @@ def main(argv):
     ap.add_argument('--cell', type=float, default=6.0, help='cell size in texels (5-8: a kit course is 14 texels wide, its stone cells 3-5)'); ap.add_argument('--cavity', type=float, default=12.0, help='percent of texels that become crack seams')
     ap.add_argument('--contact', type=float, default=15.0, help='percent of cells darkened by contact AO'); ap.add_argument('--texels-per-unit', type=float, default=16.0)
     ap.add_argument('--seed', type=int, default=0); ap.add_argument('--report'); ap.add_argument('--check')
+    ap.add_argument('--cells', default='uv', choices=['uv', 'world'], help='uv: 6-texel grid cells inside each island (crisp on chisel facets, pilot 2 preferred it); world: cells keyed on baked world position (continuous across islands)')
     a = ap.parse_args(argv)
     ramps = json.load(open(a.ramps))['ramps']
     if a.ramp not in ramps:
@@ -222,7 +225,7 @@ def main(argv):
             b = json.load(open(bj)); md['bbox_size'] = b.get('bbox_size'); md['bbox_min'] = b.get('bbox_min')
     else:
         md = {'masks': a.masks}
-    idx, cov, covd, stats = compose(md, ramp, a.factor, a.cell, a.cavity, a.contact, a.texels_per_unit, a.seed)
+    idx, cov, covd, stats = compose(md, ramp, a.factor, a.cell, a.cavity, a.contact, a.texels_per_unit, a.seed, a.cells)
     rgba = to_rgba(idx, covd, ramp); Image.fromarray(rgba).save(a.out)
     rep = {'out': a.out, 'size': list(rgba.shape[:2][::-1]), 'ramp': a.ramp, 'factor': a.factor, 'cell_texels': a.cell, **stats,
            'shade_histogram': [int((idx[cov] == k).sum()) for k in range(len(ramp))], 'covered_share': round(float(cov.mean()), 3)}

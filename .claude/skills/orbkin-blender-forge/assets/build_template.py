@@ -14,9 +14,12 @@ or animated when clips exist; a kin must win the in-game A/B and pass ip_check b
 import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, sys, os, json, time, math
 HERE = os.path.dirname(os.path.abspath(__file__))
-for cand in (os.path.join(HERE, '..', 'scripts'), HERE, os.environ.get('ORBKIN_SKILL_SCRIPTS', '')):
+_tb = os.environ.get('ORBKIN_TOOLS_BIN', '')
+for cand in (os.path.join(HERE, '..', 'scripts'), HERE, os.environ.get('ORBKIN_SKILL_SCRIPTS', ''), os.path.join(_tb, '..', '..', '..') if _tb else ''):
     if cand and os.path.exists(os.path.join(cand, 'kit.py')):
         sys.path.insert(0, os.path.abspath(cand)); break
+else:
+    raise SystemExit('kit.py not found: eval "$(bash <skill>/scripts/bootstrap.sh paths)" first, or set ORBKIN_SKILL_SCRIPTS=<skill>/scripts')
 import numpy as np
 import kit, orbkin_compat as oc
 from mathutils import Vector, Matrix

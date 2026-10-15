@@ -97,7 +97,9 @@ def sdf_fuse(obj, voxel=0.02, fillet=4, offset=0.0, band=3, cut_objects=(), add_
         a2s = g.node('GeometryNodeMeshToSDFGrid', **{'Voxel Size': voxel, 'Band Width': band})
         g.link(oi, 'Geometry', a2s, 'Mesh')
         bo = g.node('GeometryNodeSDFGridBoolean', _operation='UNION')
-        g.link(last, 0, bo, 0); g.link(a2s, 0, bo, 1)
+        # UNION/INTERSECT disable 'Grid 1' and take every operand on the multi-input socket inputs[1];
+        # linking the running grid into inputs[0] silently kept only the hanger (pilot 2 lost the whole body)
+        g.link(last, 0, bo, 1); g.link(a2s, 0, bo, 1)
         last = bo
     if offset:
         of = g.node('GeometryNodeSDFGridOffset', Distance=offset)

@@ -1,8 +1,8 @@
 """piece_template: an environment hero piece, end to end (copy this file next to your work, edit
 blockout() and PIECE, run it; everything else is the tested path).
 
-  "$ORBKIN_BPY" -I piece_template.py -- --out out_dir [--seed 7] [--atlas 256] [--tris 5000] [--ramp boulder]
-      [--voxel 0.02] [--fillet 4] [--low chisel|voxel] [--low-voxel 0.08] [--low-detail plates|none] [--plate 0.125] [--crack 0.1]
+  "$ORBKIN_BPY" -I piece_template.py -- --out out_dir [--seed 7] [--atlas 256] [--tris 5000] [--ramp <PIECE ramp>]
+      [--voxel 0.02] [--fillet 2] [--low chisel|voxel] [--low-voxel 0.08] [--low-detail plates|none] [--plate 0.125] [--crack 0.1]
       [--bake 512] [--no-bake] [--skip-sheets]
 
 Path (modelling.md form/retopo/detail; procedural-texturing masks->rules):
@@ -18,14 +18,16 @@ import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE
 import bpy, sys, os, json, time, math
 HERE = os.path.dirname(os.path.abspath(__file__))
 def _find_scripts():
-    cands = [os.path.join(HERE, '..', 'scripts'), HERE, os.environ.get('ORBKIN_SKILL_SCRIPTS', ''), os.environ.get('ORBKIN_SKILL_DIR', '') + '/scripts']
+    tb = os.environ.get('ORBKIN_TOOLS_BIN', '')      # set by `eval "$(bootstrap.sh paths)"` (S0): <skill>/scripts/node/node_modules/.bin
+    cands = [os.path.join(HERE, '..', 'scripts'), HERE, os.environ.get('ORBKIN_SKILL_SCRIPTS', ''), os.environ.get('ORBKIN_SKILL_DIR', '') + '/scripts',
+             os.path.join(tb, '..', '..', '..') if tb else '']
     d = os.getcwd()
     while d and d != os.path.dirname(d):  # a copied template finds the skill by walking up from cwd to the repo root
         cands.append(os.path.join(d, '.claude', 'skills', 'orbkin-blender-forge', 'scripts')); d = os.path.dirname(d)
     for c in cands:
         if c and os.path.exists(os.path.join(c, 'kit.py')):
             return os.path.abspath(c)
-    raise SystemExit('kit.py not found: run from inside the repo, or set ORBKIN_SKILL_SCRIPTS=<skill>/scripts')
+    raise SystemExit('kit.py not found: eval "$(bash <skill>/scripts/bootstrap.sh paths)" first (sets ORBKIN_TOOLS_BIN), run from inside the repo, or set ORBKIN_SKILL_SCRIPTS=<skill>/scripts')
 sys.path.insert(0, _find_scripts())
 import kit, gn, orbkin_compat as oc
 from uv_blocks import block_uvs
@@ -34,8 +36,9 @@ from bake_masks import bake_masks
 
 PIECE = {
     'name': 'ledge',                 # file stem
-    'size': (3.0, 1.2, 1.4),         # x (width), y (depth), z (height) in world units; sized for its arena slot
+    'size': (3.0, 1.2, 1.4),         # (x = width, y = depth, z = height) in world units, z up; "3 x 2.4 x 1 (w x h x d)" is (3.0, 1.0, 2.4)
     'floor': True,                   # a floor plane under the piece so AO gets a contact shadow at the base
+    'ramp': 'boulder',               # ramp name from assets/ramps.json: cave back wall = caveStone, cave boulders = boulder
 }
 
 
@@ -60,7 +63,7 @@ def main(argv):
     import argparse
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--out', required=True); ap.add_argument('--seed', type=int, default=7); ap.add_argument('--atlas', type=int, default=256)
-    ap.add_argument('--tris', type=int, default=5000); ap.add_argument('--ramp', default='boulder'); ap.add_argument('--voxel', type=float, default=0.02)
+    ap.add_argument('--tris', type=int, default=5000); ap.add_argument('--ramp', default=None, help='default: PIECE["ramp"]'); ap.add_argument('--voxel', type=float, default=0.02)
     ap.add_argument('--fillet', type=int, default=2); ap.add_argument('--low', default='chisel', choices=['voxel', 'chisel']); ap.add_argument('--low-voxel', type=float, default=0.08)
     ap.add_argument('--bake', type=int, default=512); ap.add_argument('--no-bake', action='store_true'); ap.add_argument('--skip-sheets', action='store_true')
     ap.add_argument('--angle', type=float, default=18.0)
@@ -70,9 +73,12 @@ def main(argv):
     ap.add_argument('--crack', type=float, default=0.1, help='crack valley depth (high only; 0.1 = 1.6 texels)')
     ap.add_argument('--strata', type=float, default=0.02); ap.add_argument('--lump', type=float, default=0.04)
     ap.add_argument('--chisel-angle', type=float, default=15.0)
+    ap.add_argument('--cells', default='uv', choices=['uv', 'world'], help='compose cells keyed on the UV grid (default; crisper on chisel facets) or on world position')
     a = ap.parse_args(argv)
     out = os.path.abspath(a.out); os.makedirs(out, exist_ok=True)
     name = PIECE['name']
+    a.ramp = a.ramp or PIECE.get('ramp', 'boulder')
+    ap_cells = getattr(a, 'cells', 'uv')
     rep = {'name': name, 'seed': a.seed, 'args': vars(a), 'timings': {}, 'load_avg_start': oc.loadavg(), 'bpy': bpy.app.version_string}
     T = time.perf_counter()
     def lap(k):
@@ -104,6 +110,8 @@ def main(argv):
     if a.low_detail == 'plates':
         gn.displace_rock(low, crack=0, strata=0, plate=a.plate, plate_scale=a.plate_scale, lump=a.lump, seed=a.seed)
     gn.displace_rock(high, crack=a.crack, plate=a.plate, plate_scale=a.plate_scale, strata=a.strata, lump=a.lump, seed=a.seed)
+    for o in (low, high):                             # flat underside: dents below the base would become the floor level
+        kit.flatten_base(o, 0.0, 1.5 * max(a.plate, a.crack, a.lump))
     M = kit.fit_matrix(low, PIECE['size'])            # one matrix for both: displacement grew the blockout
     low.data.transform(M); high.data.transform(M); low.data.update(); high.data.update(); bpy.context.view_layer.update()
     rep['fit'] = {'target': list(PIECE['size']), 'low_bbox': [round(x, 3) for x in kit.bbox(low)[2]]}
@@ -113,8 +121,10 @@ def main(argv):
     kit.voxel_remesh(low, a.low_voxel)
     if a.low == 'chisel':
         kit.chisel(low, angle_deg=a.chisel_angle)
+    rep['low_before_decimate'] = {'tris': kit.tri_count(low), 'bbox': [round(x, 3) for x in kit.bbox(low)[2]]}
     if kit.tri_count(low) > a.tris:
-        kit.decimate(low, a.tris)
+        kit.decimate(low, a.tris)      # asserts its own bbox within 2 %
+    rep['low_decimated'] = rep['low_before_decimate']['tris'] > a.tris
     kit.assign(low, mat)
     rep['low'] = {'mode': a.low, 'tris': kit.tri_count(low), 'bbox': [round(x, 3) for x in kit.bbox(low)[2]], **kit.mesh_manifold_report(low)}
     dev = max(abs(rep['low']['bbox'][i] - PIECE['size'][i]) / PIECE['size'][i] for i in range(3))
@@ -152,7 +162,7 @@ def main(argv):
         import subprocess
         ramps = os.path.join(os.path.dirname(os.path.abspath(kit.__file__)), '..', 'assets', 'ramps.json')
         cmd = [sys.executable if 'python' in os.path.basename(sys.executable) else 'python3', '-I', os.path.join(os.path.dirname(os.path.abspath(kit.__file__)), 'compose.py'),
-               mrep['files']['masks'], '--ramps', ramps, '--ramp', a.ramp, '--factor', str(max(1, a.bake // a.atlas)), '--out', atlas_png, '--mips', '--report', os.path.join(out, f'{name}_atlas.json')]
+               os.path.join(out, 'masks'), '--cells', a.cells, '--ramps', ramps, '--ramp', a.ramp, '--factor', str(max(1, a.bake // a.atlas)), '--out', atlas_png, '--mips', '--report', os.path.join(out, f'{name}_atlas.json')]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, check=True); rep['compose'] = json.loads(r.stdout.strip().splitlines()[-1])
         except Exception as e:

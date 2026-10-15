@@ -26,7 +26,10 @@ a = ap.parse_args(argv)
 t0 = time.perf_counter()
 if a.src.lower().endswith(('.glb', '.gltf')):
     oc.fresh_scene()
-    oc.ops_ok(bpy.ops.import_scene.gltf(filepath=os.path.abspath(a.src)), 'import gltf')
+    try:
+        oc.ops_ok(bpy.ops.import_scene.gltf(filepath=os.path.abspath(a.src)), 'import gltf')
+    except Exception as e:
+        raise SystemExit(f'cannot import {a.src}: {str(e)[:160]}\n(the pip bpy cannot decode meshopt/Draco: quicklook the RAW export; the shipped file is screenshot by shoot.mjs)')
 else:
     bpy.ops.wm.open_mainfile(filepath=os.path.abspath(a.src))
 oc.deterministic_png()

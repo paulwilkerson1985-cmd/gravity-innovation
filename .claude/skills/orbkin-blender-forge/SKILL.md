@@ -35,7 +35,8 @@ call, the atlas is on-ramp at 16 texels/unit, a manifest exists, and the report 
 
 ## Workflow (gates are script exit codes; one fix per round; stop after 2 rounds without a gain)
 - **S0** `bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap.sh doctor`, then `bpy --wait`, then
-  `eval "$(bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap.sh paths)"` (sets `ORBKIN_BPY`, `ORBKIN_TOOLS_BIN`).
+  `eval "$(bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap.sh paths)"` (sets `ORBKIN_BPY`, `ORBKIN_TOOLS_BIN`;
+  a copied template finds the skill through `ORBKIN_TOOLS_BIN`, so do this in every shell).
 - **S1** `brief.md` in the work dir: why primitives cannot do it (the test: if the silhouette at
   game scale is a post-and-lintel or a box pile, the kit wins; build here only when an opening rim,
   a hanging or an overhanging form must read), world size and arena slot (floor y=0, `CELL` 0.9,
@@ -44,8 +45,9 @@ call, the atlas is on-ramp at 16 texels/unit, a manifest exists, and the report 
   refuse, and the kit baseline you must beat (the nearest code-kit equivalent, e.g. a coursed
   terrace, captured at the same size from `game/docs/screenshots/hd2d/`).
 - **S2** Copy `assets/piece_template.py` (environment) or `assets/build_template.py` (creature
-  path A) next to the brief (a copy finds the skill by walking up to the repo root); edit
-  `blockout()`/`PIECE` (or `metaballs()`); run; read `<name>_s2_blockout.png`. Masses and
+  path A) next to the brief; set `PIECE` (`size` = (width x, depth y, height z): "3 × 2.4 × 1
+  w×h×d" is `(3.0, 1.0, 2.4)`; `ramp`), edit `blockout()` (or `metaballs()`); run; read
+  `<name>_s2_blockout.png`. Masses and
   silhouette only: start arena pieces from `kit.courses()` (stacked cut stone), put parts that hang
   inside a cut (stalactites) in the hangers list, give them a root ≥ 0.3 units and length ≥ 0.8
   (2 thick beat 3 thin at play size), and build openings from 2-3 overlapping irregular cutters.
@@ -67,7 +69,8 @@ call, the atlas is on-ramp at 16 texels/unit, a manifest exists, and the report 
   --require-ext EXT_meshopt_compression --forbid-ext KHR_draco_mesh_compression,KHR_texture_basisu
   --max-image-px 512` (exit 0).
 - **S6** `node ${CLAUDE_SKILL_DIR}/scripts/shoot.mjs --glb out.glb --out shots --modes pbr,toon,sprite
-  --ppu 64` and again `--ppu 36` (desktop and phone pixels per unit; exit 0, 1 draw call), then
+  --ppu 64` and again `--ppu 36` (desktop and phone pixels per unit; exit 0, 1 draw call; add
+  `--az 0 --el 30` for the front view of an arch or wall piece), then
   `python3 -I ${CLAUDE_SKILL_DIR}/scripts/read_check.py shots/<name>_sprite_ppu64.png --ramps
   ${CLAUDE_SKILL_DIR}/assets/ramps.json --ramp <ramp>` (exit 0: seams ≥ 4 %, lips ≥ 3 %, orphans
   ≤ 12 %, ≥ 3 mid shades). Read the sprite shots next to the kit baseline. When the task allows repo

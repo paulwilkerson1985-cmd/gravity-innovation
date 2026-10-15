@@ -100,14 +100,28 @@ def courses(name, w, d, h, cell=0.9, level=0.7, jitter=0.05, seed=0, x0=0.0, y0=
         off = (cell / 2) if r % 2 else 0.0
         for c in range(cols + (1 if r % 2 else 0)):
             cx = x0 - w / 2 + off + c * cell + cell / 2 - (cell / 2 if r % 2 else 0)
-            if cx + cell / 2 < x0 - w / 2 - 0.01 or cx - cell / 2 > x0 + w / 2 + 0.01:
+            # clip the row to the wall width: odd rows start half a cell in and end with a half block
+            left, right = max(cx - cell / 2, x0 - w / 2), min(cx + cell / 2, x0 + w / 2)
+            if right - left < cell * 0.3:
                 continue
+            cx, bw = (left + right) / 2, right - left
             j = lambda: 1 + rng.uniform(-jitter, jitter)
-            b = box(f'{name}_r{r}c{c}', (cell * j() + overlap, d * j(), level * j() + overlap),
+            b = box(f'{name}_r{r}c{c}', (bw * j() + overlap, d * j(), level * j() + overlap),
                     (cx + rng.uniform(-jitter, jitter) * cell, y0 + rng.uniform(-jitter, jitter) * d, r * level + level / 2),
                     (rng.uniform(-0.03, 0.03), rng.uniform(-0.03, 0.03), rng.uniform(-0.06, 0.06)))
             out.append(b)
     return out
+
+
+def flatten_base(obj, z=0.0, band=0.2):
+    """Snap every vertex below z+band to z: displacement dents the underside, fit_matrix then puts the
+    lowest dip on the floor and the voxel remesh trims it (pilot 2 failed its 2 % gate that way). Call on
+    the high and the low before fit_matrix with band ~ 1.5 x the displacement amplitude."""
+    me = obj.data; nv = len(me.vertices)
+    co = np.empty(nv * 3, np.float32); me.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
+    m = co[:, 2] < z + band; co[m, 2] = z
+    me.vertices.foreach_set('co', co.ravel()); me.update()
+    return int(m.sum())
 
 
 def fit_to_size(obj, size, keep_base=True):
@@ -190,6 +204,9 @@ def capsule(name, radius, length, loc=(0, 0, 0), rot=(0, 0, 0), segments=16):
 
 
 def cone(name, r1, r2, depth, loc=(0, 0, 0), rot=(0, 0, 0), segments=12):
+    """r1 = radius at the BOTTOM (-Z end), r2 = radius at the top (+Z). A hanging stalactite is
+    cone(root, tip, length, rot=(pi, 0, 0)) or r1=tip, r2=root unrotated. Keep tips >= 0.08 units or a
+    fillet of 2 iterations at voxel 0.02 erases them."""
     bm = bmesh.new(); bmesh.ops.create_cone(bm, cap_ends=True, segments=segments, radius1=r1, radius2=r2, depth=depth)
     me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
     o = _new(name, me); o.location = loc; o.rotation_euler = rot

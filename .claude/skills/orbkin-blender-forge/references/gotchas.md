@@ -56,3 +56,9 @@ Read when something looks wrong or a script returns CANCELLED/empty. Each line c
 | Playwright "browser not found" | CDN blocked here | never `playwright install`; `/opt/pw-browsers` ships chromium-1194 for @playwright/test 1.56.1 (never bump it in the cloud) |
 | nested `claude -p` test wrote into this session's env | inherited `CLAUDE_CODE_SESSION_ID` | `env -u CLAUDE_CODE_SESSION_ID` and a temporary `CLAUDE_ENV_FILE` |
 | compose/sprite_post `ImportError: PIL` | Blender python has no Pillow | PNG path works without it (`pngio.py`); JPEG inputs need `python3` with Pillow |
+| hangers present, body gone (fused high ~5 k tris in a 0.4-unit box, shells still 1) | `SDFGridBoolean` UNION/INTERSECT disable 'Grid 1'; every operand goes to the multi-input socket `inputs[1]` | `gn.sdf_fuse` links both grids into `inputs[1]` (pilot 2 found it; check with `api.py node GeometryNodeSDFGridBoolean`) |
+| template raises 'low poly bbox deviates 2.7 %' in z | displacement dented the underside, `fit_matrix` put the dip on z=0, the voxel remesh trimmed it | `kit.flatten_base(obj, 0, 1.5 x amplitude)` on high and low before `fit_matrix` (template does) |
+| a half block sticks out of a course wall | odd course rows used to overhang by half a cell | `kit.courses` clips rows to the wall width |
+| `quicklook.py` on the packed GLB: 'Meshopt decoder library not found' | pip bpy cannot decode meshopt/Draco | quicklook the RAW export; the shipped file is screenshot by `shoot.mjs` |
+| copied template: 'kit.py not found' | the copy lives outside the repo | `eval "$(bootstrap.sh paths)"` first (ORBKIN_TOOLS_BIN points the copy at the skill) or set ORBKIN_SKILL_SCRIPTS |
+| stalactite tips vanish | tip radius < 0.08 at voxel 0.02 + fillet 2 | `kit.cone(root, tip >= 0.08, length)`; r1 is the bottom radius |
