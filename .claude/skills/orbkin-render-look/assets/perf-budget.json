@@ -1,0 +1,49 @@
+{
+  "_doc": "Counter budgets per tier (GRAPHICS_PLAYBOOK §6 / mobile-perf-budget §5). Counters are checked by check-budget.mjs on audit.mjs output; 'max' = value must be <= max, 'eq' = must equal. ms rows are device-bench targets (bench_read.py), not CI counters. 'low' = phones (q=low), 'T1' = proven phones, 'desk' = desktop q=high.",
+  "tiers": {
+    "low": {
+      "internalMpx": { "max": 0.2, "note": "integer grid ≈ 0.16 Mpx (271×586)" },
+      "msaaPasses": { "eq": 0, "note": "never MSAA render targets on phones (renderbuffer + blit resolve)" },
+      "float32Targets": { "eq": 0, "note": "RGBA32F targets fail or sample black on many phones" },
+      "fullResPasses": { "max": 3, "note": "scene, bloom add-back, grade" },
+      "dramMB": { "max": 25 },
+      "draws": { "max": 60, "hard": 100 },
+      "tris": { "max": 100000 },
+      "programsLinked": { "max": 40, "note": "today 58–66 (known over); must not increase" },
+      "gpuResidentMB": { "max": 48 },
+      "maxTextureSize": { "max": 1024 },
+      "canvasMB": { "max": 32 },
+      "heapMB": { "max": 100 },
+      "ms": { "gpuFrame": 11, "shadow": 0, "bakes": 1.0, "scene": 6, "bloom": 1.0, "grade": 0.8, "ao": 0, "fxHeadroom": 2, "cpu": 6, "enterMs": 2500, "rafOver20Pct": 5, "thermalDriftPct": 15 }
+    },
+    "T1": {
+      "internalMpx": { "max": 0.65 },
+      "msaaPasses": { "eq": 0 },
+      "float32Targets": { "eq": 0 },
+      "fullResPasses": { "max": 4 },
+      "dramMB": { "max": 60 },
+      "draws": { "max": 80, "hard": 100 },
+      "tris": { "max": 200000 },
+      "programsLinked": { "max": 50 },
+      "gpuResidentMB": { "max": 96 },
+      "maxTextureSize": { "max": 2048 },
+      "canvasMB": { "max": 32 },
+      "heapMB": { "max": 150 },
+      "ms": { "gpuFrame": 12, "shadow": 1.5, "bakes": 1.5, "scene": 7, "bloom": 1.5, "grade": 1.2, "ao": 1.5, "fxHeadroom": 2, "cpu": 6, "enterMs": 2000, "rafOver20Pct": 5, "thermalDriftPct": 15 }
+    },
+    "desk": {
+      "internalMpx": { "max": 2.1, "note": "640×360 grid; the device-res composite (hybrid H) is one pass at ≤ 1080p" },
+      "fullResPasses": { "max": 8 },
+      "dramMB": { "max": 400 },
+      "draws": { "max": 150 },
+      "tris": { "max": 600000 },
+      "programsLinked": { "max": 80 },
+      "gpuResidentMB": { "max": 256 },
+      "maxTextureSize": { "max": 4096 },
+      "canvasMB": { "max": 128 },
+      "heapMB": { "max": 300 },
+      "ms": { "gpuFrame": 12, "shadow": 2, "bakes": 2, "scene": 8, "bloom": 2, "grade": 1.5, "ao": 3, "fxHeadroom": 3, "cpu": 6, "enterMs": 1500, "rafOver20Pct": 2, "thermalDriftPct": 15 }
+    }
+  },
+  "download": { "initialGzMB": 1.5, "arenaChunkKB": 400, "kinKB": 80, "gameMB": 15 }
+}
