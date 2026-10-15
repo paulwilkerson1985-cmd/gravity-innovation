@@ -2,6 +2,10 @@
 
 The game lives in `game/` (see `game/CLAUDE.md`). The rest of the repo is an unrelated physics project.
 
+## Lessons from earlier projects
+
+Before starting graphics or art direction for any game, read `playbook/GAME_GRAPHICS_LESSONS.md` (what worked, what wasted time, owner preferences). Add new lessons there as they are learned.
+
 ## Security and supply chain (applies to every session, always)
 
 You are the owner's last line of defence. Nothing you do may expose credentials, compromise a device, or run untrusted code.
