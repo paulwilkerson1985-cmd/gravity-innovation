@@ -587,6 +587,46 @@ export class CreatureView {
     this.acting--;
   }
 
+  /**
+   * Hurt as cels (≈ 0.4 s, like a 3-drawing hurt animation): ONE strongest recoil cel (squashed,
+   * tipped back, knocked back ~2 texels, white) held 5–6 frames, then three 6-frame recovery cels.
+   * The sprite blinks out on 2-frame boundaries while it recovers (not in calm).
+   */
+  private async hitCels(strong: boolean, o: { calm?: boolean }) {
+    this.acting++;
+    this.keyed++;
+    const z0 = this.inner.position.z;
+    const back = new THREE.Vector3(1, 0, 0);
+    const pose = (lean: number, sq: number, knock: number) => {
+      this.body.quaternion.setFromAxisAngle(back, lean);
+      this.squash(sq);
+      this.inner.position.z = z0 - knock;
+      this.celFrame = animClock.frame;
+    };
+    const lean0 = strong ? -0.45 : -0.35;
+    const flash = strong ? 1 : 0.85;
+    pose(lean0, 0.8, strong ? 0.16 : 0.12);
+    this.material.emissive.setRGB(flash, flash, flash);
+    await tween((strong ? 6 : 5) * 1000 / 60, () => {});
+    this.material.emissive.setRGB(0, 0, 0);
+    const recover: [number, number, number][] = [[lean0 * 0.5, 0.92, 0.07], [lean0 * 0.15, 1.03, 0.02], [0, 1, 0]];
+    for (let i = 0; i < recover.length; i++) {
+      const [lean, sq, knock] = recover[i]!;
+      pose(lean, sq, knock);
+      let f = 0;
+      await tween(6 * 1000 / 60, () => {
+        // Hidden on frames 2–3 of the first two recovery cels: a blink on 2-frame boundaries.
+        this.blinkOff = !o.calm && i < 2 && Math.floor(f++ / 2) % 2 === 1;
+      });
+    }
+    this.blinkOff = false;
+    this.inner.position.z = z0;
+    this.settleBody();
+    this.celFrame = animClock.frame;
+    this.keyed--;
+    this.acting--;
+  }
+
   /** Key-table action toward `towards`, played as pose-aligned cels; `onContact` fires on the contact key. */
   private async playKeys(towards: THREE.Vector3, keys: readonly Key[], onContact?: () => void) {
     this.acting++;
@@ -634,6 +674,7 @@ export class CreatureView {
    * screen shake) drops the blink strobe for a steady fading flash.
    */
   async hit(strong: boolean, o: { crit?: boolean; calm?: boolean } = {}) {
+    if (this.cels) return this.hitCels(strong, o);
     this.acting++;
     const x0 = this.inner.position.x;
     const z0 = this.inner.position.z;
