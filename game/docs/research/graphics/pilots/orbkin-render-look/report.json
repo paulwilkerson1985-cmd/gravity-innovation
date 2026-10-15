@@ -1,0 +1,60 @@
+{
+ "name": "orbkin-render-look",
+ "iterations": [
+  {
+   "outputs": [
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter1-title-desk-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter1-starter-desk-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter1-title-phone-before-after.jpg",
+    "game/docs/research/graphics/pilots/orbkin-render-look/iter1-starter-phone-before-after.jpg"
+   ],
+   "log": "Fresh Opus subagent, skill only (no research notes). Scratch copy of game/ at /tmp/pilot/orbkin-render-look-1. S0 doctor ok; baseline audit + frozen captures (title, starter, desk + phone). Implemented: titleGrade tiltTop 3.6 @ 0.60 / tiltBottom 3.6 @ 0.36 / vignette 0.6; new starterGrade() 3.6 @ 0.66 / 3.6 @ 0.34 / vignette 0.5 (the starter shared meadowGrade with the meadow battle); Grade.tiltUnscaled for the low tier; title drift as a whole-internal-px setViewOffset shift with SpriteBaker.pan and a uPan dither lock; same-build switches post=oldscreens (byte-identical to the untouched build 4/4), drift=0, drift=truck. Results: check-budget PASS with every counter unchanged (fullResPasses 3 on phone, programs 64/63 unchanged); screen_metrics title-desk 0.34/0.97/0.31 top/focus/bottom; phones failed the skill's 640-px metric but passed at grid scale with the pilot's own diagnostic; focal crop diff non-zero on all four (vignette 0.4->0.6 reaches the trio, frame-90 pan raster); cam_analyze excess over idle: desk rigid 0.0067 / flick 0.0108 % / bad 0.043 %, phone 0.0124 / 0.0108 % / 0.066 % (old truck: 0.099 / 0.87 %); gate.py better 4/4 full frames with canary passed (crops: title-desk better, others no_difference); e2e hd2d-screens 6/6; SwiftShader benchFrames title +2.5..9.3 %, starter-desk +8.7..9.5 %, starter-phone +10.4..15.8 %. Bench cases proposed: title-low, starter-low, starter-low+oldscreens ablation.",
+   "skillProblems": [
+    "doctor.sh had no --help (treated --help as the game dir and printed 'missing').",
+    "capture.mjs --repeat-check failed once on the untouched title-phone baseline (~1 % of pixels, a 1-internal-px drift shift) with no retry or guidance; root cause: the first game-loop dt depended on the fake clock's first rAF timestamp.",
+    "screen_metrics measured every view at 640 px wide: phone grids (271 px) read staircases as detail, so the outer-band <= 0.6 check could not pass on phones.",
+    "The focus-band orientation (Grade fractions are bottom-up, bands listed top-down) was undefined; the absolute 'focus >= 0.9' failed on content (starter-desk 0.85 before any change).",
+    "Defaults table claimed 'focal crop unchanged' for these numbers; the vignette step changes ~1 % of the subject crop by one level and a frozen frame at a non-zero pan rasterises differently after a camera change; no subject boxes were provided.",
+    "camera.md gave opposite dither signs in \u00a72 and \u00a73; the \u00a73 recipe passed fullWidth/fullHeight as the sub-window, stored a 4-tuple, lacked the cam.view-disabled fallback and the pan reset in framed(), and reversed the old drift direction.",
+    "No mechanism for 'no low-tier tilt scaling on screens' and no warning that the starter grade is shared with the meadow battle.",
+    "Stale file:line references (HEAD moved).",
+    "No SwiftShader frame-time tool; the +10 % criterion sits inside the documented noise; cam_capture crashed when two ran concurrently; absolute S4 thresholds unreachable on a live screen (title idle floor rigid 0.32).",
+    "gate.py printed judge reasons into the generator's context while the gotchas said never to read judge vocabulary.",
+    "'passes = 3' ambiguous vs the audit's passes(all); npm run lint red on the untouched repo; no baseline-equivalence step for the same-build switch; the three bench cases were undefined for a screen change; the setup block referenced a missing bootstrap script and hard-coded /tmp paths."
+   ],
+   "judge": {
+    "score": 7,
+    "vsCurrent": "Yes, it beats the current title and starter screens clearly on desk and modestly on phone: the symmetric 3.6 px bands plus the deeper vignette turn a flat, uniformly sharp meadow into a readable near/focus/far diorama with the trio and daises isolated and still pixel-crisp. It is a post-process gain only; it does not move the scene content closer to the reference bar, and the heavy bottom band plus 0.6 vignette trade away the dense pixel-flower foreground.",
+    "strengths": [
+     "Depth hierarchy works: title-desk band profile 0.34 / 0.97 / 0.31 (top / focus / bottom); all four blind full-frame gates better in both orders with canary passed; sprites, daises and outlines byte-level crisp inside the focus band.",
+     "Blur quality is clean, not blocky or dithered: the 13-tap tilt inside the 640x360 grid with the nearest 2x upscale reads as a smooth lens blur; the image-locked Bayer dither does not crawl over blurred regions.",
+     "Phone portrait holds up: the trio and daises sit inside the sharp band, the DOM title/buttons and starter panel sit over blurred bands; grid-scale profiles 0.44/0.94/0.43 and 0.41/0.85/0.37.",
+     "The drift conversion is real and measured: excess rigid 0.0067 / flick 0.0108 % / rigid_bad 0.043 % on desk, 0.0124 / 0.0108 % / 0.066 % on phone, while the old truck fails (0.099 / 0.866 %).",
+     "Process evidence is coherent end to end: identical counters, byte-identical switch baseline, e2e 6/6, per-view gate JSONs, cam JSONs with excess, a candid 'still weak' list.",
+     "Good engineering judgement beyond the skill: separate starterGrade(), Grade.tiltUnscaled, drift=0/truck switches, a grid-scale diagnostic when the skill script could not pass phones."
+    ],
+    "weaknesses": [
+     "Strength is on the heavy side for a title: the bottom 36 % becomes featureless green mush and the 0.6 vignette muddies the corners; the owner should see a lighter variant (2.4-3.0 px / 0.5 vignette) before this ships.",
+     "The 'focal crop unchanged' criterion failed on all four shots (vignette reaches the trio's edges, drift raster differs at frame 90, starter-phone focusBottom clips the dais bottoms).",
+     "SwiftShader frame time: starter-phone +10.4 % / +15.8 % against a +10 % criterion, with noise about +/-10 %; the phone cost is unknown until the real-phone bench runs.",
+     "The skill's phone sharpness metric could not pass; phone verdicts rest on the pilot's own diagnostic script.",
+     "Drift direction follows the old truck rather than camera.md's documented '+nx right'; the \u00a73 sign-check capture was not run.",
+     "Phone crop gates were all no_difference and the title-phone crop leaned baseline, so there is no positive phone-crop evidence that blur quality near the silhouettes improved."
+    ],
+    "skillFixes": [
+     "screen_metrics.py: downscale each capture to its internal grid (from the capture's .json meta) before the 12-band profile instead of hard-coding 640 px.",
+     "screen_metrics.py --focus-band: accept the Grade's bottom-up focusBottom,focusTop and convert internally; replace the absolute 'focus >= 0.9' with a delta against --before.",
+     "Defaults table: qualify 'focal crop unchanged'; state that a vignette change touches any subject wider than the centre third and that focal identity is measured with the camera held at pan 0.",
+     "Emit subject boxes from the stage into the capture meta and let screen_metrics --focal and gate.py --crop take 'subjects'.",
+     "camera.md: fix the dither sign contradiction, store the 6-tuple, pass v.width/v.height, add the cam.view-disabled fallback, reset the pan in framed(), state the drift direction, make the sign-check a required S4 step; publish the measured idle floors and write thresholds as excess over idle.",
+     "pipeline-api.md + Gotchas: add the tiltUnscaled mechanism and the shared starter grade warning; replace file:line references with grep anchors.",
+     "doctor.sh --help; capture.mjs retry a differing repeat once with a diff percentage and a documented policy; gate.py --quiet by default with reasons only in the JSON.",
+     "Add a frametime.mjs (interleaved A/B rounds via benchFrames, median and spread) or drop the +10 % SwiftShader criterion; serialise cam_capture runs.",
+     "S2: mandatory baseline-equivalence step (old switch cmp byte-identical with the S0 captures); lint line npx eslint src e2e; rename 'passes' to fullResPasses in summaries.",
+     "bench.md + bench.ts: define screen ablation cases and the decision rule for screen-grade changes; setup block: mark the missing bootstrap script and use an OUT variable instead of hard-coded /tmp paths; add an owner-taste step requiring a lighter candidate when a band or vignette is strengthened."
+    ]
+   }
+  }
+ ],
+ "finalScore": 7
+}
