@@ -90,7 +90,7 @@ def main(argv):
     high = kit.join(parts, 'High'); kit.assign(high, mat)          # material BEFORE booleans / GN
     for c in cutters + hangers:
         kit.apply_transforms(c)
-    rep['blockout'] = {'parts': len(parts), 'cutters': len(cutters), 'hangers': len(hangers), 'tris': kit.tri_count(high), 'components_before_fuse': kit.components(high)}
+    rep['blockout'] = {'parts': len(parts), 'cutters': len(cutters), 'hangers': len(hangers), 'tris': kit.tri_count(high), 'components_before_fuse': kit.components(high), 'bbox': [round(x, 3) for x in kit.bbox(high)[2]]}
     if not a.skip_sheets:
         kit.contact_sheet([high] + cutters + hangers, os.path.join(out, f'{name}_s2_blockout.png'), res=256)
     lap('blockout')
@@ -98,7 +98,11 @@ def main(argv):
     gn.sdf_fuse(high, voxel=a.voxel, fillet=a.fillet, cut_objects=cutters, add_after_cut=hangers)
     for c in cutters + hangers:
         bpy.data.objects.remove(c)
+    bb_join = rep['blockout'].get('bbox') or [round(x, 3) for x in kit.bbox(high)[2]]
     specks = kit.drop_small_shells(high, 0.01)   # a fillet can leave 8-vertex specks at concave joins
+    fb = kit.bbox(high)[2]
+    if max(abs(fb[i] - bb_join[i]) / max(bb_join[i], 1e-6) for i in range(3)) > 0.25:
+        raise RuntimeError(f'fused bbox {[round(x, 2) for x in fb]} is far from the blockout {bb_join}: a boolean socket or cutter swallowed the body')
     rep['blockout']['speck_vertices_dropped'] = specks
     if kit.components(high) != 1:
         raise RuntimeError(f'fused high poly has {kit.components(high)} shells larger than 1 % of the mesh: parts must overlap (or hangers must enter the body)')
@@ -165,6 +169,8 @@ def main(argv):
                os.path.join(out, 'masks'), '--cells', a.cells, '--ramps', ramps, '--ramp', a.ramp, '--factor', str(max(1, a.bake // a.atlas)), '--out', atlas_png, '--mips', '--report', os.path.join(out, f'{name}_atlas.json')]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, check=True); rep['compose'] = json.loads(r.stdout.strip().splitlines()[-1])
+            if not (rep['compose'].get('have_form') and rep['compose'].get('have_contact')):
+                raise RuntimeError(f"compose ran without the form/contact passes: {rep['compose']}")
         except Exception as e:
             rep['compose'] = {'error': f'{e}; run compose.py by hand with python3 (needs numpy + Pillow)', 'cmd': ' '.join(cmd)}
             raise

@@ -2,7 +2,7 @@
 (python3 or the Blender python; numpy; Pillow optional for PNG).
 
   python3 -I compose.py masks_dir --ramps assets/ramps.json --ramp caveStone --factor 2 --out atlas.png \
-      [--cell 6] [--mips] [--report atlas.json] [--cavity 12] [--contact 15] [--seed 0]
+      [--cell 6] [--mips] [--report atlas.json] [--cavity 5] [--contact 15] [--seed 0]
   python3 -I compose.py --check atlas.png --ramps assets/ramps.json --ramp caveStone      # audit an atlas
 masks_dir holds bake_masks.py's masks.png (R top-facing, G crack cavity, B convexity, A id),
 form.png (R top, G key-facing), pos.png (world position), contact.png (soft AO) and bake.json. A
@@ -113,7 +113,7 @@ def cell_mean(values, ids, cov):
     return out
 
 
-def compose(md, ramp, factor=2, cell_tex=6, cavity_pct=12.0, contact_pct=15.0, texels_per_unit=16.0, seed=0, cells='uv'):
+def compose(md, ramp, factor=2, cell_tex=6, cavity_pct=5.0, contact_pct=15.0, texels_per_unit=16.0, seed=0, cells='uv'):
     masks = load(md['masks']); baked = masks[..., 3] > 0
     n = len(ramp)
     m, cov = masked_down(masks, baked, factor)
@@ -153,7 +153,8 @@ def compose(md, ramp, factor=2, cell_tex=6, cavity_pct=12.0, contact_pct=15.0, t
             agree = sum(((np.roll(idx, s, a) == k) & np.roll(cov, s, a)).astype(np.int8) for s, a in ((1, 0), (-1, 0), (1, 1), (-1, 1)))
             idx = np.where((agree >= 3) & (idx != k) & cov, k, idx)
     idx, covd = dilate(idx, cov, 4)
-    stats = {'cells': int(len(np.unique(ids[cov]))) if cov.any() else 0, 'cells_from': 'world position' if have_pos else 'uv grid', 'lip_texels': int(lip.sum()), 'seam_texels': int(seam.sum())}
+    stats = {'cells': int(len(np.unique(ids[cov]))) if cov.any() else 0, 'cells_from': 'world position' if have_pos else 'uv grid', 'lip_texels': int(lip.sum()), 'seam_texels': int(seam.sum()),
+             'have_form': bool(have_form), 'have_contact': bool(md.get('contact') and os.path.exists(md['contact']))}
     return idx, cov, covd, stats
 
 
@@ -205,9 +206,9 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('masks', nargs='?', help='bake_masks.py output DIR (or a masks.png)'); ap.add_argument('--ramps', required=True); ap.add_argument('--ramp', default='boulder')
     ap.add_argument('--factor', type=int, default=2); ap.add_argument('--out'); ap.add_argument('--mips', action='store_true')
-    ap.add_argument('--cell', type=float, default=6.0, help='cell size in texels (5-8: a kit course is 14 texels wide, its stone cells 3-5)'); ap.add_argument('--cavity', type=float, default=12.0, help='percent of texels that become crack seams')
+    ap.add_argument('--cell', type=float, default=6.0, help='cell size in texels (5-8: a kit course is 14 texels wide, its stone cells 3-5)'); ap.add_argument('--cavity', type=float, default=5.0, help='percent of texels that become crack seams (12 made lone dark specks; the kit paints one pit per ~160 texels)')
     ap.add_argument('--contact', type=float, default=15.0, help='percent of cells darkened by contact AO'); ap.add_argument('--texels-per-unit', type=float, default=16.0)
-    ap.add_argument('--seed', type=int, default=0); ap.add_argument('--report'); ap.add_argument('--check')
+    ap.add_argument('--seed', type=int, default=0); ap.add_argument('--report'); ap.add_argument('--check'); ap.add_argument('--allow-partial', action='store_true')
     ap.add_argument('--cells', default='uv', choices=['uv', 'world'], help='uv: 6-texel grid cells inside each island (crisp on chisel facets, pilot 2 preferred it); world: cells keyed on baked world position (continuous across islands)')
     a = ap.parse_args(argv)
     ramps = json.load(open(a.ramps))['ramps']
@@ -225,6 +226,9 @@ def main(argv):
             b = json.load(open(bj)); md['bbox_size'] = b.get('bbox_size'); md['bbox_min'] = b.get('bbox_min')
     else:
         md = {'masks': a.masks}
+    missing = [k for k in ('form', 'contact') if not (md.get(k) and os.path.exists(md[k]))]
+    if missing and not a.allow_partial:
+        print(json.dumps({'error': f'missing mask passes {missing}: pass the bake_masks.py output DIRECTORY (form/key/contact terms would be silently defaulted); --allow-partial to proceed anyway'})); return 2
     idx, cov, covd, stats = compose(md, ramp, a.factor, a.cell, a.cavity, a.contact, a.texels_per_unit, a.seed, a.cells)
     rgba = to_rgba(idx, covd, ramp); Image.fromarray(rgba).save(a.out)
     rep = {'out': a.out, 'size': list(rgba.shape[:2][::-1]), 'ramp': a.ramp, 'factor': a.factor, 'cell_texels': a.cell, **stats,

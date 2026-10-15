@@ -1,0 +1,118 @@
+{
+ "name": "orbkin-blender-forge",
+ "iterations": [
+  {
+   "outputs": [
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter1-beauty.jpg",
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter1-atlas-sheet.jpg",
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter1-sprite-64px.jpg",
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter1-toon.jpg"
+   ],
+   "log": "Fresh opus subagent, skill v1 (commit 490358e). S0 doctor: cloud, 4 CPUs, EGL ok, bpy 5.2.2 ready, gltf-transform 4.5.1, three 0.180.0. S1 brief: found the cave ramp (caveStone) by reading arena.ts. S2 copied piece_template.py to cave_arch.py: two pillars of stacked boxes + lumps, a lintel of tilted boxes + top ellipsoids, an ellipsoid cutter for the opening, three stalactite cones joined and SDF-fused in a second pass after the cut. Round 1: second fuse raised '9 shells' (8-vertex specks); pilot added a small-shell filter; high 130,640 tris, low 5,000, piece 5-11 % oversize, stalactites barely read, atlas = noise. Round 2: bigger stalactites, wider opening, a pre-scale fit; bbox 3.02 x 1.02 x 2.40, still 2,420 UV islands. Round 3: compared --low-voxel 0.1 (1,601 islands), chisel (2,664) and chisel+0.1 (1,451, 3,616 tris); chose voxel 0.1. Gates: uv_check 15.687/15.971/16.0 pass; bake 1.94 s at 512^2, load 0.87; compose 7 colours on-palette, mips 7/7/6/6/2/2; pack 289.6 -> 101.9 KB, validate 0 errors; glbinfo + inspect_assert pass (5000 tris, EXT_meshopt_compression, no Draco/KTX2, doubleSided false); shoot pbr/toon/sprite 0 console errors, 1 draw call; manifest with sha256s, 'no third-party assets', approved false. orbkin-visual-gate absent: piece left unaccepted. The pilot's own verdict: dark seams read at 64 px, lit lips weak, atlas reads as fine camouflage noise, arch reads as a squarish doorway, stalactites are nubs.",
+   "skillProblems": [
+    "No way to add parts after an SDF cut: stalactites inside the opening were deleted by the cutter; the pilot wrote a second join + sdf_fuse pass itself.",
+    "A second sdf_fuse leaves zero-size speck shells and the template's error ('parts must overlap') pointed the wrong way; no helper to drop small shells.",
+    "PIECE['size'] not honoured: displacement + fillet grew the piece 5-11 %; no fit-to-size step.",
+    "UV fragmentation (2,404 then 1,601 islands at 5,000 tris) produced the very camouflage tell the skill says to refuse; the documented remedy (coarser --low-voxel) was not enough and chisel made it worse; modelling.md gave no working recipe.",
+    "uv_check --checker preview unreadable with hundreds of small islands; density only verifiable from numbers.",
+    "python -I wrote __pycache__ into the skill folder (gitignored, but a write inside the repo).",
+    "Exported mesh named 'High.001' (data name not renamed).",
+    "Ramp choice for the cave undocumented (caveStone vs rock vs boulder); pilot had to read arena.ts.",
+    "Unclear how palette-preserving mips reach the game (side files only; GLB carries the base PNG).",
+    "A copied template needed an undocumented ORBKIN_SKILL_SCRIPTS variable.",
+    "Expected log noise undocumented (EGL_BAD_MATCH, CUEW, exporter Draco/meshopt ERROR lines).",
+    "Beauty shot and pbr viewer mode washed-out orange; no statement of what the beauty is for.",
+    "No machine check for the 64 px read; 'lit lips and dark seams must read' stayed a visual judgement.",
+    "Rules impossible in a repo-frozen task: 'swap into the game behind a switch', the absent gate skill; one round bundled two fixes; no arena neighbours beyond the floor in a standalone run.",
+    "Template runs bake_masks in-process while S4 describes it as a standalone command."
+   ],
+   "judge": {
+    "score": 4,
+    "vsCurrent": "No. At play size (the 64 px sprite and the s4 sheet) the arch is a muddy brown post-and-lintel with salt-and-pepper specks: no readable blocks, no lit top band, no coherent seams, stalactites invisible, whereas the code-built cave in kit-cave-tiers-viewports.jpg / hd2d-desktop-trainer.jpg shows chunky individually readable courses with lit tops, crisp dark seams and one consistent texel size. The only things the kit genuinely cannot make here (a continuous rounded opening rim, fused stalactites) are exactly the things that do not survive 64 px, so the piece gives up the kit's strengths without buying anything visible.",
+    "strengths": [
+     "The pipeline itself is solid and honest: deterministic 11 s run, every gate scripted (5000 tris, 101.9 KB packed, 7 on-ramp colours, density 15.69-16.0, 1 mesh/1 material/1 draw call, doubleSided false, NEAREST sampler, EXT_meshopt only), manifest with hashes, and a self-report that correctly flags the camouflage problem instead of self-attesting.",
+     "One watertight SDF skin: no balloon-animal seams where the lintel meets the pillars or where the stalactites root into the span; the opening rim is rounded continuously, which stacked boxes cannot do.",
+     "Palette discipline is right: the atlas is strictly the caveStone ramp, mips are mode-halved so no off-palette colours leak, and the GLB round-trips in three r180 with 0 console errors.",
+     "At beauty-render scale the r1 (rounded plates) and r3b (chisel facets) variants do show some chunky plate structure; the ingredients for a good read exist in the high poly and in the form/AO masks.",
+     "The brief, budgets and refusal list were followed; the piece sits on y=0 at the specified 3.0 x 1.0 x 2.4 slot with bbox deviation 1.2 %."
+    ],
+    "weaknesses": [
+     "Atlas reads as camouflage noise: 1,601 UV islands at 47 % fill means ~19 texels per island, smaller than a single rock feature, so no shade feature can span an island and the per-texel percentile rules scatter lone dark/light texels; at 64 px this is salt-and-pepper over flat brown.",
+     "No directional lighting is baked: the value term is 0.65*normal.z + 0.35*(1-AO), so every vertical face lands in the same mid shade regardless of whether it faces the key light; shade histogram is 70 % in ramp[3..4] with 0.7 % in the lit shade; the sprite is darker and flatter than any kit wall next to it.",
+     "Displacement detail is sub-texel (plate 0.03 units = 0.5 texel, crack 0.05 = 0.8 texel) and then erased by --low-voxel 0.1 + decimate; the low is a pillowy blob (fillet 4) and its facets are what fragment the UVs.",
+     "Silhouette: boxy pillars + flat lintel + a vertical-ellipse cut reads as a squarish keyhole doorway; stalactites are 0.18-0.23-radius cones that come out as 2-3 px nubs at 64 px and merge into a dark smear.",
+     "Self-assessment measures the wrong things: all automated gates passed while the visual target failed; no island-count, blob-size, lit-top-share or silhouette gate; the 64 px sprite shot underestimates the game's on-screen size (~60-65 px per unit on desktop).",
+     "AO distance 0.7 with the floor present smears cavity into broad dark feet rather than crisp seams."
+    ],
+    "skillFixes": [
+     "compose.py + bake_masks.py: stop composing per texel; bake a world-position pass and a key-light term; paint world-space cells of 3-5 texels (one flat tone per cell from form + key, a 1-texel lit top edge, a 1-texel dark lower edge), apply cavity/lip per cell, keep the orphan clean-up; add blob/orphan statistics to --check.",
+     "uv_blocks.py / uv_check.py / SKILL.md S4: an island gate or a reachable way to larger islands; document that island count, not density, killed the read.",
+     "piece_template.py + gn.py + modelling.md: express displacement in texels and keep it in the low (plate >= 0.125, crack >= 0.1, plates 6-10 texels, fillet 2, chisel default); add a kit.courses() blockout helper so arena pieces start as stacked blocks.",
+     "shoot.mjs + viewer.html: judge at the game's pixel scale (--ppu 64 desktop, 36 phone) with the arena key, next to a kit reference; add automatic read metrics (lit top share, seam runs, silhouette IoU) with an exit code.",
+     "compose.py lighting: whole-face tone offsets (upward +1, downward -1, key-facing +1) so the lit top band exists and the lightest shade is used; a --key argument shared with the viewer and the game.",
+     "SKILL.md S1: require a kit baseline in the brief and a side-by-side at S6; state that passing every numeric gate while the atlas reads as noise is a failed round; the post-and-lintel test for when the kit wins.",
+     "piece_template.py hangers/blockout: minimum feature sizes at play size (root >= 0.3, length >= 0.8, 2 thick beat 3 thin), fuse hangers with the cut in one pass, 2-3 overlapping irregular cutters for the opening.",
+     "bake_masks.py: split cavity into crack cavity (AO <= 0.25) and contact AO (0.7, floor only, at most -1 shade)."
+    ]
+   }
+  },
+  {
+   "outputs": [
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter2-beauty.jpg",
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter2-atlas-sheet.jpg",
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter2-sprite-ppu64.jpg",
+    "game/docs/research/graphics/pilots/orbkin-blender-forge/iter2-vs-kit-baseline.jpg"
+   ],
+   "log": "Skill revised after pilot 1 (commit 45a6d72): low poly = fused form + plate displacement only (chisel 15 deg, voxel 0.08); bake_masks adds key-facing, world-position and split crack/contact AO passes; compose.py paints 6-texel cells with a per-cell lit lip and dark seam; viewer/shoot at the game's pixels per unit with a pi-W toon key; read_check.py gates the sprite read; kit.courses, fit_matrix, drop_small_shells, union-after-cut hangers; SKILL.md S1 kit baseline + post-and-lintel test, S2 hanger sizes, S6 ppu 64/36 + read_check. Fresh opus subagent. S0 doctor ok. S1 brief with a kit baseline crop from kit-cave-before-after.jpg, ramp caveStone, size (3.0, 1.0, 2.4). S2 blockout: kit.courses wall + crown/foot ellipsoids, 3 ellipsoid cutters + a floor cutter, 3 cone hangers. Pre-round pipeline repairs: the template's 2 % bbox gate failed because displacement dented the underside (pilot added a base clamp); the fused high was 5,528 tris because gn.sdf_fuse linked the running grid into the UNION node's disabled 'Grid 1' socket, so only the hangers survived (pilot wrote sdf_fuse_fixed linking both grids into the multi-input socket). Round 1: 4,128 tris, 1,473 islands, read_check passes, but stalactites were knobs, the opening low, a half block stuck out of an odd course row, crown ellipsoids read as balloons. Round 2: taller cutters, bigger hangers (roots 0.36/0.34/0.24, lengths 1.15/1.05/0.85). Round 3: clipped course blocks past the width, crown/feet as tilted slabs. Final: high 143,464 -> low 4,134 tris (bbox dev 0.33 %), 1,574 islands, density 15.604/15.991/16.0, bake 1.46 s at 512^2 (load 0.61), 7 on-ramp colours, pack 419 -> 131.1 KB, validate 0 errors, glbinfo + inspect_assert pass, shoot ppu 64/36 + front view 0 console errors 1 draw call, read_check ppu64 seam 0.137 lip 0.18 orphans 0.032 5 mid shades (exit 0), manifest with sha256s, approved false. The pilot re-composed with world-position cells, found it blotchier, and shipped the UV-grid atlas. orbkin-visual-gate absent: piece left unaccepted.",
+   "skillProblems": [
+    "gn.sdf_fuse add_after_cut linked the running grid into SDFGridBoolean UNION's disabled 'Grid 1' socket (UNION/INTERSECT take every operand on the multi-input inputs[1]); the body vanished silently and components()==1 still passed. FIXED in the final skill (both grids on inputs[1]; template asserts the fused bbox against the blockout; gotcha row).",
+    "No base flattening: plate/lump displacement dented the underside, fit_matrix put the dip on z=0 and the voxel remesh trimmed it, failing the template's own 2 % gate. FIXED (kit.flatten_base before fit_matrix).",
+    "piece_template passed a bare masks.png to compose, so the key, world-position and contact passes were silently unused while S4 described them. FIXED (template passes the masks dir; compose exits 2 on missing passes unless --allow-partial; have_form/have_contact in the report and asserted by the template).",
+    "Template docstring said --fillet 4 while the default is 2; --ramp defaulted to boulder for a cave back wall. FIXED (docstring; ramp from PIECE['ramp']).",
+    "Primitive axes undocumented: PIECE size is (x width, y depth, z height) while the task says width x height x depth. FIXED (SKILL S2 and the template comment).",
+    "kit.courses odd rows overhung by half a cell (blockout 3.8 wide for W=3). FIXED (rows clipped to the width).",
+    "quicklook.py cannot open a meshopt-packed GLB (pip bpy has no decoder); the shipped file is only screenshot by shoot.mjs. FIXED (clear message; gotcha row).",
+    "UV checker preview unreadable at 320 px on hundreds of islands; density is verified by uv_check numbers only.",
+    "S2 needs primitive signatures and hanger rules that only modelling.md (gated to S3) and inline comments gave; bmesh cone radius1 = bottom was undocumented. FIXED (modelling.md 4 primitives line; cone docstring; tip >= 0.08 rule).",
+    "The 2 % retopo criterion is not logged for the chisel path (whether decimate ran). FIXED (low_before_decimate and low_decimated in report.json).",
+    "read_check passed in round 1 when the stalactites were invisible and a box protruded: it measures seam/lip/orphan shares, not form (documented; a silhouette gate is the open improvement).",
+    "shoot.mjs has no front/game-camera preset for arches; the pilot added --az 0 --el 30 itself. Documented in S6.",
+    "manifest.py does not record bake timing or load average and lists unused tool versions (gltfpack, sharp).",
+    "Rules impossible in a repo-frozen task: S6 game swap, S8 commit, 'fix in the script' (fixes lived in the pilot's copy), the absent gate skill; the two pipeline repairs were made before round 1 rather than as rounds."
+   ],
+   "judge": {
+    "score": 6,
+    "vsCurrent": "No, it does not beat the code-built cave: at ppu 64/36 it reads as a block pile at the same texel density as the kit's coursed terraces (lit lips, dark seams, 5 ramp shades, so it would sit next to them without looking foreign), but it is noisier (dark 1-2 px specks, a regular 6-texel stripe inside large facets, blocks at two competing scales) and the two forms that justified building it in Blender fail: the opening is a cramped notch under a heavy lintel mass and the stalactites are invisible stubs, so the kit's cleaner boxes still win.",
+    "strengths": [
+     "Texel density is genuinely consistent (15.6-16.0 on every face) and the atlas is on the caveStone ramp with 7 colours, so the piece shares the game's pixel grid and palette; nothing reads as a smooth untextured primitive.",
+     "Lit top lips and dark bottom seams read at play size in the sprite shots (ppu 64 and 36), and chunky 8-14 texel blocks are individually readable, a clear step up from pilot 1's camouflage noise.",
+     "Course seams from kit.courses survive the SDF fuse, so the wall mass keeps the kit's stacked-stone construction logic rather than reading as a sculpted blob.",
+     "Pipeline hygiene is solid: 4,134 tris, 131 KB, 1 mesh/1 material/1 draw call, nearest sampler, meshopt only, 0 console errors, deterministic report and manifest, 11 s loop.",
+     "The pilot recorded its own bugs and workarounds (sdf_fuse UNION socket, base clamp, course overhang) in the manifest instead of hiding them."
+    ],
+    "weaknesses": [
+     "The silhouette, the only reason to use Blender here, fails the brief: the opening is roughly 25% of the front area instead of the briefed ~1.5x1.6 of 3x2.4, sits low under a heavy crown, and the arch reads as a crouching M-shaped mass; the front sprite shows a heavy block with a small cutout, not a cave arch.",
+     "The three stalactites (root 0.34-0.36, length 1.05-1.15 in the blockout) are invisible at ppu 64 and 36: after the 0.08 voxel remesh, chisel and decimate they are stubs, they hang against same-shade wall interior with no contrast, and their tips nearly touch the floor so they merge with the legs.",
+     "Horizontal banding inside blocks: the final atlas was composed with cells_from 'uv grid' (a bare masks.png path was passed, so form.png's key term, pos.png's world cells and contact.png AO were all silently unused); the regular 6-texel UV grid prints a lip/seam stripe every 6 texels across every large facet.",
+     "Dark 1-2 px specks scattered over the sprite from the 12% crack-cavity rule applied per texel on a faceted low; the kit paints at most one 2x2 pit per 160 texels and never a lone dark texel.",
+     "Blocks at two scales fight each other: 14x11-texel course blocks, 6-10-texel Voronoi plates on top of them, plus chisel facets, so the sprite is busier than the kit crop and lacks its calm 3-4 value steps per block.",
+     "The compare image is apples to oranges: a graded in-game JPG crop against an ungraded viewer shot with a neutral hemisphere light; the viewer cannot show whether the piece would hold up under the game's grade.",
+     "read_check passed on seam/lip/orphan shares that say nothing about block legibility, opening size or hanger visibility, so every numeric gate was green on a piece whose hero features do not read."
+    ],
+    "skillFixes": [
+     "SKILL.md S2 + piece_template.py: a numeric silhouette gate before S3 (front orthographic mask at ppu 64 from the blockout and the fused high: through-opening area >= the brief's share, each hanger >= 40 px tall with >= 4 px of background around it); document in modelling.md that cuts happen before fillet/offset and that plate growth and voxel rounding shrink an opening, so cutters must be oversized (target + fillet_iters*voxel + 1.6*plate + 2 voxels).",
+     "compose.py: replace the regular 6-texel UV-grid cells (stripe every 6 texels) with a per-island block painter mirroring textures.ts stoneSurface: one island = one block with a base tone, vertically stretched 3x5 sub-cells with +/-1 jitter and no bevel between sub-cells, the lit lip only on the island's top row broken by cluster noise, the dark seam on its bottom row plus a partial right edge; keep --cells world as opt-in for smooth lows.",
+     "compose.py + piece_template.py: fail loudly on silent fallbacks (missing form/pos/contact -> exit 2 unless --allow-partial; have_form/have_contact in the report, asserted by the template). [applied in the final skill]",
+     "piece_template.py + kit.py: hanger rules that produce hangers that read (length 0.45-0.6 of the opening height, root >= 0.35, >= 0.25 clear air; remesh hangers at min(0.08, root/4) or as a separate shell); shade the opening interior -2 in compose; a kit.arch_ring helper laying voussoir blocks around the cutter.",
+     "gn.py displace_rock + SKILL.md S3: unify block scale on coursed pieces (plate_scale ~ 1/CELL so plates coincide with course blocks, or mask plate displacement off course faces).",
+     "compose.py defaults: --cavity 12 -> 5 and crack runs >= 3 texels, or the kit's one 2x2 pit per ~160 texels with a lit lower lip. [cavity 5 applied]",
+     "read_check.py + SKILL.md S6: gates for block legibility (median blob >= 3x3 px, small blobs <= 5 %), a 6-texel periodicity check (autocorrelation < 0.3) and, on a mandatory front shot for cut pieces, the opening share and the number of background gaps (>= hangers + 1).",
+     "viewer.html + shoot.mjs: the game's grade in toon/sprite modes (hemisphere #ffe0b8/#3a2214 1.75, fill #ffc49a 0.85, per-arena background/fog via --arena cave) and a --baseline that renders a committed kit courseWall GLB at the same ppu for apples-to-apples compares.",
+     "gn.py sdf_fuse: the UNION socket bug + a post-fuse bbox assert + a gotchas row. [applied]",
+     "kit.courses + piece_template.py: clip the odd-row overhang and move the flat-base clamp into the template. [applied]"
+    ]
+   }
+  }
+ ],
+ "finalScore": 6
+}
