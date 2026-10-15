@@ -442,8 +442,12 @@ export class CreatureView {
     this.acting--;
   }
 
-  /** Anticipation crouch → stretched lunge → impact squash → hop back → landing squash. */
-  async lunge(towards: THREE.Vector3) {
+  /**
+   * Anticipation crouch → stretched lunge → impact squash → hop back → landing squash.
+   * `onStrike` fires on the contact frame, so a scene can play the hit there and let the
+   * recovery (hop back, landing) overlap the target's reaction instead of delaying it.
+   */
+  async lunge(towards: THREE.Vector3, onStrike?: () => void) {
     this.acting++;
     const start = this.inner.position.clone();
     const dir = towards.clone().sub(this.root.position).setY(0).normalize().applyAxisAngle(UP, -this.root.rotation.y);
@@ -464,6 +468,7 @@ export class CreatureView {
       this.inner.position.copy(start).addScaledVector(dir, -0.12 + (reach + 0.12) * e);
       this.inner.position.y = start.y + Math.sin(k * Math.PI) * 0.12;
     });
+    onStrike?.();
     await tween(70, (k) => {
       this.squash(1.28 - 0.5 * ease.outCubic(k));
       lean(0.3 - 0.15 * k);

@@ -1,5 +1,9 @@
 # Progress
 
+## 2026-10-14 — HD-2D battle feel: hit timing
+- the hit reaction now plays on the impact frame (it came 1.7–2.1 s late). Decisions and numbers: `docs/DECISIONS.md` "Battle feel".
+- Evidence: impact → reaction 0–1 frames on flame/tide/spark (was 98–127). `npm run verify` before each commit.
+
 ## 2026-10-13 — HD-2D reference pass 2 (`?gfx=hd2d`): rock, outdoor light, sprites, night sets
 - Craggy faceted rock kit with chunk textures and irregular walls (cave reframed with an open lit stage, left-window shafts and a furnished lodge; volcanic basalt column wall with lava joints; hollow dappled key on the kin). Outdoor/sea arenas: one low warm key with a world-space gobo (focal pool, leaf dapple, drifting cloud shadows), phone ground aprons, the cliff's painted sky/headlands/fog bands, layered mesas, rock-clump sea stacks. Sprites: five-tone hue-shifted ramp, selective outline + rim, emissive flame/magma kin with floor glows; tailored trainer outfits. Night sets: hardwood stadium court with floodlight cones, victory spotlight, HoF line-ups, marble dais. Bloom soft knee; flame/tide FX; phone move grid fixed 2×2. Design: `docs/HD2D.md` "Reference pass 2"; decisions: `docs/DECISIONS.md`.
 - Evidence: typecheck, lint, 275 unit tests ✓; e2e hd2d, hd2d-arenas, hd2d-coast, hd2d-screens, hd2d-summit, smoke, layout, arena on desktop + phone against the integrated build; draw calls 37–78 per frame (< 100); 0.000% clear-colour leak in the bottom 35% of phone frames for the six outdoor/sea arenas.

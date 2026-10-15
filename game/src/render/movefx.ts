@@ -22,6 +22,12 @@ export interface MoveFxOptions {
   miss?: boolean;
   /** Battle camera: big signatures are scaled down to fit the screen around the target (portrait phones). */
   camera?: THREE.Camera;
+  /**
+   * Called once, on the frame the attack connects (projectile arrival, bolt strike). The scene
+   * starts the target's reaction here (hit flash, SFX, shake, HP drain); `moveFx` resolves on the
+   * same frame while the effect's dissipation keeps running in the background.
+   */
+  onImpact?: () => void;
 }
 
 interface Ctx {
@@ -38,6 +44,8 @@ interface Ctx {
   P: number;
   tier: 0 | 1 | 2;
   camera?: THREE.Camera;
+  /** Mark the impact frame (idempotent): fires `onImpact` and resolves `moveFx`. */
+  impact: () => void;
 }
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -74,7 +82,7 @@ export function estimateTargetHeight(scene: THREE.Scene, to: THREE.Vector3): { h
   return { h: h || 1.2, floor };
 }
 
-function makeCtx(scene: THREE.Scene, from: THREE.Vector3, to: THREE.Vector3, o: MoveFxOptions): Ctx {
+function makeCtx(scene: THREE.Scene, from: THREE.Vector3, to: THREE.Vector3, o: MoveFxOptions, impact: () => void): Ctx {
   const est = estimateTargetHeight(scene, to);
   const h = THREE.MathUtils.clamp(o.targetHeight ?? est.h, 0.8, 2.6);
   const power = o.power ?? 65;
@@ -85,7 +93,7 @@ function makeCtx(scene: THREE.Scene, from: THREE.Vector3, to: THREE.Vector3, o: 
   // HD-2D: the diorama camera is closer; smaller FX keep the target readable.
   if (hd2dRequested()) P *= 0.7;
   if (o.camera) P *= screenFit(o.camera, ground, h * P);
-  return { scene, from: from.clone(), to: to.clone(), ground, centre, h, P, tier, camera: o.camera };
+  return { scene, from: from.clone(), to: to.clone(), ground, centre, h, P, tier, camera: o.camera, impact };
 }
 
 /**
@@ -204,6 +212,7 @@ async function fly(c: Ctx, geo: THREE.BufferGeometry, opts: { ms: number; arc: n
 
 /** Flash + element burst + ground ring: the common impact every element gets. */
 function impact(c: Ctx, colors: string[], opts: { shape?: THREE.BufferGeometry; count?: number; flashColor?: string; ring?: string; gravity?: number; speed?: number; blend?: 'normal' | 'add'; size?: number } = {}) {
+  c.impact();
   const s = c.h * c.P;
   void flash(c.scene, c.centre, opts.flashColor ?? '#ffffff', 0.75 * s, 240, 'star8', 'add');
   const ps = new Particles(c.scene, 40, opts.shape ?? GEO.oct, opts.blend ?? 'normal');
@@ -276,8 +285,7 @@ async function flame(c: Ctx) {
     t.done(); t2.done();
     await rise.run(500);
   })();
-  await wait(260);
-  return tail;
+  await tail;
 }
 
 // ------------------------------------------------------------------ Tide
@@ -325,6 +333,7 @@ async function tide(c: Ctx) {
       b.add(GEO.ball, '#ffffff', { p: [Math.cos(a) * 0.55, 0.05, Math.sin(a) * 0.55], s: [0.13, 0.08, 0.13] });
     }
   });
+  c.impact();
   void flash(c.scene, c.centre, '#bfe6ff', 0.8 * c.h * c.P, 240, 'star8', 'add');
   const f = fxMesh(c.scene, crown, 'normal');
   f.mesh.position.copy(c.ground);
@@ -343,8 +352,7 @@ async function tide(c: Ctx) {
     f.done();
     await drops.run(200);
   })();
-  await wait(240);
-  return tail;
+  await tail;
 }
 
 // ------------------------------------------------------------------ Flora
@@ -407,8 +415,7 @@ async function flora(c: Ctx) {
     });
     t.done();
   })();
-  await wait(240);
-  return tail;
+  await tail;
 }
 
 // ------------------------------------------------------------------ Spark
@@ -455,6 +462,7 @@ async function spark(c: Ctx) {
     f.mat.opacity = on ? 1 : 0.2;
     g.mat.opacity = on ? 1 : 0.25;
     f.mesh.scale.y = g.mesh.scale.y = Math.min(1, k * 5);
+    if (k >= 0.2) c.impact(); // the bolt has struck the target
     if (k > 0.2 && rnd() < 0.7) crack.emit(c.centre.clone().add(V(rnd(-0.4, 0.4) * S, rnd(-0.4, 0.4) * S, rnd(-0.3, 0.3))), V(rnd(-3, 3), rnd(-1, 3), rnd(-3, 3)), { color: rnd() < 0.5 ? '#ffffff' : '#ffe14d', size: 0.035 * Math.sqrt(S), stretch: 5, life: 0.25, spin: 20, end: 0 });
     crack.step(dt);
   });
@@ -485,7 +493,7 @@ async function spark(c: Ctx) {
     crack.step(dt);
   });
   cg.done();
-  return crack.run(200);
+  await crack.run(200);
 }
 
 /** Keep a mesh's local Z facing the camera around the world Y axis (for flat bolts). */
@@ -529,6 +537,7 @@ async function terra(c: Ctx) {
   const S = c.h * c.P;
   const t = fxMesh(c.scene, spikes, 'normal');
   t.mesh.position.copy(c.ground);
+  c.impact();
   void flash(c.scene, c.centre, '#fff2d0', 0.7 * S, 200, 'star8', 'add');
   const chunks = new Particles(c.scene, 30, GEO.rock);
   chunks.spray(Math.round(12 * c.P), c.centre, [2.2 * Math.sqrt(S), 3.8 * Math.sqrt(S)], { color: '#a3825c', colors: ['#a3825c', '#8a6a48', '#c4a27a', '#7a5a3c'], size: 0.1 * Math.sqrt(S), life: 0.65, gravity: -12, drag: 0.6, spin: 8, end: 0.5, dir: V(0, 0.9, 0) });
@@ -550,8 +559,7 @@ async function terra(c: Ctx) {
     chunks.dispose();
     puff.dispose();
   })();
-  await wait(260);
-  return tail;
+  await tail;
 }
 
 // ------------------------------------------------------------------ Gale
@@ -598,6 +606,7 @@ async function gale(c: Ctx) {
     }
     ring.dispose();
   });
+  c.impact();
   void flash(c.scene, c.centre, '#e8fbff', 0.75 * S, 220, 'star8', 'add');
   const t = fxMesh(c.scene, tw, 'add', '#9aa8b0');
   const t2 = fxMesh(c.scene, tw, 'normal');
@@ -630,8 +639,7 @@ async function gale(c: Ctx) {
     });
     t.done(); t2.done(); swirl.dispose();
   })();
-  await wait(280);
-  return tail;
+  await tail;
 }
 
 // ------------------------------------------------------------------ Neutral
@@ -648,8 +656,7 @@ async function neutral(c: Ctx) {
     lines.emit(c.centre.clone().add(V(Math.cos(a) * 0.2 * S, Math.sin(a) * 0.2 * S, 0)), V(Math.cos(a) * 3 * S, Math.sin(a) * 3 * S, 0), { color: '#ffffff', size: 0.16 * S, life: 0.26, drag: 4, end: 0 });
   }
   const tail = lines.run(260);
-  await wait(200);
-  return tail;
+  await tail;
 }
 
 // ------------------------------------------------------------------ HD-2D pixel FX
@@ -748,6 +755,7 @@ async function flamePx(c: Ctx) {
       }
     },
   });
+  c.impact();
   // Impact: star under the target, a ring of flame tongues open toward the camera (bigger ones
   // behind), embers thrown out and rising, and the fire LIGHTS the ground: a warm pool (with a
   // hot core) that swells over ~300 ms, a scorch left on the floor as it dies.
@@ -800,8 +808,7 @@ async function flamePx(c: Ctx) {
     for (let i = 0; i < 3; i++) smoke.add('smoke', ringPos(c, rnd(0, TAU), 0.15 * R, (0.55 + i * 0.12) * R), { vel: V(rnd(-0.1, 0.1), 0.6, rnd(-0.1, 0.1)), scale: k, fps: 10, delay: i * 0.06 });
     await finish(rise, smoke);
   })();
-  await wait(260);
-  return tail;
+  await tail;
 }
 
 async function tidePx(c: Ctx) {
@@ -828,6 +835,7 @@ async function tidePx(c: Ctx) {
   });
   orbs.dispose();
   void drip.run(400);
+  c.impact();
   // Impact: splash crown in an open arc (a tall one behind the target), droplets, foam, ripple.
   const R = reach(c);
   const fwd = camFwdXZ(c);
@@ -878,8 +886,7 @@ async function tidePx(c: Ctx) {
     crown.dispose(); froth.dispose(); star.dispose(); flashLight.dispose(); wet.dispose(); wetRing.dispose();
     await finish(drops, foam);
   })();
-  await wait(240);
-  return tail;
+  await tail;
 }
 
 async function floraPx(c: Ctx) {
@@ -905,6 +912,7 @@ async function floraPx(c: Ctx) {
     leaves.step(dt);
   });
   leaves.dispose();
+  c.impact();
   // Impact: thorn vines sprout in an open arc; a burst of leaves and petals.
   const R = reach(c);
   const star = pixelStar(c, '#eaffb0', 1.2, k);
@@ -931,8 +939,7 @@ async function floraPx(c: Ctx) {
     vines.dispose(); star.dispose();
     await finish(burst, petals);
   })();
-  await wait(240);
-  return tail;
+  await tail;
 }
 
 async function sparkPx(c: Ctx) {
@@ -978,6 +985,7 @@ async function sparkPx(c: Ctx) {
     f.mat.opacity = on ? 0.8 : 0.15;
     g.mat.opacity = on ? 1 : 0.25;
     f.mesh.scale.y = g.mesh.scale.y = Math.min(1, kk * 5);
+    if (kk >= 0.2) c.impact(); // the bolt has struck the target
     if (kk > 0.2 && rnd() < 0.8) crack.emit(at.clone().add(V(rnd(-0.4, 0.4) * S, rnd(-0.4, 0.4) * S, rnd(-0.3, 0.3))), V(rnd(-3, 3), rnd(-1, 3), rnd(-3, 3)), { color: rnd() < 0.5 ? '#ffffff' : '#ffe14d', size: rnd() < 0.3 ? 2 : 1, life: 0.22, drag: 2, glow: 1.6 });
     charge.step(dt); crack.step(dt);
   });
@@ -999,7 +1007,7 @@ async function sparkPx(c: Ctx) {
     star.step(dt); jolts.step(dt); grit.step(dt); crack.step(dt);
   });
   star.dispose(); light.dispose();
-  return finish(jolts, grit, crack);
+  await finish(jolts, grit, crack);
 }
 
 async function terraPx(c: Ctx) {
@@ -1013,6 +1021,7 @@ async function terraPx(c: Ctx) {
       while (acc > 0.03) { acc -= 0.03; pts.emit(at.clone(), V(rnd(-0.3, 0.3), rnd(-0.2, 0.3), rnd(-0.3, 0.3)), { color: dust[Math.floor(rnd(0, 3))]!, size: 2, life: 0.4, drag: 2 }); }
     },
   });
+  c.impact();
   // Impact: rock spikes burst up in an open arc, the boulder shatters, dust rolls out.
   const R = reach(c);
   const star = pixelStar(c, '#fff2d0', 1.2, k);
@@ -1030,8 +1039,7 @@ async function terraPx(c: Ctx) {
     spikes.dispose(); star.dispose();
     await finish(chips, puffs);
   })();
-  await wait(260);
-  return tail;
+  await tail;
 }
 
 async function galePx(c: Ctx) {
@@ -1053,6 +1061,7 @@ async function galePx(c: Ctx) {
     blades.step(dt);
   });
   blades.dispose();
+  c.impact();
   // Impact: a whirlwind funnel behind the target, leaves and gusts orbiting, a ground ripple.
   const R = reach(c);
   const fwd = camFwdXZ(c);
@@ -1083,11 +1092,11 @@ async function galePx(c: Ctx) {
     });
     funnel.dispose(); star.dispose(); orbit.dispose(); gust.dispose();
   })();
-  await wait(280);
-  return tail;
+  await tail;
 }
 
 async function neutralPx(c: Ctx) {
+  c.impact(); // no projectile: the pop lands on the target at once
   const k = texScale(c);
   const R = reach(c);
   // A white pop under the target, a gold one behind it, speed lines and grit flying out.
@@ -1117,8 +1126,7 @@ async function neutralPx(c: Ctx) {
     star.dispose(); light.dispose();
     await finish(lines, grit);
   })();
-  await wait(200);
-  return tail;
+  await tail;
 }
 
 const WHIFF_BOOK: Record<string, BookId> = { Flame: 'fireball', Tide: 'orb', Flora: 'leaf', Spark: 'spark', Terra: 'boulder', Gale: 'slash', Neutral: 'spark' };
@@ -1160,43 +1168,54 @@ async function whiffPx(c: Ctx, type: MoveElement) {
 
 async function pixelMoveFx(c: Ctx, type: MoveElement, miss: boolean): Promise<void> {
   if (miss) return whiffPx(c, type);
-  let tail: Promise<unknown> | void;
   switch (type) {
-    case 'Flame': tail = await flamePx(c); break;
-    case 'Tide': tail = await tidePx(c); break;
-    case 'Flora': tail = await floraPx(c); break;
-    case 'Spark': tail = await sparkPx(c); break;
-    case 'Terra': tail = await terraPx(c); break;
-    case 'Gale': tail = await galePx(c); break;
-    default: tail = await neutralPx(c); break;
+    case 'Flame': return flamePx(c);
+    case 'Tide': return tidePx(c);
+    case 'Flora': return floraPx(c);
+    case 'Spark': return sparkPx(c);
+    case 'Terra': return terraPx(c);
+    case 'Gale': return galePx(c);
+    default: return neutralPx(c);
   }
-  void tail;
+}
+
+async function meshMoveFx(c: Ctx, type: MoveElement, miss: boolean): Promise<void> {
+  if (miss) return whiff(c, type);
+  switch (type) {
+    case 'Flame': return flame(c);
+    case 'Tide': return tide(c);
+    case 'Flora': return flora(c);
+    case 'Spark': return spark(c);
+    case 'Terra': return terra(c);
+    case 'Gale': return gale(c);
+    default: return neutral(c);
+  }
 }
 
 // ------------------------------------------------------------------ entry points
 
 /**
- * Play the travelling/impact effect for an attack of the given element. Resolves at the moment
- * of impact (+ a beat); the effect's tail keeps fading in the background. `opts` may be the move
- * power (number) or {power, targetHeight}.
+ * Play the travelling/impact effect for an attack of the given element. Resolves on the impact
+ * frame (`opts.onImpact` fires on that same frame); the effect's dissipation keeps running in the
+ * background and cleans itself up. A miss (no impact) resolves when the whiff ends. `opts` may be
+ * the move power (number) or {power, targetHeight, ...}.
  */
-export async function moveFx(scene: THREE.Scene, type: MoveElement, from: THREE.Vector3, to: THREE.Vector3, opts: number | MoveFxOptions = {}): Promise<void> {
+export function moveFx(scene: THREE.Scene, type: MoveElement, from: THREE.Vector3, to: THREE.Vector3, opts: number | MoveFxOptions = {}): Promise<void> {
   const o = typeof opts === 'number' ? { power: opts } : opts;
-  const c = makeCtx(scene, from, to, o);
-  fxSeed(type.length * 97 + c.tier * 13);
-  if (hd2dRequested()) return pixelMoveFx(c, type, !!o.miss);
-  if (o.miss) return whiff(c, type);
-  let tail: Promise<unknown> | void;
-  switch (type) {
-    case 'Flame': tail = await flame(c); break;
-    case 'Tide': tail = await tide(c); break;
-    case 'Flora': tail = await flora(c); break;
-    case 'Spark': tail = await spark(c); break;
-    case 'Terra': tail = await terra(c); break;
-    case 'Gale': tail = await gale(c); break;
-    default: tail = await neutral(c); break;
-  }
-  void tail;
+  return new Promise<void>((resolve) => {
+    let hit = false;
+    const impact = () => {
+      if (hit) return;
+      hit = true;
+      o.onImpact?.();
+      resolve();
+    };
+    const c = makeCtx(scene, from, to, o, impact);
+    fxSeed(type.length * 97 + c.tier * 13);
+    const run = hd2dRequested() ? pixelMoveFx(c, type, !!o.miss) : meshMoveFx(c, type, !!o.miss);
+    // An effect that ends without connecting (a miss) resolves here; a broken one must not stall the battle.
+    run.then(resolve, (err: unknown) => { console.error(err); resolve(); });
+  });
 }
 
 export type StatusCue = 'buff' | 'debuff' | 'burn' | 'shock' | 'drowsy' | 'heal' | 'cure';
