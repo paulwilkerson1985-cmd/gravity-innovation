@@ -5,6 +5,7 @@ Checks: bpy version, Cycles CPU render (64 px), Workbench render (needs EGL), SD
 glTF export, OIDN denoiser, numpy. --full also times a 256 px Cycles render at 16 spp + OIDN.
 Exit 0 when Cycles + glTF work (the minimum the skill needs), 1 otherwise.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import json, sys, time, os, tempfile
 try:
     import bpy, numpy

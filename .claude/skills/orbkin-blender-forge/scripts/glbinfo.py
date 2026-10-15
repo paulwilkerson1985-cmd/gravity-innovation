@@ -9,6 +9,7 @@ because accessor counts, materials and extensions stay in the JSON chunk).
 Exit 0 when every assertion holds, 1 when one fails (the JSON lists `failures`), 2 on a bad file.
 Image pixel sizes are read from the PNG/WebP headers inside the binary chunk.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import json, struct, sys, argparse
 
 

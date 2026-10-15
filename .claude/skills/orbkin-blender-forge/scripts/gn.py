@@ -74,11 +74,13 @@ class GN:
         return obj
 
 
-def sdf_fuse(obj, voxel=0.02, fillet=4, offset=0.0, band=3, cut_objects=(), threshold=0.0, name='sdf_fuse'):
+def sdf_fuse(obj, voxel=0.02, fillet=4, offset=0.0, band=3, cut_objects=(), add_after_cut=(), threshold=0.0, name='sdf_fuse'):
     """Fuse a joined mesh of overlapping volumes into one watertight skin:
     MeshToSDFGrid -> [SDFGridBoolean DIFFERENCE with each cutter] -> SDFGridOffset -> SDFGridFillet -> GridToMesh(0).
     voxel ~ 1/150 of the piece size; fillet radius ~ iterations x voxel; offset>0 rounds/grows, <0 erodes.
-    cut_objects: mesh objects subtracted (arch openings, bites). Applies and returns obj."""
+    cut_objects: mesh objects subtracted (arch openings, bites). add_after_cut: mesh objects UNIONed
+    after the cuts (stalactites hanging inside an opening, parts that a cutter would otherwise delete).
+    Applies and returns obj; the cutters/adds are left in the scene (remove them yourself)."""
     g = GN(name)
     m2s = g.node('GeometryNodeMeshToSDFGrid', **{'Voxel Size': voxel, 'Band Width': band})
     g.link(g.inp, 0, m2s, 'Mesh')
@@ -89,6 +91,13 @@ def sdf_fuse(obj, voxel=0.02, fillet=4, offset=0.0, band=3, cut_objects=(), thre
         g.link(oi, 'Geometry', c2s, 'Mesh')
         bo = g.node('GeometryNodeSDFGridBoolean', _operation='DIFFERENCE')
         g.link(last, 0, bo, 0); g.link(c2s, 0, bo, 1)
+        last = bo
+    for ao in add_after_cut:
+        oi = g.node('GeometryNodeObjectInfo', _transform_space='RELATIVE'); oi.inputs['Object'].default_value = ao
+        a2s = g.node('GeometryNodeMeshToSDFGrid', **{'Voxel Size': voxel, 'Band Width': band})
+        g.link(oi, 'Geometry', a2s, 'Mesh')
+        bo = g.node('GeometryNodeSDFGridBoolean', _operation='UNION')
+        g.link(last, 0, bo, 0); g.link(a2s, 0, bo, 1)
         last = bo
     if offset:
         of = g.node('GeometryNodeSDFGridOffset', Distance=offset)

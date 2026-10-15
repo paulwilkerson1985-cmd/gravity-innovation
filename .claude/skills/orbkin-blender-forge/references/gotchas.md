@@ -21,7 +21,15 @@ Read when something looks wrong or a script returns CANCELLED/empty. Each line c
 | bake wrote nothing | target image not the ACTIVE Image Texture node; low not active | `kit.set_bake_target`; `kit.bake` selects high then low |
 | bake image gone after the script | bakes are not saved automatically | `kit.save_image` |
 | Pointiness flat/noisy | per-vertex curvature; needs ≥ 50 k verts, Cycles only | bake it from the dense high poly (bake_masks) |
-| composed atlas = camouflage noise | per-texel high-poly facing and absolute AO thresholds | form term from the LOW normal, percentile cavity/lip shares (compose defaults) |
+| composed atlas = camouflage noise (pilot 1, judged 4/10) | per-texel rules over 1,600 two-face UV islands; low cut from the fully displaced high | low = fused form + plates only (chisel 15°, voxel 0.08); `compose.py` paints 5-8-texel cells keyed on WORLD position with a per-cell lit lip / dark seam |
+| lips 40 % of the atlas | the half-texel island offset let islands share texels, every island edge counted as a cell edge | `uv_blocks` snaps origins to whole texels + a gutter; the bevel only looks at covered neighbours |
+| displacement vanished in the atlas | plate 0.03 / crack 0.05 units = 0.5-0.8 texel at 16/unit | plate ≥ 0.125 (2 texels), crack ≥ 0.1; `--plate-scale 1.8` for 6-10-texel plates |
+| `No valid selected objects` at bake | an object hidden with `hide_viewport` cannot be selected | `kit.bake` un-hides low and high; the template uses `hide_render` only |
+| second SDF pass raises '9 shells' | 8-vertex specks at concave joins after a fillet | `kit.drop_small_shells`; hangers go through `add_after_cut` in ONE fuse |
+| piece 5-10 % bigger than PIECE size | displacement + fillet grow the blockout | `kit.fit_matrix` applied to high and low |
+| sprite shot one flat colour | GLB lost its texture (material re-assigned without the image, or TEXCOORD pruned when no material uses it) | `glbinfo.py` images/attrs before shooting; assign the atlas material before `export_glb` |
+| sprite darker than the atlas, no light shades | MeshToon divides by π: a 1 W key lights a face to 0.32 × albedo | viewer uses a π W key in toon/sprite modes |
+| `read_check` says lips < 3 % | tops not lit: no key term, or the viewer at the wrong scale | bake the key term (`--key`), shoot at `--ppu 64/36`, cell seams -2 / lips +1 |
 | 70 % of texels become "cavity" | absolute AO threshold with a floor present | `--cavity 22` (percent) default; `<= 1` only when you mean an absolute value |
 | atlas too small / islands overflow | organic low polys fragment into 1–2 k islands | 512 atlas for 3-unit pieces; coarser `--low-voxel`; never a looser `--angle` (> 20° fails the density gate) |
 | texel density check fails | UVs not planar-projected per island, or scaled | `uv_blocks.py` only; never `pack_islands`/`smart_project` on pieces |

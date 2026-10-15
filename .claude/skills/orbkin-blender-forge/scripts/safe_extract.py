@@ -8,6 +8,7 @@ traversal, an absolute path, a symlink/hardlink, an executable bit, or a script/
 .bat, .ps1, .usd*, .mtlx, .tres and every extension outside --allow. Exit 0 extracted / listed, 1
 rejected, 2 bad usage. Prints a JSON report; keep it next to the asset's provenance JSON.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import sys, os, json, zipfile, tarfile, argparse, stat
 
 DEFAULT_ALLOW = 'png,jpg,jpeg,webp,exr,hdr,tif,tiff,glb,gltf,bin,obj,mtl,fbx,dae,ogg,wav,mp3,ttf,otf,woff2,txt,md,json,csv,license'

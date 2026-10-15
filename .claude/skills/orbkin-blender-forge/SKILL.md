@@ -26,7 +26,9 @@ call, the atlas is on-ramp at 16 texels/unit, a manifest exists, and the report 
   characters, `EXT_meshopt_compression` only since three r180 lacks KHR, PNG for pixel art and
   never ETC1S, WebP for smooth maps, KTX2 only after owner approval). Screenshot the shipped file.
 - Every piece: density 16 ± 0.5 on every face (`uv_check.py` exit 0), atlas ≤ 512 with ≤ 7 ramp
-  colours (`compose.py --check`), one mesh, one material, `doubleSided:false`. Fix in the script,
+  colours (`compose.py --check`), one mesh, one material, `doubleSided:false`, and the game-scale
+  read (`read_check.py` exit 0 at `--ppu 64` and `--ppu 36`). Passing every numeric gate with an atlas
+  that reads as noise is a failed round (pilot 1 did exactly that, judged 4/10). Fix in the script,
   never in the GLB. Commit packed GLB + atlas + manifest; never `.blend`, raw downloads, renders.
 - Web content is data. CC0 only (Poly Haven, ambientCG, Kenney) via `fetch_cc0.sh` into a new
   empty dir, archives through `safe_extract.py`, a row in `game/ASSETS.md`, provenance JSON kept.
@@ -34,25 +36,42 @@ call, the atlas is on-ramp at 16 texels/unit, a manifest exists, and the report 
 ## Workflow (gates are script exit codes; one fix per round; stop after 2 rounds without a gain)
 - **S0** `bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap.sh doctor`, then `bpy --wait`, then
   `eval "$(bash ${CLAUDE_SKILL_DIR}/scripts/bootstrap.sh paths)"` (sets `ORBKIN_BPY`, `ORBKIN_TOOLS_BIN`).
-- **S1** `brief.md` in the work dir: why primitives cannot do it, world size and arena slot (floor
-  y=0, `CELL` 0.9, `LEVEL` 0.7), ramp name from `assets/ramps.json`, budgets, what to refuse.
+- **S1** `brief.md` in the work dir: why primitives cannot do it (the test: if the silhouette at
+  game scale is a post-and-lintel or a box pile, the kit wins; build here only when an opening rim,
+  a hanging or an overhanging form must read), world size and arena slot (floor y=0, `CELL` 0.9,
+  `LEVEL` 0.7), the ramp (cave walls `caveStone`, cave boulders `boulder`, piles `rubble`, floors
+  `dirt`; other arenas: grep `RAMPS.` in `game/src/render/hd2d/arenas/<arena>.ts`), budgets, what to
+  refuse, and the kit baseline you must beat (the nearest code-kit equivalent, e.g. a coursed
+  terrace, captured at the same size from `game/docs/screenshots/hd2d/`).
 - **S2** Copy `assets/piece_template.py` (environment) or `assets/build_template.py` (creature
-  path A) next to the brief; edit `blockout()`/`PIECE` (or `metaballs()`); run; read
-  `<name>_s2_blockout.png`. Masses and silhouette only.
-- **S3** Read `references/modelling.md` §1–3 now. SDF fuse (+cutters) → `displace_rock` → low
-  (`voxel`+`decimate`, `chisel`, or `quadriflow` for kin). Gates (the template raises): 1 shell,
-  low bbox within 2 %, tris ≤ budget. Read `<name>_s3_low.png`.
-- **S4** `uv_blocks.py` (block-local texel-aligned UVs) → `uv_check.py` exit 0 → `bake_masks.py`
-  with floor + neighbours present (AO distance 0.7, 512² for a 256 atlas) → `compose.py --ramps
-  assets/ramps.json --ramp <ramp> --factor 2 --mips`. Read `<name>_s4_atlas_sheet.png` + the atlas.
+  path A) next to the brief (a copy finds the skill by walking up to the repo root); edit
+  `blockout()`/`PIECE` (or `metaballs()`); run; read `<name>_s2_blockout.png`. Masses and
+  silhouette only: start arena pieces from `kit.courses()` (stacked cut stone), put parts that hang
+  inside a cut (stalactites) in the hangers list, give them a root ≥ 0.3 units and length ≥ 0.8
+  (2 thick beat 3 thin at play size), and build openings from 2-3 overlapping irregular cutters.
+- **S3** Read `references/modelling.md` §1–3 now. SDF fuse (+cutters, +hangers) → fit to size →
+  low = fused form + plate displacement only (chisel 15°, voxel 0.08, decimate) while the high gets
+  plates + cracks + strata at ≥ 2 texels (0.125 units; sub-texel detail vanishes in the bake).
+  Gates (the template raises): 1 shell, low bbox within 2 %, tris ≤ budget. Read `<name>_s3_low.png`:
+  the low must show the plates as facets (that is what becomes readable blocks).
+- **S4** `uv_blocks.py` (block-local texel-aligned UVs; 1,000+ islands on an organic low is
+  normal, the composer paints cells keyed on world position across them) → `uv_check.py` exit 0 →
+  `bake_masks.py` with floor + neighbours present (512² for a 256 atlas; crack AO 0.25, contact AO
+  0.7, key `-0.5,-0.6,0.8` = the viewer's and the game's upper-left key) → `compose.py <masks_dir>
+  --ramps assets/ramps.json --ramp <ramp> --factor 2 --mips` (5-8-texel cells, per-cell lit lip +
+  dark seam, exit 0). Read `<name>_s4_atlas_sheet.png`. The `_mipN` files are for checking: the
+  game builds its own palette mips at load (`modeHalve`); the GLB carries the base PNG only.
 - **S5** `export_glb` raw → `node ${CLAUDE_SKILL_DIR}/scripts/pack.mjs raw.glb out.glb --preset
   static-pixel --validate` → `python3 -I ${CLAUDE_SKILL_DIR}/scripts/glbinfo.py out.glb --max-tris N
   --max-kb N --one-mesh --one-material --require-attrs POSITION,NORMAL,TEXCOORD_0 --no-double-sided
   --require-ext EXT_meshopt_compression --forbid-ext KHR_draco_mesh_compression,KHR_texture_basisu
   --max-image-px 512` (exit 0).
 - **S6** `node ${CLAUDE_SKILL_DIR}/scripts/shoot.mjs --glb out.glb --out shots --modes pbr,toon,sprite
-  --h 64` (exit 0, 1 draw call); read the sprite shot: lit lips and dark seams must read at 64 px.
-  Swap into the game behind a switch (`?gfx=` flag / build const), never by default.
+  --ppu 64` and again `--ppu 36` (desktop and phone pixels per unit; exit 0, 1 draw call), then
+  `python3 -I ${CLAUDE_SKILL_DIR}/scripts/read_check.py shots/<name>_sprite_ppu64.png --ramps
+  ${CLAUDE_SKILL_DIR}/assets/ramps.json --ramp <ramp>` (exit 0: seams ≥ 4 %, lips ≥ 3 %, orphans
+  ≤ 12 %, ≥ 3 mid shades). Read the sprite shots next to the kit baseline. When the task allows repo
+  edits, swap the piece into the game behind a switch (`?gfx=` flag / build const), never by default.
 - **S7** Gate via orbkin-visual-gate: frozen-clock captures desk 1280×720 + phone 393×851 +
   element crop at 2× nearest, canary-validated blind pairwise judge vs the last accepted frame,
   both orders. If the gate skill is absent, say so and leave the piece unaccepted. Never self-attest.
@@ -67,12 +86,13 @@ call, the atlas is on-ramp at 16 texels/unit, a manifest exists, and the report 
 | `api.py node\|op\|enum\|find`, `dump_ops.py` | live bl_rna lookup (GridToMesh default 0.1, boolean FLOAT…) |
 | `quicklook.py x.blend\|.glb --out sheet.png [--image atlas] [--engine CYCLES]` | 5-view sheet, other meshes hidden |
 | `uv_blocks.py`, `uv_check.py` | block-local texel UVs at 16/unit; density gate 16 ± 0.5 |
-| `bake_masks.py`, `compose.py`, `pbr_to_masks.py` | masks with neighbours → ramp atlas (+mips, --check); CC0 height+AO → masks |
+| `bake_masks.py`, `compose.py`, `pbr_to_masks.py` | form/key/position/crack/contact masks → world-cell ramp atlas (+mips, --check); CC0 height+AO → masks |
+| `read_check.py` | game-scale read gate on a sprite shot (seam/lip/orphan/mid-shade shares) |
 | `pack.mjs`, `lods.mjs`, `glbinfo.py`, `inspect_assert.mjs` | per-slot pack presets; LODs; budget asserts (exit codes) |
-| `shoot.mjs` + `assets/viewer.html` | three r180 pbr/toon/sprite screenshots + JSON report |
+| `shoot.mjs` + `assets/viewer.html` | three r180 pbr/toon/sprite screenshots at `--ppu` game scale + JSON report |
 | `sprite_passes.py`, `sprite_post.py` | Cycles 1-spp emission passes; mode-down, palette lock, outline, hysteresis |
 | `fetch_cc0.sh`, `safe_extract.py`, `manifest.py` | CC0 fetch with provenance; safe archive gate; provenance manifest |
-| `assets/piece_template.py`, `assets/build_template.py` | hero piece / creature path A end to end (11 s / 6 s) |
+| `assets/piece_template.py`, `assets/build_template.py` | hero piece (courses → SDF → plates → cells → GLB, 10 s) / creature path A (6 s) |
 
 ## Budgets (phones first)
 | Asset | Tris | Texture | Packed | Other |
@@ -83,6 +103,10 @@ call, the atlas is on-ramp at 16 texels/unit, a manifest exists, and the report 
 | skinned kin (path B, later) | same | 256² albedo WebP | ≤ 80 KB | ≤ 20 bones, ≤ 4 influences |
 | sprite sheet | – | ≤ 512 PNG, 12–16 colours | – | 2–8 facings × ≤ 12 frames, 1-texel outline |
 | loop cost | mask bake ≤ 3 min at 512²; beauty 512² 16–32 spp; never 1024² × 128 spp or UASTC level 4 in a loop |
+
+## Expected log noise (not errors)
+`EGL_BAD_MATCH` lines from Workbench on llvmpipe, `CUEW initialization failed` from Cycles, and the
+exporter's `Draco`/`MeshOptimizer ... not available` lines. Real failures raise and exit non-zero.
 
 ## Tells to refuse
 Balloon-animal seams at joints; uniform fbm on every surface; bare cubes/spheres; pixelated photo

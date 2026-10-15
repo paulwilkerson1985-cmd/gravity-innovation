@@ -14,6 +14,7 @@ Steps (lab.md 8: colours per frame 95 -> 34 -> 16, pixel churn -27 % relative, v
 Sheet layout: one row per facing, frames left to right, each cell height px; also writes <out>_x4.png
 for review (nearest x4). normal_* passes are packed the same way into <out>_normal.png when present.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import sys, os, json, glob, argparse
 import numpy as np
 try:

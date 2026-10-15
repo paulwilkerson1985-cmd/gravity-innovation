@@ -12,6 +12,7 @@ Rules: NLA tracks are all active at once in Blender, so the chosen clip's track 
 rendering; the camera is orthographic at --elev, framed to the posed bounding box of frame 0 so the
 sheet does not jitter; facings rotate a pivot empty (0 and 180 deg for 2 facings; 8 x 45 deg for 8).
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, sys, os, json, math, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit, orbkin_compat as oc

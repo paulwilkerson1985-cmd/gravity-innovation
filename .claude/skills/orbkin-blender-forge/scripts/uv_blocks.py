@@ -19,6 +19,7 @@ texel):
      Fewer, bigger islands come from a smoother low poly (coarser --low-voxel), not from a looser angle.
 Afterwards run uv_check.py: it measures sqrt(uv_area * atlas^2 / world_area) per face.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, bmesh, math, sys, os, json
 import numpy as np
 from mathutils import Vector
@@ -92,7 +93,7 @@ def block_uvs(obj, atlas=256, texels_per_unit=16.0, angle_deg=18.0, gutter=1, uv
         for f in islands[idx][1]:
             for l in f.loops:
                 co = obj.matrix_world @ l.vert.co
-                l[uv_layer].uv = ((co.dot(u) * tex - x0 + ox + gutter * 0.5) / atlas, (co.dot(v) * tex - y0 + oy + gutter * 0.5) / atlas)
+                l[uv_layer].uv = ((co.dot(u) * tex - x0 + ox + gutter) / atlas, (co.dot(v) * tex - y0 + oy + gutter) / atlas)  # whole-texel origin + gutter column/row
     bm.to_mesh(me); bm.free()
     me.uv_layers.active = me.uv_layers[uv_name]
     fill = sum(b[1] * b[2] for b in boxes) / (atlas * atlas)

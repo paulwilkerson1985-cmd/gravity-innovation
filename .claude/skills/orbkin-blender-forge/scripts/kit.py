@@ -61,6 +61,70 @@ def components(obj):
     return len(islands(obj))
 
 
+def drop_small_shells(obj, min_frac=0.01):
+    """Delete shells smaller than min_frac of the vertices (a second SDF pass or a fillet can leave
+    8-vertex specks near concave joins; they are not 'parts that do not overlap')."""
+    isl = islands(obj)
+    if len(isl) <= 1:
+        return 0
+    nv = len(obj.data.vertices)
+    small = [i for s in isl if len(s) < max(4, nv * min_frac) for i in s]
+    if not small:
+        return 0
+    bm = bmesh.new(); bm.from_mesh(obj.data); bm.verts.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[bm.verts[i] for i in small], context='VERTS')
+    bm.to_mesh(obj.data); bm.free(); obj.data.update()
+    return len(small)
+
+
+def fit_matrix(obj, size, keep_base=True):
+    """Matrix that scales obj's mesh (non-uniformly) to `size` with the base on z=0, x/y centred.
+    Apply the SAME matrix to the high and the low (me.transform(M)) so they stay aligned."""
+    lo, hi, s = bbox(obj)
+    f = (size[0] / max(s.x, 1e-6), size[1] / max(s.y, 1e-6), size[2] / max(s.z, 1e-6))
+    M = Matrix.Diagonal((f[0], f[1], f[2], 1.0))
+    if keep_base:
+        c = Vector(((lo.x + hi.x) / 2 * f[0], (lo.y + hi.y) / 2 * f[1], lo.z * f[2]))
+        M = Matrix.Translation(-c) @ M
+    return M
+
+
+def courses(name, w, d, h, cell=0.9, level=0.7, jitter=0.05, seed=0, x0=0.0, y0=0.0, overlap=0.04):
+    """Stacked cut-stone courses (the kit's construction rule): rows of `cell` x `level` blocks, every
+    other row offset by half a cell, small per-block size/rotation jitter, blocks overlapping by
+    `overlap` so the SDF fuses them into one wall with readable course seams. Returns the boxes."""
+    import random
+    rng = random.Random(seed); out = []
+    rows = max(1, round(h / level)); cols = max(1, round(w / cell))
+    for r in range(rows):
+        off = (cell / 2) if r % 2 else 0.0
+        for c in range(cols + (1 if r % 2 else 0)):
+            cx = x0 - w / 2 + off + c * cell + cell / 2 - (cell / 2 if r % 2 else 0)
+            if cx + cell / 2 < x0 - w / 2 - 0.01 or cx - cell / 2 > x0 + w / 2 + 0.01:
+                continue
+            j = lambda: 1 + rng.uniform(-jitter, jitter)
+            b = box(f'{name}_r{r}c{c}', (cell * j() + overlap, d * j(), level * j() + overlap),
+                    (cx + rng.uniform(-jitter, jitter) * cell, y0 + rng.uniform(-jitter, jitter) * d, r * level + level / 2),
+                    (rng.uniform(-0.03, 0.03), rng.uniform(-0.03, 0.03), rng.uniform(-0.06, 0.06)))
+            out.append(b)
+    return out
+
+
+def fit_to_size(obj, size, keep_base=True):
+    """Scale the mesh (non-uniformly) so its world bbox equals `size` and, with keep_base, the bottom
+    sits on z=0 and x/y are centred. Displacement + fillet grow a blockout by 5-10 %; call this on the
+    HIGH before making the low so the piece lands in its arena slot."""
+    lo, hi, s = bbox(obj)
+    f = Vector((size[0] / max(s.x, 1e-6), size[1] / max(s.y, 1e-6), size[2] / max(s.z, 1e-6)))
+    me = obj.data
+    me.transform(Matrix.Diagonal((f.x, f.y, f.z, 1.0)))
+    if keep_base:
+        lo, hi, s = bbox(obj)
+        me.transform(Matrix.Translation((-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -lo.z)))
+    me.update(); bpy.context.view_layer.update()
+    return bbox(obj)[2]
+
+
 def mesh_manifold_report(obj):
     bm = bmesh.new(); bm.from_mesh(obj.data)
     nonman = sum(1 for e in bm.edges if not e.is_manifold); bound = sum(1 for e in bm.edges if e.is_boundary)
@@ -313,9 +377,9 @@ def weight_hygiene(obj):
 
 
 # ---------------------------------------------------------------- review renders
-def three_point(target_size=2.0, key=(3, -3, 4), key_energy=320, fill_scale=0.35, rim_scale=0.5):
-    """Three area lights scaled by target size^2 (energy is per area), aimed at the origin. 320 W at
-    size 2 reads correctly exposed with view_transform Standard (900 W washed the ramp's lights out)."""
+def three_point(target_size=2.0, key=(3, -3, 4), key_energy=240, fill_scale=0.35, rim_scale=0.5):
+    """Three area lights scaled by target size^2 (energy is per area), aimed at the origin. 240 W at
+    size 2 keeps the ramp's lightest shade below clipping with view_transform Standard (900 W washed it out)."""
     out = []
     s = target_size
     for nm, loc, e in (('Key', Vector(key) * s / 2, key_energy), ('Fill', Vector((-3, -2, 2)) * s / 2, key_energy * fill_scale), ('Rim', Vector((-1, 4, 3)) * s / 2, key_energy * rim_scale)):
@@ -465,6 +529,8 @@ def bake(kind, low, image, high=None, samples=16, cage=0.08, max_ray=0.3, margin
         oc.new_world(1.0, (1, 1, 1))
     sc.world.light_settings.distance = ao_distance
     set_bake_target(low.data.materials[0], image)
+    for o in [low] + (list(high) if isinstance(high, (list, tuple)) else ([high] if high is not None else [])):
+        o.hide_viewport = False; o.hide_render = False; o.hide_set(False)   # hidden objects cannot be selected: "No valid selected objects"
     activate(low)
     if high is not None:
         for h in (high if isinstance(high, (list, tuple)) else [high]):

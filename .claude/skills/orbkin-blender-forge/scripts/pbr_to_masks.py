@@ -9,6 +9,7 @@ wrong input for pixel art; height/AO carry form. 16-bit PNG heights are read as 
 would clip them). Channels written: R = value (0.15 + 0.85 * height), G = cavity ((0.75 - AO) * gain),
 B = convexity (height minus its blur), A = 255 (one material). Tileable sources stay tileable (wrap blur).
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import sys, os, json, argparse
 import numpy as np
 try:

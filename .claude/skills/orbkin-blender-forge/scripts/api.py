@@ -12,6 +12,7 @@ Output is JSON on stdout. Exit 2 on an unknown name.
 Why: node sockets are addressed by index or name, enum ids changed in 5.0 (FAST->FLOAT), and the
 GridToMesh threshold default (0.1) is wrong for SDF grids; reading bl_rna avoids all of that.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, sys, json
 
 

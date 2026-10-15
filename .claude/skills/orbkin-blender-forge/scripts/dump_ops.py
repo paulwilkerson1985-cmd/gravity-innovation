@@ -5,6 +5,7 @@ Default operators: export_scene.gltf, object.bake, object.quadriflow_remesh, obj
 uv.smart_project, uv.pack_islands. Use it when an export/bake kwarg errors: the file lists the real
 names, types, enum items and defaults for THIS version (5.2.40 exporter has 113 properties).
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, sys, os
 
 DEFAULT = ['export_scene.gltf', 'object.bake', 'object.quadriflow_remesh', 'object.voxel_remesh', 'uv.smart_project', 'uv.pack_islands']

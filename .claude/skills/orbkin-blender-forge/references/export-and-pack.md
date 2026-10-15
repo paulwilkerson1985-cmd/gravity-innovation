@@ -70,10 +70,14 @@ wrapper ≈ 75 KB · Basis transcoder ≈ 260 KB (+290–380 ms transcode on Swi
    POSITION,NORMAL,TEXCOORD_0 --no-double-sided --require-ext EXT_meshopt_compression --forbid-ext
    KHR_draco_mesh_compression,KHR_texture_basisu --max-image-px 512` (no node needed) or
    `inspect_assert.mjs` (decodes meshopt, same flags).
-2. `shoot.mjs --glb file.glb --out shots --modes pbr,toon,sprite --h 64`: three r180 from the
-   game's node_modules, GLTFLoader + MeshoptDecoder (+Draco/KTX2 if present), SwiftShader; exit 1 on
-   any console error. Report: load ms (16–104 ms typical), tris, draw calls (must be 1 per piece),
-   extensions, sprite size. Look at the sprite shot at 64 px: lit lips and dark seams must still read.
+2. `shoot.mjs --glb file.glb --out shots --modes pbr,toon,sprite --ppu 64` and `--ppu 36`: three
+   r180 from the game's node_modules, GLTFLoader + MeshoptDecoder (+Draco/KTX2 if present),
+   SwiftShader; sprite mode = the game's SpriteBaker emulation at the game's pixels per unit (desktop
+   ≈ 64, phone ≈ 36; `--h` for a fixed height); toon/sprite key = π W from `-0.5,-0.6,0.8` so a lit
+   face shows the atlas shade itself; exit 1 on any console error. Report: load ms (16–104 ms
+   typical), tris, draw calls (must be 1 per piece), extensions, sprite size. Then
+   `read_check.py shots/<name>_sprite_ppu64.png --ramps ... --ramp <ramp>`: seams ≥ 4 %, lips ≥ 3 %,
+   orphans ≤ 12 %, ≥ 3 mid shades (exit 0) replaces the adjective "it reads".
 3. Fix in the script, never in the GLB. Commit the packed GLB + manifest (`manifest.py`), never
    `.blend`, raw exports, bakes or review renders.
 

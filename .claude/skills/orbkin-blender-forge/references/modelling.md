@@ -32,7 +32,8 @@ and `gn.py`; expect ±20 % under load (log `os.getloadavg()` with every timing, 
 | Method | For | Result |
 |---|---|---|
 | `kit.quadriflow(obj, target_faces)` | creatures, anything that deforms | even quads (2–3 k), 1.5–2 s. Prescales ×100 so voxel slivers pass the 1e-4 per-component manifold check, raises on CANCELLED, runs under `RLIMIT_AS` 8 GB, asserts the bbox within 2 % |
-| `kit.voxel_remesh(obj, 0.06)` → `kit.decimate(obj, tris)` | static pieces | coarse voxel first (kills displacement micro-bumps, smoother normals → fewer UV islands) then collapse to budget; bbox asserted |
+| low = fused form + plates (`gn.displace_rock(low, crack=0, strata=0, plate, lump)`) → `kit.voxel_remesh(low, 0.08)` → `kit.chisel(low, 15)` → `kit.decimate(obj, tris)` | environment pieces (the template default) | each plate becomes a flat facet = a UV island = a readable block; 3-5 k tris, ~1,100 islands on a 3-unit piece; bbox asserted |
+| `kit.voxel_remesh(obj, 0.06)` → `kit.decimate(obj, tris)` | smooth static pieces | smooth low; the atlas then carries all detail (reads as a blob at play size: pilot 1) |
 | `kit.chisel(obj, angle)` | rubble, cut stone | planar dissolve + triangulate + flat shading = the faceted rubble look |
 | MeshLab quadric collapse (pymeshlab, GPL) | static props | best shape preservation; not in the pinned set (owner approval to add) |
 
@@ -50,8 +51,14 @@ strata (Wave bands on Z, saw) + lump (Noise 0.9). Defaults: 0.05 / 0.03 / 0.02 /
 2–3-unit piece; needs the dense voxel mesh (100 k+ tris; applies in 0.5–1 s). Vary `seed` per
 piece or tiling shows. At 16 texels/unit a crack must be ≥ 2 texels = 0.125 units apart to survive
 the bake; plate scale 1.3 gives 0.5–0.8-unit plates = 8–12 texels: the "chunky readable block".
-Other tools: the Displace modifier with procedural textures; numpy `foreach_get/set` deformation
-(a Python per-vertex loop over 137 k tris never finished; vectorised: 0.1 s).
+Defaults in the template are already texel-sized: plate 0.125 (2 texels), crack 0.1, plate scale
+1.8 (6-10-texel plates), fillet 2 (fillet 4 pillow-rounded every edge). `kit.courses(w, d, h)` lays
+stacked jittered cut-stone blocks first so arena pieces keep the kit's course seams; `fit_matrix`
+scales high and low back to `PIECE['size']` after fusing (growth 5-10 %). Hangers (stalactites)
+go in `blockout()`'s third list: root ≥ 0.3 units (5 texels), length ≥ 0.8, two thick beat three
+thin; they are unioned after the cut in the same fuse (`add_after_cut`), never a second SDF pass
+(specks). Other tools: the Displace modifier; numpy `foreach_get/set` deformation (a Python
+per-vertex loop over 137 k tris never finished; vectorised: 0.1 s).
 
 ## 4 Sharp secondary parts
 
@@ -91,8 +98,12 @@ rule (orbkin-sprite-creature owns the design; this skill only builds the body).
 ## 7 The chunky-pixel read (what the composer needs from the geometry)
 
 The reference's walls are "individually readable blocks with 3–4 value steps, crisp dark seams and
-lit top faces". That read comes from: (1) plates 8–16 texels wide (displacement plate scale), (2)
-cracks that are real valleys (cavity mask), (3) a low poly smooth enough that block-local islands are
-large (coarse `--low-voxel`), (4) top faces as separate islands lit by the form term, (5) one ramp.
-Bakes below the texel scale are invisible in-game (2048² convex-edge masks: 3 ties): work at 2× the
-atlas and let `compose.py` reduce.
+lit top faces". Pilot 1 (judged 4/10) proved what breaks it: per-texel rules over 1,600 tiny UV
+islands, a low cut from the displaced high (pillowy blob + fragmented normals), sub-texel
+displacement, no key-light term, judged at 64 px instead of the game's ~64 px per unit. What works
+(ledge, `read_check` passes at ppu 64): (1) plates ≥ 2 texels deep and 6-10 texels wide carried by
+the LOW as facets, (2) cracks as real valleys in the high (crack cavity mask, AO 0.25), (3) cells
+keyed on world position in `compose.py` (5-8 texels, flat tone per cell from top + key facing, +1
+lit top row, -2 dark bottom row), (4) contact AO 0.7 at most -1 shade, (5) one ramp. Island count
+no longer decides the read; the cells cross island borders. Bakes below the texel scale are
+invisible in-game (2048² convex-edge masks: 3 ties): bake at 2× the atlas, let `compose.py` reduce.

@@ -9,6 +9,7 @@ from render while shooting (they occlude the fitted camera). Workbench needs EGL
 Cycles works everywhere (8 spp + OIDN at 320 px takes about 1 s per view). The sheet is a review
 tool: look at it with the Read tool after every geometry or material change.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, sys, os, json, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit, orbkin_compat as oc

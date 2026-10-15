@@ -10,6 +10,7 @@ also have a row in game/ASSETS.md), the gate state (approved: false until an in-
 orbkin-visual-gate is won), host facts (cpus, load average) and a UTC timestamp.
 Exit 1 if an output file is missing.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import sys, os, json, hashlib, argparse, datetime, glob, platform
 
 

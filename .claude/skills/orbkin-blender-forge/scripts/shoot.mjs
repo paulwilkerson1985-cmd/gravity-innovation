@@ -1,10 +1,12 @@
 // shoot.mjs: load GLBs in three r180 (the game's own copy) under headless Chromium + SwiftShader and
 // screenshot them with a JSON report (load ms, extensions, tris, draw calls, console errors).
 //
-//   node ${CLAUDE_SKILL_DIR}/scripts/shoot.mjs --glb piece.glb --out shots/ [--modes pbr,toon,sprite] [--h 64]
+//   node ${CLAUDE_SKILL_DIR}/scripts/shoot.mjs --glb piece.glb --out shots/ [--modes pbr,toon,sprite] [--h 64 | --ppu 64]
 //        [--size 480] [--az 35 --el 25] [--clip Idle --t 0.5] [--fov 0] [--json shots/report.json]
 //   node ${CLAUDE_SKILL_DIR}/scripts/shoot.mjs --shots '[["name","file.glb","sprite","h=64&az=20"], ...]' --out shots/
-// Serves /three -> game/node_modules/three and /glb -> the GLB's directory on a local port.
+// --ppu renders the sprite at the game's scale (desktop ~64 px per world unit, phone ~36) instead of a
+// fixed --h; judge the read at --ppu 64 AND --ppu 36. Serves /three -> game/node_modules/three and
+// /glb -> the GLB's directory on a local port.
 // Exit 1 when any shot reports console errors or fails to load. Screenshot the SHIPPED (packed) file.
 import http from 'node:http';
 import fs from 'node:fs';
@@ -36,7 +38,8 @@ if (opt('--shots')) {
   const glb = path.resolve(opt('--glb')); glbDir = path.dirname(glb);
   const base = path.basename(glb, '.glb');
   const common = `az=${opt('--az', '35')}&el=${opt('--el', '25')}&fov=${opt('--fov', '0')}` + (opt('--clip') ? `&clip=${opt('--clip')}&t=${opt('--t', '0')}` : '');
-  shots = opt('--modes', 'pbr,toon,sprite').split(',').map((m) => [`${base}_${m}`, path.basename(glb), m, common + (m === 'sprite' ? `&h=${opt('--h', '64')}` : '')]);
+  const spr = opt('--ppu') ? `&ppu=${opt('--ppu')}` : `&h=${opt('--h', '64')}`;
+  shots = opt('--modes', 'pbr,toon,sprite').split(',').map((m) => [`${base}_${m}${opt('--ppu') ? '_ppu' + opt('--ppu') : ''}`, path.basename(glb), m, common + (m === 'sprite' ? spr : '')]);
 }
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.glb': 'model/gltf-binary', '.json': 'application/json', '.png': 'image/png', '.ktx2': 'image/ktx2' };
 const server = http.createServer((req, res) => {

@@ -10,7 +10,7 @@
 <div id="hud"></div>
 <script type="module">
 // three r180 round-trip viewer for the orbkin-blender-forge skill. Query: ?glb=/glb/x.glb&mode=pbr|toon|sprite
-//   &h=64 (sprite height px) &clip=Idle&t=0.5 &az=35&el=25 &fov=0(ortho)|30 &key=-0.5,-0.6,0.8 &bg=1 &outline=1
+//   &h=64 (sprite height px) or &ppu=64 (pixels per world unit, game scale) &clip=Idle&t=0.5 &az=35&el=25 &fov=0(ortho)|30 &key=-0.5,-0.6,0.8 &bg=1 &outline=1
 // Reports window.__report = {ready, loadMs, extensions, clips, tris, drawCalls, programs, errors, renderer}.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -40,9 +40,10 @@ const scene = new THREE.Scene();
 scene.background = q.get('bg') === '0' ? null : new THREE.Color(0x2a2d33);
 const mode = q.get('mode') || 'pbr';
 const keyDir = (q.get('key') || '-0.5,-0.6,0.8').split(',').map(Number);
-const key = new THREE.DirectionalLight(0xfff1dc, mode === 'pbr' ? 2.5 : 1.0); key.position.set(keyDir[0], keyDir[2], -keyDir[1]).multiplyScalar(10); // Blender xyz(z up) -> three xzy
+// toon/sprite: MeshToon's Lambert divides by pi, so pi W makes a fully lit face show the atlas shade itself
+const key = new THREE.DirectionalLight(0xfff1dc, mode === 'pbr' ? 2.5 : Math.PI); key.position.set(keyDir[0], keyDir[2], -keyDir[1]).multiplyScalar(10); // Blender xyz(z up) -> three xzy
 scene.add(key);
-scene.add(new THREE.HemisphereLight(0x9fb4d8, 0x5a4636, mode === 'pbr' ? 0.8 : 0.5));
+scene.add(new THREE.HemisphereLight(0x9fb4d8, 0x5a4636, mode === 'pbr' ? 0.8 : 0.35 * Math.PI));
 if (mode === 'pbr') {
   const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 }
@@ -97,7 +98,9 @@ loader.load(q.get('glb'), (gltf) => {
 
   if (mode === 'sprite') {
     // the game's SpriteBaker emulation: render at h px (nearest), 4-neighbour outline, nearest upscale
-    const h = Math.max(8, Math.round(num('h', 64))); const w = Math.round(h * W / H);
+    // ppu = game pixels per world unit (desktop ~64, phone ~36): the sprite height follows the piece height
+    const ppu = num('ppu', 0);
+    const h = Math.max(8, Math.round(ppu > 0 ? size.y * 1.15 * ppu : num('h', 64))); const w = Math.round(h * W / H);
     const rt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, colorSpace: THREE.SRGBColorSpace });
     const bg = scene.background; scene.background = null; renderer.setClearColor(0x000000, 0);
     renderer.setRenderTarget(rt); renderer.render(scene, camera); renderer.setRenderTarget(null);

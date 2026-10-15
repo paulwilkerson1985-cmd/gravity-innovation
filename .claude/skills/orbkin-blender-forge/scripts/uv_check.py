@@ -7,6 +7,7 @@ tolerance, exit 1 otherwise. --checker writes a 16-texel checker atlas (PNG) you
 model with quicklook.py --image. Also reports overlapping islands (UV faces whose boxes intersect
 another island's box).
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, bmesh, sys, os, json, math
 import numpy as np
 

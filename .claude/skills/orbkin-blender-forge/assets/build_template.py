@@ -11,6 +11,7 @@ _RIGK (kind: 0 body, 1 head, 2 tail, 3 ear, 4 leg; FLOAT), _RIGB (amp, phase, fr
 GLTFLoader lower-cases them (geometry.attributes._rigp). Then pack.mjs --preset static-pixel (no textures)
 or animated when clips exist; a kin must win the in-game A/B and pass ip_check before it ships.
 """
+import sys; sys.dont_write_bytecode = True  # -I ignores PYTHONDONTWRITEBYTECODE; keep __pycache__ out of the repo
 import bpy, sys, os, json, time, math
 HERE = os.path.dirname(os.path.abspath(__file__))
 for cand in (os.path.join(HERE, '..', 'scripts'), HERE, os.environ.get('ORBKIN_SKILL_SCRIPTS', '')):
