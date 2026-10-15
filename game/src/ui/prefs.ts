@@ -1,8 +1,8 @@
-// Per-device preferences (not part of the adventure save): last chosen text speed and reduced
-// motion. Tolerant of missing/blocked storage.
+// Per-device preferences (not part of the adventure save): last chosen text speed, reduced
+// motion and screen shake. Tolerant of missing/blocked storage.
 import type { PlayerSettings } from '../game/state';
 
-export interface DevicePrefs { textSpeed?: PlayerSettings['textSpeed']; reduceMotion?: boolean }
+export interface DevicePrefs { textSpeed?: PlayerSettings['textSpeed']; reduceMotion?: boolean; shake?: boolean }
 
 const KEY = 'orbkin.prefs.v1';
 
@@ -13,6 +13,7 @@ export function loadPrefs(): DevicePrefs {
     const out: DevicePrefs = {};
     if (p.textSpeed === 'slow' || p.textSpeed === 'normal' || p.textSpeed === 'fast') out.textSpeed = p.textSpeed;
     if (typeof p.reduceMotion === 'boolean') out.reduceMotion = p.reduceMotion;
+    if (typeof p.shake === 'boolean') out.shake = p.shake;
     return out;
   } catch {
     return {};
@@ -28,6 +29,14 @@ export function savePrefs(patch: DevicePrefs): DevicePrefs {
 
 export function reduceMotion(): boolean {
   return document.documentElement.classList.contains('reduce-motion');
+}
+
+/**
+ * Battle camera kicks and the hit-blink strobe. Off when the player turned it off, and under
+ * reduced motion (which follows prefers-reduced-motion).
+ */
+export function screenShake(): boolean {
+  return !reduceMotion() && (loadPrefs().shake ?? true);
 }
 
 export function applyPrefs(p: DevicePrefs = loadPrefs()) {

@@ -8,6 +8,7 @@ import { CreatureView } from '../render/creature';
 import { burst } from '../render/fx';
 import { moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { animClock, ease, tween, wait } from '../render/anim';
+import { screenShake } from '../ui/prefs';
 import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import { audio } from '../audio/audio';
 import {
@@ -741,9 +742,10 @@ export class ArenaBattleScene extends BaseScene {
   /** A move's hit landing on its target: SFX, flash and recoil, HP drain (all from frame 1). */
   private react(e: Extract<BattleEvent, { t: 'damage' }>): Promise<void> {
     const target = this.views[e.side];
+    const calm = !screenShake();
     audio.sfx(e.crit ? 'crit' : e.mult > 1 ? 'superHit' : e.mult < 1 ? 'weakHit' : 'hit');
     if (e.mult > 1 || e.crit) { void burst(this.scene, this.spot(e.side).clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4); this.set.cheer(1.2); }
-    return Promise.all([target?.hit(e.mult > 1 || e.crit, e.crit), this.tweenHp(e.side, e.hp + e.amount, e.hp, e.maxHp)]).then(() => {});
+    return Promise.all([target?.hit(e.mult > 1 || e.crit, { crit: e.crit, calm }), this.tweenHp(e.side, e.hp + e.amount, e.hp, e.maxHp)]).then(() => {});
   }
 
   private async playOne(e: BattleEvent, next?: BattleEvent) {

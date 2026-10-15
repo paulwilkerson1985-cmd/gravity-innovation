@@ -15,6 +15,8 @@ import { effTag, moveInfoBox, wireMoveInfo, type MoveInfoData } from '../ui/pixe
 import { ambient, moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
 import { animClock, ease, tween, wait } from '../render/anim';
+import { Kick, kickPx } from '../render/hitfeel';
+import { screenShake } from '../ui/prefs';
 import { mark } from '../debug/marks';
 import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import { audio, type TrackName } from '../audio/audio';
@@ -187,7 +189,8 @@ export class BattleScene extends BaseScene {
 
   private ambientUpdate: ((t: number) => void) | null = null;
 
-  override update(_dt: number, t: number) {
+  override update(dt: number, t: number) {
+    this.stepHitFeel(dt);
     this.ambientUpdate?.(t);
     this.views.forEach((v) => v?.update(t));
     if (this.hd2d) { this.hd2d.update(t); return; }
@@ -622,6 +625,9 @@ export class BattleScene extends BaseScene {
   private tails: Promise<unknown>[] = [];
   /** The hit reaction a move started on its impact frame, picked up by the matching `damage` event. */
   private reaction: { ev: BattleEvent; done: Promise<void> } | null = null;
+  /** The camera kick of the last hit (stepped in real time by `update`). */
+  private kick = new Kick();
+  private kickBase: THREE.Vector3 | null = null;
 
   async submit(action: Action) {
     if (this.busyGuard || !this.introDone) return;
@@ -819,16 +825,16 @@ export class BattleScene extends BaseScene {
     }
   }
 
-  /** A move's hit landing on its target: SFX, flash and recoil, shake, HP drain (all from frame 1). */
+  /** A move's hit landing on its target: SFX, flash and recoil, camera kick, HP drain (all from frame 1). */
   private react(e: Extract<BattleEvent, { t: 'damage' }>): Promise<void> {
     mark('react');
     const target = this.views[e.side];
+    const calm = !screenShake();
     audio.sfx(e.crit ? 'crit' : e.mult > 1 ? 'superHit' : e.mult < 1 ? 'weakHit' : 'hit');
-    if (e.mult > 1 || e.crit) {
-      void burst(this.scene, this.spots[e.side].clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4);
-      this.shake(e.crit && e.mult > 1 ? 0.16 : 0.1);
-    }
-    return Promise.all([target?.hit(e.mult > 1 || e.crit, e.crit), this.tweenHp(e.side, e.hp + e.amount, e.hp, e.maxHp)]).then(() => {});
+    const kick = kickPx(e);
+    if (kick && !calm) this.kickAlong(e.side === 0 ? 1 : 0, e.side, kick);
+    if (e.mult > 1 || e.crit) void burst(this.scene, this.spots[e.side].clone().add(new THREE.Vector3(0, 0.6, 0)), '#fff27a', 1.4);
+    return Promise.all([target?.hit(e.mult > 1 || e.crit, { crit: e.crit, calm }), this.tweenHp(e.side, e.hp + e.amount, e.hp, e.maxHp)]).then(() => {});
   }
 
   /** Status/heal/stat cue (render/movefx statusFx) around the kin on `side`, sized to it. */
@@ -863,26 +869,33 @@ export class BattleScene extends BaseScene {
     void burst(this.scene, land, '#ffffff', 0.7, 8);
   }
 
-  /** Brief camera shake for big hits. */
-  private shake(amount: number) {
+  /**
+   * Camera kick for a hit: one damped push along the blow (attacker → target on screen), in
+   * whole internal pixels on HD-2D (view offset), so the pixel grid never smears.
+   */
+  private kickAlong(fromSide: 0 | 1, toSide: 0 | 1, px: number) {
     if (animClock.instant) return;
-    const hd = this.hd2d;
-    if (hd) {
-      // HD-2D: shake in whole internal pixels (view offset), so the pixel grid never smears.
-      const a0 = Math.max(1, Math.round(amount * 28));
-      void tween(260, (k) => {
-        const a = k >= 1 ? 0 : a0 * (1 - k);
-        hd.shake(Math.sin(k * 40) * a, Math.cos(k * 33) * a * 0.6);
-      });
-      return;
-    }
     const cam = this.camera;
-    const base = cam.position.clone();
-    void tween(260, (k) => {
-      const a = amount * (1 - k);
-      cam.position.set(base.x + Math.sin(k * 40) * a, base.y + Math.cos(k * 33) * a * 0.6, base.z);
-      if (k >= 1) cam.position.copy(base);
-    });
+    cam.updateMatrixWorld();
+    const a = this.spots[fromSide].clone().project(cam), b = this.spots[toSide].clone().project(cam);
+    // NDC y is up; the kick works in screen terms (y down).
+    this.kick.start(px, b.x - a.x, -(b.y - a.y));
+  }
+
+  /** Per frame: the camera kick. */
+  private stepHitFeel(dt: number) {
+    if (!this.kick.active && !this.kickBase) return;
+    const [cx, cy] = this.kick.step(dt);
+    const hd = this.hd2d;
+    // View offset moves the window: content shifts the other way.
+    if (hd) { hd.shake(-cx, -cy); return; }
+    const cam = this.camera;
+    if (!this.kickBase) this.kickBase = cam.position.clone();
+    if (!this.kick.active) { cam.position.copy(this.kickBase); this.kickBase = null; return; }
+    // Default renderer: ≈ 0.03 world units per internal px; the camera moves against the content.
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+    cam.position.copy(this.kickBase).addScaledVector(right, -cx * 0.03).addScaledVector(up, cy * 0.03);
   }
 
   private async sparkleAt(side: 0 | 1, color: string) {

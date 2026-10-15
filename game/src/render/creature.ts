@@ -495,15 +495,18 @@ export class CreatureView {
     this.material.emissive.setRGB(0, 0, 0);
   }
 
-  /** White flash + recoil tilt; strong hits (super-effective / crits) get a 2-frame hit-stop first. */
-  async hit(strong: boolean, crit = strong) {
+  /**
+   * White flash + recoil tilt; crits get a 2-frame hit-stop first. `calm` (reduced motion / no
+   * screen shake) drops the blink strobe for a steady fading flash.
+   */
+  async hit(strong: boolean, o: { crit?: boolean; calm?: boolean } = {}) {
     this.acting++;
     const x0 = this.inner.position.x;
     const z0 = this.inner.position.z;
     const back = new THREE.Vector3(1, 0, 0);
     const amp = strong ? 0.42 : 0.28;
     this.material.emissive.setRGB(1, 1, 1);
-    if (crit) {
+    if (o.crit ?? strong) {
       // Hit-stop: freeze squashed in the flash for ~2 frames.
       this.squash(0.8);
       this.body.quaternion.setFromAxisAngle(back, -0.12);
@@ -515,7 +518,7 @@ export class CreatureView {
       this.squash(1 - 0.18 * Math.max(0, sp));
       this.inner.position.z = z0 - Math.sin(Math.min(1, k * 1.6) * Math.PI) * (strong ? 0.22 : 0.14) * (1 - k * 0.5);
       this.inner.position.x = x0 + Math.sin(k * Math.PI * 7) * 0.05 * (1 - k);
-      const on = k < 0.08 || (Math.floor(k * 9) % 2 === 0 && k < 0.7);
+      const on = o.calm || k < 0.08 || (Math.floor(k * 9) % 2 === 0 && k < 0.7);
       const f = on ? (strong ? 1 : 0.85) * (1 - k * 0.6) : 0;
       this.material.emissive.setRGB(f, f, f);
       this.blinkOff = !on && k < 0.7;
