@@ -10,13 +10,16 @@ names or icons. Screens: `docs/screenshots/ui-pixel/`.
 1. **One pixel scale.** 1 UI pixel = 2 CSS px. Frames, icons, cursors, bar borders and text all
    live on that grid. Big screens (≥ 1600×900) zoom the whole UI by **1.5** (3 device px per UI
    pixel) — `style.css` and `scenes/framing.ts uiZoom` must agree.
-2. **Text only at 10 / 20 / 30 / 40 px** (the font's 1×/2×/3×/4×; logos 60/80/120). Use the
-   tokens `--f1` (10/12), `--f2` (20/24), `--f2t` (20/20, tight boxes), `--f3`, `--f4`. Never
-   `font-weight` (there is one weight; `font-synthesis: none` stops faux bold) and never
-   fractional sizes. Hierarchy comes from size, case, colour and the ink shadow — not weight.
-   On desktop-size viewports (≥ 1024×600) the secondary 10px tier (meta lines, subtitles,
-   section labels, stat labels, notes) steps up to 20px for readability; tiny tags (HP/XP,
-   type chips, tile names) stay 10px.
+2. **Legibility floor: no information below an x-height of 7 CSS px on desktop or 18 device px
+   on phones** (research: `docs/research/graphics/ui-hud-typography.md` §3.3). Tokens: `--f1` =
+   the small information tier (chips, HP/XP tags, effectiveness tags, move meta, notes): **15px
+   (1.5×) on phones, 20px on desktop** (≥ 1024×600, DPR 1, so glyph pixels stay whole CSS px);
+   `--f2` (20/24), `--f2t` (20/20, tight boxes), `--f3`, `--f4`; `--lh1` is `--f1`'s line height.
+   `--f0` (10px) is decoration only (debug overlays) — never something a player must read.
+   Never `font-weight` (one weight; `font-synthesis: none` stops faux bold) and no other sizes.
+   Hierarchy comes from size, case, colour and the ink shadow — not weight.
+   `e2e/layout.spec.ts` (`hudIssues`) fails any visible battle-HUD text under the floor (phones:
+   18 device px at DPR 2.75 = 6.5 CSS px), any wrapped label and any info box overlapping a panel.
 3. **Uppercase for labels** (names, menu entries, buttons, headings); sentence case for dialog
    and blurbs. Text on paper gets the GBA-style shadow `--tsh` (1 UI px, `--shade`).
 4. **No rounded corners, no soft shadows, no gradients on chrome.** Drop shadows are hard offsets
@@ -73,8 +76,8 @@ Type colours stay in `ui/dom.ts TYPE_COLORS`. Contrast: ink on paper ≈ 13:1, `
 | **Button** | `.btn` (+ `--bc` fill) | pixel keycap: 2 px ink border, light top lip, darker bottom lip, 4 px ink base; pressed = moves down 4 px onto its base. Roles: `.btn-big` (amber primary), `.btn-go`, `.btn-danger`, `.btn-back`. |
 | **Tabs** | `.tab`, `.tab.on`, `.tab.locked` | keycaps; the active tab is amber, locked ones show a pixel padlock. |
 | **Segmented / toggle / slider** | `.segmented .seg`, `.switch`, `input[type=range]` | segment with ▶ on the checked option; ON/OFF pixel switch; square pixel thumb on an amber-filled track. |
-| **HP / XP bars** | `hpBar()` → `.hpbar > .hpfill`, `.hplabel` tag, `.xpbar` | ink-framed track, 2-tone fill, amber "HP" / blue "XP" tag riding on the bar's left end; ghost chunk drains after a hit. |
-| **Type chip / badge** | `typeChip()` → `.chip`, `.badge` | 10 px uppercase on the type colour, ink border, top highlight. |
+| **HP / XP bars** | `hpBar()` → `.hpbar > .hpfill`, `.hplabel` tag, `.xpbar` | ink-framed track, 2-tone fill, amber "HP" / blue "XP" tag riding on the bar's left end; ghost chunk drains after a hit. Your box: the `HP x / max` numbers sit on their own row right under the HP bar, the XP bar last (numbers on the XP row read as an XP count). |
+| **Type chip / badge** | `typeChip()` → `.chip`, `.badge` | `--f1` uppercase, white text on `--cf` = the type/status colour darkened just enough for ≥ 4.5:1 (`ui/contrast.ts inkSafeFill`, tested), ink border, top highlight. |
 | **Icons** | `icon(name)` (`ui/icons.ts`) | 12×12 pixel grids in `currentColor` (+ a 40 % second tone), shown at 24 px. Orbs/items/party pips are pixel art too (`orbIcon`, `.item-ico.ico-*`, `.pdot`). |
 | **Toast** | `toast()` → `.toast` | small panel at the top with ✓ / ▶ / ✗ lead glyph. |
 | **Modal** | `openModal()` → `.modal` | panel with a sticky header and a dotted dim backdrop; `confirmDialog()` for yes/no. |
@@ -84,7 +87,7 @@ Type colours stay in `ui/dom.ts TYPE_COLORS`. Contrast: ink on paper ≈ 13:1, `
 - **Foe box** top-left: NAME, Lv, type chips + status, HP tag + bar. Party pips (pixel lantern-bud
   orbs, greyed when fainted) hang under it for trainers.
 - **Your box** right, above the command box (desktop/landscape) or above the dialog (portrait):
-  NAME, Lv, chips, HP bar; XP bar + `HP / max` numbers. Pips sit above it.
+  NAME, Lv; chips, HP bar; `HP / max` numbers under the bar; XP bar. Pips sit above it.
 - **Desktop**: one dialog band at the bottom (2 rows + frame = 112 px): the dialog on the left,
   the 2×2 command box (FIGHT / BAG / KIN / RUN) on the right. FIGHT turns the whole band into the
   2×2 move list with a separate **info box** on the right (`PP x/y`, power, `TYPE/…`,

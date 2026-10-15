@@ -2,6 +2,7 @@
 
 ## 2026-10-14 — Graphics pass 1 (`?gfx=hd2d`): water, UI readability, battle-in (branch `gfx1/world-ui`)
 - **Shallows water**: flat-band pixel water (crescent highlights, solid lace, stepped 8 fps clock) + the lace's land side painted on sand/rock/posts (`waterline()`). Coast tried and reverted (lost the phone frame); cliff keeps the glitter sea. Decision and votes: `docs/DECISIONS.md` "Graphics pass 1".
+- **UI readability**: the 10px information tier is retired (15px phones / 20px desktop), chip/badge fills ≥ 4.5:1, HP numbers under the HP bar; the gate's capture harness and `e2e/layout.spec.ts` (`hudIssues`) check one line box per label, no info-box overlap, kin uncovered and the x-height floor. Gate 14/14 decisive; the layout spec passes on desktop/phone/small/landscape.
 - Evidence: blind pairwise gate (3 judges, randomised order, calibration pair 3/3 correct): shallows desktop crop, phone frame and phone crop decisive wins (3/3, conf 3.3–4.0, gap +1.17…+2.67), desktop frame no difference; cliff frames byte-identical; draw calls unchanged.
 
 ## 2026-10-13 — HD-2D reference pass 2 (`?gfx=hd2d`): rock, outdoor light, sprites, night sets

@@ -1,7 +1,9 @@
 /* =============================================================================================
    Orbkin pixel UI — retro handheld panels over the HD-2D diorama. See docs/UI.md.
-   Pixel scale: 1 UI pixel = 2 CSS px. Text uses "Orbkin Pixel" (our own bitmap font) at 10/20/30/40px
-   only, so glyph pixels land on whole CSS pixels. Frames are 9-slice pixel art (ui/pixel/skin.ts).
+   Pixel scale: 1 UI pixel = 2 CSS px. Text uses "Orbkin Pixel" (our own bitmap font) at 20/30/40px
+   (whole CSS pixels per glyph pixel); the small information tier --f1 is 15px (1.5x) on phones and
+   20px on desktop, so no text a player must read is below the legibility floor (x-height >= 7 CSS px
+   on desktop, >= 18 device px on phones). 10px (--f0) is decoration only. Frames are 9-slice pixel art (ui/pixel/skin.ts).
    ============================================================================================= */
 @font-face {
   font-family: 'Orbkin Pixel';
@@ -10,7 +12,9 @@
 }
 :root {
   --font: 'Orbkin Pixel', ui-monospace, 'Courier New', monospace;
-  --f1: 10px/12px var(--font);
+  --f0: 10px/12px var(--font); /* decoration only (debug overlays): never information */
+  --f1: 15px/16px var(--font); /* small information tier (x-height 7.5 CSS px); 20px on desktop */
+  --lh1: 16px;
   --f2: 20px/24px var(--font);
   --f2t: 20px/20px var(--font);
   --f3: 30px/36px var(--font);
@@ -72,7 +76,7 @@ b, strong, h1, h2, h3, h4 { font-weight: 400; }
    (TS mirrors this in scenes/framing.ts uiZoom). 1.5 × 2px = 3 device px per UI pixel. */
 @media (min-width: 1600px) and (min-height: 900px) { .scene-ui, #modals, #toasts { zoom: 1.5; } }
 .scene-ui button, .scene-ui .sheet, .scene-ui .textbox, .scene-ui .menu, .scene-ui .route-top { pointer-events: auto; }
-#fps { position: fixed; top: 4px; right: 6px; font: var(--f1); background: #0008; color: #9f9; padding: 3px 5px; z-index: 10; pointer-events: none; }
+#fps { position: fixed; top: 4px; right: 6px; font: var(--f0); background: #0008; color: #9f9; padding: 3px 5px; z-index: 10; pointer-events: none; }
 ::selection { background: var(--sel-2); color: var(--ink); }
 
 /* ============================================================================ components */
@@ -167,13 +171,14 @@ h1, h2, h3, h4 { text-transform: uppercase; }
 .bt-menu .btn::before, .spot-buttons .btn::before, .party-list .btn::before, .bag-list .btn::before, .shop-list .btn::before, .item-pick .btn::before, .arena-modes .btn::before { left: 6px; }
 
 /* ---------- chips (types), badges (status), tags */
+/* Fills: --cf = the type/status colour darkened until white text reads at >= 4.5:1 (ui/contrast.ts). */
 .chip {
-  display: inline-block; font: var(--f1); padding: 2px 4px 2px; border-radius: 0; background: var(--c); color: #fff;
+  display: inline-block; font: var(--f1); line-height: 1; padding: 2px 4px 0; border-radius: 0; background: var(--cf, var(--c)); color: #fff;
   text-transform: uppercase; letter-spacing: 0; border: 2px solid var(--ink);
   box-shadow: inset 0 2px 0 #ffffff55, inset 0 -2px 0 #00000033; text-shadow: 1px 1px 0 #00000088;
 }
 .chips { display: inline-flex; gap: 4px; }
-.badge { display: inline-block; font: var(--f1); padding: 2px 4px; border-radius: 0; background: var(--c); color: #fff; border: 2px solid var(--ink); text-shadow: 1px 1px 0 #00000088; text-transform: uppercase; }
+.badge { display: inline-block; font: var(--f1); line-height: 1; padding: 2px 4px 0; border-radius: 0; background: var(--cf, var(--c)); color: #fff; border: 2px solid var(--ink); text-shadow: 1px 1px 0 #00000088; text-transform: uppercase; }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; font: var(--f2); white-space: nowrap; min-height: 32px; }
 .pill strong { color: var(--amber-hi); }
 .plevel { font: var(--f2); flex: none; color: var(--ink); }
@@ -183,7 +188,7 @@ h1, h2, h3, h4 { text-transform: uppercase; }
 .hpfill { height: 100%; width: 100%; background: var(--good); box-shadow: inset 0 2px 0 var(--good-hi); }
 .hpfill[data-level='mid'] { background: var(--mid); box-shadow: inset 0 2px 0 var(--mid-hi); }
 .hpfill[data-level='low'] { background: var(--low); box-shadow: inset 0 2px 0 var(--low-hi); }
-.hplabel { flex: none; font: var(--f1); color: var(--ink); background: var(--amber); border: 2px solid var(--ink); padding: 0 2px; margin-right: -10px; position: relative; z-index: 2; box-shadow: inset 0 2px 0 var(--amber-hi); line-height: 10px; }
+.hplabel { flex: none; font: var(--f1); color: var(--ink); background: var(--amber); border: 2px solid var(--ink); padding: 0 2px; margin-right: -10px; position: relative; z-index: 2; box-shadow: inset 0 2px 0 var(--amber-hi); line-height: 1; }
 .hpnums { text-align: right; font: var(--f2); margin-top: 2px; }
 .meter { position: relative; height: 10px; border-radius: 0; background: var(--track); border: 2px solid var(--ink); overflow: hidden; }
 .meter-fill { height: 100%; background: var(--c); box-shadow: inset 0 2px 0 #ffffff66; border-radius: 0; transition: width .3s steps(8); }
@@ -243,7 +248,7 @@ h1, h2, h3, h4 { text-transform: uppercase; }
   .starter-ui { left: auto; right: max(8px, env(safe-area-inset-right)); top: 50%; bottom: auto; transform: translateY(-50%); max-height: calc(100% - 16px); width: min(360px, 44vw); overflow: auto; }
   .starter-ui .btn-big { min-height: 48px; }
 }
-@media (max-width: 400px) { .starter-ui .blurb { font: var(--f1); font-size: 10px; line-height: 14px; } .card { padding-left: 12px; } }
+@media (max-width: 400px) { .starter-ui .blurb { font: var(--f1); line-height: var(--lh1); } .card { padding-left: 12px; } }
 
 /* ============================================================================ route */
 .route-top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
@@ -359,7 +364,7 @@ h1, h2, h3, h4 { text-transform: uppercase; }
 @media (max-aspect-ratio: 1/1) {
   .party-ui { top: auto; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); max-height: 62%; }
 }
-.model-ui { position: absolute; top: 10px; left: 10px; padding: 4px 8px; font: var(--f1); }
+.model-ui { position: absolute; top: 10px; left: 10px; padding: 4px 8px; font: var(--f0); }
 
 /* ============================================================================ scene transitions */
 #curtain { position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: 0; background: #1c1626; }
@@ -457,11 +462,11 @@ h1, h2, h3, h4 { text-transform: uppercase; }
 .seg:hover { background: var(--sel); }
 .seg[aria-checked='true']:hover { background: var(--amber); }
 .seg:focus-visible { outline: 2px solid var(--ink); outline-offset: -6px; }
-.switch { position: relative; margin-left: auto; width: 72px; height: 44px; border: 0; background: none; cursor: pointer; }
-.switch::before { content: 'OFF'; position: absolute; left: 4px; right: 4px; top: 8px; bottom: 8px; background: var(--track); border: 2px solid var(--ink); font: var(--f1); color: var(--paper); text-align: right; padding: 7px 6px 0 0; box-shadow: 2px 2px 0 var(--ink); }
+.switch { position: relative; margin-left: auto; width: 88px; height: 44px; border: 0; background: none; cursor: pointer; }
+.switch::before { content: 'OFF'; position: absolute; left: 4px; right: 4px; top: 8px; bottom: 8px; background: var(--track); border: 2px solid var(--ink); font: var(--f1); line-height: var(--lh1); color: var(--paper); text-align: right; padding: calc((24px - var(--lh1)) / 2) 6px 0 0; box-shadow: 2px 2px 0 var(--ink); }
 .switch::after { content: ''; position: absolute; top: 12px; left: 10px; width: 16px; height: 20px; background: var(--paper-hi); border: 2px solid var(--ink); box-shadow: inset 0 -4px 0 var(--paper-3); transition: transform .1s steps(2); }
-.switch[aria-checked='true']::before { content: 'ON'; background: var(--good); color: var(--ink); text-align: left; padding: 7px 0 0 6px; }
-.switch[aria-checked='true']::after { transform: translateX(32px); }
+.switch[aria-checked='true']::before { content: 'ON'; background: var(--good); color: var(--ink); text-align: left; padding: calc((24px - var(--lh1)) / 2) 0 0 6px; }
+.switch[aria-checked='true']::after { transform: translateX(48px); }
 .switch:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* ============================================================================ title buttons */
@@ -882,10 +887,12 @@ h1, h2, h3, h4 { text-transform: uppercase; }
 }
 
 /* ============================================================================ desktop readability
-   On desktop-size screens the 10px tier is too small to read comfortably: secondary text
-   (meta lines, subtitles, section labels, stat labels, notes) steps up to the 20px tier.
-   Phones keep 10px where space is tight. Tiny tags (HP/XP, chips, tile names) stay 10px. */
+   Desktop-size screens are seen at DPR 1: the small information tier is 20px there (whole CSS
+   pixels per glyph pixel, x-height 10 CSS px); secondary text (meta lines, subtitles, section
+   labels, stat labels, notes) uses the 20/24 tier. Phones use the 15px tier (x-height 7.5 CSS px
+   = 20.6 device px at DPR 2.75). Nothing a player reads uses 10px (--f0 = decoration). */
 @media (min-width: 1024px) and (min-height: 600px) {
+  :root { --f1: 20px/20px var(--font); --lh1: 20px; }
   .mmeta, .menu-sub, .stats, .footnote, .route-status, .route-next, .meta-hint, .meta-sub, .ks-h, .ks-sub, .set-group h3, .set-note,
   .mr-blurb, .mr-meta, .mr-pp, .xp-row, .stat-grid, .tab-need, .owned, .act-why, .arena-field-label, .arena-or, .hof-stats,
   .item-row .ir-main .small, .sc-info, .habitats .small, .arena-stat, .arena-moves-head, .arena-rule, .btn-act, .arena-server, .arena-vkin, .arena-vkos {

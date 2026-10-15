@@ -212,6 +212,21 @@ Evidence (frames, plans, every vote and reason): `scratchpad/gfx1/world-ui/` of 
   sea) and tied the desktop frame, so it was reverted: much of the coast frame is far sea at a
   grazing angle, where the research already found the glitter path reads better. Cliff unchanged.
 
+- **Small information tier 10px → 15px on phones / 20px on desktop** (`--f1`; `--f0` = 10px for
+  decoration only). Floors from the UI research: x-height ≥ 7 CSS px on desktop, ≥ 18 device px on
+  phones; the old tier was 5 CSS px / 13.8 device px on every chip, HP/XP tag, effectiveness tag and
+  move meta line (5–13 labels per battle frame failed; 0 now). 15px is the pixel font at 1.5×: on
+  phones (DPR 2.75) glyph pixels were never whole device px anyway, while desktop (DPR 1) keeps
+  whole-pixel 20px. Cream panels unchanged (the cream vs dark-slab direction is the owner's call).
+- **Chip and badge fills darkened to ≥ 4.5:1 for white text** (was 1.7–3.5:1; Spark 1.68 → 4.67,
+  Gale 1.82 → 4.74, Flora 2.27 → 4.60), hue kept (`ui/contrast.ts`, unit-tested).
+- **HP numbers on their own row under the HP bar, XP bar last**: on the XP row they read as an XP
+  count. Your box grows 18 CSS px; the default renderer's portrait framing reserves it
+  (`battleTargets`), the HD-2D frames keep their kin clear (UI check: 0% kin cover).
+- Gate: 14 matched UI-only pairs (canvas pixels identical), no reference shown (a reference with a
+  cream HUD biases the judge), 3 judges each: **14/14 decisive** (3/3, conf 3.7–4.7, gap +1.5…+3.0),
+  calibration pairs (UI pixels softened) 2/2 correct.
+
 ## GPU PC node: pinned tool chain (`docs/GPU_PC_SETUP.md`)
 The owner's RTX 3090 PC runs Claude Code inside WSL2 Ubuntu 24.04 as a GPU node. Its tools are pinned and checked by hand, not taken from distribution channels, so that a later session does not "upgrade" them away or swap the download path for a less checkable one:
 - **Node 22.23.3** from nodejs.org, checked against the GPG-signed `SHASUMS256.txt` (keyring from `nodejs/release-keys` at commit `481637f813e912c4aa3622d7964ab426c97b8e8d`) and the explicit tarball sha256 `df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de`. NodeSource's apt repository was rejected because it adds a third-party package source to the system; Ubuntu 24.04's own `nodejs` is 18.

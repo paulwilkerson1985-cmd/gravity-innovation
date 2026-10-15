@@ -208,6 +208,66 @@ async function clippedLabels(page: Page, sel: string): Promise<string[]> {
     .map((e) => `${e.className}: "${e.textContent?.trim()}" ${e.scrollWidth}x${e.scrollHeight} > ${e.clientWidth}x${e.clientHeight}`), sel);
 }
 
+/**
+ * Battle HUD check (UI research, docs/research/graphics/ui-hud-typography.md §10):
+ *  - every label is exactly ONE line box (names, levels, HP numbers, chips, tags). Move names
+ *    (`.mn`) are excluded: phone move buttons are designed for two lines (line-clamp 2), and
+ *    clippedLabels already proves they show in full;
+ *  - neither info box (yours, the foe's) intersects another HUD panel (the bag/kin sheet is meant
+ *    to cover the dialog on phones);
+ *  - legibility floor: no visible text with an x-height under 7 CSS px on desktop, or under
+ *    18 device px at the research's reference phone (DPR 2.75), i.e. 6.5 CSS px, on touch screens.
+ *    Orbkin Pixel's x-height is 0.5 em. `--f0` (decoration) is not used by the battle HUD.
+ */
+async function hudIssues(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const vis = (e: Element | null): e is HTMLElement => {
+      if (!(e instanceof HTMLElement) || e.offsetParent === null) return false;
+      const cs = getComputedStyle(e);
+      if (cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    };
+    const root = document.querySelector('.battle-ui') ?? document.body;
+    for (const e of root.querySelectorAll('.pname, .plevel, .hpnums, .chip, .badge, .hplabel, .xplabel, .eff')) {
+      if (!vis(e) || !e.textContent?.trim()) continue;
+      // Line boxes = clusters of vertically overlapping text rects.
+      const rows: [number, number][] = [];
+      const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+      for (let t = tw.nextNode(); t; t = tw.nextNode()) {
+        if (!t.textContent?.trim() || !vis(t.parentElement)) continue;
+        const rg = document.createRange(); rg.selectNodeContents(t);
+        for (const r of rg.getClientRects()) if (r.width > 0.5 && r.height > 0.5) rows.push([r.top, r.bottom]);
+      }
+      rows.sort((a, b) => a[0] - b[0]);
+      let lines = 0, bottom = -1e9;
+      for (const [top, bot] of rows) { if (top >= bottom - 1) { lines++; bottom = bot; } else bottom = Math.max(bottom, bot); }
+      if (lines > 1) out.push(`wraps onto ${lines} lines: ${e.className} "${e.textContent.trim()}"`);
+    }
+    const panels = ['[data-testid="panel-mine"]', '[data-testid="panel-foe"]', '.textbox.bt-text', '.bt-menu']
+      .map((s) => [s, document.querySelector(s)] as const).filter(([, e]) => vis(e))
+      .map(([s, e]) => [s, e!.getBoundingClientRect()] as const);
+    for (let i = 0; i < panels.length; i++) for (let j = i + 1; j < panels.length; j++) {
+      const [sa, a] = panels[i]!, [sb, b] = panels[j]!;
+      if (!sa.startsWith('[data-testid="panel-')) continue;
+      const area = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+      if (area > 1) out.push(`panels overlap: ${sa} x ${sb} (${Math.round(area)} px²)`);
+    }
+    const floor = matchMedia('(pointer: coarse)').matches ? 18 / 2.75 : 7;
+    const seen = new Set<Element>();
+    const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let t = tw.nextNode(); t; t = tw.nextNode()) {
+      const el = t.parentElement;
+      if (!el || seen.has(el) || !t.textContent?.trim() || !vis(el)) continue;
+      seen.add(el);
+      const x = parseFloat(getComputedStyle(el).fontSize) * 0.5;
+      if (x < floor - 0.01) out.push(`x-height ${x} CSS px < ${floor.toFixed(2)}: ${el.className} "${t.textContent.trim().slice(0, 20)}"`);
+    }
+    return out;
+  });
+}
+
 async function insideViewport(page: Page, sel: string): Promise<string[]> {
   return page.evaluate((s) => [...document.querySelectorAll<HTMLElement>(s)]
     .filter((e) => e.offsetParent !== null || getComputedStyle(e).position === 'fixed')
@@ -234,6 +294,7 @@ for (const vp of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
     await G(page, (g) => g.waitIdle(30_000));
     note('panel inside', await insideViewport(page, '.panel'));
     note('panel name', await clippedLabels(page, '.panel .pname'));
+    note('hud', await hudIssues(page));
     const chipRows = await page.evaluate(() => [...document.querySelectorAll('.panel .ptypes')].map((t) => new Set([...t.children].map((c) => Math.round(c.getBoundingClientRect().top))).size));
     expect(chipRows.every((n) => n <= 1), `type chips stay on one line (${chipRows})`).toBe(true);
 
@@ -242,6 +303,7 @@ for (const vp of Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[]) {
       await page.getByTestId(btn).click();
       await page.waitForTimeout(120);
       note(label, await clippedLabels(page, '.bt-menu .mn, .bt-menu .mmeta, .bt-menu .kin-row .mname, .bt-menu .btn-back'));
+      note(`${label} hud`, await hudIssues(page));
       if (label === 'orbs') {
         await page.getByTestId('tab-items').click();
         await page.waitForTimeout(120);

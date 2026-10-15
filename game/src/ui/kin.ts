@@ -1,6 +1,7 @@
 // Shared HTML renderers for creature cards and summaries (party, box, bestiary).
 import { LEVEL_CAP, calcStats, move, species, xpForLevel, type OwnedCreature, type SpeciesData, type StatKey, type StatusId } from '../engine';
 import { TYPE_COLORS, h, hpBar, meter, typeChip } from './dom';
+import { inkSafeFill } from './contrast';
 
 export const STAT_LABEL: Record<StatKey, string> = { hp: 'HP', atk: 'Attack', def: 'Defense', spe: 'Speed' };
 export const STAT_COLOR: Record<StatKey, string> = { hp: '#43d36b', atk: '#ff6a3d', def: '#3d9bff', spe: '#f2c230' };
@@ -12,10 +13,10 @@ export function kinName(c: OwnedCreature): string {
 }
 
 export function statusBadge(c: OwnedCreature): HTMLElement | null {
-  if (c.hp <= 0) return h('span', { class: 'badge', style: '--c:#5a5480' }, 'FNT');
+  if (c.hp <= 0) return h('span', { class: 'badge', style: `--c:#5a5480;--cf:${inkSafeFill('#5a5480')}` }, 'FNT');
   if (!c.status) return null;
   const [t, col] = STATUS_LABEL[c.status];
-  return h('span', { class: 'badge', style: `--c:${col}` }, t);
+  return h('span', { class: 'badge', style: `--c:${col};--cf:${inkSafeFill(col)}` }, t);
 }
 
 /** Compact list card: name, level, types, HP bar. */
