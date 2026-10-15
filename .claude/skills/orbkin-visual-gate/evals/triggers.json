@@ -1,0 +1,26 @@
+{
+  "skill": "orbkin-visual-gate",
+  "how": "Run each query 3x in a fresh `claude -p --max-turns 1` session from the repo root (research/skills-exp/trigger_eval.py or skill-creator run_eval.py); should-trigger = this skill is the first Skill call; should-not = another skill or none. Pass bar: >= 90 % on each list, routing set across all orbkin-* skills still correct.",
+  "should_trigger": [
+    "I changed the cave grade, is it actually better than before?",
+    "compare before/after screenshots of the meadow arena on desktop and phone",
+    "capture the arena with the frozen clock so I can judge the new rubble",
+    "run the gate on my sprite outline change",
+    "check originality of the new tide-line creature design",
+    "build the owner A/B batch for the density question",
+    "the breaker crush timing feels better now, prove it with the strip judge",
+    "does the new UI skin read better? judge it without the reference",
+    "two captures of the same build look different, is my capture valid?",
+    "score the owner's picks json and update the trust table"
+  ],
+  "should_not_trigger": [
+    "the cave looks flat and orange, what should we change first?",
+    "add bloom to the lava and tune the threshold",
+    "draw calls went over 100 after the foliage pass, find the counters",
+    "the GLB loader throws Unexpected token on models/foo.glb",
+    "add a new species to src/data with a water-type move set",
+    "write a vitest for resolveTurn's crit calculation",
+    "model a rock arch in Blender and export it as GLB",
+    "why is the battle AI picking a healing move at full HP?"
+  ]
+}

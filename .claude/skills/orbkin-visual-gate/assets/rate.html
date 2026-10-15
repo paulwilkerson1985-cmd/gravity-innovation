@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orbkin Blind A/B</title>
+<!-- Self-contained blind pairwise rating page. No network: no fonts, no CDNs, no analytics.
+     Data stays in this browser (localStorage) until the rater exports it. -->
+<style>
+:root {
+  /* Neutral grey surround (no hue) so the page itself does not tint colour judgements. */
+  --bg: #3a3a3a; --panel: #2e2e2e; --ink: #ececec; --muted: #b4b4b4; --line: #555;
+  --btn: #4a4a4a; --btn-hi: #5c5c5c; --accent: #d8d8d8; --pick: #f2f2f2; --warn: #e0b060;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { min-height: 100vh; }
+.wrap { max-width: 1900px; margin: 0 auto; padding: 12px 16px 24px; }
+h1 { font-size: 20px; margin: 4px 0 8px; }
+h2 { font-size: 16px; margin: 16px 0 6px; }
+p { margin: 6px 0; }
+.muted { color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+.intro { max-width: 760px; margin: 16px auto; }
+label { display: block; margin: 8px 0 4px; }
+input[type=text], select, textarea { width: 100%; background: #222; color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px; font: inherit; }
+textarea { min-height: 120px; font: 12px/1.3 ui-monospace, Menlo, Consolas, monospace; }
+button { font: inherit; color: var(--ink); background: var(--btn); border: 1px solid #666; border-radius: 6px;
+  padding: 10px 14px; cursor: pointer; min-height: 44px; }
+button:hover:not(:disabled) { background: var(--btn-hi); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: #6a6a6a; border-color: #8a8a8a; font-weight: 600; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.progress { flex: 1 1 200px; height: 6px; background: #222; border-radius: 3px; overflow: hidden; min-width: 120px; }
+.progress > i { display: block; height: 100%; background: var(--accent); width: 0; }
+.q { font-weight: 600; margin: 6px 0 8px; }
+.stage { display: grid; gap: 10px; }
+.stage.sbs { grid-template-columns: 1fr 1fr; }
+.stage.flip { grid-template-columns: 1fr; }
+.cell { position: relative; background: #000; border-radius: 4px; overflow: auto;
+  display: flex; flex-direction: column; align-items: center; }
+.cell img { display: block; max-width: 100%; height: auto; image-rendering: auto; }
+.stage.native .cell img { max-width: none; image-rendering: pixelated; }
+.stage.sbs .cell { max-height: 82vh; }
+.stage.flip .cell { max-height: 74vh; }
+.stage.sbs .cell img { max-height: 80vh; width: auto; }
+.stage.flip .cell img { max-height: 72vh; width: auto; }
+/* the A/B label sits ABOVE the image so it never hides HUD text or sprites */
+.tag { align-self: stretch; background: var(--panel); color: #fff; font-weight: 700; text-align: center;
+  padding: 2px 0; font-size: 15px; pointer-events: none; letter-spacing: .1em; }
+.fliptabs { display: none; gap: 8px; margin-bottom: 6px; }
+.stage.flip + .fliptabs, .fliptabs.on { display: flex; }
+.fliptabs button.on { background: #777; border-color: #aaa; font-weight: 700; }
+.choices { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 10px; }
+.choices button { padding: 10px 4px; font-size: 14px; }
+.choices button.same { background: #535353; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chips button { min-height: 34px; padding: 4px 10px; font-size: 13px; border-radius: 16px; }
+.chips button.on { background: #7a7a7a; border-color: #bbb; }
+.small { font-size: 13px; }
+.hidden { display: none !important; }
+.glance-img { max-width: 100%; max-height: 80vh; display: block; margin: 0 auto; }
+.big { font-size: 40px; text-align: center; margin: 30vh 0; }
+kbd { background: #222; border: 1px solid #555; border-radius: 3px; padding: 0 4px; font-size: 12px; }
+@media (max-width: 760px) {
+  .wrap { padding: 8px 16px 20px; }
+  .choices { grid-template-columns: 1fr 1fr; }
+  /* phone: A answers in the left column, B answers in the right, "No difference" full width last */
+  .choices .a2 { order: 1; } .choices .b2 { order: 2; }
+  .choices .a1 { order: 3; } .choices .b1 { order: 4; }
+  .choices .same { grid-column: 1 / -1; order: 5; }
+  .stage.flip .cell { max-height: 68vh; }
+  .stage.flip .cell img { max-height: 66vh; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ===== start ===== -->
+<section id="start" class="intro panel">
+  <h1>Blind screenshot comparison</h1>
+  <p>You will see pairs of screenshots from a small pixel-art creature-battle game. For each pair, pick the one that
+     <b>looks more polished and professional as a game</b>. Trust your first impression; there are no right answers,
+     and some pairs are meant to look identical.</p>
+  <ul class="small">
+    <li>About <b id="est">10</b> minutes, <span id="ntr">23</span> pairs. You can stop and resume later in this browser.</li>
+    <li>Use <b>No difference</b> when you honestly cannot tell them apart or cannot prefer either.</li>
+    <li>Look at the screenshots at the size the page shows them. On a phone, tap <b>A</b>/<b>B</b> (or the image) to flip between them.</li>
+    <li>Keyboard: <kbd>1</kbd>-<kbd>5</kbd> pick, <kbd>Space</kbd> flip, <kbd>Z</kbd> fit/1:1, <kbd>U</kbd> undo.</li>
+    <li>Nothing is sent anywhere. At the end you copy or download a small JSON file and send it back yourself.</li>
+  </ul>
+  <label for="rater">Name or initials (optional, only goes into your exported file)</label>
+  <input id="rater" type="text" maxlength="40" autocomplete="off">
+  <label for="role">Which describes you best?</label>
+  <select id="role">
+    <option value="owner">I made this game (owner)</option>
+    <option value="player">I play games</option>
+    <option value="pixel_artist">Pixel or 2D artist</option>
+    <option value="3d_artist">3D or tech artist</option>
+    <option value="game_dev">Game developer / designer</option>
+    <option value="art_director">Art director / lead artist</option>
+    <option value="other">Other</option>
+  </select>
+  <label class="row small"><input id="fresh" type="checkbox"> I have never seen this game before (adds a 1-minute first-impression test first)</label>
+  <div class="row" style="margin-top:12px">
+    <button id="go" class="primary">Start</button>
+    <button id="resume" class="hidden">Resume where I stopped</button>
+    <button id="reset" class="hidden">Start over (deletes saved picks)</button>
+  </div>
+  <p id="loaderr" class="small" style="color:var(--warn)"></p>
+</section>
+
+<!-- ===== 5-second first-impression test ===== -->
+<section id="glance" class="hidden">
+  <div id="glanceShow" class="hidden"><img id="glanceImg" class="glance-img" alt="screenshot"></div>
+  <div id="glanceReady" class="intro panel hidden">
+    <h2 id="glanceTitle">First impression 1</h2>
+    <p>A screenshot will appear for <b>5 seconds</b>, then disappear. Just look at it.</p>
+    <button id="glanceGo" class="primary">Show screenshot</button>
+  </div>
+  <div id="glanceAsk" class="intro panel hidden">
+    <label for="g1">What kind of game is this? What would you do in it?</label>
+    <input id="g1" type="text" maxlength="200">
+    <label for="g2">What did you notice first?</label>
+    <input id="g2" type="text" maxlength="200">
+    <label for="g3">One or two words for how it looks</label>
+    <input id="g3" type="text" maxlength="80">
+    <label for="g4">Would you click on this game in a store? (1 = no way, 5 = definitely)</label>
+    <select id="g4"><option value="">-</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+    <div class="row" style="margin-top:10px"><button id="glanceNext" class="primary">Next</button></div>
+  </div>
+</section>
+
+<!-- ===== pairwise trials ===== -->
+<section id="trial" class="hidden">
+  <div class="top">
+    <span id="count" class="small muted">1 / 23</span>
+    <div class="progress"><i id="bar"></i></div>
+    <div class="row">
+      <button id="modeBtn" class="small" title="Side by side or flip">Flip view</button>
+      <button id="zoomBtn" class="small" title="Fit to screen or show real pixels">1:1 pixels</button>
+      <button id="undoBtn" class="small">Undo</button>
+    </div>
+  </div>
+  <div class="q">Which screenshot looks more polished and professional as a game?</div>
+  <div id="stage" class="stage sbs">
+    <div class="cell" id="cellA"><span class="tag">A</span><img id="imgA" alt="screenshot A"></div>
+    <div class="cell" id="cellB"><span class="tag">B</span><img id="imgB" alt="screenshot B"></div>
+  </div>
+  <div id="fliptabs" class="fliptabs">
+    <button id="showA" class="on">Show A</button><button id="showB">Show B</button>
+    <span class="small muted" style="align-self:center">or tap the image</span>
+  </div>
+  <div class="choices" id="choices">
+    <button class="a2" data-v="-2">A clearly</button>
+    <button class="a1" data-v="-1">A slightly</button>
+    <button class="same" data-v="0">No difference</button>
+    <button class="b1" data-v="1">B slightly</button>
+    <button class="b2" data-v="2">B clearly</button>
+  </div>
+  <div class="small muted" style="margin-top:8px">Optional: what decided it? (tap before you pick)</div>
+  <div class="chips" id="chips">
+    <button data-c="creatures">Creatures / characters</button>
+    <button data-c="lighting">Lighting / colour</button>
+    <button data-c="detail">Detail / crispness</button>
+    <button data-c="readability">Clarity / readability</button>
+    <button data-c="composition">Depth / composition</button>
+    <button data-c="ui">UI / text</button>
+    <button data-c="consistency">Style consistency</button>
+  </div>
+</section>
+
+<!-- ===== done ===== -->
+<section id="done" class="intro panel hidden">
+  <h1>Thank you</h1>
+  <p id="doneSummary"></p>
+  <label for="note">Anything else? (optional: what bothered you, what looked great)</label>
+  <input id="note" type="text" maxlength="400">
+  <div class="row" style="margin-top:10px">
+    <button id="dl" class="primary">Download JSON</button>
+    <button id="cp">Copy JSON</button>
+  </div>
+  <p class="small muted">If both buttons fail, select all text below and copy it into a message.</p>
+  <textarea id="out" readonly></textarea>
+</section>
+
+</div>
+<script src="pairs.js"></script>
+<script>
+(function () {
+  'use strict';
+  var STORE = 'orbkin-ab-v1';
+  var DATA = window.ORBKIN_PAIRS, IMGS = window.ORBKIN_IMAGES || null;
+  var $ = function (id) { return document.getElementById(id); };
+  if (!DATA || !DATA.pairs) { $('loaderr').textContent = 'Could not load pairs.js. Keep index.html, pairs.js and the img folder together.'; return; }
+
+  // ---------- storage (best effort; page must work without it) ----------
+  function load() { try { var s = localStorage.getItem(STORE); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { /* private mode etc. */ } }
+  function wipe() { try { localStorage.removeItem(STORE); } catch (e) {} }
+
+  // ---------- seeded RNG (seed is exported so the order can be reproduced) ----------
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function shuffle(arr, rnd) { for (var i = arr.length - 1; i > 0; i--) { var j = Math.floor(rnd() * (i + 1)); var t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; }
+  function src(id) { return IMGS ? IMGS[id] : 'img/' + id + '.webp'; }
+
+  // Plan: shuffle all pairs; repeats of some pairs go into the final third with sides swapped.
+  function makePlan(seed) {
+    var rnd = mulberry32(seed);
+    var first = shuffle(DATA.pairs.slice(), rnd).map(function (p) {
+      var leftIsX = rnd() < 0.5;
+      return { pair: p.id, left: leftIsX ? p.x : p.y, right: leftIsX ? p.y : p.x, rep: 0, device: p.device };
+    });
+    // keep the first two trials as ordinary main pairs (warm-up effect): move controls away from the start
+    var reps = (DATA.repeats || []).map(function (id) {
+      var t = first.filter(function (x) { return x.pair === id; })[0];
+      return t ? { pair: id, left: t.right, right: t.left, rep: 1, device: t.device } : null;
+    }).filter(Boolean);
+    var cut = Math.floor(first.length * 2 / 3);
+    var head = first.slice(0, cut), tail = first.slice(cut).concat(reps);
+    shuffle(tail, rnd);
+    // a repeat must not directly follow its own first showing
+    for (var i = 1; i < tail.length; i++) if (tail[i].pair === tail[i - 1].pair) { var t = tail[i]; tail.splice(i, 1); tail.unshift(t); }
+    if (head.length && tail.length && tail[0].pair === head[head.length - 1].pair) tail.push(tail.shift());
+    return head.concat(tail);
+  }
+
+  var S = null; // session state
+  var cur = null; // current trial runtime: t0, flips, shown
+  var saved = load();
+  var nTrials = DATA.pairs.length + (DATA.repeats || []).length;
+  $('ntr').textContent = nTrials; $('est').textContent = Math.max(5, Math.round(nTrials * 25 / 60));
+  if (saved && saved.set === DATA.set && saved.answers && saved.answers.length < saved.plan.length) {
+    $('resume').classList.remove('hidden'); $('reset').classList.remove('hidden');
+  } else if (saved && saved.set === DATA.set && saved.answers && saved.answers.length >= saved.plan.length) {
+    $('resume').textContent = 'Show my finished results'; $('resume').classList.remove('hidden'); $('reset').classList.remove('hidden');
+  }
+
+  function env() {
+    return { vw: window.innerWidth, vh: window.innerHeight, dpr: window.devicePixelRatio || 1,
+      touch: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0),
+      ua: (navigator.userAgent || '').slice(0, 160) };
+  }
+
+  function start(fresh) {
+    var seed = (Math.random() * 4294967296) >>> 0;
+    S = { set: DATA.set, format: 'orbkin-ab-picks-v1', seed: seed, rater: $('rater').value.trim().slice(0, 40),
+      role: $('role').value, fresh: !!fresh, started: new Date().toISOString(), env: env(),
+      plan: makePlan(seed), answers: [], undo: 0, glance: [], note: '' };
+    save();
+    if (fresh && DATA.glance && DATA.glance.length) runGlance(0); else showTrial();
+  }
+
+  $('go').onclick = function () { start($('fresh').checked); };
+  $('resume').onclick = function () { S = saved; if (S.answers.length >= S.plan.length) finish(); else showTrial(); };
+  $('reset').onclick = function () { if (confirm('Delete the saved picks in this browser and start over?')) { wipe(); location.reload(); } };
+
+  // ---------- 5-second first-impression test ----------
+  function runGlance(i) {
+    hideAll(); $('glance').classList.remove('hidden');
+    if (i >= DATA.glance.length) { showTrial(); return; }
+    $('glanceShow').classList.add('hidden'); $('glanceAsk').classList.add('hidden'); $('glanceReady').classList.remove('hidden');
+    $('glanceTitle').textContent = 'First impression ' + (i + 1) + ' of ' + DATA.glance.length;
+    var img = $('glanceImg'); img.src = src(DATA.glance[i]);
+    $('glanceGo').onclick = function () {
+      $('glanceReady').classList.add('hidden'); $('glanceShow').classList.remove('hidden');
+      var t0 = performance.now();
+      setTimeout(function () {
+        $('glanceShow').classList.add('hidden'); $('glanceAsk').classList.remove('hidden');
+        ['g1', 'g2', 'g3'].forEach(function (k) { $(k).value = ''; }); $('g4').value = ''; $('g1').focus();
+        $('glanceNext').onclick = function () {
+          S.glance.push({ img: DATA.glance[i], shown_ms: Math.round(performance.now() - t0), genre: $('g1').value.trim(),
+            noticed: $('g2').value.trim(), words: $('g3').value.trim(), click: $('g4').value || null });
+          save(); runGlance(i + 1);
+        };
+      }, 5000);
+    };
+  }
+
+  // ---------- pairwise ----------
+  var mode = null, native = false, userMode = null; // userMode: the rater's explicit view choice, kept across trials
+  function hideAll() { ['start', 'glance', 'trial', 'done'].forEach(function (k) { $(k).classList.add('hidden'); }); }
+  function autoMode(t) {
+    // side by side only when each image can be at least ~600 css px wide (or phone frames on a wide screen)
+    var w = window.innerWidth;
+    if (t.device === 'phone') return w >= 900 ? 'sbs' : 'flip';
+    return w >= 1300 ? 'sbs' : 'flip';
+  }
+  function applyMode() {
+    var st = $('stage');
+    st.className = 'stage ' + mode + (native ? ' native' : '');
+    $('fliptabs').classList.toggle('on', mode === 'flip');
+    $('modeBtn').textContent = mode === 'flip' ? 'Side by side' : 'Flip view';
+    $('zoomBtn').textContent = native ? 'Fit to screen' : '1:1 pixels';
+    if (mode === 'flip') show(cur ? cur.showing : 'A'); else { $('cellA').classList.remove('hidden'); $('cellB').classList.remove('hidden'); }
+  }
+  function show(which) {
+    if (!cur) return;
+    if (cur.showing !== which) cur.flips++;
+    cur.showing = which;
+    $('cellA').classList.toggle('hidden', which !== 'A'); $('cellB').classList.toggle('hidden', which !== 'B');
+    $('showA').classList.toggle('on', which === 'A'); $('showB').classList.toggle('on', which === 'B');
+  }
+  function setButtons(on) { Array.prototype.forEach.call($('choices').children, function (b) { b.disabled = !on; }); }
+
+  function showTrial() {
+    hideAll(); $('trial').classList.remove('hidden');
+    var i = S.answers.length;
+    if (i >= S.plan.length) { finish(); return; }
+    var t = S.plan[i];
+    $('count').textContent = (i + 1) + ' / ' + S.plan.length;
+    $('bar').style.width = (100 * i / S.plan.length) + '%';
+    Array.prototype.forEach.call($('chips').children, function (b) { b.classList.remove('on'); });
+    cur = { t0: null, flips: 0, showing: 'A', modes: {}, zoomed: false, loaded: 0 };
+    mode = userMode || autoMode(t);
+    setButtons(false);
+    var a = $('imgA'), b = $('imgB');
+    var ready = function () { cur.loaded++; if (cur.loaded === 2) { cur.t0 = performance.now();
+      // short guard so a double-tap from the previous trial cannot land here
+      setTimeout(function () { setButtons(true); }, 600); } };
+    a.onload = ready; b.onload = ready;
+    a.onerror = b.onerror = function () { $('count').textContent += '  (image failed to load: keep the img folder next to index.html)'; };
+    a.src = src(t.left); b.src = src(t.right);
+    cur.modes[mode] = 1;
+    applyMode();
+    window.scrollTo(0, 0);
+  }
+
+  function answer(v) {
+    if (!cur || cur.t0 === null) return;
+    var i = S.answers.length, t = S.plan[i];
+    var chips = Array.prototype.filter.call($('chips').children, function (b) { return b.classList.contains('on'); })
+      .map(function (b) { return b.getAttribute('data-c'); });
+    // v: -2..2 on the A(left)..B(right) axis. Store the chosen image id so the file is self-describing.
+    S.answers.push({ i: i, pair: t.pair, rep: t.rep, left: t.left, right: t.right, v: v,
+      choice: v < 0 ? t.left : v > 0 ? t.right : null, strength: Math.abs(v), rt_ms: Math.round(performance.now() - cur.t0),
+      view: Object.keys(cur.modes).join('+'), native: cur.zoomed, flips: cur.flips, why: chips,
+      vw: window.innerWidth, vh: window.innerHeight, at: new Date().toISOString() });
+    save(); showTrial();
+  }
+  Array.prototype.forEach.call($('choices').children, function (b) { b.onclick = function () { answer(parseInt(b.getAttribute('data-v'), 10)); }; });
+  Array.prototype.forEach.call($('chips').children, function (b) { b.onclick = function () { b.classList.toggle('on'); }; });
+  $('modeBtn').onclick = function () { mode = mode === 'flip' ? 'sbs' : 'flip'; userMode = mode; cur.modes[mode] = 1; applyMode(); };
+  $('zoomBtn').onclick = function () { native = !native; if (native) cur.zoomed = true; applyMode(); };
+  $('undoBtn').onclick = function () { if (S.answers.length) { S.answers.pop(); S.undo++; save(); showTrial(); } };
+  $('showA').onclick = function () { show('A'); }; $('showB').onclick = function () { show('B'); };
+  $('cellA').onclick = function () { if (mode === 'flip') show('B'); };
+  $('cellB').onclick = function () { if (mode === 'flip') show('A'); };
+  document.addEventListener('keydown', function (e) {
+    if ($('trial').classList.contains('hidden')) return;
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    var k = e.key;
+    if (k >= '1' && k <= '5') { var bt = $('choices').querySelector('[data-v="' + (parseInt(k, 10) - 3) + '"]'); if (bt && !bt.disabled) answer(parseInt(k, 10) - 3); }
+    else if (k === ' ' && mode === 'flip') { e.preventDefault(); show(cur.showing === 'A' ? 'B' : 'A'); }
+    else if (k === 'z' || k === 'Z') $('zoomBtn').onclick();
+    else if (k === 'u' || k === 'U') $('undoBtn').onclick();
+  });
+
+  // ---------- finish / export ----------
+  function exportObj() {
+    var o = JSON.parse(JSON.stringify(S));
+    o.finished = new Date().toISOString(); o.note = $('note').value.trim().slice(0, 400);
+    o.env_end = env();
+    delete o.plan_full;
+    return o;
+  }
+  function refreshOut() { $('out').value = JSON.stringify(exportObj()); }
+  function finish() {
+    hideAll(); $('done').classList.remove('hidden');
+    var n = S.answers.length, same = S.answers.filter(function (a) { return a.v === 0; }).length;
+    var secs = S.answers.reduce(function (s, a) { return s + a.rt_ms; }, 0) / 1000;
+    $('doneSummary').textContent = n + ' pairs rated, ' + same + ' marked "no difference", about ' + Math.round(secs / 60) + ' min of looking. ' +
+      'Please send the JSON below back (download or copy).';
+    $('note').value = S.note || '';
+    $('note').oninput = function () { S.note = $('note').value; save(); refreshOut(); };
+    refreshOut();
+  }
+  $('dl').onclick = function () {
+    refreshOut();
+    try {
+      var blob = new Blob([$('out').value], { type: 'application/json' });
+      var a = document.createElement('a');
+      var who = (S.rater || S.role || 'rater').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 20) || 'rater';
+      a.href = URL.createObjectURL(blob); a.download = 'orbkin-ab-' + who + '-' + S.seed + '.json';
+      document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    } catch (e) { alert('Download failed; use Copy instead.'); }
+  };
+  $('cp').onclick = function () {
+    refreshOut();
+    var ta = $('out'); ta.focus(); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(ta.value).then(function () { $('cp').textContent = 'Copied'; }, function () {});
+    else if (ok) $('cp').textContent = 'Copied';
+  };
+  window.__orbkinAB = { state: function () { return S; }, answer: answer, exportObj: exportObj }; // test hook
+})();
+</script>
+</body>
+</html>

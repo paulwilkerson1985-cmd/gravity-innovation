@@ -1,0 +1,81 @@
+{
+ "arena": "cave",
+ "source": "scratchpad/jc/current/raw/cave-desk.clean.png (HEAD fa40185; EXAMPLE derived from the current build, not from an accepted frame)",
+ "size": [
+  1280,
+  720
+ ],
+ "tol": 14.0,
+ "hue_hist_12x30deg": [
+  0.001,
+  0.198,
+  0.785,
+  0.012,
+  0.004,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "ramps": [
+  {
+   "name": "h030",
+   "hue": 30,
+   "share": 0.234,
+   "colors": [
+    "#3d271a",
+    "#613b21",
+    "#a64b24"
+   ]
+  },
+  {
+   "name": "h060",
+   "hue": 60,
+   "share": 0.616,
+   "colors": [
+    "#6e5840",
+    "#88562f",
+    "#a67040",
+    "#a2845f",
+    "#c17b42",
+    "#c38e5b",
+    "#eaa059",
+    "#daa974",
+    "#f4c488",
+    "#f9e4ba"
+   ]
+  },
+  {
+   "name": "neutral",
+   "hue": null,
+   "share": 0.15,
+   "colors": [
+    "#1f140d"
+   ]
+  }
+ ],
+ "reserved": [
+  {
+   "hue": [
+    0,
+    30
+   ],
+   "owner": "kin",
+   "status": "proposed",
+   "env_share": 0.001
+  },
+  {
+   "hue": [
+    120,
+    360
+   ],
+   "owner": "kin",
+   "status": "proposed",
+   "env_share": 0.0036
+  }
+ ],
+ "note": "EXAMPLE ONLY: derive the real gamut from the last ACCEPTED frame of each arena (gamut_check.py derive). ramps = allowed environment colours (dE76 tol); reserved = hue ranges the environment must not use (kin/UI accents); status proposed = confirm against docs/CREATURES.md kin palettes."
+}

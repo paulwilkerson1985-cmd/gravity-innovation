@@ -1,0 +1,26 @@
+{
+  "skill": "orbkin-art-direction",
+  "note": "Trigger set for research/skills-exp/trigger_eval.py / route_eval.py (20 queries, 3 runs, Opus). should = must invoke this skill; should_not = near-misses that must go to a sibling or to no skill.",
+  "should": [
+    "the cave arena looks cheap next to the reference, make it look professional",
+    "our battle screen reads as programmer art. what should we change first?",
+    "the meadow is busy and flat, everything is the same orange. give me an art plan",
+    "critique the title screen like a seasoned game designer would",
+    "the route map looks like a level-select board, not HD-2D. what's wrong with it?",
+    "the whole game feels washed out and amateur on my phone",
+    "can you grade the volcanic arena so it feels premium like Octopath?",
+    "why does the fox disappear into the floor? it looks like a sticker",
+    "the evolution scene is too dark and boring, plan the fix",
+    "do a light retune for the coast: it's too yellow"
+  ],
+  "should_not": [
+    "add a bloom threshold knob to the HD-2D pipeline and expose it on ?post=",
+    "design a new Flora/Terra kin called mosspuff for the hollow route",
+    "Breaker Crush's hit doesn't land, tune the impact timing",
+    "model a stalactite arch for the cave in Blender and export a GLB",
+    "the HP bar tween is 700 ms, make it faster",
+    "vite throws Unexpected token when GLTFLoader loads models/foo.glb",
+    "write the unit test for resolveTurn with a paralysed attacker",
+    "capture before/after screenshots of the stadium and tell me which is better"
+  ]
+}
