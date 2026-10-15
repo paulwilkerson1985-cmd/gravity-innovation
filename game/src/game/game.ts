@@ -3,7 +3,9 @@ import { animClock, flushTweens, pendingTweens, stepTweens } from '../render/ani
 import { chooseStarter, newPlayer, type PlayerState } from './state';
 import { SaveError, SaveManager, downloadSave, parseSave, summarize, type SaveSummary } from './save';
 import { getDex, type Dex } from '../engine';
-import { loadPrefs } from '../ui/prefs';
+import { loadPrefs, reduceMotion } from '../ui/prefs';
+import { hd2dRequested } from '../render/hd2d/pipeline';
+import { battleCover, resetScreenFx, type BattleInContext } from '../render/hd2d/transition';
 import { closeAllModals } from '../ui/dom';
 import type { BaseScene, SceneName } from '../scenes/base';
 
@@ -226,24 +228,53 @@ export class Game {
     this.idle = false;
     flushTweens();
     this.overlay.inert = true; // no clicks on the old scene's UI while it fades out
+    // HD-2D battles start with the grade-pass battle-in (render/hd2d/transition.ts) instead of
+    // the CSS curtain: grey pulses + a terrain × threat wipe here, the iris reveal in the battle.
+    const hd2dIn = name === 'battle' && hd2dRequested() && !!this.current?.scene.userData.render && !animClock.instant && !reduceMotion();
     try {
-      await this.fade(true, name === 'battle' ? 'battle' : 'plain');
+      if (hd2dIn) await this.battleInCover(params);
+      else await this.fade(true, name === 'battle' ? 'battle' : 'plain');
       this.current?.exit();
       this.overlay.inert = false;
+      this.overlay.classList.remove('tr-hide');
       const s = f(this);
       this.current = s;
       s.resize(this.renderer.width, this.renderer.height);
       document.body.dataset.scene = name;
       const entering = s.enter(params);
-      void this.fade(false, 'plain');
+      if (!hd2dIn) void this.fade(false, 'plain');
       await entering;
+    } catch (e) {
+      resetScreenFx();
+      throw e;
     } finally {
       this.overlay.inert = false;
+      this.overlay.classList.remove('tr-hide');
     }
     if (name === 'route') void this.save();
   }
 
   private curtain: HTMLElement | null = null;
+
+  /** Grey pulses, then the wipe (the old scene's HTML UI steps out as the wipe starts). */
+  private async battleInCover(params: Record<string, unknown>) {
+    if (this.curtain) this.curtain.className = '';
+    const ctx = this.battleInContext(params);
+    const cover = battleCover(ctx, () => this.overlay.classList.add('tr-hide'));
+    await cover;
+  }
+
+  /** Terrain × threat for the battle-in wipe: hotspot kind, trainer or wild, foe above your lead. */
+  private battleInContext(params: Record<string, unknown>): BattleInContext {
+    const dex = getDex();
+    const route = dex.routes.get(String(params.route ?? ''));
+    const spot = route?.hotspots.find((h) => h.id === params.hotspot);
+    const trainerId = typeof params.trainer === 'string' ? params.trainer : spot?.kind === 'trainer' ? spot.trainer : undefined;
+    const lead = this.player.party.find((c) => c.hp > 0) ?? this.player.party[0];
+    const foeLv = trainerId ? Math.max(0, ...(dex.trainers.get(trainerId)?.party.map((p) => p.level) ?? []))
+      : Number(params.foeLevel) || (route?.levelRange[0] ?? 0);
+    return { kind: spot?.kind, trainer: !!trainerId, threat: !!lead && foeLv > lead.level };
+  }
 
   /** Scene transition: a quick wipe (battles get a striped flash). Skipped in instant mode. */
   private fade(cover: boolean, style: 'plain' | 'battle'): Promise<void> {

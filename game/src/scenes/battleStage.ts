@@ -82,7 +82,8 @@ function targetsAt(w: number, h: number, mode: ReturnType<typeof layoutMode>): {
     const small = h < 700;
     const textTop = h - 12 - (small ? 144 : 172) - (small ? 6 : 8) - (small ? 64 : 78);
     // Your kin stands just above its HP panel (which sits beside it, right of centre).
-    const panelTop = textTop - (small ? 6 : 8) - 6 - (small ? 80 : 86);
+    // (+18: the HP numbers have their own row under the HP bar, XP below them.)
+    const panelTop = textTop - (small ? 6 : 8) - 6 - (small ? 98 : 104);
     return { mine: [w * 0.27, panelTop + 6], foe: [w * 0.74, textTop * 0.36] };
   }
   const textTop = h - 12 - 96;

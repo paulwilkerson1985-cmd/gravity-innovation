@@ -15,6 +15,14 @@ import { Foliage, SpriteAtlas, lightPools, mkMesh, paintFlower, paintTuft } from
 import { boulder } from '../kit/rock';
 import { octSlab, type ScreenSet } from './common';
 
+/** Starter pick: the meadow grade with a depth band (the daises stay crisp, canopy and near bank soft). */
+function starterGrade() {
+  const g = meadowGrade(false);
+  g.tiltTop = 3.6; g.focusTop = 0.66; g.tiltBottom = 3.6; g.focusBottom = 0.34; g.tiltScale = 1;
+  g.vignette = Math.max(g.vignette, 0.5);
+  return g;
+}
+
 /** Golden-hour grade for the title: warmer gain, a touch more exposure and a softer vignette. */
 function titleGrade() {
   const g = meadowGrade(true);
@@ -26,7 +34,10 @@ function titleGrade() {
   g.saturation = 0.86;
   // The near bank (under the buttons) sinks into shade: the lit clearing is the stage.
   g.bottomShade = -0.32; g.bottomShadeHeight = 0.4;
-  g.tiltTop = 1.4; g.focusTop = 0.74;
+  // A depth band, not a sharp-everywhere frame: the far canopy and the near bank go soft, the
+  // trio and the clearing stay crisp (non-battle-screens research: better 4/4 desk and phone).
+  g.tiltTop = 3.6; g.focusTop = 0.6; g.tiltBottom = 3.6; g.focusBottom = 0.36; g.tiltScale = 1;
+  g.vignette = 0.6;
   return g;
 }
 
@@ -135,7 +146,7 @@ export function buildStarterSet(quality: Quality): StarterSet {
     shaft = null; motes = null;
   };
   return {
-    group: rig.group, spriteLight: rig.spriteLight, grade: meadowGrade(false),
+    group: rig.group, spriteLight: rig.spriteLight, grade: starterGrade(),
     background: '#9dc8e6', fog: { color: '#a9c8b8', near: 10, far: 40 },
     daises,
     placeSpot(at, scale = 1) {

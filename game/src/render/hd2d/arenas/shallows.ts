@@ -14,7 +14,7 @@ import type { Grade } from '../pipeline';
 import type { ArenaDef } from './index';
 import {
   ATLAS, FoliageBatch, RAMPS2, V, atlasRect, TRODDEN_SIZE, troddenMarking, cachedTexture, decal, disposeGroup, floorGrid, foliageAtlas, foliageMaterial,
-  grey, hdr, makeGrade, orientedBox, paintDrift, paintSand, particles, pixelWater, rockStack, sunlitRock, tube,
+  grey, hdr, makeGrade, orientedBox, paintDrift, paintSand, particles, pixelWater, rockStack, sunlitRock, tube, waterline,
 } from './localKit';
 import { gobo, lightPools, sunRig } from './outdoorKit';
 
@@ -41,6 +41,8 @@ export function shallowsGrade(): Grade {
 export interface ShallowsOptions { seed?: number; quality?: 'high' | 'low'; trainer?: boolean }
 
 const WATER_Y = -0.14;
+/** Water-side lace width: the land side is painted by `waterline()` on the land materials. */
+const SHORE_LACE = 0.4;
 /** The low storm-break sun (≈ 25°) from the left, a little behind: the stacks show a lit flank. */
 const SUN_FROM = new THREE.Vector3(-0.82, 0.45, -0.36);
 
@@ -87,9 +89,11 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   // A few loose boulders at the foot of each stack, half in the water.
   for (const [sx, sz, r] of stacks.slice(0, 8)) rubblePile(rock, [sx, WATER_Y - 0.15, sz + r * 0.6], rng, { radius: r * 0.7, heap: 0.35, big: Math.min(0.6, r * 0.4) });
   // Warm sunlit tops and a rim from the low sun, a wet dark foot, moss and bird-lime streaks.
-  group.add(mk(sunlitRock(rock.build(), { sun: SUN_FROM, waterY: WATER_Y, moss: 0.3, lime: 0.2 }), track(surfaceMaterial(texRock, undefined, true))));
+  const rockMat = track(surfaceMaterial(texRock, undefined, true));
+  group.add(mk(sunlitRock(rock.build(), { sun: SUN_FROM, waterY: WATER_Y, moss: 0.3, lime: 0.2 }), rockMat));
 
   // ---- sand (dry crown → a clear darker wet band at the rim)
+  let sandMat: THREE.Material;
   {
     const g = floorGrid(hm, texSand, 64, {
       res: 2, heightAt: sandY, aoK: 0.3,
@@ -100,7 +104,8 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
         return [k, k * 0.98, k * (0.95 + wet * 0.08)];
       },
     });
-    group.add(mk(g, track(surfaceMaterial(texSand)), false, true));
+    sandMat = track(surfaceMaterial(texSand));
+    group.add(mk(g, sandMat, false, true));
   }
 
   // ---- the water around everything (reaching far past the near frustum: phones look down
@@ -110,6 +115,7 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
     land: (x, z) => sandY(x, z) > WATER_Y || onStack(x, z),
     // Storm-dark open water, TURQUOISE over the sand round the bar (lifted under the sun break).
     ramp: ['#0e2a3e', '#143e56', '#1a5c70', '#1f8090', '#3caaa6', '#8ad6c4'],
+    style: 'bands', lace: SHORE_LACE,
     foam: '#f2f8f2', wet: '#5e4c3c', swash: 0.4, deep: 4, waveK: 1.9, waveSpeed: 1.9, caps: 0.3, far: -9, chop: 0.45, glints: false,
     pool: { x: 0.4, z: -0.2, rx: 7.0, rz: 4.6, outside: -0.9, inside: 0.55 },
     glitter: { x: -3.8, slope: -0.75, width: 1.6, strength: 0.7, color: '#ffe0a8' },
@@ -194,8 +200,12 @@ export function buildShallowsArena(opts: ShallowsOptions = {}): ArenaRig {
   group.add(folMesh);
   updates.push(fol.update);
 
-  group.add(mk(drift.build(), track(surfaceMaterial(texDrift, undefined, true))));
-  group.add(mk(wetBits.build(), track(surfaceMaterial(texRock, undefined, true))));
+  const driftMat = track(surfaceMaterial(texDrift, undefined, true));
+  const wetMat = track(surfaceMaterial(texRock, undefined, true));
+  group.add(mk(drift.build(), driftMat));
+  group.add(mk(wetBits.build(), wetMat));
+  // The land side of the shore lace: foam where sand, rock feet, wreck and posts meet the water.
+  updates.push(waterline([sandMat, rockMat, driftMat, wetMat], { y: WATER_Y, height: 0.05, foam: '#f2f8f2' }).update);
   group.add(mk(props.build(), track(surfaceMaterial(cachedTexture('paint-weathered', () => paintSteel(47, 16, RAMPS.paint)), undefined, true))));
 
   if (opts.trainer) {

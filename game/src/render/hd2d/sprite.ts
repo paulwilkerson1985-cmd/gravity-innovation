@@ -1110,11 +1110,11 @@ export class SpriteSubject {
     this.px = px;
     this.texels = (nominal * Math.cos(beta)) / wpp / px;
     const tw = wpp * px;
-    // ---- snap the feet to the texel grid (whole internal px, multiples of px). The grid travels
-    // with a whole-pixel camera pan, so a panned/kicked frame moves sprites and set together.
+    // ---- snap the feet to the texel grid (whole internal px, multiples of px), in a grid that
+    // travels with a whole-pixel camera pan (`pan`), so sprites never slip against the world.
     const ndc = tmpV.copy(anchor).project(camera);
-    const ax = Math.round(((ndc.x * 0.5 + 0.5) * buffer.x - pan.x) / px) * px + pan.x;
-    const ay = Math.round(((ndc.y * 0.5 + 0.5) * buffer.y - pan.y) / px) * px + pan.y;
+    const ax = Math.round((((ndc.x * 0.5 + 0.5) * buffer.x) - pan.x) / px) * px + pan.x;
+    const ay = Math.round((((ndc.y * 0.5 + 0.5) * buffer.y) - pan.y) / px) * px + pan.y;
     unprojectPx(camera, buffer, ax, ay, ndc.z, snapped);
     // ---- the subject's extent in bake coordinates (box corners), relative to the feet.
     const bb = geo.boundingBox!;
@@ -1377,8 +1377,8 @@ export class SpriteBaker {
    */
   px = 0;
   /**
-   * Whole-internal-px content shift of a camera pan (view-offset kick), drawing-buffer axes
-   * (y up). Sprite anchors snap in a grid that travels with it.
+   * The current whole-pixel camera pan: how far the image content is shifted from the framing,
+   * in internal px (buffer coordinates, y up). Sprite feet snap in a grid offset by it.
    */
   readonly pan = new THREE.Vector2();
 

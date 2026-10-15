@@ -9,7 +9,7 @@ import { burst } from '../render/fx';
 import { moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { animClock, ease, tween, wait } from '../render/anim';
 import { screenShake } from '../ui/prefs';
-import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
+import { arrowNav, badgeColour, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import { audio } from '../audio/audio';
 import {
   active, chooseAction, createArenaBattle, resolveTurn, hashSeed, legalActions, move as getMove, species,
@@ -275,7 +275,7 @@ export class ArenaBattleScene extends BaseScene {
     b.hidden = !status;
     if (status) {
       b.textContent = STATUS_TEXT[status][0];
-      b.style.setProperty('--c', STATUS_TEXT[status][2]);
+      badgeColour(b, STATUS_TEXT[status][2]);
     }
   }
 

@@ -200,6 +200,70 @@ Research: `docs/research/graphics/battle-vfx-motion.md`, `character-animation-cr
 - **Blinks are drawn cels**: shut for exactly one sprite tick, half open for the next, counted in whole ticks of the bake clock. The smooth 130 ms lid sampled by the 10 fps bake rarely showed a closed eye: over 1,019 simulated blinks only 40% (10 fps) / 46% (8 fps) ever reached 85% shut and 25% never reached half. Now 100% show a fully shut cel (unit test).
 - **Tried and not kept** (no detectable difference, so reverted): impact-frame flipbooks (white flash in front of the target, sharp blast behind breaking into clumps), texel-space clump dissolve instead of Bayer fades, and one pre-allocated FX PointLight per stage (flame desktop 1–2, tide phone 1–2); a 15 fps clock for wings and flames with the body at 10 fps (Stormoth 2–0–1 tie, Cindertail baked identically). Owner taste calls.
 
+## Graphics pass 1: water, UI readability, battle-in (branch gfx1/world-ui)
+Every visible change here passed a blind pairwise gate against the build before it: matched frames
+from the deterministic capture harness (same seed, same state, frozen frame clock; desktop
+1280×720 high tier, phone 393×851 @2.75 low tier), 3 fresh-context Opus judges per pair, A/B order
+randomised per judge, a calibration pair (baseline vs a softened copy) in each session, and the
+decisive rule 3/3 + mean confidence ≥ 3 + mean score gap ≥ 0.75 (else "no detectable difference").
+Evidence (frames, plans, every vote and reason): `scratchpad/gfx1/world-ui/` of the session that made it.
+- **Shallows water = `style: 'bands'`** (flat depth bands, crescent highlights, solid lace, receding
+  dashed foam line, glints only in the sun zone, 8 fps stepped clock; `arenas/localKit.ts`
+  `WATER_FRAG_BANDS`), ported from the biome-kit research prototype W2. Votes vs the old glitter water:
+  desktop element crop **3/3, conf 4.0, gap +2.5**; phone full frame **3/3, conf 3.3, gap +1.17**;
+  phone element crop **3/3, conf 4.0, gap +2.67**; desktop full frame 2/3 (no detectable
+  difference, never worse). Calibration pairs 3/3 correct. It is also cheaper per pixel (no value
+  noise; research bench 3.2× vs 4.2× a basic plane).
+- **The shore lace's land side is painted on the land materials** (`waterline()`: sand, rock, wreck,
+  posts within 0.05 units above the water turn into unlit foam on the same stepped clock), after
+  stylized-water's terrain waterline. The water-side lace is 0.4 units (the prototype's 0.55 had
+  to bridge land meshes overhanging the coarse shore field). The stripe is short because the
+  sandbar crown sits only 0.14 above the water: a 3-texel stripe turned the whole crown to foam.
+- **Coast keeps the glitter water.** The same recipe on the coast cove won both element crops 3/3
+  but **lost the phone full frame 0/3** ("dithered sparkle, sun highlights, lit diorama" for the old
+  sea) and tied the desktop frame, so it was reverted: much of the coast frame is far sea at a
+  grazing angle, where the research already found the glitter path reads better. Cliff unchanged.
+
+- **Small information tier 10px → 15px on phones / 20px on desktop** (`--f1`; `--f0` = 10px for
+  decoration only). Floors from the UI research: x-height ≥ 7 CSS px on desktop, ≥ 18 device px on
+  phones; the old tier was 5 CSS px / 13.8 device px on every chip, HP/XP tag, effectiveness tag and
+  move meta line (5–13 labels per battle frame failed; 0 now). 15px is the pixel font at 1.5×: on
+  phones (DPR 2.75) glyph pixels were never whole device px anyway, while desktop (DPR 1) keeps
+  whole-pixel 20px. Cream panels unchanged (the cream vs dark-slab direction is the owner's call).
+- **Chip and badge fills darkened to ≥ 4.5:1 for white text** (was 1.7–3.5:1; Spark 1.68 → 4.67,
+  Gale 1.82 → 4.74, Flora 2.27 → 4.60), hue kept (`ui/contrast.ts`, unit-tested).
+- **HP numbers on their own row under the HP bar, XP bar last**: on the XP row they read as an XP
+  count. Your box grows 18 CSS px; the default renderer's portrait framing reserves it
+  (`battleTargets`), the HD-2D frames keep their kin clear (UI check: 0% kin cover).
+- Gate: 14 matched UI-only pairs (canvas pixels identical), no reference shown (a reference with a
+  cream HUD biases the judge), 3 judges each: **14/14 decisive** (3/3, conf 3.7–4.7, gap +1.5…+3.0),
+  calibration pairs (UI pixels softened) 2/2 correct.
+
+- **Battle-in = grade-pass transition (HD-2D only), ≈ 1.7 s from tap to the open frame** instead of
+  the 0.8 s CSS stripe curtain: 2 grey pulses (2 per second, ≤ 40% toward `#5a5a5a`, luminance step
+  capped at 0.08 per pixel), a terrain × threat wipe in 10 whole steps over 30 frames, an iris
+  opening on the foe during a locked whole-pixel intro pan, kin materialising as white silhouettes.
+  Timings from pokeemerald and the motion research; the default renderer keeps the curtain, and
+  reduced motion / fast mode skip it. Flashes measured on the frame strips: 1 in any second (the
+  cover/reveal pair), max frame-to-frame luminance step 0.10–0.11 on the meadow/trainer wipes, 0.25 on the cave iris
+  (the cover closing, counted once). The first version
+  pulsed to a flat 40% grey and counted 3 flashes in a second on the bright route map: hence the
+  per-pixel luminance cap.
+- **Pan locks** (sprite feet snapped in a grid that travels with the pan, Bayer dither phase moved
+  with it) also apply to the hit shake. Live meadow battle-in, desktop: block-rigid residual
+  2.11 → 1.68, deforming blocks 6.4% → 5.5% (the rest is the live scene: foliage sway, sprite bakes).
+- Gate: 60 fps frame strips (every 6th frame, tap → +2 s, same seed/state; the old curtain's CSS
+  keyframes composited exactly over the old build's frames): desktop **3/3, conf 3.3, gap +2.0**,
+  phone **3/3, conf 3.3, gap +2.0**; calibration (softened strip) 2/2. Judges: "staged reveal",
+  "iris opens on the arena", old: "flat blind wipe, muddy crossfade"; one noted the black hold
+  runs a little long.
+
+- **Title and starter get a depth band** (tilt-shift 3.6 px above 60–66% / below 34–36% of the
+  height, full radius on the phone tier too via the new `Grade.tiltScale`, vignette 0.5–0.6), from
+  the non-battle-screens research (`ttilt`/`stilt`): the trio and the daises stay crisp, the far
+  canopy and near bank go soft. Re-gated in this build: title desktop/phone and starter
+  desktop/phone **4/4 decisive** (3/3, conf 3.7–4.0, gap +1.33…+1.67), calibration 1/1.
+
 ## GPU PC node: pinned tool chain (`docs/GPU_PC_SETUP.md`)
 The owner's RTX 3090 PC runs Claude Code inside WSL2 Ubuntu 24.04 as a GPU node. Its tools are pinned and checked by hand, not taken from distribution channels, so that a later session does not "upgrade" them away or swap the download path for a less checkable one:
 - **Node 22.23.3** from nodejs.org, checked against the GPG-signed `SHASUMS256.txt` (keyring from `nodejs/release-keys` at commit `481637f813e912c4aa3622d7964ab426c97b8e8d`) and the explicit tarball sha256 `df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de`. NodeSource's apt repository was rejected because it adds a third-party package source to the system; Ubuntu 24.04's own `nodejs` is 18.

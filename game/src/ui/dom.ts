@@ -1,5 +1,6 @@
 import './pixel/skin';
 import './icons';
+import { inkSafeFill } from './contrast';
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void) | undefined>;
 type Child = Node | string | null | undefined | false;
 
@@ -25,7 +26,14 @@ export const TYPE_COLORS: Record<string, string> = {
 };
 
 export function typeChip(t: string): HTMLElement {
-  return h('span', { class: 'chip', style: `--c:${TYPE_COLORS[t] ?? '#999'}` }, t);
+  const c = TYPE_COLORS[t] ?? '#999999';
+  return h('span', { class: 'chip', style: `--c:${c};--cf:${inkSafeFill(c)}` }, t);
+}
+
+/** Colour a status badge: `--c` the status colour, `--cf` its fill that keeps white text >= 4.5:1. */
+export function badgeColour(el: HTMLElement, c: string) {
+  el.style.setProperty('--c', c);
+  el.style.setProperty('--cf', inkSafeFill(c));
 }
 
 export function hpBar(hp: number, max: number): HTMLElement {

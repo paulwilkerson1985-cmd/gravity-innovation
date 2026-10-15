@@ -213,7 +213,7 @@ branches on `hd2dRequested()` in a few places; the default path is untouched).
 
 | Screen | Set (`src/render/hd2d/screens/`) | Scene |
 |---|---|---|
-| Title | `buildTitleSet` — the flower-field arena (`buildMeadowSet(…, 'flowers')`) at golden hour + foreground flora; the camera drifts ±0.55 units in whole texels; three hero kin (Pyrelord, Maelstrode, Verdantusk) as sprites in the lit clearing | `scenes/title.ts` |
+| Title | `buildTitleSet` — the flower-field arena (`buildMeadowSet(…, 'flowers')`) at golden hour + foreground flora; the camera drifts ±0.55 units in whole texels; three hero kin (Pyrelord, Maelstrode, Verdantusk) as sprites in the lit clearing; a tilt-shift depth band (canopy and near bank soft, full radius on phones: `Grade.tiltScale`) | `scenes/title.ts` |
 | Starter | `buildStarterSet` — the meadow clearing, three cut octagonal stone daises (`octSlab` + loose kit boulders); `placeSpot()` lights the chosen dais: a steep shaft from a canopy gap, motes, a warm floor pool and a pool on the dais top (rebuilt per selection: beams/motes are world-space) | `scenes/starter.ts` |
 | Route maps + menu | `buildIslandSet(q, theme, spots, { player })` — one floating island per theme (below) | `scenes/route.ts` |
 | Party, box, bestiary, bag, shop | `buildRoomSet` — warm stone room, plinth (`PLINTH_TOP`), window cookie key, shaft + motes, rug, shelf, sconces; turntable in 22.5° steps; vertex-coloured item models are baked sprites too | `scenes/meta.ts` |
@@ -381,6 +381,16 @@ outdoor clearing from these pieces only — copy it as a starting point. Sheet:
   fol.add('bush', [x, 0, z], { scale: 1.2, sway: 0.25 });
   const f = fol.build({ strength: 1, speed: 1.4 }); group.add(f.mesh); /* update(t) */ f.update(t);
   ```
+- **Arena water** (`arenas/localKit.ts`): `pixelWater({ …, style })` — `'glitter'` (default: value-noise
+  sea, chop dashes, dense sun-glitter field; keep it for far sea at a grazing angle: cliff, coast) or
+  `'bands'` (near water: 4 flat depth bands from the shore field with slow sine contours, 1-texel
+  crescent highlights growing 1→3 texels over an 8-frame life, a solid lace of `lace` units + a
+  1-texel shadow rim, one receding dashed foam line per wave, glints only in the sun pool / glitter
+  path, 4-step haze, all on an `fps` stepped clock; shallows). Pair `'bands'` with
+  `waterline(landMaterials, { y, height, foam })`: it paints the lace's land side on sand / rock /
+  posts (unlit foam within `height` above the water, chained onto the bevel shader), so land meshes
+  that overhang the coarse shore field can never hide the shoreline. Keep `height` below the land's
+  lowest crown above the water (shallows: 0.05 for a crown 0.14 up).
 - **Water** (`kit/water.ts`): `pixelWater({ rect, y, land, range, ripples, light, flow })` —
   one plane; per-texel noise quantised to `RAMPS.water` with Bayer dither, depth tint and
   rolling foam from a shore-distance field (`shoreDistance(rect, land)`), 1-texel ripple rings,
@@ -481,6 +491,33 @@ call sites are unchanged).
   `groundDecal()` (tide: wet patch + spreading ring over ~1.2 s, with a foam crown and droplets).
 - Draw calls after the pass (whole frame, SwiftShader): cave 52 desk / 46 phone, volcanic 52 / 49,
   hollow 43 / 39, outdoor/sea 37–65, night sets 45–78 (HoF desktop 78), screens 27–58.
+
+## Battle-in transition (`render/hd2d/transition.ts`)
+
+HD-2D battles start with a grade-pass transition instead of the CSS curtain (the default renderer
+keeps the curtain). Everything is drawn in the grade pass at the internal resolution, so every edge
+is a whole internal pixel; the state is one shared object (`screenFx`) that every `Hd2dPipeline`
+copies into its grade uniforms each frame, so the cover starts on the route map's pipeline and the
+reveal ends on the battle's. Timings in 60 fps frames (`BATTLE_IN`):
+
+1. **Overworld**: 2 grey pulses (12 frames each, one every 30 frames = 2 per second) toward
+   `#5a5a5a` by ≤ 40%, with the per-pixel change in relative luminance capped at 0.08 so a pulse is
+   never a WCAG 2.3.1 flash on any background. The route's HTML UI steps out as the wipe starts.
+2. **Cover**: a terrain × threat wipe (`wipeFor`), 30 frames in 10 whole steps, to `#1c1626`
+   (oxblood `#2a0c14` when the foe outlevels your lead): `shards` (wild grass/outdoor), `iris`
+   (cave), `mosaic` (water), `shards2` (trainers, from both sides), `dissolve` (stronger foe).
+3. **Reveal**: an iris opening on the foe spot (30 frames, 10 steps; centre re-projected each frame)
+   while the camera makes a **locked whole-pixel intro pan** (`Hd2dBattleStage.introPan`: from
+   −40 × −24 px on a 360-px grid back to the framing over 48 frames, ease-out cubic).
+4. **Kin appear** as a white silhouette (12 frames white, 4 at 60%, 4 at 30%) during the pop.
+
+Pan locks (also used by the hit shake): `Hd2dBattleStage.pan()/shake()` compose whole-pixel view
+offsets; `SpriteBaker.pan` snaps sprite feet in a grid that travels with the pan and
+`Hd2dPipeline.setPan` moves the grade's Bayer dither with it, so a pan moves the image rigidly
+(`?post=nopanlock` = unlocked, for A/B metrics). Measured on the meadow battle-in (desktop, live
+scene): block-rigid residual 2.11 → 1.68, deforming blocks 6.4% → 5.5%; WCAG flashes: 1 in any
+second (the cover/reveal pair; the pulses stay under the 0.10 luminance step). Reduced motion
+(setting or `prefers-reduced-motion`) and fast mode keep the old instant/CSS path.
 
 ## Conventions for new arenas
 

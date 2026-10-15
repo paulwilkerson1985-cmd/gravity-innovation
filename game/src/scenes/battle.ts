@@ -16,9 +16,10 @@ import { ambient, moveFx, statusFx, type StatusCue } from '../render/movefx';
 import { personMesh, trainerLook } from '../render/trainer';
 import { animClock, ease, tween, wait } from '../render/anim';
 import { Kick, kickPx } from '../render/hitfeel';
-import { screenShake } from '../ui/prefs';
+import { reduceMotion, screenShake } from '../ui/prefs';
 import { mark } from '../debug/marks';
-import { arrowNav, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
+import { inkSafeFill } from '../ui/contrast';
+import { arrowNav, badgeColour, focusFirst, h, hpBar, setHp, typeChip, TYPE_COLORS } from '../ui/dom';
 import { audio, type TrackName } from '../audio/audio';
 import {
   ORBS, active, catchProbability, chooseAction, getItem, getTrainer, itemAffects, legalActions,
@@ -35,6 +36,7 @@ import {
 } from '../game/progress';
 import type { Theme } from '../render/diorama';
 import { Hd2dBattleStage, hd2dTerrainFor } from './hd2dBattle';
+import { battleReveal, covered, resetScreenFx } from '../render/hd2d/transition';
 
 const STAT_NAMES: Record<StageKey, string> = { atk: 'Attack', def: 'Defense', spe: 'Speed' };
 const STATUS_TEXT: Record<StatusId, [string, string, string, string]> = {
@@ -213,7 +215,9 @@ export class BattleScene extends BaseScene {
       const dots = h('span', { class: 'pdots', 'aria-hidden': 'true' });
       const root = h('div', { class: `panel ${mine ? 'panel-mine bt-mine' : 'panel-foe bt-foe'}`, 'data-testid': mine ? 'panel-mine' : 'panel-foe' },
         h('div', { class: 'prow' }, name, dots, level), h('div', { class: 'prow' }, types, badge, h('span', { class: 'hplabel' }, 'HP'), bar),
-        mine ? h('div', { class: 'prow prow-sub' }, h('span', { class: 'xplabel' }, 'XP'), xp, nums) : null);
+        // HP numbers sit right under the HP bar (on the XP row they read as an XP count); XP last.
+        mine ? h('div', { class: 'prow prow-nums' }, nums) : null,
+        mine ? h('div', { class: 'prow prow-sub' }, h('span', { class: 'xplabel' }, 'XP'), xp) : null);
       root.style.visibility = 'hidden';
       return { root, name, level, bar, ghost, badge, types, dots, ...(nums ? { nums } : {}), ...(xp ? { xp } : {}) };
     };
@@ -311,7 +315,7 @@ export class BattleScene extends BaseScene {
     b.hidden = !status;
     if (status) {
       b.textContent = STATUS_TEXT[status][0];
-      b.style.setProperty('--c', STATUS_TEXT[status][2]);
+      badgeColour(b, STATUS_TEXT[status][2]);
       b.title = STATUS_TEXT[status][3];
     }
   }
@@ -405,6 +409,15 @@ export class BattleScene extends BaseScene {
   // ------------------------------------------------------------------ flow
 
   private async intro(events: BattleEvent[]) {
+    // HD-2D battle-in (the route map's grade pass covered the screen, render/hd2d/transition.ts):
+    // an iris opens on the foe while the camera makes a locked whole-pixel pan into the framing.
+    if (covered()) {
+      const hd = this.hd2d;
+      if (hd && !animClock.instant) {
+        void hd.introPan(reduceMotion());
+        await battleReveal(() => hd.foeUv());
+      } else resetScreenFx();
+    }
     if (this.trainer) {
       let fig: THREE.Mesh;
       if (this.hd2d) fig = this.hd2d.trainer(this.trainer.id);
@@ -594,7 +607,7 @@ export class BattleScene extends BaseScene {
     // shape for every tile, so a status never pushes the bar out.
     const bar = hpBar(Math.max(0, c.hp), c.stats.hp);
     const st = c.hp <= 0 ? h('span', { class: 'badge badge-fnt' }, 'FNT')
-      : c.status ? h('span', { class: 'badge', style: `--c:${STATUS_TEXT[c.status][2]}` }, STATUS_TEXT[c.status][0]) : null;
+      : c.status ? h('span', { class: 'badge', style: `--c:${STATUS_TEXT[c.status][2]};--cf:${inkSafeFill(STATUS_TEXT[c.status][2])}` }, STATUS_TEXT[c.status][0]) : null;
     const tail = note ? h('span', { class: 'mmeta knote' }, note) : h('span', { class: 'mmeta hpnums-k' }, `${Math.max(0, c.hp)}/${c.stats.hp}`);
     const lv = h('span', { class: 'plevel' }, `Lv${c.level}`);
     // The badge sits by the name where there is room, beside the level on tight tiles (CSS picks).
@@ -707,7 +720,7 @@ export class BattleScene extends BaseScene {
         this.resize(this.game.renderer.width, this.game.renderer.height); // re-frame for this kin's size
         if (e.side === 1) this.game.player = withSeen(this.game.player, e.species);
         // Your own kin arrives in an orb: a short arc in from the lower left and a pop.
-        const appear = e.side === 0 ? this.throwIn(e.species).then(() => view.appear()) : view.appear();
+        const appear = e.side === 0 ? this.throwIn(e.species).then(() => this.materialize(view)) : this.materialize(view);
         audio.cry(e.species);
         if (e.side === 1 && this.state.sides[1].isWild && !this.introDone) await this.say(`A wild ${e.name} appeared!`);
         else if (e.side === 1) await this.say(this.trainer ? `${this.trainerName()} sent out ${e.name}!` : `Foe sent out ${e.name}!`);
@@ -867,6 +880,21 @@ export class BattleScene extends BaseScene {
     const type = species(speciesId).types[0];
     void burst(this.scene, land, TYPE_COLORS[type ?? 'Neutral'] ?? '#ffffff', 1.1, 12);
     void burst(this.scene, land, '#ffffff', 0.7, 8);
+  }
+
+  /**
+   * A kin appears: the scale-up pop, and in HD-2D a white silhouette that resolves into the
+   * sprite (12 frames white, then 60% and 30% for 4 frames each: the classic "materialise").
+   */
+  private materialize(view: CreatureView): Promise<void> {
+    const pop = view.appear();
+    if (!this.hd2d || animClock.instant) return pop;
+    const m = view.material;
+    void tween(20 * (1000 / 60), (k) => {
+      const f = k * 20, v = f < 12 ? 1 : f < 16 ? 0.6 : f < 20 ? 0.3 : 0;
+      m.emissive.setRGB(v, v, v);
+    });
+    return pop;
   }
 
   /**
