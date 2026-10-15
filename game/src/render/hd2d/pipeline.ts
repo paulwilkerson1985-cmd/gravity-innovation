@@ -161,7 +161,7 @@ const GradeShader = {
     uVig: { value: 0 }, uVigSoft: { value: 0.5 },
     uBottom: { value: 0 }, uBottomH: { value: 0.22 },
     uTiltTop: { value: 0 }, uTiltBottom: { value: 0 }, uFocusTop: { value: 0.6 }, uFocusBottom: { value: 0.15 },
-    uDither: { value: 0 },
+    uDither: { value: 0 }, uDitherOff: { value: new THREE.Vector2() },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -173,6 +173,7 @@ const GradeShader = {
     uniform vec2 uToneHi, uDesatRange;
     uniform float uExposure, uToneHue, uSat, uContrast, uShadowDesat, uSplit, uVig, uVigSoft, uBottom, uBottomH;
     uniform float uTiltTop, uTiltBottom, uFocusTop, uFocusBottom, uDither;
+    uniform vec2 uDitherOff;
     uniform vec3 uShadowTint, uHighTint;
     varying vec2 vUv;
     const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -261,7 +262,8 @@ const GradeShader = {
       // Bottom-edge shade (foreground occluders), opt-in per arena.
       c *= 1.0 + uBottom * (1.0 - smoothstep(0.0, uBottomH, y));
       // Ordered dither, so smooth gradients (light beams, bloom halos) read as pixel dither.
-      c += (bayer4(gl_FragCoord.xy) - 0.5) * uDither / 255.0;
+      // Anchored to the content, not the screen: a whole-pixel pan moves the pattern with the set.
+      c += (bayer4(gl_FragCoord.xy + uDitherOff) - 0.5) * uDither / 255.0;
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
     }`,
 };
@@ -379,6 +381,14 @@ export class Hd2dPipeline {
 
   /** Re-apply the grade after editing `this.grade` (A/B tools, live tuning). */
   regrade() { this.applyGrade(postFlags().has('nograde')); }
+
+  /**
+   * Keep the grade's ordered dither on the content during a whole-pixel camera pan: `pan` is the
+   * content shift in drawing-buffer px (y up).
+   */
+  setPan(pan: THREE.Vector2) {
+    (this.gradePass.uniforms as typeof GradeShader.uniforms).uDitherOff.value.set(-pan.x, -pan.y);
+  }
 
   /** Call after the renderer's drawing buffer changed size. */
   setSize() {

@@ -391,6 +391,9 @@ export class Hd2dBattleStage {
     const s = o[3] / Math.max(1, this.game.renderer.gl.getDrawingBufferSize(new THREE.Vector2()).y); // CSS px per internal px
     this.camera.setViewOffset(o[2], o[3], o[0] + Math.round(dx) * s, o[1] + Math.round(dy) * s, o[2], o[3]);
     this.camera.updateProjectionMatrix();
+    // The content moves the other way (buffer y is up): sprite snap grid and dither follow it.
+    this.baker.pan.set(-Math.round(dx), Math.round(dy));
+    this.pipeline.setPan(this.baker.pan);
   }
 
   update(t: number) {

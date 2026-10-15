@@ -1072,7 +1072,7 @@ export class SpriteSubject {
   ratio = 0;
 
   /** Re-bake the sprite if due and place its billboard (and shadow) for this frame. */
-  bake(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, light: SpriteLight, buffer: THREE.Vector2, sharedPx = 0) {
+  bake(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, light: SpriteLight, buffer: THREE.Vector2, sharedPx = 0, pan: THREE.Vector2 = NO_PAN) {
     const mesh = this.mesh;
     if (this.opts.inScene) {
       camera.getWorldDirection(fwd);
@@ -1110,10 +1110,11 @@ export class SpriteSubject {
     this.px = px;
     this.texels = (nominal * Math.cos(beta)) / wpp / px;
     const tw = wpp * px;
-    // ---- snap the feet to the texel grid (whole internal px, multiples of px).
+    // ---- snap the feet to the texel grid (whole internal px, multiples of px). The grid travels
+    // with a whole-pixel camera pan, so a panned/kicked frame moves sprites and set together.
     const ndc = tmpV.copy(anchor).project(camera);
-    const ax = Math.round((((ndc.x * 0.5 + 0.5) * buffer.x)) / px) * px;
-    const ay = Math.round((((ndc.y * 0.5 + 0.5) * buffer.y)) / px) * px;
+    const ax = Math.round(((ndc.x * 0.5 + 0.5) * buffer.x - pan.x) / px) * px + pan.x;
+    const ay = Math.round(((ndc.y * 0.5 + 0.5) * buffer.y - pan.y) / px) * px + pan.y;
     unprojectPx(camera, buffer, ax, ay, ndc.z, snapped);
     // ---- the subject's extent in bake coordinates (box corners), relative to the feet.
     const bb = geo.boundingBox!;
@@ -1362,6 +1363,8 @@ export class SpriteSubject {
   }
 }
 
+const NO_PAN = new THREE.Vector2();
+
 /** Keeps the scene's sprite subjects and bakes them each frame (Hd2dPipeline.beforeRender). */
 export class SpriteBaker {
   readonly subjects = new Set<SpriteSubject>();
@@ -1373,6 +1376,11 @@ export class SpriteBaker {
    * sprite artist drawing the hero at ≈ 44 texels), with hysteresis. 0 = unknown.
    */
   px = 0;
+  /**
+   * Whole-internal-px content shift of a camera pan (view-offset kick), drawing-buffer axes
+   * (y up). Sprite anchors snap in a grid that travels with it.
+   */
+  readonly pan = new THREE.Vector2();
 
   constructor(readonly scene: THREE.Scene, readonly camera: THREE.PerspectiveCamera, public light: SpriteLight) {}
 
@@ -1398,7 +1406,7 @@ export class SpriteBaker {
     this.camera.updateMatrixWorld();
     let r = 0;
     for (const s of this.subjects) {
-      s.bake(renderer, this.camera, this.light, this.buffer, this.px);
+      s.bake(renderer, this.camera, this.light, this.buffer, this.px, this.pan);
       if (s.billboard.visible) r = Math.max(r, s.ratio);
     }
     if (r > 0) {
