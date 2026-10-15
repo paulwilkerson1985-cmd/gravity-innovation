@@ -188,6 +188,30 @@ Details in `docs/HD2D.md` ("Reference pass 2").
 - **Sprite texel density not raised**: sprite texels are whole internal pixels shared by every sprite, so 1.2–1.3× would mean uneven texel sizes. The reference measures about the same density (people ≈ 44–50 texels, kin ≈ 30); the gap was shading, so the pass went to a five-tone hue-shifted ramp, near-black outer outline, key-side rim, emissive flames/magma and a capped green chroma.
 - **Phone move grid is always 2×2**: with 3 moves the 4th cell stays empty, and PP/TYPE + Back sit on the row under the divider, so the layout never jumps between kin.
 
+## Graphics pass 1: water, UI readability, battle-in (branch gfx1/world-ui)
+Every visible change here passed a blind pairwise gate against the build before it: matched frames
+from the deterministic capture harness (same seed, same state, frozen frame clock; desktop
+1280×720 high tier, phone 393×851 @2.75 low tier), 3 fresh-context Opus judges per pair, A/B order
+randomised per judge, a calibration pair (baseline vs a softened copy) in each session, and the
+decisive rule 3/3 + mean confidence ≥ 3 + mean score gap ≥ 0.75 (else "no detectable difference").
+Evidence (frames, plans, every vote and reason): `scratchpad/gfx1/world-ui/` of the session that made it.
+- **Shallows water = `style: 'bands'`** (flat depth bands, crescent highlights, solid lace, receding
+  dashed foam line, glints only in the sun zone, 8 fps stepped clock; `arenas/localKit.ts`
+  `WATER_FRAG_BANDS`), ported from the biome-kit research prototype W2. Votes vs the old glitter water:
+  desktop element crop **3/3, conf 4.0, gap +2.5**; phone full frame **3/3, conf 3.3, gap +1.17**;
+  phone element crop **3/3, conf 4.0, gap +2.67**; desktop full frame 2/3 (no detectable
+  difference, never worse). Calibration pairs 3/3 correct. It is also cheaper per pixel (no value
+  noise; research bench 3.2× vs 4.2× a basic plane).
+- **The shore lace's land side is painted on the land materials** (`waterline()`: sand, rock, wreck,
+  posts within 0.05 units above the water turn into unlit foam on the same stepped clock), after
+  stylized-water's terrain waterline. The water-side lace is 0.4 units (the prototype's 0.55 had
+  to bridge land meshes overhanging the coarse shore field). The stripe is short because the
+  sandbar crown sits only 0.14 above the water: a 3-texel stripe turned the whole crown to foam.
+- **Coast keeps the glitter water.** The same recipe on the coast cove won both element crops 3/3
+  but **lost the phone full frame 0/3** ("dithered sparkle, sun highlights, lit diorama" for the old
+  sea) and tied the desktop frame, so it was reverted: much of the coast frame is far sea at a
+  grazing angle, where the research already found the glitter path reads better. Cliff unchanged.
+
 ## GPU PC node: pinned tool chain (`docs/GPU_PC_SETUP.md`)
 The owner's RTX 3090 PC runs Claude Code inside WSL2 Ubuntu 24.04 as a GPU node. Its tools are pinned and checked by hand, not taken from distribution channels, so that a later session does not "upgrade" them away or swap the download path for a less checkable one:
 - **Node 22.23.3** from nodejs.org, checked against the GPG-signed `SHASUMS256.txt` (keyring from `nodejs/release-keys` at commit `481637f813e912c4aa3622d7964ab426c97b8e8d`) and the explicit tarball sha256 `df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de`. NodeSource's apt repository was rejected because it adds a third-party package source to the system; Ubuntu 24.04's own `nodejs` is 18.

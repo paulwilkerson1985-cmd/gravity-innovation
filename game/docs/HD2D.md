@@ -381,6 +381,16 @@ outdoor clearing from these pieces only — copy it as a starting point. Sheet:
   fol.add('bush', [x, 0, z], { scale: 1.2, sway: 0.25 });
   const f = fol.build({ strength: 1, speed: 1.4 }); group.add(f.mesh); /* update(t) */ f.update(t);
   ```
+- **Arena water** (`arenas/localKit.ts`): `pixelWater({ …, style })` — `'glitter'` (default: value-noise
+  sea, chop dashes, dense sun-glitter field; keep it for far sea at a grazing angle: cliff, coast) or
+  `'bands'` (near water: 4 flat depth bands from the shore field with slow sine contours, 1-texel
+  crescent highlights growing 1→3 texels over an 8-frame life, a solid lace of `lace` units + a
+  1-texel shadow rim, one receding dashed foam line per wave, glints only in the sun pool / glitter
+  path, 4-step haze, all on an `fps` stepped clock; shallows). Pair `'bands'` with
+  `waterline(landMaterials, { y, height, foam })`: it paints the lace's land side on sand / rock /
+  posts (unlit foam within `height` above the water, chained onto the bevel shader), so land meshes
+  that overhang the coarse shore field can never hide the shoreline. Keep `height` below the land's
+  lowest crown above the water (shallows: 0.05 for a crown 0.14 up).
 - **Water** (`kit/water.ts`): `pixelWater({ rect, y, land, range, ripples, light, flow })` —
   one plane; per-texel noise quantised to `RAMPS.water` with Bayer dither, depth tint and
   rolling foam from a shore-distance field (`shoreDistance(rect, land)`), 1-texel ripple rings,

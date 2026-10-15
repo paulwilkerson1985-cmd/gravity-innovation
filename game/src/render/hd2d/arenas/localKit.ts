@@ -446,7 +446,156 @@ void main() {
   #include <fog_fragment>
 }`;
 
+/**
+ * Near water (`style: 'bands'`), after the pixel artists' water rules (saint11, Slynyrd; see
+ * docs/research/graphics/biome-nature-kit.md §5.1). Won blind A/B on the shallows (desktop, phone,
+ * element crop) and costs less per pixel than the glitter shader above:
+ *  - 4 FLAT depth bands from the shore field (uneven: a narrow shelf, a mid band, a wide calm deep
+ *    fill); the contours wobble with two slow sines, never per-texel noise or dither;
+ *  - crescent highlights ("circles changing size"): one 1-texel arc per jittered 11×9-texel cell,
+ *    radius 1→2→3 then gone over an 8-frame life, one shade up (two in the deepest band);
+ *  - foam: a solid shore lace with a 1-texel shadow rim, one receding dashed line per wave; the
+ *    land side of the waterline is painted on the land material (`waterline()`), so meshes that
+ *    overhang the coarse shore field never hide the lace;
+ *  - glints only where the sun reflects (sun-break pool, glitter path), 2-frame blinks;
+ *  - horizon haze in 4 flat steps; everything on a STEPPED clock (uFps), like hand-keyed frames.
+ */
+const WATER_FRAG_BANDS = /* glsl */ `
+uniform float uTime;
+uniform float uTexel;
+uniform vec3 uRamp[6];
+uniform vec3 uFoam;
+uniform vec3 uWet;
+uniform vec3 uGlint;
+uniform sampler2D uShore;
+uniform vec4 uRect;
+uniform float uRange;
+uniform float uSwash;
+uniform float uDeep;
+uniform float uWaveSpeed;
+uniform float uCaps;
+uniform float uGlints;
+uniform float uFar;
+uniform vec4 uGlit;
+uniform vec3 uGlitCol;
+uniform vec3 uHaze;
+uniform vec2 uHazeZ;
+uniform vec4 uPool;
+uniform float uFps;     // stepped clock: animation frames per second
+uniform float uLace;    // shore lace width on the water side (world units)
+varying vec3 vWorld;
+#include <fog_pars_fragment>
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+vec3 rampAt(int i) {
+  vec3 c = uRamp[0];
+  for (int k = 1; k < 6; k++) if (k == i) c = uRamp[k];
+  return c;
+}
+void main() {
+  vec2 cell = floor(vWorld.xz / uTexel);
+  vec2 p = (cell + 0.5) * uTexel;
+  float F = floor(uTime * uFps);   // animation frame number
+  float T = F / uFps;              // stepped time
+  vec2 uv = (p - uRect.xy) / uRect.zw;
+  float d = (texture2D(uShore, uv).r * 2.0 - 1.0) * uRange;
+  // Swash: the edge runs up the sand and back (stepped).
+  float sw = uSwash * (0.55 + 0.45 * sin(T * 0.7 + p.x * 0.11));
+  float edge = d + sw;
+  if (edge < -0.55 * uSwash - 0.02) discard;
+  if (edge < 0.0) {
+    // Wet sand left by the retreating swash: one flat band with a low-frequency ragged edge.
+    float a = 1.0 - clamp(-edge / (0.55 * uSwash + 0.02), 0.0, 1.0);
+    float rag = 0.5 + 0.25 * sin(p.x * 3.1 + p.y * 1.7) + 0.15 * sin(p.x * 7.3 - p.y * 5.1);
+    if (a < rag) discard;
+    gl_FragColor = vec4(uWet, 1.0);
+    #include <fog_fragment>
+    return;
+  }
+  float wob = 0.10 * sin(p.x * 1.3 + p.y * 0.6 + T * 0.5) + 0.07 * sin(p.y * 2.1 - p.x * 0.9 - T * 0.35);
+  float dd = d + wob;
+  float far = clamp((uFar - p.y) / 14.0, 0.0, 1.0);
+  float rel = dd / uDeep;
+  int band = rel < 0.07 ? 4 : rel < 0.2 ? 3 : rel < 0.45 ? 2 : 1;
+  // Sun break: one whole band up (palette discipline), never a smooth lift.
+  float inPool = 0.0;
+  if (uPool.z > 0.0) {
+    float pr = length((p - uPool.xy) / uPool.zw) + wob * 0.6;
+    inPool = 1.0 - step(0.95, pr);
+    band += inPool > 0.5 ? 1 : 0;
+  }
+  band += int(far * 1.6 + 0.3);
+  band = clamp(band, 0, 5);
+  vec3 c = rampAt(band);
+  float foam = 0.0;
+  // Crescent highlights on a sparse jittered lattice drifting with the swell.
+  {
+    vec2 q = cell + vec2(floor(T * 1.5), 0.0);
+    vec2 cs = vec2(11.0, 9.0);
+    vec2 id = floor(q / cs);
+    vec2 lc = q - id * cs;
+    float h = hash(id * 1.31 + 0.7);
+    float density = mix(0.75, 0.35, clamp(dd / uDeep, 0.0, 1.0));
+    if (h < density && dd > 0.35) {
+      vec2 ctr = vec2(2.0 + floor(hash(id + 3.1) * (cs.x - 5.0)), 3.0 + floor(hash(id + 7.7) * (cs.y - 5.0)));
+      float ph = mod(F + floor(h * 60.0), 8.0);      // 8-frame life: 1, 1, 2, 2, 3, 3, gone, gone
+      float r = ph < 6.0 ? 1.0 + floor(ph / 2.0) : -10.0;
+      vec2 o = lc - ctr;
+      o.y *= 1.15;                                   // the camera already foreshortens depth
+      float dist = length(o);
+      if (abs(dist - r) < 0.55 && o.y < -0.2 * r && abs(o.x) <= r) {
+        c = rampAt(clamp(band + (band <= 1 ? 2 : 1), 0, 5));
+        if (h < uCaps * 0.25 && dd > 1.6) foam = 1.0;   // rare whitecaps in storm water
+      }
+    }
+  }
+  // Shore lace (solid, breathing with the stepped wave) and its 1-texel shadow rim.
+  float wave = fract(T * uWaveSpeed * 0.12);
+  float lw = uLace + 0.08 * sin(T * 1.1 + p.x * 0.4);
+  if (edge < lw) foam = 1.0;
+  else if (edge < lw + 0.07) c = mix(c, uRamp[0], 0.25);
+  // One receding foam line per wave: leaves the lace, steps outward, breaks into 5-texel dashes.
+  float lineD = lw + 0.1 + wave * 0.9;
+  if (abs(dd - lineD) < uTexel * 0.6) {
+    float seg = floor((p.x * 0.8 + p.y * 0.5) / (uTexel * 5.0));
+    if (hash(vec2(seg, floor(uTime * uWaveSpeed * 0.12))) > 0.15 + wave * 0.8) foam = 1.0;
+  }
+  if (foam > 0.5) c = uFoam;
+  // Glints only where the sun reflects: the sun-break pool and the glitter path.
+  if (uGlints > 0.5 || uGlit.w > 0.0) {
+    float zone = inPool;
+    float cx = uGlit.x + uGlit.y * (-p.y);
+    float dx = (p.x - cx) / (uGlit.z * (1.0 + far * 1.5));
+    if (uGlit.w > 0.0) zone = max(zone, step(dx * dx, 1.0) * uGlit.w);
+    float g = hash(cell + floor(F / 2.0) * 13.0);
+    if (zone > 0.0 && foam < 0.5 && dd > 0.5 && g > 1.0 - 0.012 * zone) c = uGlit.w > 0.0 ? uGlitCol : uGlint;
+    if (uGlit.w > 0.0) {
+      // The glitter path (the low sun's reflection): its band lifts one shade and sparkles.
+      float bandK = exp(-dx * dx) * uGlit.w * clamp(dd / 1.2, 0.0, 1.0);
+      if (bandK > 0.25 && foam < 0.5) c = rampAt(clamp(band + 1, 0, 5));
+      float g2 = hash(cell * 1.7 + floor(F / 2.0) * 7.0);
+      if (g2 > 1.0 - bandK * (0.05 + far * 0.15)) c = uGlitCol;
+    }
+  }
+  // Horizon haze in 4 flat steps.
+  if (uHazeZ.y < uHazeZ.x) {
+    float hk = clamp((uHazeZ.x - p.y) / (uHazeZ.x - uHazeZ.y), 0.0, 1.0);
+    hk = floor(hk * hk * 4.0 + 0.5) / 4.0;
+    c = mix(c, uHaze, hk);
+  }
+  gl_FragColor = vec4(c, 1.0);
+  #include <fog_fragment>
+}`;
+
 export interface WaterOptions {
+  /**
+   * `'glitter'` (default): value-noise sea with chop dashes and a dense sun-glitter field — keep
+   * it for far sea seen at a grazing angle (cliff). `'bands'`: near water (shallows, coves,
+   * ponds) — flat depth bands, crescent highlights, solid lace, stepped clock (WATER_FRAG_BANDS).
+   */
+  style?: 'glitter' | 'bands';
+  /** `'bands'`: stepped clock in frames per second (default 8) and water-side lace width (units, default 0.55). */
+  fps?: number;
+  lace?: number;
   /** Rect the plane (and the distance field) cover. */
   rect: { x0: number; z0: number; w: number; d: number };
   y: number;
@@ -476,9 +625,9 @@ export function pixelWater(o: WaterOptions): { mesh: THREE.Mesh; update(t: numbe
   const field = distanceField(o.rect, o.fieldRes ?? 128, o.land, range);
   const gain = o.gain ?? 1;
   const mat = new THREE.ShaderMaterial({
-    vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, fog: true,
+    vertexShader: WATER_VERT, fragmentShader: o.style === 'bands' ? WATER_FRAG_BANDS : WATER_FRAG, fog: true,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
-      uTime: { value: 0 }, uTexel: { value: TEXEL },
+      uTime: { value: 0 }, uTexel: { value: TEXEL }, uFps: { value: o.fps ?? 8 }, uLace: { value: o.lace ?? 0.55 },
       uRamp: { value: o.ramp.map((h) => new THREE.Color(h).multiplyScalar(gain)) },
       uFoam: { value: hdr(o.foam ?? '#f4fbff', 1.15 * gain) }, uWet: { value: new THREE.Color(o.wet ?? '#7d6450') },
       uGlint: { value: hdr(o.glint ?? '#fffbe8', 2.6) },
@@ -500,6 +649,52 @@ export function pixelWater(o: WaterOptions): { mesh: THREE.Mesh; update(t: numbe
   mesh.receiveShadow = false;
   mesh.renderOrder = 1;
   return { mesh, update: (t) => { mat.uniforms.uTime!.value = t; }, dispose: () => { field.dispose(); mat.dispose(); g.dispose(); } };
+}
+
+export interface WaterlineOptions {
+  /** Water surface height (world y). */
+  y: number;
+  /** Stripe height above the water (units, default 1.5 texels: low sandbars sit only ~2 texels
+   *  above the water, so a taller stripe would turn the whole crown to foam); breathes ±25%. */
+  height?: number;
+  /** Foam colour and HDR gain: pass the water's `foam` and `gain` so both sides match. */
+  foam?: string;
+  gain?: number;
+  /** Stepped clock (frames per second), the water's `fps`. */
+  fps?: number;
+}
+
+/**
+ * The land side of the shore lace (after thaslle/stylized-water's terrain waterline, MIT): every
+ * listed land material paints unlit foam where its surface sits within `height` above the water,
+ * so the lace hugs sand, rock feet and posts exactly and can never be hidden by a land mesh that
+ * overhangs the water's coarse shore field. Chains any existing `onBeforeCompile` (bevel).
+ * Call `update(t)` with the arena clock.
+ */
+export function waterline(materials: THREE.Material[], o: WaterlineOptions): { update(t: number): void } {
+  const time = { value: 0 };
+  const foam = { value: hdr(o.foam ?? '#f4fbff', 1.15 * (o.gain ?? 1)) };
+  const params = { value: new THREE.Vector4(o.y, o.height ?? 1.5 * TEXEL, o.fps ?? 8, TEXEL) };
+  for (const m of materials) {
+    const prev = m.onBeforeCompile.bind(m);
+    const prevKey = m.customProgramCacheKey.bind(m);
+    m.onBeforeCompile = (sh, r) => {
+      prev(sh, r);
+      sh.uniforms.uWlTime = time; sh.uniforms.uWlFoam = foam; sh.uniforms.uWl = params;
+      sh.vertexShader = 'varying vec3 vWlPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWlPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = 'varying vec3 vWlPos;\nuniform float uWlTime;\nuniform vec3 uWlFoam;\nuniform vec4 uWl;\n' + sh.fragmentShader.replace('#include <tonemapping_fragment>', `{
+        // Waterline lace: x/z quantised to the texel grid, height breathing on the stepped clock.
+        vec2 wc = (floor(vWlPos.xz / uWl.w) + 0.5) * uWl.w;
+        float T = floor(uWlTime * uWl.z) / uWl.z;
+        float h = uWl.y * (1.0 + 0.25 * sin(T * 1.1 + wc.x * 0.4));
+        if (vWlPos.y < uWl.x + h && vWlPos.y > uWl.x - 2.0 * uWl.y) gl_FragColor.rgb = uWlFoam;
+      }
+      #include <tonemapping_fragment>`);
+    };
+    m.customProgramCacheKey = () => prevKey() + '|waterline';
+    m.needsUpdate = true;
+  }
+  return { update: (t) => { time.value = t; } };
 }
 
 // ------------------------------------------------------------------ particles
