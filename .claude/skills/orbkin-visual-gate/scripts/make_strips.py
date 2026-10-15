@@ -2,7 +2,19 @@
 """make_strips.py - frame strips (for the judge) and a GIF (for humans only) from a strip.mjs capture dir.
 
   python3 -I make_strips.py CAPTURE_DIR [--every 2] [--window 72] [--scale 1] [--out DIR] [--gif] [--idle]
+                            [--stepped N]
   python3 -I make_strips.py --canary blur|hitstop STRIP_DIR_OR_CAPTURE_DIR ... (see judge_motion.py)
+
+Tile recipes (the judge sees <= 2576 px on the long edge, so wide tiles mean fewer columns):
+  --every 2 --window 72    36 tiles, 9 per row, 4 rows: the default; reads anticipation/hold/strike/settle.
+  --every 9 --window 72    8 tiles in ONE row (the pilot's "8-tile" strip, 2312 px wide): coarser but every tile
+                           is big; use it when the attacker crop is wide (long lunges) or for the owner's eyes.
+  --stepped N              CONTROL strip only: the same tiles with the motion held to N fps (each 60 fps frame
+                           replaced by the last frame on an N fps grid; N=2 holds 30 frames). Writes
+                           strips/attacker.stepped<N>.png. Judge it as `judge_motion.py --candidate DIR
+                           --baseline DIR/strips/attacker.stepped<N>.png --role control --expect better`: a
+                           sanity check that the judge prefers continuous motion, NOT evidence that the gate can
+                           separate two plausible timings (protocol.md section 9 has the real motion test).
 
 From DIR/frames/fNNN.png + DIR/meta.json (strip.mjs) writes DIR/strips/:
   attacker.png   ATTACKER-ONLY crop (the "mine" box grown toward the target, the target excluded), every
@@ -104,6 +116,7 @@ def main():
     ap.add_argument('capture_dir'); ap.add_argument('--every', type=int, default=2); ap.add_argument('--window', type=int, default=72)
     ap.add_argument('--scale', type=float, default=1); ap.add_argument('--out'); ap.add_argument('--gif', action='store_true')
     ap.add_argument('--idle', action='store_true'); ap.add_argument('--canary', choices=['blur', 'hitstop'])
+    ap.add_argument('--stepped', type=int, help='also write a held-frame control strip at N fps (attacker only)')
     ap.add_argument('--strip', help='with --canary blur: the strip PNG to degrade')
     a = ap.parse_args()
     if a.canary == 'blur':
@@ -145,6 +158,14 @@ def main():
     res['attacker'] = os.path.join(outd, 'attacker.png')
     res['attacker_size'] = strip([frame_path(d, i) for i in fr], abox, a.scale, 9, res['attacker'], fr)
     res['attacker_frames'] = [fr[0], fr[-1]]; res['attacker_box'] = abox
+    if a.stepped:
+        fps = meta.get('fps') or round(1000 / float(meta.get('dt') or 16.667))
+        hold = max(1, round(fps / a.stepped))
+        held = [start + ((i - start) // hold) * hold for i in fr]
+        res['stepped'] = os.path.join(outd, f'attacker.stepped{a.stepped}.png')
+        strip([frame_path(d, i) for i in held], abox, a.scale, 9, res['stepped'], fr)
+        res['stepped_note'] = f'control: {a.stepped} fps hold ({hold} frames per step), tiles labelled with the 60 fps index they stand in for; expect judge better for the real strip'
+        res['stepped_source_frames'] = held
     sb = sync_box(meta, W, H)
     c = impact if impact >= 0 else (launch if launch >= 0 else 0)
     fs_ = list(range(max(first, c - 6), min(n, c + 18), a.every))

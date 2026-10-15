@@ -4,6 +4,15 @@ Read when `doctor.sh` reports something missing, when installing on the owner's 
 download or package change. The full "Setup and safety" text from `toolchain-bootstrap.md` §11 is in
 section 4; SKILL.md carries its safety rules verbatim and points here for the Blender parts.
 
+**Sealed state is a precondition for acceptance, not a nicety.** While `doctor.sh` says `sealed: missing`,
+every verdict carries `"sealed": false`, the report banners it, and nothing is ACCEPTED on it (pilot /
+self-test evidence only). The owner's one-time step, from the repo root in an owner/verifier session:
+```bash
+python3 -I .claude/skills/orbkin-visual-gate/scripts/seal_init.py --ref <thumbnail-source.png>   # or without --ref
+# then add  "Read(game/tools/verify/sealed/**)"  to the deny list in .claude/settings.json (keep every existing rule)
+```
+Section 5 has the details; `seal_init.py --force` refreshes the prompts when the skill adds one (e.g. `ip_composition`).
+
 ## Contents
 1. What the gate needs (and what it does not)
 2. This cloud container (verified 2026-10-15)

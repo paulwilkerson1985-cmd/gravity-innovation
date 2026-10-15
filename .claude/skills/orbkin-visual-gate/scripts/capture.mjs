@@ -5,7 +5,25 @@
 //   node capture.mjs --out DIR [--ids cave-desk,cave-phone] [--game game] [--dist DIR | --no-build]
 //        [--baseline DIR] [--qs "post=nobloom"] [--self-check first|all|none] [--workers 2]
 //        [--dt 100] [--settle 8] [--min-frame 200] [--shots-json extra.json] [--no-crop] [--timeout-s 420]
-//   node capture.mjs --list
+//   node capture.mjs --out DIR --url '?scene=battle&route=ridge&hotspot=hiker-brann&seed=5&arena=cave'
+//        [--id cavebrann] [--vp desk,phone] [--party ashkit:5,rillback:15] [--menu fight]
+//   node capture.mjs --list | --schema | --lineups        (same as `node shots.mjs --list | --schema | --lineups`)
+//
+// --url derives a shot from a game URL (battle, or scene=model&lineup=N) and prints what it will do on stderr:
+// the trainer or wild foe it resolves to, the party it injects (the game's own default for a bare battle URL
+// is ONE Ashkit Lv5, because the harness always calls debugSetParty) and whether the Fight menu is opened
+// (only with --menu fight; a plain URL shows the command menu). --vp desk,phone makes one shot per viewport
+// with ids <id>-desk / <id>-phone. A shot that needs a party and has none is an error (no silent default).
+// --shots-json FILE: an ARRAY of shot objects; `node shots.mjs --schema` prints every field and a worked
+// example (trainer Brann in the cave). Built-in `cave-*` is trainer Sola, not Brann: check `--list`.
+//
+// Shot kinds: battle, fx, stadium, hof, arenaVictory, screen, lineup, baked.
+//   lineup  ?scene=model&lineup=N (N = 0 flame, 1 tide, 2 flora, 3 spark, 4 terra, 5 gale, 6 singles; names are
+//           resolved here, the game itself would silently show line 0 for a name) under the frozen clock with
+//           &freeze=<t>; writes <id>.png (unbaked meshes on the grey stage). Ids lineup-<N>-desk.
+//   baked   the toon-baked battle sprite of every species of a line: one wild battle per species in a neutral
+//           arena, the foe box cropped and tiled 3x nearest into <id>.png (+ <id>.<species>.png). This is what
+//           ships; use it for ip_check. ~1 battle load per species (2-4 min each on the loaded cloud box).
 //
 // What it does: `vite build` of --game (default ./game) into DIR/dist (never game/dist), serves it on a
 // random local port, and for every shot: opens the page with a VIRTUAL FRAME CLOCK (requestAnimationFrame
@@ -17,18 +35,22 @@
 // calls, triangles, warnings, errors, url}. --baseline DIR adds DIR/compare.json: per id changed % and
 // whether the capture frame matched (pixdiff.py). --self-check re-captures a shot in a fresh browser and
 // asserts pixel identity (default: the first shot; "all" doubles the time).
-// Rules it serves: frozen clock or the capture is invalid; repeat captures must be pixel-identical; desk AND
-// phone for every arena change. Needs: node 22, the game's node_modules (playwright 1.56 + chromium), python3
-// with Pillow + numpy for crops/diffs. Takes ~15-60 s build + 1-4 min per shot under SwiftShader (load matters:
-// use --workers 1 when the box is busy; a self-check doubles that shot).
-// Exit 0 all shots ok, 1 some failed, 2 usage/build error. The last stdout line is a JSON summary.
+// Rules it serves: frozen clock or the capture is invalid; repeat captures must be pixel-identical (repeat.sh
+// proves it for every id: two captures from one dist, sha256 + pixdiff tol 0); desk AND phone for every arena
+// change. Needs: node 22, the game's node_modules (playwright 1.56 + chromium), python3 with Pillow + numpy.
+// Measured on the 4-core cloud box (SwiftShader) at load 20-40: build 12-60 s, desk battle shot 4-7 min (361-444 s),
+// phone 1.5-2 min, each self-check adds the same again; at load < 4 about half that. Use --workers 1 when the
+// load average is above 8 and never run strip.mjs in parallel with a capture (both are CPU-bound). Cost $0.
+// Exit 0 all shots ok, 1 some failed, 2 usage/build error. The last stdout line is a JSON summary; per-shot
+// wall time is capture.json shots[].ms.
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import http from 'node:http';
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ARENA_MOVES, SHOTS, VIEWPORTS, selectShots } from './shots.mjs';
+import { ARENA_MOVES, LINEUPS, SHOTS, SHOT_EXAMPLE, SHOT_SCHEMA, VIEWPORTS, describe, lineupIndex, selectShots, shotFromUrl } from './shots.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -36,7 +58,9 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) =>
   return acc;
 }, []));
 if (args.help) { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n')); process.exit(0); }
-if (args.list) { for (const s of SHOTS) console.log(`${s.id.padEnd(20)} ${s.label}`); process.exit(0); }
+if (args.list) { for (const s of SHOTS) console.log(describe(s)); process.exit(0); }
+if (args.schema) { console.log('// --shots-json FILE: an ARRAY of these objects'); console.log(JSON.stringify(SHOT_SCHEMA, null, 1)); console.log('// example:'); console.log(JSON.stringify(SHOT_EXAMPLE, null, 1)); process.exit(0); }
+if (args.lineups) { for (const l of LINEUPS) console.log(`${l.index}  ${l.name.padEnd(8)} ${l.species.join(' → ')}`); process.exit(0); }
 if (!args.out) { console.error('usage: node capture.mjs --out DIR [--ids ...] (--help for all options)'); process.exit(2); }
 
 const GAME = path.resolve(args.game ?? process.env.ORBKIN_GAME ?? 'game');
@@ -80,10 +104,37 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const BASE = `http://127.0.0.1:${server.address().port}`;
 
 let extra = [];
-if (args['shots-json']) extra = JSON.parse(fs.readFileSync(args['shots-json'], 'utf8'));
-const sel = selectShots(args.ids ?? 'cave-desk,cave-phone', extra);
+if (args['shots-json']) {
+  extra = JSON.parse(fs.readFileSync(args['shots-json'], 'utf8'));
+  if (!Array.isArray(extra)) { console.log(JSON.stringify({ ok: false, error: '--shots-json must hold an ARRAY of shot objects (node shots.mjs --schema)' })); process.exit(2); }
+}
+let urlIds = null;
+if (args.url) {
+  let party;
+  if (args.party) party = args.party.split(',').map((t) => { const [sp, lv] = t.split(':'); return { species: sp, level: Number(lv ?? 5) }; });
+  urlIds = [];
+  for (const vp of (args.vp ?? 'desk').split(',')) {
+    const base = args.id ?? null;
+    try {
+      const { shot, notes } = shotFromUrl(args.url, { id: base ? `${base}-${vp}` : undefined, vp, party, menu: args.menu });
+      for (const n of notes) console.error(`[capture --url ${vp}] ${n}`);
+      extra.push(shot); urlIds.push(shot.id);
+    } catch (e) { console.log(JSON.stringify({ ok: false, error: `--url: ${e.message}` })); process.exit(2); }
+  }
+}
+const sel = selectShots(args.ids ?? (urlIds ? urlIds.join(',') : 'cave-desk,cave-phone'), extra);
 if (sel.unknown.length) console.error(`[capture] unknown ids/groups ignored: ${sel.unknown.join(', ')}`);
 const shots = sel.shots;
+// validate before spending minutes: party where the kind needs one, lineup index, known kinds
+const NEEDS_PARTY = { battle: true, fx: true, hof: true, baked: true };
+const problems = [];
+for (const s of shots) {
+  if (!s.id || !s.vp || !VIEWPORTS[s.vp]) problems.push(`${s.id ?? '?'}: vp must be desk|phone`);
+  if (NEEDS_PARTY[s.kind] && !(Array.isArray(s.party) && s.party.length)) problems.push(`${s.id}: kind ${s.kind} needs "party": [{species, level}, ...]; the harness always injects it (the game's own default for a bare battle URL is [{"species":"ashkit","level":5}]) - no silent default here`);
+  if (s.kind === 'screen' && ['route', 'menu', 'party'].includes(s.screen) && !(Array.isArray(s.party) && s.party.length)) problems.push(`${s.id}: screen ${s.screen} needs a party`);
+  if (s.kind === 'lineup' || s.kind === 'baked') { try { s.line = lineupIndex(s.line); if (s.line === 'all' && s.kind === 'baked') problems.push(`${s.id}: baked needs one line, not all`); } catch (e) { problems.push(`${s.id}: ${e.message}`); } }
+}
+if (problems.length) { console.log(JSON.stringify({ ok: false, error: 'shot validation failed', problems })); process.exit(2); }
 
 // ------------------------------------------------------------------ in-page frame clock
 function clockInit(dt) {
@@ -143,8 +194,10 @@ const click = (page, testid) => page.evaluate(([t, settle]) => {
 
 function urlFor(shot, scene) {
   const vp = VIEWPORTS[shot.vp];
-  const qs = new URLSearchParams({ seed: String(shot.seed ?? 11), gfx: 'hd2d', q: vp.q });
-  if (shot.arena && (shot.kind === 'battle' || shot.kind === 'fx')) qs.set('arena', shot.arena);
+  const qs = new URLSearchParams({ seed: String(shot.seed ?? 11), q: vp.q });
+  if (shot.hd2d !== false) qs.set('gfx', 'hd2d');
+  if (shot.arena && (shot.kind === 'battle' || shot.kind === 'fx' || shot.kind === 'baked')) qs.set('arena', shot.arena);
+  if (shot.kind === 'lineup') { qs.set('lineup', String(shot.line)); qs.set('freeze', String(shot.freeze ?? 0.6)); }
   for (const [k, v] of new URLSearchParams(EXTRA_QS)) qs.set(k, v);
   for (const [k, v] of Object.entries(shot.qs ?? {})) qs.set(k, String(v));
   qs.set('scene', scene);
@@ -251,6 +304,37 @@ const KINDS = {
     await page.evaluate(() => { window.__game.setFast(false); window.__game.setSpeed(1); });
     ctx.frame = await settleTo(page, { ...shot, settle: (shot.settle ?? SETTLE) + 4 });
   },
+  async lineup(page, shot, ctx) {
+    await until(page, `window.__game && window.__game.scene() === 'model'`, 300, 'model scene');
+    await frames(page, 12);
+    const label = await page.evaluate(() => (document.body.innerText || '').trim().split('\n')[0]);
+    ctx.info.lineup = { line: shot.line, label, species: LINEUPS[shot.line]?.species ?? null };
+    const want = LINEUPS[shot.line]?.species ?? [];
+    if (want.length && !want.some((sp) => label.toLowerCase().includes(sp.slice(0, 5)))) ctx.warnings.push(`lineup label "${label}" does not mention ${want.join('/')}: wrong line on screen?`);
+    ctx.frame = await settleTo(page, { ...shot, settle: 0 });
+  },
+  async baked(page, shot, ctx) {
+    // one wild battle per species of the line; the foe box (the front-facing toon-baked sprite) is cropped per species
+    const species = LINEUPS[shot.line].species;
+    ctx.info.baked = { line: shot.line, species, parts: [] };
+    for (const sp of species) {
+      await setParty(page, shot.party);
+      await page.evaluate(async (battle) => { const g = window.__game; g.setFast(true); await g.goto('battle', battle); }, { ...shot.battle, foe: sp, foeLevel: shot.foeLevel ?? 20 });
+      await until(page, IDLE, 400, `battle idle (${sp})`);
+      await page.evaluate(() => { window.__game.setFast(false); window.__game.setSpeed(1); });
+      const frame = await settleTo(page, shot);
+      const lay = await page.evaluate(() => window.__game.layout());
+      const foe = (lay.subjects || []).find((b) => b.name === 'foe');
+      if (!foe) throw new Error(`no foe box for ${sp}`);
+      const pad = 10;
+      const clip = { x: Math.max(0, foe.x - pad), y: Math.max(0, foe.y - pad), width: foe.w + 2 * pad, height: foe.h + 2 * pad };
+      const file = path.join(RAW, `${shot.id}.${sp}.png`);
+      await page.screenshot({ path: file, clip, ...SHOT_OPTS });
+      ctx.info.baked.parts.push({ species: sp, file, box: foe, frame });
+      ctx.frame = frame;
+    }
+    ctx.sheet = ctx.info.baked.parts.map((p) => p.file);
+  },
   async screen(page, shot, ctx) {
     const sc = shot.screen;
     if (sc === 'title' || sc === 'starter') {
@@ -291,7 +375,7 @@ async function runShot(browser, shot, suffix = '') {
   if (!suffix) for (const f of fs.readdirSync(RAW)) if (f === `${shot.id}.png` || (f.startsWith(`${shot.id}.`) && f.endsWith('.png'))) fs.rmSync(path.join(RAW, f), { force: true });
   const result = { id: shot.id, label: shot.label, kind: shot.kind, vp: shot.vp, arena: shot.arena ?? null, ok: false };
   try {
-    const scene = shot.kind === 'screen' && (shot.screen === 'title' || shot.screen === 'starter') ? shot.screen : 'none';
+    const scene = shot.kind === 'lineup' ? 'model' : shot.kind === 'screen' && (shot.screen === 'title' || shot.screen === 'starter') ? shot.screen : 'none';
     const seeds = shot.kind === 'fx' ? [0, 1, 2, 3].map((k) => (shot.seed ?? 11) + k) : [shot.seed ?? 11];
     for (const seed of seeds) {
       ctx.retry = null; result.seed = seed; result.url = urlFor({ ...shot, seed }, scene);
@@ -310,14 +394,31 @@ async function runShot(browser, shot, suffix = '') {
     if (st.ri.calls >= 100) ctx.warnings.push(`draw calls ${st.ri.calls} >= 100 budget`);
     ctx.errors.push(...st.capErrors.map((e) => `frame-hook: ${e}`));
     await page.evaluate(() => document.fonts.ready.then(() => 0));
-    await page.screenshot({ path: raw, ...SHOT_OPTS });
+    if (ctx.sheet) {
+      // tile the per-species crops 3x nearest into one sheet (what ip_check wants)
+      const py = `
+import sys, json
+from PIL import Image, ImageDraw
+files = json.loads(sys.argv[1]); out = sys.argv[2]; scale = 3
+ims = [Image.open(f).convert('RGB') for f in files]
+ims = [im.resize((im.width * scale, im.height * scale), Image.NEAREST) for im in ims]
+gap = 24; h = max(im.height for im in ims) + 28; w = sum(im.width for im in ims) + gap * (len(ims) + 1)
+sheet = Image.new('RGB', (w, h), (72, 74, 80)); d = ImageDraw.Draw(sheet); x = gap
+for f, im in zip(files, ims):
+    sheet.paste(im, (x, h - im.height - 4)); d.text((x, 4), f.rsplit('.', 2)[-2], fill=(235, 235, 235)); x += im.width + gap
+sheet.save(out); print(json.dumps({'sheet': out, 'size': sheet.size}))`;
+      const r = spawnSync(PY, ['-I', '-c', py, JSON.stringify(ctx.sheet), raw], { encoding: 'utf8' });
+      if (r.status !== 0) throw new Error(`sheet composition failed: ${(r.stderr || '').slice(-300)}`);
+    } else {
+      await page.screenshot({ path: raw, ...SHOT_OPTS });
+    }
     result.raw = raw; result.frame = ctx.frame ?? st.frames;
     if (shot.kind === 'fx' && ctx.late && !suffix) {
       await frames(page, ctx.late);
       result.late = path.join(RAW, `${shot.id}.late.png`);
       await page.screenshot({ path: result.late, ...SHOT_OPTS });
     }
-    if (shot.hd2d !== false && !suffix) {
+    if (shot.hd2d !== false && !suffix && !ctx.sheet) {
       const id = await page.evaluate(() => {
         const s = document.createElement('style'); s.id = '__clean';
         s.textContent = 'body > *:not(#app), #app > *:not(#view) { opacity: 0 !important; }';
@@ -337,12 +438,14 @@ async function runShot(browser, shot, suffix = '') {
     await withTimeout(context.close(), 20000, 'context close').catch(() => {});
   }
   if (ctx.info.fx) result.fx = ctx.info.fx;
+  if (ctx.info.lineup) result.lineup = ctx.info.lineup;
+  if (ctx.info.baked) result.baked = ctx.info.baked;
   result.warnings = ctx.warnings; result.notes = ctx.notes; result.errors = ctx.errors; result.ms = Date.now() - t0;
   return result;
 }
 
 // ------------------------------------------------------------------ worker pool
-const COST = (s) => (s.kind === 'fx' ? 5 : s.kind === 'screen' ? 0 : s.vp === 'desk' ? 3 : 1);
+const COST = (s) => (s.kind === 'baked' ? 8 : s.kind === 'fx' ? 5 : s.kind === 'screen' || s.kind === 'lineup' ? 0 : s.vp === 'desk' ? 3 : 1);
 const queue = [...shots].sort((a, b) => COST(b) - COST(a));
 const results = new Map();
 const launch = () => chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -354,7 +457,7 @@ async function worker(w) {
   try { browser = await launchRetry(); } catch (e) { console.error(`[capture w${w}] browser launch failed: ${e.message}`); return; }
   while (queue.length) {
     const shot = queue.shift();
-    const limit = TIMEOUT_S * 1000 * (shot.kind === 'fx' ? 1.5 : 1);
+    const limit = TIMEOUT_S * 1000 * (shot.kind === 'fx' ? 1.5 : shot.kind === 'baked' ? Math.max(2, (LINEUPS[shot.line]?.species.length ?? 2)) : 1);
     let r;
     try { r = await withTimeout(runShot(browser, shot), limit, shot.id); } catch (e) {
       r = { id: shot.id, label: shot.label, kind: shot.kind, vp: shot.vp, arena: shot.arena ?? null, ok: false, errors: [String(e.message ?? e)], warnings: [], ms: limit };
@@ -411,6 +514,8 @@ if (args.baseline) {
 const okN = ordered.filter((r) => r.ok).length;
 const summary = { ok: okN === ordered.length, captured: okN, total: ordered.length, seconds: out.seconds, out: OUT, capture_json: path.join(OUT, 'capture.json'),
   self_check: ordered.filter((r) => r.selfCheck).map((r) => ({ id: r.id, identical: r.selfCheck.identical })),
+  shot_seconds: Object.fromEntries(ordered.map((r) => [r.id, Math.round((r.ms ?? 0) / 1000)])),
+  load1: (() => { try { return Math.round(os.loadavg()[0] * 10) / 10; } catch { return null; } })(),
   warnings: Object.fromEntries(ordered.filter((r) => r.warnings?.length).map((r) => [r.id, r.warnings])),
   failed: ordered.filter((r) => !r.ok).map((r) => ({ id: r.id, errors: (r.errors ?? []).slice(0, 2) })),
   compare };

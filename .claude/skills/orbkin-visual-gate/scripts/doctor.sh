@@ -59,7 +59,9 @@ out = {'ready': a[0] == 'true', 'where': a[1], 'node': a[2], 'playwright': a[3],
        'claude_cli': a[8], 'sealed_dir': a[9], 'sealed': a[10], 'sealed_files': json.loads(a[11]), 'ref_anchor': a[12] == 'true',
        'deny_rule_for_sealed': a[13] == 'true', 'git_branch': a[14], 'cpus': a[15], 'game': a[16],
        'missing': [m for m in a[17].split('\n') if m], 'notes': [n for n in a[18].split('\n') if n],
-       'budget_hint': 'capture ~1 min build + 20-60 s/shot; judge ~$0.20-0.40 per shot (canary + 4 votes + crop + critique)'}
+       'load1': __import__('os').getloadavg()[0] if hasattr(__import__('os'), 'getloadavg') else None,
+       'budget_hint': 'measured on this 4-core box at load 20-40: build 12-60 s, desk shot 4-7 min, phone 1.5-2 min, strip 18 min, judge 3.5-4.5 min and $0.10-0.15 per shot (+$0.10-0.15 with --layout crop votes); about half the time when load < 4',
+       'sealed_rule': 'sealed: missing => every verdict says sealed:false => pilot/self-test evidence only, nothing is ACCEPTED; owner runs seal_init.py once and adds the Read deny rule (setup.md section 5)' if a[10] != 'present' else 'sealed dir present'}
 print(json.dumps(out, indent=1))
 PY
 [[ "$READY" == true ]]

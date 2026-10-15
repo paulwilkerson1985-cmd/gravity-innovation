@@ -3,7 +3,8 @@
 
   python3 -I visual_judge.py --candidate NEW.png --baseline OLD.png [--view full|crop|element|ui|blur]
          [--focal x0,y0,x1,y1 ...] [--layout capture.json:ID] [--votes 2] [--no-ref] [--no-canary]
-         [--no-critique] [--model opus] [--sealed DIR] [--out verdict.json]
+         [--no-critique] [--fast] [--role target|control|calibration] [--expect worse] [--run RUN]
+         [--model opus] [--sealed DIR] [--out verdict.json]
 
 Fresh-context, tool-less Opus judges through `claude -p` (one process per vote, images inline, no repo
 access). Every vote is asked in BOTH display orders. A CANARY pair (baseline vs a degraded baseline,
@@ -25,14 +26,29 @@ Decision (printed JSON, also --out):
   (full view) frame better but crop worse -> no_difference; frame no_difference but crop decided -> crop decides.
 Also printed: "critique" (located gaps from a SEPARATE critic call: the only text a generator should read),
 "franchise_hits" (judge reasons naming franchise characters -> run ip_check.py), "sealed" (anchors present?).
-Cost: ~$0.03-0.05 per call; default run = 2 canary + 4 full (+4 crop) + 1 critique ~ $0.20-0.35, ~1-2 min.
+Cost and time (measured 2026-10-15 on the 4-core cloud box at load 20-40; list prices, subscription absorbs them):
+  per call ~$0.02-0.03 and 30-60 s; default run = 2 canary + 4 main + 1 critique = $0.10-0.15 and 3.5-4.5 min;
+  with --layout crop votes (+4 calls) $0.20-0.30 and 5-6 min; --no-critique saves ~$0.03; an idle box is ~2x faster.
+  Rule for --layout: keep the crop votes for sprite / kin / UI-near-sprite changes; drop them for grade, light and
+  dressing sweeps or when the per-change budget is under $0.60 (the crop measures sprite/ground read only).
+Early exit (saves calls on invisible changes): after the first round, when both orders came back confidence <= 1 with
+  "identical"/"no difference" in the reason, the result is no_difference without the second round. With --fast, a
+  first round that is 2/2 at confidence 5 in the same direction also skips the second round (decision from 2 votes;
+  the verdict says "early_exit": "fast"). Never use --fast for anything that will be ACCEPTED on this verdict alone.
+Roles: --role target (default) is a real change; --role control is a synthetic degradation, identical pair or other
+  instrument check and must say what the instrument should do with --expect (e.g. --expect worse, --expect
+  no_difference): report.sh then lists controls in an "Instrument checks" table with pass/fail and keeps their
+  critique OUT of the improvement signal. Every result carries "provenance" (sha256 of each input, RUN-relative
+  paths, model used, seconds, cost): report.sh refuses a verdict whose hashes no longer match the files beside it.
 Calibration (judge-calibration.md): 42/42 known pairs correct at native size; near-equal pairs follow display
 order 60-64% -> the both-orders rule turns that into no_difference. Never read tools/verify/sealed yourself.
 """
 import argparse
 import json
 import os
+import re
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from PIL import Image, ImageFilter
@@ -93,20 +109,53 @@ def vote(a_img, b_img, prompt, ref_img, model):
     out = J.call(blocks, model=model)
     js = out.get('json') or {}
     w = js.get('winner') if js.get('winner') in ('A', 'B') else None
-    return w, js.get('reason'), js.get('confidence'), out.get('cost') or 0.0, out.get('error')
+    return w, js.get('reason'), js.get('confidence'), out.get('cost') or 0.0, out.get('error'), out.get('model')
 
 
-def run_set(cand, base, prompt, ref, votes, model, label):
-    jobs = [(o, k) for k in range(votes) for o in ('CB', 'BC')]
+MODEL_USED = []  # model ids reported by the CLI (init event), for provenance
+
+
+def run_set(cand, base, prompt, ref, votes, model, label, reps=None):
+    """votes per order; `reps` restricts to given rep indices (early-exit rounds)."""
+    jobs = [(o, k) for k in (reps if reps is not None else range(votes)) for o in ('CB', 'BC')]
 
     def one(j):
         o, k = j
         first, second = (cand, base) if o == 'CB' else (base, cand)
-        w, why, conf, cost, err = vote(first, second, prompt, ref, model)
+        w, why, conf, cost, err, used = vote(first, second, prompt, ref, model)
+        if used:
+            MODEL_USED.append(used)
         cand_won = None if w is None else ((w == 'A') == (o == 'CB'))
         return {'set': label, 'order': o, 'rep': k, 'candidate_won': cand_won, 'confidence': conf, 'reason': why, 'cost': cost, 'error': err}
     with ThreadPoolExecutor(4) as ex:
         return list(ex.map(one, jobs))
+
+
+_IDENT = re.compile(r'identical|no (?:discernible|meaningful|visible|real)? ?differen|same image|cannot (?:tell|see) (?:a|any) differen', re.I)
+
+
+def early_exit(first_round, fast):
+    """After round 0 (one vote per order): 'identical' when both votes are confidence <= 1 and say so;
+    'fast' when --fast and both are confidence 5 in the same direction. Else None."""
+    ok = [v for v in first_round if v['candidate_won'] is not None]
+    if len(ok) != 2:
+        return None
+    confs = [int(v.get('confidence') or 0) for v in ok]
+    if all(c <= 1 for c in confs) and all(_IDENT.search(str(v.get('reason') or '')) for v in ok):
+        return 'identical'
+    if fast and all(c >= 5 for c in confs) and len({v['candidate_won'] for v in ok}) == 1:
+        return 'fast'
+    return None
+
+
+def run_main(cand, base, prompt, ref, votes, model, label, fast):
+    """The main vote set with the early-exit rule: round 0 first, then the rest unless consensus."""
+    first = run_set(cand, base, prompt, ref, votes, model, label, reps=[0])
+    ex = early_exit(first, fast)
+    if ex or votes <= 1:
+        return first, ex
+    rest = run_set(cand, base, prompt, ref, votes, model, label, reps=list(range(1, votes)))
+    return first + rest, None
 
 
 def decide(votes):
@@ -147,8 +196,12 @@ def main():
     ap.add_argument('--votes', type=int, default=2)
     ap.add_argument('--no-ref', action='store_true'); ap.add_argument('--no-canary', action='store_true')
     ap.add_argument('--no-critique', action='store_true')
+    ap.add_argument('--fast', action='store_true', help='skip the second round when round 1 is 2/2 at confidence 5')
     ap.add_argument('--model', default='opus'); ap.add_argument('--sealed'); ap.add_argument('--out')
+    J.add_role_args(ap)
     a = ap.parse_args()
+    T0 = time.time()
+    RUN = J.run_dir_of(a.out, a.run)
     try:
         cand = Image.open(a.candidate).convert('RGB'); base = Image.open(a.baseline).convert('RGB')
         boxes = parse_boxes(a.focal, a.layout)
@@ -177,26 +230,40 @@ def main():
     else:
         A, B, prompt = crop_box2x(cand, boxes[0]), crop_box2x(base, boxes[0]), P['blur_quality']
     res = {'candidate': a.candidate, 'baseline': a.baseline, 'view': a.view, 'sealed': S['sealed'],
-           'ref_shown': ref is not None, 'model': a.model, 'votes': []}
+           'ref_shown': ref is not None, 'model': a.model, 'role': a.role, 'expect': a.expect, 'votes': []}
+    inputs = {'candidate': a.candidate, 'baseline': a.baseline}
+    if a.layout:
+        inputs['layout'] = a.layout.rsplit(':', 1)[0]
+
+    def finish(code):
+        res['cost_usd'] = round(sum(v['cost'] for v in res['votes']) + (res.get('critique') or {}).get('cost', 0.0), 3)
+        res['provenance'] = J.provenance(inputs, RUN, T0, res['cost_usd'], a.model, MODEL_USED[0] if MODEL_USED else None,
+                                         a.role, a.expect, 'visual_judge.py')
+        res['control'] = J.control_outcome(a.role, a.expect, res.get('decision'))
+        J.write_result(res, a.out)
+        sys.exit(code)
     if not a.no_canary:
         can = run_set(B, degrade(B, S['canary']), prompt, ref, 1, a.model, 'canary')
         res['votes'] += can
         cd, _ = decide(can)
         res['canary'] = cd
+        res['canary_confidence'] = [v.get('confidence') for v in can]
         if cd != 'better':
             res['decision'] = 'invalid'
             res['why'] = 'canary failed: the judge did not prefer the undegraded baseline in both orders (judge errors: %s)' % [v['error'] for v in can if v['error']]
-            res['cost_usd'] = round(sum(v['cost'] for v in res['votes']), 3)
-            print(json.dumps(res, indent=1))
-            if a.out:
-                json.dump(res, open(a.out, 'w'), indent=1)
-            sys.exit(3)
-    main_votes = run_set(A, B, prompt, ref, a.votes, a.model, 'main')
+            finish(3)
+    main_votes, ex = run_main(A, B, prompt, ref, a.votes, a.model, 'main', a.fast)
     res['votes'] += main_votes
     d_main, r_main = decide(main_votes)
-    res['main'] = {'decision': d_main, 'candidate_win_rate': round(r_main, 2)}
+    if ex == 'identical':
+        d_main = 'no_difference'
+    res['main'] = {'decision': d_main, 'candidate_win_rate': round(r_main, 2), 'votes_cast': len(main_votes)}
+    if ex:
+        res['early_exit'] = ex
+        res['early_exit_note'] = ('both first-round votes confidence <= 1 and "identical": no second round'
+                                  if ex == 'identical' else '--fast: first round 2/2 at confidence 5; second round skipped')
     decision = d_main
-    if a.view == 'full' and boxes:
+    if a.view == 'full' and boxes and ex != 'identical':
         crop = run_set(crop2x(cand, boxes), crop2x(base, boxes), P['crop'], None, a.votes, a.model, 'crop')
         res['votes'] += crop
         d_crop, r_crop = decide(crop)
@@ -212,17 +279,13 @@ def main():
     res['decision'] = decision
     reasons = [v['reason'] for v in res['votes'] if v['set'] != 'canary']
     res['franchise_hits'] = J.franchise_hits(reasons, S['franchise'])
-    if not a.no_critique and decision != 'invalid':
+    if not a.no_critique and decision != 'invalid' and ex != 'identical':
         res['critique'] = critique(cand, base, ref, P['critique'], a.model)
         res['franchise_hits'] = sorted(set(res['franchise_hits']) | set(J.franchise_hits(
             [g.get('what', '') + ' ' + g.get('fix', '') for g in res['critique'].get('gaps', [])], S['franchise'])))
-    res['cost_usd'] = round(sum(v['cost'] for v in res['votes']) + (res.get('critique') or {}).get('cost', 0.0), 3)
     res['reasons'] = [f"{v['set']}/{v['order']}: {'cand' if v['candidate_won'] else 'base'} (c{v['confidence']}) - {v['reason']}"
                       for v in res['votes'] if v['set'] != 'canary']
-    print(json.dumps(res, indent=1))
-    if a.out:
-        json.dump(res, open(a.out, 'w'), indent=1)
-    sys.exit(0 if decision == 'better' else 3 if decision == 'invalid' else 1)
+    finish(0 if decision == 'better' else 3 if decision == 'invalid' else 1)
 
 
 if __name__ == '__main__':

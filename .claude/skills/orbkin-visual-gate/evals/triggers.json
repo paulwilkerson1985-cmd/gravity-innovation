@@ -11,7 +11,10 @@
     "the breaker crush timing feels better now, prove it with the strip judge",
     "does the new UI skin read better? judge it without the reference",
     "two captures of the same build look different, is my capture valid?",
-    "score the owner's picks json and update the trust table"
+    "score the owner's picks json and update the trust table",
+    "reproduce ?scene=battle&route=ridge&hotspot=hiker-brann with the frozen clock and prove the capture repeats",
+    "run the originality check on the terra lineup and the cave scene crop",
+    "does the new cave layout copy a known game location? check the composition"
   ],
   "should_not_trigger": [
     "the cave looks flat and orange, what should we change first?",

@@ -6,7 +6,10 @@
 For every ok shot in CAPTURE_DIR/capture.json that has creature boxes (layout mine/foe), writes
 CAPTURE_DIR/raw/<id>.crop.png: the union of the creature boxes, grown by --grow, at least 480 px wide,
 16:9, enlarged 2x with NEAREST (the same crop visual_judge.py uses for its focal votes), and records
-"crop" and "cropBox" on the shot. Element crops for one box: pass --box x0,y0,x1,y1 --id SHOT.
+"crop" and "cropBox" on the shot. When the layout also has human figures (player, trainer) it writes
+<id>.scene.png: the union of ALL subject boxes (mine, foe, player, trainer) at 2x, recorded as "scene" /
+"sceneBox"; that is the crop ip_check.py --scene wants (the trainer is outside the mine/foe crop).
+Element crops for one box: pass --box x0,y0,x1,y1 --id SHOT.
 --compare BASELINE_DIR: runs pixdiff per id (inside = creature boxes) and writes CAPTURE_DIR/compare.json
 {changed: {id: pct}, identical: [ids], outside_changed: [ids whose pixels moved outside the creature
 boxes], frame_mismatch: [ids captured at a different absolute frame than the baseline]}.
@@ -35,9 +38,9 @@ def union_crop(im, boxes, grow=1.25, min_w=480):
     return c.resize((c.width * 2, c.height * 2), Image.NEAREST), box
 
 
-def boxes_of(shot):
+def boxes_of(shot, names=('mine', 'foe')):
     lay = shot.get('layout') or (shot.get('stats') or {}).get('layout') or []
-    return [[b['x'], b['y'], b['x'] + b['w'], b['y'] + b['h']] for b in lay if b['name'] in ('mine', 'foe')]
+    return [[b['x'], b['y'], b['x'] + b['w'], b['y'] + b['h']] for b in lay if b['name'] in names]
 
 
 def main():
@@ -102,6 +105,11 @@ def main():
         c, box = union_crop(im, bx, a.grow)
         out = os.path.join(a.capture_dir, 'raw', f'{sid}.crop.png'); c.save(out)
         s['crop'] = out; s['cropBox'] = list(box); done.append(sid)
+        allb = boxes_of(s, ('mine', 'foe', 'player', 'trainer'))
+        if len(allb) > len(bx):
+            c2, box2 = union_crop(im, allb, a.grow)
+            out2 = os.path.join(a.capture_dir, 'raw', f'{sid}.scene.png'); c2.save(out2)
+            s['scene'] = out2; s['sceneBox'] = list(box2)
     json.dump(cap, open(cj, 'w'), indent=1)
     print(json.dumps({'crops': done}))
 

@@ -53,7 +53,7 @@ def main():
     ys, xs = np.where(changed)
     bbox = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1] if len(xs) else None
     ok = outs <= a.max_outside
-    out = {'ok': ok, 'size': [W, H], 'changed_pct': round(tot, 3), 'inside_pct': None if ins is None else round(ins, 3),
+    out = {'ok': ok, 'size': [W, H], 'tol': a.tol, 'changed_pct': round(tot, 3), 'inside_pct': None if ins is None else round(ins, 3),
            'outside_pct': round(outs, 3), 'boxes': boxes, 'change_bbox': bbox, 'identical': tot == 0.0,
            'verdict': 'identical' if tot == 0.0 else ('changes confined to the boxes' if ok and boxes else
                       'changes outside the boxes: capture confounded (rng, phase or UI state) unless the change is frame-wide' if boxes else 'no boxes given: whole-frame change reported')}

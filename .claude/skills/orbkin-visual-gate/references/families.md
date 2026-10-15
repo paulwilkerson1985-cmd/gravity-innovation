@@ -30,7 +30,7 @@ Opus may guard a human-decided tunable against regressions afterwards; it never 
 |---|---|---|---|
 | `density` | sprite texel size per device (2-px vs 1-px texels; the only real step) | human | desktop verdicts were order-driven under a frozen clock; the Octopath team says "too finely detailed lost what makes the pixel art great"; decide **per device** [high] |
 | `dof_strength` | tilt/DoF band strength and placement | human | Opus DoF verdicts order-driven in 10/12 cells; blur **quality** can go to the judge (`--view blur`) [high] |
-| `ui_skin` | cream handheld vs HD-2D slab, panel direction | human | verdict flips with the protocol (reference shown or not) [high] |
+| `ui_skin` | cream handheld vs HD-2D slab, panel direction, HUD layout originality (`ip_check --composition --hud` -> `hud_decision`) | human | verdict flips with the protocol (reference shown or not) [high]; the pilot HUD read as the Gen 3/4 Pokemon battle screen 8/10 in 3/3 runs, an owner decision [medium] |
 | `grade_strength` | per-arena grade, warmth, saturation, vignette | human | judges over-reward "volumetric richness"; baseline-vs-current split 3 better / 2 worse / 1 same [medium] |
 | `outline_weight` | sprite outline thickness/colour, rim | human | taste; interacts with density |
 | `palette` | arena gamut, kin colour blocks | human | taste; IP interactions |

@@ -3,6 +3,7 @@
 
   python3 -I artgate_compare.py CANDIDATE.png BASELINE.png [--clean-cand C.png --clean-base B.png]
                                [--mask x0,y0,x1,y1 ...] [--mask none] [--strict] [--out floor.json]
+                               [--role target|control] [--expect FAIL|pass] [--run RUN]
 
 What it is: a floor / regression detector calibrated on 63 real round-to-round changes of Orbkin frames,
 the reference and 15 synthetic degradations (judge-calibration.md section 3.5). It catches flattened
@@ -18,14 +19,19 @@ unless --strict, because the portrait floors are not calibrated yet.
 Default mask = battle HUD layout (16:9): top-left HUD, right HUD + buttons, bottom dialog band, top-right.
 Pass --mask none for non-battle screens, or your own boxes (fractions or pixels of the candidate).
 Exit codes: 0 pass (warnings allowed), 1 a FAIL rule fired, 2 bad input. Prints one JSON object.
+Cost 0; 2-9 s on the loaded cloud box. The JSON carries "provenance" (sha256 of both frames, RUN-relative paths,
+seconds) and, with --role control --expect FAIL|pass, a "control" block saying whether the floor did what a
+synthetic degradation should make it do (report.sh lists those under "Instrument checks").
 """
 import argparse
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import artgate  # noqa: E402
+import judgelib as J  # noqa: E402
 
 DEFAULT_MASK = ['0,0,0.28,0.13', '0.67,0.6,1,1', '0,0.83,1,1', '0.86,0,1,0.07']
 # absolute floors: every real Orbkin battle frame and the reference pass; the listed degradations fail
@@ -55,7 +61,9 @@ def main():
     ap.add_argument('--strict', action='store_true', help='portrait frames: FAIL rules fail (default: WARN, uncalibrated)')
     ap.add_argument('--out')
     ap.add_argument('--json', action='store_true', help='(kept for compatibility; output is always JSON)')
+    J.add_role_args(ap)
     a = ap.parse_args()
+    T0 = time.time(); RUN = J.run_dir_of(a.out, a.run)
     mask = DEFAULT_MASK if a.mask is None else ([] if a.mask == ['none'] else a.mask)
     try:
         c = artgate.measure(a.clean_cand or a.candidate, [], mask)
@@ -80,11 +88,14 @@ def main():
            'note': 'floors, not targets: do not try to raise these numbers'}
     if downgrade and findings:
         out['note'] = 'portrait frame: floors uncalibrated, reported as WARN (use --strict to fail); ' + out['note']
-    s = json.dumps(out, indent=1)
-    print(s)
-    if a.out:
-        with open(a.out, 'w') as fh:
-            fh.write(s)
+    out['decision'] = 'pass' if out['pass'] else 'FAIL'
+    out['role'] = a.role; out['expect'] = a.expect
+    inputs = {'candidate': a.candidate, 'baseline': a.baseline}
+    if a.clean_cand: inputs['clean_cand'] = a.clean_cand
+    if a.clean_base: inputs['clean_base'] = a.clean_base
+    out['provenance'] = J.provenance(inputs, RUN, T0, 0.0, None, None, a.role, a.expect, 'artgate_compare.py')
+    out['control'] = J.control_outcome(a.role, a.expect, out['decision'])
+    J.write_result(out, a.out)
     sys.exit(0 if out['pass'] else 1)
 
 
