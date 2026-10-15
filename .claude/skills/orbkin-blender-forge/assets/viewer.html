@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>orbkin forge viewer</title>
+<style>html,body{margin:0;background:#2a2d33;overflow:hidden}canvas{display:block;image-rendering:pixelated}#hud{position:fixed;left:6px;top:6px;color:#ddd;font:12px monospace;white-space:pre}</style>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="hud"></div>
+<script type="module">
+// three r180 round-trip viewer for the orbkin-blender-forge skill. Query: ?glb=/glb/x.glb&mode=pbr|toon|sprite
+//   &h=64 (sprite height px) &clip=Idle&t=0.5 &az=35&el=25 &fov=0(ortho)|30 &key=-0.5,-0.6,0.8 &bg=1 &outline=1
+// Reports window.__report = {ready, loadMs, extensions, clips, tris, drawCalls, programs, errors, renderer}.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? parseFloat(q.get(k)) : d);
+const report = { ready: false, errors: 0, errorMessages: [] };
+window.__report = report;
+window.addEventListener('error', (e) => { report.errors++; report.errorMessages.push(String(e.message)); });
+const origErr = console.error; console.error = (...a) => { report.errors++; report.errorMessages.push(a.map(String).join(' ').slice(0, 200)); origErr(...a); };
+
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true, powerPreference: 'low-power' });
+renderer.setPixelRatio(1); renderer.setSize(W, H);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = q.get('mode') === 'pbr' ? THREE.NeutralToneMapping : THREE.NoToneMapping;
+document.body.appendChild(renderer.domElement);
+const gl = renderer.getContext();
+const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+report.renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'n/a';
+
+const scene = new THREE.Scene();
+scene.background = q.get('bg') === '0' ? null : new THREE.Color(0x2a2d33);
+const mode = q.get('mode') || 'pbr';
+const keyDir = (q.get('key') || '-0.5,-0.6,0.8').split(',').map(Number);
+const key = new THREE.DirectionalLight(0xfff1dc, mode === 'pbr' ? 2.5 : 1.0); key.position.set(keyDir[0], keyDir[2], -keyDir[1]).multiplyScalar(10); // Blender xyz(z up) -> three xzy
+scene.add(key);
+scene.add(new THREE.HemisphereLight(0x9fb4d8, 0x5a4636, mode === 'pbr' ? 0.8 : 0.5));
+if (mode === 'pbr') {
+  const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+}
+
+const gradient = new THREE.DataTexture(new Uint8Array([70, 140, 255]), 3, 1, THREE.RedFormat);
+gradient.minFilter = gradient.magFilter = THREE.NearestFilter; gradient.needsUpdate = true;
+
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+const draco = new DRACOLoader().setDecoderPath('/three/examples/jsm/libs/draco/gltf/'); loader.setDRACOLoader(draco);
+try { const ktx2 = new KTX2Loader().setTranscoderPath('/three/examples/jsm/libs/basis/').detectSupport(renderer); loader.setKTX2Loader(ktx2); } catch (e) { report.ktx2 = String(e); }
+
+const t0 = performance.now();
+let mixer = null;
+loader.load(q.get('glb'), (gltf) => {
+  report.loadMs = Math.round(performance.now() - t0);
+  report.extensions = Object.keys(gltf.parser.json.extensionsUsed ? Object.fromEntries((gltf.parser.json.extensionsUsed).map((e) => [e, 1])) : {});
+  report.clips = gltf.animations.map((c) => ({ name: c.name, duration: +c.duration.toFixed(3) }));
+  const root = gltf.scene;
+  let tris = 0, meshes = 0, skinned = 0, morphs = 0;
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    meshes++; if (o.isSkinnedMesh) skinned++; if (o.morphTargetInfluences) morphs += o.morphTargetInfluences.length;
+    const g = o.geometry; tris += g.index ? g.index.count / 3 : g.attributes.position.count / 3;
+    const mat = o.material; const map = mat.map || null;
+    if (map) { map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapNearestFilter; map.generateMipmaps = true; map.needsUpdate = true; }
+    if (mode !== 'pbr') {
+      const m = new THREE.MeshToonMaterial({ map, color: map ? 0xffffff : (mat.color || 0xffffff), gradientMap: gradient, vertexColors: !!g.attributes.color });
+      m.skinning = o.isSkinnedMesh; o.material = m;
+    }
+    o.frustumCulled = false;
+  });
+  report.tris = tris; report.meshes = meshes; report.skinned = skinned; report.morphs = morphs;
+  scene.add(root);
+  if (gltf.animations.length) {
+    mixer = new THREE.AnimationMixer(root);
+    const name = q.get('clip') || gltf.animations[0].name;
+    const clip = THREE.AnimationClip.findByName(gltf.animations, name) || gltf.animations[0];
+    mixer.clipAction(clip).play(); mixer.setTime(num('t', 0));
+  }
+  // camera fit to the projected bounding box
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root); const size = box.getSize(new THREE.Vector3()); const ctr = box.getCenter(new THREE.Vector3());
+  report.bbox = { size: size.toArray().map((v) => +v.toFixed(3)), center: ctr.toArray().map((v) => +v.toFixed(3)) };
+  const az = THREE.MathUtils.degToRad(num('az', 35)), el = THREE.MathUtils.degToRad(num('el', 25));
+  const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+  const fov = num('fov', 0);
+  const span = Math.max(size.x, size.y, size.z) * 1.15;
+  let camera;
+  if (fov > 0) { camera = new THREE.PerspectiveCamera(fov, W / H, 0.01, 500); camera.position.copy(ctr).addScaledVector(dir, span / Math.tan(THREE.MathUtils.degToRad(fov / 2)) * 0.6); }
+  else { camera = new THREE.OrthographicCamera(-span / 2 * W / H, span / 2 * W / H, span / 2, -span / 2, 0.01, 500); camera.position.copy(ctr).addScaledVector(dir, span * 3); }
+  camera.lookAt(ctr); camera.updateMatrixWorld();
+
+  if (mode === 'sprite') {
+    // the game's SpriteBaker emulation: render at h px (nearest), 4-neighbour outline, nearest upscale
+    const h = Math.max(8, Math.round(num('h', 64))); const w = Math.round(h * W / H);
+    const rt = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, colorSpace: THREE.SRGBColorSpace });
+    const bg = scene.background; scene.background = null; renderer.setClearColor(0x000000, 0);
+    renderer.setRenderTarget(rt); renderer.render(scene, camera); renderer.setRenderTarget(null);
+    report.drawCalls = renderer.info.render.calls; report.programs = renderer.info.programs.length;
+    const quadScene = new THREE.Scene(); const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { tex: { value: rt.texture }, texel: { value: new THREE.Vector2(1 / w, 1 / h) }, bg: { value: new THREE.Color(0x2a2d33) }, outline: { value: q.get('outline') === '0' ? 0 : 1 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `uniform sampler2D tex; uniform vec2 texel; uniform vec3 bg; uniform float outline; varying vec2 vUv;
+        void main(){ vec4 c = texture2D(tex, vUv); float a = c.a;
+          float n = texture2D(tex, vUv + vec2(texel.x,0.)).a + texture2D(tex, vUv - vec2(texel.x,0.)).a + texture2D(tex, vUv + vec2(0.,texel.y)).a + texture2D(tex, vUv - vec2(0.,texel.y)).a;
+          vec3 col = c.rgb; if (a < 0.5) { if (outline > 0.5 && n > 0.5) { col = vec3(0.09, 0.06, 0.08); a = 1.0; } else { col = bg; a = 1.0; } }
+          gl_FragColor = vec4(col, 1.0);
+          #include <colorspace_fragment>
+        }`,
+    });
+    quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+    renderer.render(quadScene, quadCam);
+    report.spriteSize = [w, h];
+  } else {
+    renderer.render(scene, camera);
+    report.drawCalls = renderer.info.render.calls; report.programs = renderer.info.programs.length;
+  }
+  document.getElementById('hud').textContent = q.get('hud') === '0' ? '' : `${mode} ${report.tris} tris ${report.drawCalls} calls ${report.loadMs} ms`;
+  report.ready = true;
+}, undefined, (err) => { report.errors++; report.errorMessages.push('load: ' + String(err && err.message || err)); report.ready = true; });
+</script>
+</body>
+</html>

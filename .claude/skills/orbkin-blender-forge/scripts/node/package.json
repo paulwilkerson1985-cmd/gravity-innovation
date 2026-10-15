@@ -1,0 +1,15 @@
+{
+  "name": "orbkin-blender-forge-tools",
+  "private": true,
+  "description": "Pinned glTF tooling for the orbkin-blender-forge skill. Install with: npm ci --ignore-scripts",
+  "type": "module",
+  "dependencies": {
+    "@gltf-transform/cli": "4.5.1",
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
+    "gltfpack": "1.3.0",
+    "meshoptimizer": "1.2.0",
+    "sharp": "0.35.5"
+  }
+}
