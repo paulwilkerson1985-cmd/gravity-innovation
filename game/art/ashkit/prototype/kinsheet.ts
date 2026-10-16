@@ -35,6 +35,8 @@ export interface SheetClip {
   /** Opaque extents per frame rel. to the anchor: [left x, right x, top y] (sheet px, y up). */
   ext: [number, number, number][];
   events: Record<string, number>;
+  /** Attack travel toward the target per drawing (fraction of REACH) and how to move between drawings. */
+  travel?: { fwd: number[]; ease: ('hold' | 'lin')[] };
   tex: THREE.Texture;
 }
 
@@ -82,7 +84,7 @@ export function loadSheets(kin: string, view: SheetView, set: SheetSet, renderer
       clips[name] = {
         name, fps: j.fps, loop: j.loop, n: j.frameCount, atlasW: j.atlasSize.w, atlasH: j.atlasSize.h,
         cellW: f0.w, cellH: f0.h, ax: j.anchor.x, ay: j.anchor.y, restHeightPx: j.restHeightPx,
-        frames: j.frames.map((f) => ({ x: f.x, y: f.y })), root: j.rootOffsetPx, ext: j.opaqueExt, events: j.events, tex,
+        frames: j.frames.map((f) => ({ x: f.x, y: f.y })), root: j.rootOffsetPx, ext: j.opaqueExt, events: j.events, travel: j.travel, tex,
       };
     });
   }
@@ -93,6 +95,7 @@ interface SheetJson {
   image: string; fps: number; loop: boolean; frameCount: number; atlasSize: { w: number; h: number };
   anchor: { x: number; y: number }; restHeightPx: number; frames: { x: number; y: number; w: number; h: number }[];
   rootOffsetPx: [number, number][]; opaqueExt: [number, number, number][]; events: Record<string, number>;
+  travel?: { fwd: number[]; ease: ('hold' | 'lin')[] };
 }
 
 /** GPU bytes (RGBA8 + mips) of every sheet bundle loaded so far. */
@@ -107,8 +110,23 @@ export function sheetBytes(): number { let s = 0; for (const b of bundles.values
  */
 const FX_LEAD: Record<string, number> = { Neutral: 0, Flame: 340, Terra: 380, Tide: 320, Flora: 360, Spark: 186, Gale: 300 };
 
-/** Attack translation toward the target (fraction of REACH) at each frame START; linear in between. */
+/** Fallback attack travel (fraction of REACH) at each frame START, linear in between, for sheets without `travel`. */
 const ATTACK_FWD = [0, -0.03, -0.06, -0.08, -0.08, 0.55, 1, 1, 0.75, 0.45, 0.15, 0.03, 0, 0, 0];
+
+/** Travel at t frames into the attack: the sheet's own curve (a drawing holds its position unless 'lin'), else ATTACK_FWD. */
+export function attackTravel(t: number, travel?: SheetClip['travel']): number {
+  if (!travel) {
+    const i = Math.max(0, Math.min(ATTACK_FWD.length - 2, Math.floor(t)));
+    const f = THREE.MathUtils.clamp(t - i, 0, 1);
+    return ATTACK_FWD[i]! + (ATTACK_FWD[i + 1]! - ATTACK_FWD[i]!) * f;
+  }
+  const n = travel.fwd.length;
+  const i = Math.max(0, Math.min(n - 1, Math.floor(t)));
+  const a = travel.fwd[i]!;
+  if (travel.ease[i] !== 'lin') return a;
+  const b = i + 1 < n ? travel.fwd[i + 1]! : 0;
+  return a + (b - a) * THREE.MathUtils.clamp(t - i, 0, 1);
+}
 const REACH = 0.95;
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -150,10 +168,7 @@ export class SheetActor implements KinActor {
     const start = v.inner.position.clone();
     const dir = towards.clone().sub(v.root.position).setY(0).normalize().applyAxisAngle(UP, -v.root.rotation.y);
     const at = (t: number) => { // t in frames
-      const i = Math.max(0, Math.min(ATTACK_FWD.length - 2, Math.floor(t)));
-      const f = THREE.MathUtils.clamp(t - i, 0, 1);
-      const fwd = ATTACK_FWD[i]! + (ATTACK_FWD[i + 1]! - ATTACK_FWD[i]!) * f;
-      v.inner.position.copy(start).addScaledVector(dir, fwd * REACH);
+      v.inner.position.copy(start).addScaledVector(dir, attackTravel(t, a.travel) * REACH);
       this.state.frame = Math.min(a.n - 1, Math.floor(t));
     };
     this.state.clip = 'attack';

@@ -1,5 +1,5 @@
 """Pack rendered frames into one WebP atlas + JSON per clip/view, plus a contact sheet.
-usage: python3 pack.py FRAMES_DIR SHEETS_DIR"""
+usage: python3 pack.py FRAMES_DIR SHEETS_DIR   (SCALE=0.5 for the half set; the kin name comes from meta.json)"""
 import sys, os, json, math
 import numpy as np
 from PIL import Image, ImageDraw
@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw
 FR, OUT = sys.argv[1], sys.argv[2]
 os.makedirs(OUT, exist_ok=True)
 meta = json.load(open(os.path.join(FR, 'meta.json')))
+KIN = meta.get('kin', 'ashkit')
 SC = float(os.environ.get('SCALE', 1))
 PAD = 2          # transparent gutter around every cell (mip / bilinear safety)
 EVENTS = {'attack': {'anticipation': 1, 'launch': 4, 'contact': 6, 'recover': 8},
@@ -64,7 +65,7 @@ for vn, vm in meta['views'].items():
             cell[PAD:PAD + ch, PAD:PAD + cw] = im[y0:y1, x0:x1]
             atlas[cy:cy + ch + 2 * PAD, cx:cx + cw + 2 * PAD] = bleed(cell)
             rects.append(dict(x=cx + PAD, y=cy + PAD, w=int(cw), h=int(ch)))
-        name = f'ashkit_{cn}_{vn}'
+        name = f'{KIN}_{cn}_{vn}'
         wp = os.path.join(OUT, name + '.webp')
         Image.fromarray(atlas).save(wp, 'WEBP', lossless=True, quality=100, method=6, exact=True)
         ax, ay = vm['anchor']
@@ -78,7 +79,7 @@ for vn, vm in meta['views'].items():
         e = extent.setdefault(vn, dict(left=0.0, right=0.0))
         e['left'] = max(e['left'], max(-x[0] for x in ext) / rest); e['right'] = max(e['right'], max(x[1] for x in ext) / rest)
         j = dict(
-            image=name + '.webp', kin='ashkit', clip=cn, view=vn,
+            image=name + '.webp', kin=KIN, clip=cn, view=vn,
             viewNote=('front 3/4 facing right (foe; mirror X to face left)' if vn == 'front'
                       else "back 3/4 from behind-left (your kin), facing right and away"),
             camera=dict(yaw=vm['yaw'], elevation=vm['elev'], ortho=round(vm['ortho'], 4), pxPerUnit=round(vm['px_per_unit'] * SC, 2)),
@@ -92,6 +93,7 @@ for vn, vm in meta['views'].items():
             rootOffsetPx=[[round(a * SC, 2), round(b * SC, 2)] for a, b in vm['root_px'][cn]],
             events=EVENTS[cn],
             opaqueExt=ext,
+            **({'travel': meta['travel'][cn]} if cn in meta.get('travel', {}) else {}),
             frames=rects,
         )
         json.dump(j, open(os.path.join(OUT, name + '.json'), 'w'), indent=1, default=int)

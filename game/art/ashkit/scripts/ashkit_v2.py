@@ -19,7 +19,7 @@ Gate-1 fixes (2026-10-16, game/art/ashkit/review/GATE.md):
 Env: SPP, SIZE, OUTDIR, MODE=turn|battle|both, BLEND.
 """
 import sys, os, time, math
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'kin', 'lib'))   # common, turn
 from common import *
 from mathutils.bvhtree import BVHTree
 
@@ -261,5 +261,5 @@ if MODE in ('battle', 'both'):
                              ground_px=900 if os.environ.get('BATTLE1024') else int(SIZE * 900 / 1024))
     render(os.path.join(OUTDIR, 'battle.png'), 'battle')
     key.value = 0.0
-save_blend(os.environ.get('BLEND', os.path.join(HERE, 'ashkit_v2.blend')))
+save_blend(os.environ.get('BLEND', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ashkit_final.blend')))
 print(f'ASHKIT v2 total {time.perf_counter() - T0:.1f}s, tris {tri_count(body)}')

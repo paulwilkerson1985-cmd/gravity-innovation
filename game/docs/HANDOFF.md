@@ -82,6 +82,13 @@ Branch: `claude/new-session-0opnq8`. Never push to `main`; the owner merges.
   `../art/creatures/blender-d/*.blend` and crop them to the `META` boxes in `hires.ts`. The gate URLs are in
   GATE2.md.
 
+**Update 2026-10-16 (later):** owner said "keep going" with the defaults. Ashkit's attack clip got a pass (held wind-up,
+bolder leap, landing behind the start; the sheet JSON now carries the travel curve the player follows): the attack strip
+judge moved from `worse` 0/4 to `no_difference` 3/4. All 84 frames were re-rendered with the shared framing; a re-capture
+of the 4 stills and the strip with these final sheets was running when the session restarted (re-run it: GATE2.md
+setup, dist with these sheets). The production kit is in `../art/kin/` (README there): Cindertail v1 sheets, Pyrelord
+v1 model.
+
 ## Next steps
 1. **Fable review** of the Ashkit slice: the owner asked for this once their Fable quota resets, at 7 PM US Central on 2026-10-16 (00:00 UTC 2026-10-17).
    - **Role:** senior creature artist plus art director.
