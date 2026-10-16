@@ -9,7 +9,7 @@ the camera) is baked first. The back view's extra yaw turns 'body' (there is no 
 
 SPEC keys (world units, +X forward, +Z up, before the battle turn): name, blend, turn (deg, as model.py), height (rest height: sets the cog and leap bones),
 apps=[dict(bone, head, tail, parent='body', radius, falloff=0.6, slots=None)] (capsule weights along head->tail;
-slots: material names that belong fully to the bone), eye_centre, scale (motion), head_back=20, anchor=(x, y, 0).
+slots: material names that belong fully to the bone; gain: scales the clip's rotations, negative reverses), eye_centre, scale (motion), head_back=20, anchor=(x, y, 0).
 """
 import os, math
 import numpy as np
@@ -62,6 +62,17 @@ def run_hop(S, here):
     kit.add_blink(head_centre=S['eye_centre'])
 
     CLIPS, TRAVEL, REST = hop_clips(scale=float(os.environ.get('MOTION_SCALE', S.get('scale', 1.0))))
+    for a in S.get('apps', []):     # gain scales (or, negative, reverses) an appendage's clip rotations
+        g = a.get('gain', 1.0)
+        if g != 1.0:
+            seen = set()     # frames can share one pose dict: scale each once
+            for frames in CLIPS.values():
+                for P in frames:
+                    if id(P) in seen:
+                        continue
+                    seen.add(id(P))
+                    if a['bone'] in P and 'r' in P[a['bone']]:
+                        P[a['bone']] = {**P[a['bone']], 'r': tuple(g * v for v in P[a['bone']]['r'])}
     head_back = float(os.environ.get('HEAD_BACK', S.get('head_back', 20)))
     VIEWS = {'front': dict(yaw=35.0, elev=12.0),
              'back': dict(yaw=float(os.environ.get('YAW_BACK', -12)), elev=float(os.environ.get('ELEV_BACK', 30)), head_yaw=-head_back)}
