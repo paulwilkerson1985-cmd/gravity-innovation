@@ -7,15 +7,15 @@
  "camera": {
   "yaw": 35.0,
   "elevation": 12.0,
-  "ortho": 3.5429,
-  "pxPerUnit": 144.51
+  "ortho": 3.5424,
+  "pxPerUnit": 144.53
  },
  "fps": 12,
  "loop": false,
  "frameCount": 6,
  "durationMs": 500,
  "atlasSize": {
-  "w": 933,
+  "w": 936,
   "h": 770
  },
  "sourceSize": {
@@ -23,11 +23,11 @@
   "h": 512
  },
  "cellOffset": {
-  "x": 117,
+  "x": 116,
   "y": 75
  },
  "anchor": {
-  "x": 161.0,
+  "x": 162.0,
   "y": 366.0,
   "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
  },
@@ -35,7 +35,7 @@
   "x": 278.0,
   "y": 441.0
  },
- "restHeightPx": 369.5,
+ "restHeightPx": 369.6,
  "rootOffsetPx": [
   [
    0.0,
@@ -78,7 +78,7 @@
   ],
   [
    -155.0,
-   109.0,
+   110.0,
    345.0
   ],
   [
@@ -101,37 +101,37 @@
   {
    "x": 2,
    "y": 2,
-   "w": 307,
+   "w": 308,
    "h": 381
   },
   {
-   "x": 313,
+   "x": 314,
    "y": 2,
-   "w": 307,
+   "w": 308,
    "h": 381
   },
   {
-   "x": 624,
+   "x": 626,
    "y": 2,
-   "w": 307,
+   "w": 308,
    "h": 381
   },
   {
    "x": 2,
    "y": 387,
-   "w": 307,
+   "w": 308,
    "h": 381
   },
   {
-   "x": 313,
+   "x": 314,
    "y": 387,
-   "w": 307,
+   "w": 308,
    "h": 381
   },
   {
-   "x": 624,
+   "x": 626,
    "y": 387,
-   "w": 307,
+   "w": 308,
    "h": 381
   }
  ]
