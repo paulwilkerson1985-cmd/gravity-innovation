@@ -1,0 +1,549 @@
+diff --git a/game/src/data/trainers.ts b/game/src/data/trainers.ts
+index e711b66..3522110 100644
+--- a/game/src/data/trainers.ts
++++ b/game/src/data/trainers.ts
+@@ -17,9 +17,10 @@ export const TRAINERS: TrainerData[] = [
+   {
+     id: 'hiker-brann', name: 'Brann', title: 'Ridge Hiker', routeId: 'ridge', ai: 'skilled',
+     party: [
++      // RUNOFF: Cragmaul leads so the cave capture shows Ashkit vs Cragmaul.
++      { species: 'cragmaul', level: 14, moves: ['quake-stomp', 'bedrock-brace', 'pebble-toss', 'bump'] },
+       { species: 'pebblet', level: 11 },
+       { species: 'pebblet', level: 12 },
+-      { species: 'cragmaul', level: 14, moves: ['quake-stomp', 'bedrock-brace', 'pebble-toss', 'bump'] },
+     ],
+     reward: 650,
+     intro: 'These rocks have stood a thousand years. My team is just as stubborn!',
+diff --git a/game/src/debug/hooks.ts b/game/src/debug/hooks.ts
+index 694176e..1d9927d 100644
+--- a/game/src/debug/hooks.ts
++++ b/game/src/debug/hooks.ts
+@@ -25,7 +25,7 @@ export interface GameHooks {
+   /** Frame-stamped playback marks (move impact, hit reaction), newest last. */
+   marks(): Mark[];
+   canvasStats(): { distinct: number; nonBlack: number; samples: number } | null;
+-  renderInfo(): { calls: number; triangles: number };
++  renderInfo(): { calls: number; triangles: number; textures?: number };
+   /** HD-2D pipeline stats of the current scene (`?gfx=hd2d`), else null. */
+   perf(): unknown;
+   /** Render the current scene `n` times, each followed by a GPU sync; returns median ms/frame and draw calls. */
+@@ -80,7 +80,7 @@ export function installHooks(game: Game) {
+       tick();
+     }),
+     canvasStats: () => (game.current ? game.renderer.sample(game.current.scene, game.current.camera) : null),
+-    renderInfo: () => ({ calls: game.renderer.gl.info.render.calls, triangles: game.renderer.gl.info.render.triangles }),
++    renderInfo: () => ({ calls: game.renderer.gl.info.render.calls, triangles: game.renderer.gl.info.render.triangles, textures: game.renderer.gl.info.memory.textures }),
+     benchFrames: (n = 20) => {
+       const s = game.current;
+       if (!s) return null;
+@@ -150,6 +150,9 @@ export function installHooks(game: Game) {
+           }
+         });
+         if (!Number.isFinite(x0)) continue;
++        // PRERENDER: hi-res kin art is drawn by the composite, not the (hidden) mesh: use its box.
++        const art = (cur as unknown as { hd2d?: { artRect?: (s: 0 | 1) => { x: number; y: number; w: number; h: number } | null } }).hd2d?.artRect?.(name === 'mine' ? 0 : 1);
++        if ((name === 'mine' || name === 'foe') && art) { out.subjects.push({ name, x: Math.round(art.x - rect.x), y: Math.round(art.y - rect.y), w: art.w, h: art.h }); continue; }
+         out.subjects.push({ name, x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) });
+       }
+       return out;
+diff --git a/game/src/render/creature.ts b/game/src/render/creature.ts
+index 3f44670..77e7e07 100644
+--- a/game/src/render/creature.ts
++++ b/game/src/render/creature.ts
+@@ -329,6 +329,18 @@ function celsFor(frames: number, from: Pose, to: Pose, tag?: string): number {
+   return Math.max(1, Math.round(frames / 5), Math.ceil(travel / 0.12));
+ }
+ 
++/** PRERENDER: plays a kin's lunge / hit / faint from pre-rendered sheets instead of the procedural tweens. */
++export interface KinActor {
++  lunge(towards: THREE.Vector3, onStrike?: () => void): Promise<void>;
++  hit(strong: boolean, o?: { crit?: boolean; calm?: boolean }): Promise<void>;
++  faint(): Promise<void>;
++  reset(): void;
++  /** ms after the attack starts to begin moveFx so its impact lands on the contact frame. */
++  strikeLeadMs(element: string): number;
++  armContact(): void;
++  contact(): void;
++}
++
+ /**
+  * A creature in the scene with idle/attack/hit/faint animations.
+  * Hierarchy: root (placement, facing) → inner (scene-owned scale/offset) → body (squash, tilt) → mesh (idle bob).
+@@ -357,6 +369,8 @@ export class CreatureView {
+   private shadowBase = new THREE.Vector2(1, 1);
+   baseScale: number;
+   hovering: boolean;
++  /** PRERENDER: sheet player (HD-2D native kin art); null = procedural animation. */
++  actor: KinActor | null = null;
+ 
+   constructor(look: LookData, seed = 0, speciesId?: string) {
+     this.speciesId = speciesId ?? speciesIdForLook(look);
+@@ -573,6 +587,7 @@ export class CreatureView {
+    * recovery (hop back, landing) overlap the target's reaction instead of delaying it.
+    */
+   async lunge(towards: THREE.Vector3, onStrike?: () => void) {
++    if (this.actor) return this.actor.lunge(towards, onStrike);
+     if (this.cels) return this.playKeys(towards, LUNGE_KEYS[archetypeOf(this.idle)], onStrike);
+     this.acting++;
+     const start = this.inner.position.clone();
+@@ -702,6 +717,7 @@ export class CreatureView {
+    * screen shake) drops the blink strobe for a steady fading flash.
+    */
+   async hit(strong: boolean, o: { crit?: boolean; calm?: boolean } = {}) {
++    if (this.actor) return this.actor.hit(strong, o);
+     if (this.cels) return this.hitCels(strong, o);
+     this.acting++;
+     const x0 = this.inner.position.x;
+@@ -760,6 +776,7 @@ export class CreatureView {
+ 
+   /** Hurt hop with eyes shut → topple sideways → flatten and sink. */
+   async faint() {
++    if (this.actor) { this.busy = true; return this.actor.faint(); }
+     this.busy = true;
+     this.acting++;
+     this.eyesShut = true;
+@@ -792,6 +809,7 @@ export class CreatureView {
+   }
+ 
+   reset() {
++    this.actor?.reset();
+     this.root.visible = true;
+     this.inner.position.set(0, 0, 0);
+     this.inner.scale.setScalar(this.baseScale);
+diff --git a/game/src/render/hd2d/fx.ts b/game/src/render/hd2d/fx.ts
+index f4e281b..d1f92a1 100644
+--- a/game/src/render/hd2d/fx.ts
++++ b/game/src/render/hd2d/fx.ts
+@@ -20,6 +20,7 @@
+ // One mesh (one draw call) per batch; all materials are persistent and pre-compiled by
+ // warmPixelFx (registered with the Renderer), so no program links mid-battle.
+ import * as THREE from 'three';
++import { nativeFxScale } from './hires';
+ import { Rng } from '../../engine/rng';
+ import { PixelTile, ditherIndex, fbm, type Ramp } from './textures';
+ import { markPersistent } from '../materials';
+@@ -558,6 +559,7 @@ const FLIP_VERT = /* glsl */ `
+   attribute vec3 aTint;
+   attribute float aGlow;
+   uniform vec2 uRes;
++  uniform float uK;
+   varying vec2 vUv;
+   varying float vFade;
+   varying vec3 vTint;
+@@ -566,7 +568,7 @@ const FLIP_VERT = /* glsl */ `
+     vec4 clip = projectionMatrix * viewMatrix * vec4(position, 1.0);
+     vec2 ndc = clip.xy / clip.w;
+     // Anchor on a pixel corner, then whole-pixel corner offsets: texels land on the grid.
+-    vec2 px = floor((ndc * 0.5 + 0.5) * uRes + 0.5) + aCorner;
++    vec2 px = floor((ndc * 0.5 + 0.5) * uRes + 0.5) + aCorner * uK;
+     gl_Position = vec4((px / uRes * 2.0 - 1.0) * clip.w, clip.z, clip.w);
+     vUv = aUv; vFade = aFade; vTint = aTint; vGlow = aGlow;
+   }`;
+@@ -590,6 +592,7 @@ const PTS_VERT = /* glsl */ `
+   attribute float aSize;
+   attribute vec3 aColor;
+   uniform vec2 uRes;
++  uniform float uK;
+   varying vec3 vColor;
+   void main() {
+     vColor = aColor;
+@@ -598,7 +601,7 @@ const PTS_VERT = /* glsl */ `
+     vec2 px = (clip.xy / clip.w * 0.5 + 0.5) * uRes;
+     px = mod(aSize, 2.0) > 0.5 ? floor(px) + 0.5 : floor(px + 0.5);
+     gl_Position = vec4((px / uRes * 2.0 - 1.0) * clip.w, clip.z, clip.w);
+-    gl_PointSize = aSize;
++    gl_PointSize = aSize * uK;
+   }`;
+ const PTS_FRAG = /* glsl */ `
+   varying vec3 vColor;
+@@ -628,14 +631,14 @@ const blendOf = (b: PixelBlend) => (b === 'add' ? THREE.AdditiveBlending : THREE
+ function newFlipMat(blend: PixelBlend): THREE.ShaderMaterial {
+   return markPersistent(new THREE.ShaderMaterial({
+     vertexShader: FLIP_VERT, fragmentShader: FLIP_FRAG,
+-    uniforms: { uMap: { value: getAtlas().tex }, uRes: { value: new THREE.Vector2(640, 360) } },
++    uniforms: { uMap: { value: getAtlas().tex }, uRes: { value: new THREE.Vector2(640, 360) }, uK: { value: 1 } },
+     transparent: true, depthWrite: false, depthTest: true, blending: blendOf(blend), fog: false,
+   }));
+ }
+ function newPtsMat(blend: PixelBlend): THREE.ShaderMaterial {
+   return markPersistent(new THREE.ShaderMaterial({
+     vertexShader: PTS_VERT, fragmentShader: PTS_FRAG,
+-    uniforms: { uRes: { value: new THREE.Vector2(640, 360) } },
++    uniforms: { uRes: { value: new THREE.Vector2(640, 360) }, uK: { value: 1 } },
+     transparent: true, depthWrite: false, depthTest: true, blending: blendOf(blend), fog: false,
+   }));
+ }
+@@ -656,7 +659,7 @@ const takeGlow = () => glowPool.pop() ?? markPersistent(newGlowMat());
+ const resV = new THREE.Vector2();
+ /** Keep a batch material's uRes in sync with the drawing buffer. */
+ function trackRes(mesh: THREE.Object3D, mat: THREE.ShaderMaterial) {
+-  mesh.onBeforeRender = (r) => { r.getDrawingBufferSize(resV); (mat.uniforms.uRes!.value as THREE.Vector2).copy(resV); };
++  mesh.onBeforeRender = (r) => { r.getDrawingBufferSize(resV); (mat.uniforms.uRes!.value as THREE.Vector2).copy(resV); if (mat.uniforms.uK) mat.uniforms.uK.value = nativeFxScale.k; };
+ }
+ 
+ // ------------------------------------------------------------------ flipbook batch
+diff --git a/game/src/render/hd2d/pipeline.ts b/game/src/render/hd2d/pipeline.ts
+index c626a8d..9b96df9 100644
+--- a/game/src/render/hd2d/pipeline.ts
++++ b/game/src/render/hd2d/pipeline.ts
+@@ -19,6 +19,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+ import { warmPrograms } from '../materials';
+ import { warmPixelFx } from './fx';
+ import { applyScreenFx } from './transition';
++import { HybridComposite, arenaNative, hybridRequested, nativeFxScale } from './hires';
+ 
+ export type Quality = 'high' | 'low';
+ 
+@@ -362,6 +363,10 @@ export class Hd2dPipeline {
+   private gtao: GTAOPass | null = null;
+   private ms: number[] = [];
+   private frames = 0;
++  /** RUNOFF: device-res composite (hi-res kin art / native arena); null on the normal path. */
++  composite: HybridComposite | null = null;
++  /** RUNOFF: the grid scale the tier would use; tilt radius scales by it in native mode. */
++  nativeK = 1;
+   /** Hooks run right before the composer renders (sprite baking). */
+   readonly beforeRender: ((renderer: THREE.WebGLRenderer) => void)[] = [];
+ 
+@@ -374,8 +379,13 @@ export class Hd2dPipeline {
+     if (flags.has('pcf')) this.settings.shadowType = THREE.PCFShadowMap;
+     this.grade = grade;
+     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0 });
++    const hybrid = hybridRequested();
++    // Native arena on the high tier: 4× MSAA if cheap (`?msaa=0` turns it off).
++    const samples = hybrid && arenaNative() && quality === 'high' && params().get('msaa') !== '0' ? 4 : 0;
++    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples });
++    if (hybrid) rt.depthTexture = new THREE.DepthTexture(size.x, size.y);
+     this.composer = new EffectComposer(renderer, rt);
++    if (hybrid) this.composer.renderToScreen = false;
+     this.composer.setPixelRatio(1);
+     this.composer.setSize(size.x, size.y);
+     this.composer.addPass(new RenderPass(scene, camera));
+@@ -397,6 +407,7 @@ export class Hd2dPipeline {
+     // One pass does tone mapping, sRGB output and the grade (no separate OutputPass).
+     this.gradePass = new ShaderPass(GradeShader);
+     this.composer.addPass(this.gradePass);
++    if (hybrid) this.composite = new HybridComposite(renderer, this.gradePass.uniforms as Record<string, THREE.IUniform>, scene, camera);
+     this.applyGrade(flags.has('nograde'));
+   }
+ 
+@@ -418,7 +429,7 @@ export class Hd2dPipeline {
+       u.uVig.value = g.vignette; u.uVigSoft.value = g.vignetteSoft; u.uDither.value = g.dither;
+       u.uBottom.value = g.bottomShade ?? GRADE_DEFAULTS.bottomShade; u.uBottomH.value = g.bottomShadeHeight ?? GRADE_DEFAULTS.bottomShadeHeight;
+     }
+-    const tilt = this.settings.tiltShift && !off ? (g.tiltScale ?? this.settings.tilt) : 0;
++    const tilt = (this.settings.tiltShift && !off ? (g.tiltScale ?? this.settings.tilt) : 0) * (arenaNative() ? this.nativeK : 1);
+     u.uTiltTop.value = g.tiltTop * tilt; u.uTiltBottom.value = g.tiltBottom * tilt;
+     u.uFocusTop.value = g.focusTop; u.uFocusBottom.value = g.focusBottom;
+   }
+@@ -459,6 +470,7 @@ export class Hd2dPipeline {
+     if (this.frames === 0 || this.frames === 30) this.warm();
+     this.frames++;
+     this.composer.render();
++    if (this.composite) this.composite.render(this.composer.readBuffer.texture, this.composer.writeBuffer.depthTexture);
+     r.toneMapping = prevTone; r.toneMappingExposure = prevExp;
+     this.ms.push(performance.now() - t0);
+     if (this.ms.length > 60) this.ms.shift();
+@@ -488,6 +500,7 @@ export class Hd2dPipeline {
+ 
+   dispose() {
+     this.composer.dispose();
++    this.composite?.dispose();
+     this.bloom?.dispose();
+     this.gtao?.dispose();
+   }
+@@ -498,12 +511,15 @@ export class Hd2dPipeline {
+  * frame (shadow + sprite + post passes), the internal resolution policy of the tier. Returns
+  * an uninstall function that restores the default renderer state (call it on scene exit).
+  */
+-export function installPipeline(r: { gl: THREE.WebGLRenderer; setInternal(p: { height: number; minShort: number } | null): void }, p: Hd2dPipeline): () => void {
++export function installPipeline(r: { gl: THREE.WebGLRenderer; equivScale?: number; setInternal(p: { height: number; minShort: number; hybrid?: boolean; native?: boolean } | null): void }, p: Hd2dPipeline): () => void {
+   const gl = r.gl;
+   gl.shadowMap.enabled = true;
+   gl.shadowMap.type = p.settings.shadowType;
+   gl.info.autoReset = false;
+-  r.setInternal({ height: p.settings.internalHeight, minShort: p.settings.minShort });
++  r.setInternal({ height: p.settings.internalHeight, minShort: p.settings.minShort, hybrid: !!p.composite, native: arenaNative() && !!p.composite });
++  p.nativeK = r.equivScale ?? 1;
++  nativeFxScale.k = arenaNative() && p.composite ? p.nativeK : 1;
++  p.regrade();
+   p.setSize();
+   return () => {
+     gl.shadowMap.enabled = false;
+diff --git a/game/src/render/renderer.ts b/game/src/render/renderer.ts
+index 99d3d80..fd4530d 100644
+--- a/game/src/render/renderer.ts
++++ b/game/src/render/renderer.ts
+@@ -13,6 +13,7 @@ export class Renderer {
+   constructor(parent: HTMLElement) {
+     this.gl = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'default', preserveDrawingBuffer: false });
+     this.gl.outputColorSpace = THREE.SRGBColorSpace;
++    this.origDbs = this.gl.getDrawingBufferSize;
+     this.canvas = this.gl.domElement;
+     this.canvas.id = 'view';
+     parent.appendChild(this.canvas);
+@@ -29,10 +30,15 @@ export class Renderer {
+    * `minShort` = minimum internal short side; the actual size is an integer pixel grid
+    * (see pixelGrid). null = the default ~420 px height (fractional ratio, unchanged).
+    */
+-  private internal: { height: number; minShort: number } | null = null;
++  private internal: { height: number; minShort: number; hybrid?: boolean; native?: boolean } | null = null;
+ 
+-  /** Change the internal-resolution policy (HD-2D tiers) and resize the drawing buffer. */
+-  setInternal(p: { height: number; minShort: number } | null) {
++  /**
++   * Change the internal-resolution policy (HD-2D tiers) and resize the drawing buffer.
++   * RUNOFF PROTOTYPE: `hybrid` = the canvas is DEVICE resolution, the scene renders on the grid
++   * (getDrawingBufferSize still reports the grid) and a final pass upscales it nearest and
++   * composites device-res layers; `native` = the grid is the device resolution (s = 1).
++   */
++  setInternal(p: { height: number; minShort: number; hybrid?: boolean; native?: boolean } | null) {
+     this.internal = p;
+     this.resize();
+   }
+@@ -60,17 +66,27 @@ export class Renderer {
+       // HD-2D: the drawing buffer is the internal pixel grid itself (pixel ratio 1) and the
+       // canvas is shown at exactly bw·s / dpr CSS px, upscaled nearest-neighbour by CSS.
+       const dpr = window.devicePixelRatio || 1;
+-      const { scale, bw, bh } = Renderer.pixelGrid(w, h, dpr, p);
++      let { scale, bw, bh } = Renderer.pixelGrid(w, h, dpr, p);
++      this.equivScale = scale;
++      if (p.native) { scale = 1; bw = Math.ceil(w * dpr - 1e-6); bh = Math.ceil(h * dpr - 1e-6); }
+       const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== 1 || this.grid[0] !== bw || this.grid[1] !== bh || this.grid[2] !== scale;
+       this.width = w;
+       this.height = h;
+       this.grid = [bw, bh, scale];
+       this.gl.setPixelRatio(1);
+-      this.gl.setSize(bw, bh, false);
++      const g = this.gl as unknown as { getDrawingBufferSize: (t: THREE.Vector2) => THREE.Vector2 };
++      if (p.hybrid) {
++        this.gl.setSize(bw * scale, bh * scale, false);
++        g.getDrawingBufferSize = (t: THREE.Vector2) => t.set(this.grid[0], this.grid[1]);
++      } else {
++        g.getDrawingBufferSize = this.origDbs;
++        this.gl.setSize(bw, bh, false);
++      }
+       this.canvas.style.width = `${(bw * scale) / dpr}px`;
+       this.canvas.style.height = `${(bh * scale) / dpr}px`;
+       return changed;
+     }
++    (this.gl as unknown as { getDrawingBufferSize: unknown }).getDrawingBufferSize = this.origDbs;
+     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+     const ratio = Math.min(dpr, Math.max(0.35, TARGET_INTERNAL_HEIGHT / h));
+     const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== ratio || this.grid[2] !== 0;
+@@ -85,6 +101,10 @@ export class Renderer {
+   /** HD-2D pixel grid in effect: [buffer w, buffer h, device px per internal px]; zeros on the default path. */
+   private grid: [number, number, number] = [0, 0, 0];
+ 
++  private origDbs!: (t: THREE.Vector2) => THREE.Vector2;
++  /** The grid scale the tier would use (native mode renders at s = 1 but scales FX/tilt by this). */
++  equivScale = 1;
++
+   /** Device px per internal px of the HD-2D grid (0 when the default policy is active). */
+   get pixelScale(): number { return this.grid[2]; }
+ 
+diff --git a/game/src/scenes/battle.ts b/game/src/scenes/battle.ts
+index aa9a379..b81f9a7 100644
+--- a/game/src/scenes/battle.ts
++++ b/game/src/scenes/battle.ts
+@@ -737,18 +737,21 @@ export class BattleScene extends BaseScene {
+         if (data.category === 'attack') {
+           const foe = e.side === 0 ? 1 : 0;
+           const from = this.spots[e.side].clone().lerp(this.spots[foe], 0.28).add(new THREE.Vector3(0, 0.8, 0));
+-          const to = this.spots[foe].clone().add(new THREE.Vector3(0, 0.6, 0));
++          // PRERENDER: a hi-res kin's art stands in front of its spot; aim at its near surface so a projectile stays visible until impact.
++          const to = this.hd2d?.fxAim(foe, this.spots[foe].clone().add(new THREE.Vector3(0, 0.6, 0))) ?? this.spots[foe].clone().add(new THREE.Vector3(0, 0.6, 0));
+           // Only the strike gates the beat; the hop back and landing run on under the reaction.
+           let struck!: () => void;
+           const strike = new Promise<void>((r) => { struck = r; });
+-          if (me) this.tails.push(me.lunge(this.spots[foe], struck).finally(struck)); else struck();
+-          await wait(140);
+           const miss = next?.t === 'miss' && next.side === e.side;
++          // PRERENDER: a sheet kin holds its airborne frame for the impact and shows contact on it.
++          if (me?.actor && next?.t === 'damage' && next.source === 'move' && next.side === foe) me.actor.armContact();
++          if (me) this.tails.push(me.lunge(this.spots[foe], struck).finally(struck)); else struck();
++          await wait(me?.actor ? me.actor.strikeLeadMs(data.type) : 140);
+           const dodge = miss ? wait(330).then(() => v(foe)?.dodge()) : null;
+           // The engine always follows a connecting attack with its `damage` event: play its hit
+           // reaction (flash, SFX, shake, HP drain) on the impact frame, not after the effect's tail.
+           const hit = next?.t === 'damage' && next.source === 'move' && next.side === foe ? next : null;
+-          const onImpact = hit ? () => { mark('impact'); this.reaction = { ev: hit, done: this.react(hit) }; } : undefined;
++          const onImpact = hit ? () => { mark('impact'); me?.actor?.contact(); this.reaction = { ev: hit, done: this.react(hit) }; } : undefined;
+           await Promise.all([strike, moveFx(this.scene, data.type, from, to, { power: data.power, camera: this.camera, miss, onImpact }), dodge]);
+         } else await me?.pulse(TYPE_COLORS[data.type]!);
+         return;
+diff --git a/game/src/scenes/hd2dBattle.ts b/game/src/scenes/hd2dBattle.ts
+index 75fb2f3..292cf50 100644
+--- a/game/src/scenes/hd2dBattle.ts
++++ b/game/src/scenes/hd2dBattle.ts
+@@ -19,6 +19,15 @@ import { arenaById, resolveArena, type ArenaContext, type ArenaDef, type CameraP
+ import { Figure, heroFigure, trainerFigure } from '../render/hd2d/characters';
+ import { layoutMode } from './framing';
+ import { FLAME } from '../render/creatures/parts';
++import { HybridComposite, SHEET_EXTENT, arenaNative, hasKinArt, smoothTextures } from '../render/hd2d/hires';
++import { hasKinSheet } from '../render/hd2d/kinsheet';
++
++/** RUNOFF: hi-res art creature height vs today's normalised kin size ([yours, foe]); `?artscale=` multiplies. */
++const ART_GROW = [1.8, 2.05] as const;
++const ART_K = Number(new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('artscale') ?? 1) || 1;
++const hiddenKinMat = new THREE.MeshBasicMaterial({ visible: false });
++/** PRERENDER: the player figure's half width (backpack side) plus a clear gap, world units; `?heroclear=` overrides. */
++const HERO_CLEAR = Number(new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('heroclear') ?? 0.5) || 0.5;
+ 
+ /** The arena chosen for a battle and the context it was chosen from. */
+ export interface Hd2dTerrain { def: ArenaDef; ctx: ArenaContext }
+@@ -201,6 +210,8 @@ export class Hd2dBattleStage {
+   private figures = new Map<Figure, SpriteSubject>();
+   private inScene = postFlags().has('mesh');
+   private pxPerTexel = postFlags().has('px2') ? 2 : undefined;
++  /** PRERENDER: how far a sheet kin's art reaches toward the player (world; 0 = use the radius). */
++  private heroClear = 0;
+   /** Footprint radius of each side's kin (for staging the people around them). */
+   private radius: [number, number] = [0.5, 0.5];
+   private heroMove = 0;
+@@ -213,6 +224,7 @@ export class Hd2dBattleStage {
+     scene.background = new THREE.Color(def.background);
+     scene.fog = def.fog === null ? null : new THREE.Fog(new THREE.Color(def.fog), 18, 42);
+     this.spots = [this.rig.spots[0].clone(), this.rig.spots[1].clone()];
++    if (arenaNative()) smoothTextures(this.rig.group);
+     this.pipeline = new Hd2dPipeline(game.renderer.gl, scene, camera, this.quality, def.grade?.());
+     this.uninstall = installPipeline(game.renderer, this.pipeline);
+     this.baker = new SpriteBaker(scene, camera, this.rig.spriteLight);
+@@ -228,6 +240,22 @@ export class Hd2dBattleStage {
+     (window as unknown as { __hd2d?: Hd2dBattleStage }).__hd2d = this; // debug handle
+   }
+ 
++  /** PRERENDER: a hi-res kin's drawn art box in CSS px (layout checks), null for a pixel sprite. */
++  artRect(side: 0 | 1): { x: number; y: number; w: number; h: number } | null {
++    const r = this.pipeline.composite?.rects[side];
++    if (!r || !this.hires[side]) return null;
++    const c = this.game.renderer.canvas, b = c.getBoundingClientRect();
++    const k = b.width / Math.max(1, c.width);
++    return { x: Math.round(b.x + r.x0 * k), y: Math.round(b.y + r.y0 * k), w: Math.round((r.x1 - r.x0) * k), h: Math.round((r.y1 - r.y0) * k) };
++  }
++
++  /** PRERENDER: move FX aim for a side: a hi-res kin's art hides its spot, so bring the point to the art's near surface. */
++  fxAim(side: 0 | 1, p: THREE.Vector3): THREE.Vector3 {
++    if (!this.hires[side]) return p;
++    const d = this.camera.position.clone().sub(p).setY(0).normalize();
++    return p.addScaledVector(d, this.radius[side] * 0.9);
++  }
++
+   /** The player's figure (layout checks). */
+   get heroMesh(): THREE.Mesh { return this.hero.mesh; }
+ 
+@@ -237,7 +265,8 @@ export class Hd2dBattleStage {
+   }
+ 
+   private addFigure(f: Figure) {
+-    this.figures.set(f, this.baker.add(f.mesh, figureSpriteOptions(f, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: 0.05 })));
++    const native = arenaNative() ? { pxPerTexel: 1, texelHeight: undefined } : {};
++    this.figures.set(f, this.baker.add(f.mesh, figureSpriteOptions(f, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: 0.05, ...native })));
+   }
+ 
+   /** Yaw for your kin: a side / 3-4 profile facing the foe across the screen. */
+@@ -246,8 +275,27 @@ export class Hd2dBattleStage {
+   /** Sprite-ify a kin as it is sent out. */
+   attachKin(view: CreatureView, side: 0 | 1) {
+     this.detachKin(side);
++    const comp = this.pipeline.composite;
++    if (comp && hasKinArt(view.speciesId)) {
++      // RUNOFF: the hi-res art billboard replaces the pixel sprite; the mesh keeps animating unseen.
++      view.inner.quaternion.identity();
++      view.mesh.material = hiddenKinMat;
++      view.mesh.castShadow = false;
++      view.shadow.visible = false;
++      view.cels = false;
++      view.idleGain = 1.35;
++      view.blinkFps = 0;
++      comp.addKin(view, side, view.speciesId!, this.artHeight(view, side));
++      // PRERENDER: a sheet kin plays its drawn clips; the procedural idle / lunge / hit / faint stand down.
++      const actor = comp.actorOf(side);
++      if (actor) { view.actor = actor; view.idleGain = 0; }
++      this.views[side] = view;
++      this.hires[side] = true;
++      return;
++    }
+     poseFlatKin(view, this.camera);
+-    const sub = this.baker.add(view.mesh, kinSpriteOptions(view, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: side === 0 ? 0.1 : 0.04 }));
++    const native = arenaNative() ? { pxPerTexel: 1, texelHeight: undefined } : {};
++    const sub = this.baker.add(view.mesh, kinSpriteOptions(view, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: side === 0 ? 0.1 : 0.04, ...native }));
+     if (this.pxPerTexel) sub.opts.texelHeight = undefined;
+     // Dark kin get a light rim inside their outline (they would melt into a dark floor).
+     sub.setLightRim(view.dark ? 0.35 : 0);
+@@ -257,7 +305,21 @@ export class Hd2dBattleStage {
+     view.shadow.visible = !!this.inScene;
+   }
+ 
++  /** RUNOFF: which sides draw the hi-res art. */
++  private hires: [boolean, boolean] = [false, false];
++
++  /** RUNOFF: creature height (world) of a kin's hi-res art. */
++  private artHeight(view: CreatureView, side: 0 | 1): number {
++    // Portrait phones stack the two kin closely: 15 % smaller there so they do not overlap.
++    const portrait = layoutMode(this.game.renderer.width, this.game.renderer.height) === 'portrait' ? 0.85 : 1;
++    return KIN_SIZE[side] * STAGE_K[stageOf(view.speciesId)]! * ART_GROW[side] * ART_K * portrait;
++  }
++
+   detachKin(side: 0 | 1) {
++    const old = this.views[side];
++    if (old?.actor) { old.actor.reset(); old.actor = null; old.idleGain = 1; }
++    this.pipeline.composite?.removeKin(side);
++    this.hires[side] = false;
+     this.baker.remove(this.kin[side]);
+     this.kin[side] = null;
+     this.views[side] = null;
+@@ -271,8 +333,12 @@ export class Hd2dBattleStage {
+     const size = Math.max(bb.max.y - bb.min.y, 0.8 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) * view.baseScale;
+     const k = (KIN_SIZE[side] * STAGE_K[stageOf(view.speciesId)]! / size) * Math.pow(size / 1.1, 0.4);
+     view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.5, 1.7));
+-    const r = kinRadius(view);
++    let r = kinRadius(view);
++    if (this.pipeline.composite && hasKinArt(view.speciesId)) r = Math.max(r, 0.8 * HybridComposite.halfWidth(view.speciesId!, this.artHeight(view, side)));
+     this.radius[side] = r;
++    // PRERENDER: a sheet kin's real reach toward the player (tail, crouch, recoil) in world units.
++    this.heroClear = this.pipeline.composite && side === 0 && hasKinSheet(view.speciesId)
++      ? SHEET_EXTENT.back.left * this.artHeight(view, 0) + 0.08 * 0.95 * view.root.scale.x : 0;
+     if (side === 0) this.placeHero(true);
+     return r;
+   }
+@@ -280,7 +346,9 @@ export class Hd2dBattleStage {
+   /** Where the player stands: behind-left of your kin with clear floor between (screen basis). */
+   private heroSpot(): THREE.Vector3 {
+     const { right, toward } = floorBasis(this.camera);
+-    const p = this.spots[0].clone().addScaledVector(right, -(this.radius[0] + 0.6)).addScaledVector(toward, 0.35);
++    // A sheet kin: clear its tail by the player's half width plus a visible gap (≥ 8 device px).
++    const off = this.heroClear > 0 ? Math.max(this.radius[0] + 0.6, this.heroClear + HERO_CLEAR) : this.radius[0] + 0.6;
++    const p = this.spots[0].clone().addScaledVector(right, -off).addScaledVector(toward, 0.35);
+     p.y = this.rig.people[0].y;
+     return p;
+   }
+@@ -376,12 +444,13 @@ export class Hd2dBattleStage {
+     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + fogNear; this.scene.fog.far = dist + fogFar; }
+     this.pipeline.setSize();
+     // Dust motes: 1 internal px on high (the pixel grid is already chunky), 1.5 on low.
+-    this.rig.setPixelSize(this.quality === 'high' ? 1 : 1.5);
++    this.rig.setPixelSize((this.quality === 'high' ? 1 : 1.5) * (arenaNative() && this.pipeline.composite ? this.game.renderer.equivScale : 1));
++    this.pipeline.composite?.setLight(this.rig.spriteLight, cam);
+     // The camera basis may have changed: re-stage the people and re-pose flat kin.
+     if (!this.hero.walking) this.placeHero(false);
+     if (this.foeTrainer && !this.foeTrainer.walking) this.faceFront(this.foeTrainer.mesh);
+-    if (this.views[0]) poseFlatKin(this.views[0], cam);
+-    if (this.views[1]) poseFlatKin(this.views[1], cam);
++    if (this.views[0] && !this.hires[0]) poseFlatKin(this.views[0], cam);
++    if (this.views[1] && !this.hires[1]) poseFlatKin(this.views[1], cam);
+   }
+ 
+   private baseOffset: [number, number, number, number] | null = null;
+@@ -412,7 +481,9 @@ export class Hd2dBattleStage {
+     const o = this.baseOffset;
+     if (!o) return;
+     const s = o[3] / Math.max(1, this.game.renderer.gl.getDrawingBufferSize(new THREE.Vector2()).y); // CSS px per internal px
+-    const ox = this.panPx[0] + this.shakePx[0], oy = this.panPx[1] + this.shakePx[1];
++    // RUNOFF native arena: shakes are authored in grid px; scale them to device px.
++    const nk = arenaNative() && this.pipeline.composite ? this.game.renderer.equivScale : 1;
++    const ox = this.panPx[0] + this.shakePx[0] * nk, oy = this.panPx[1] + this.shakePx[1] * nk;
+     this.camera.setViewOffset(o[2], o[3], o[0] + ox * s, o[1] + oy * s, o[2], o[3]);
+     this.camera.updateProjectionMatrix();
+     // The content moves the other way: left for +x, up (+y in buffer coordinates) for +y.

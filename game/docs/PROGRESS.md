@@ -62,3 +62,9 @@
 - No XP/levels, evolution, saves, trainers or items yet (M3/M4). Wild battles give no reward beyond catching.
 - Ember Ridge / Squall Coast exist in data but are locked in the UI.
 - No audio yet (M6). FPS not yet measured on real phones; headless SwiftShader shows ~45 fps at 1280×720.
+
+## 2026-10-16: Handoff
+- Graphics pass 1, the slab UI and five project skills are on the branch.
+- The art direction moved to smooth Blender-toon creatures on smooth arenas, chosen by owner votes.
+- An Ashkit pre-rendered vertical slice is in `art/ashkit/`, gated as not accepted yet, with prioritised fixes.
+- Next steps are in `docs/HANDOFF.md`.
