@@ -89,6 +89,7 @@ class Kit:
         self.size = int(os.environ.get('SIZE', 512))
         self.spp = int(os.environ.get('SPP', 12))
         self.head_yaw = 0.0
+        self.yaw_bone = 'head'             # the bone a view's extra yaw turns (a blob kin turns its whole 'body')
         self.co0 = self.coords()           # the symmetric basis
 
     def coords(self):
@@ -167,11 +168,11 @@ class Kit:
     # -------------------------------------------------------------- posing
     def apply_pose(self, P):
         """P: {bone: dict(r=(roll,pitch_up,yaw_l), l=(x,y,z) world, s=float|(sa,sy,sa))}; 'blink': 0..1.
-        self.head_yaw (set per view) is added to the 'head' bone's yaw."""
+        self.head_yaw (set per view) is added to the yaw of self.yaw_bone ('head' by default)."""
         for nm in self.BONES:
             pb = self.arm.pose.bones[nm]; p = P.get(nm, {})
             r = p.get('r', (0, 0, 0))
-            if nm == 'head':
+            if nm == self.yaw_bone:
                 r = (r[0], r[1], r[2] + self.head_yaw)
             q = wq(*r)
             pb.rotation_quaternion = self.RQ[nm].inverted() @ q @ self.RQ[nm]
@@ -202,13 +203,26 @@ class Kit:
         return out
 
     # -------------------------------------------------------------- the run
-    def run(self, clips, views, anchor_w, ground_mask, rig_out, rest_pose, travel=None, ink=(6.0, 3.2, 820.0)):
+    def run(self, clips, views, anchor_w, ground_mask, rig_out, rest_pose, travel=None, ink=(6.0, 3.2, 820.0), ground_lock=False):
         """clips: {name: [pose per frame]}; views: {name: dict(yaw, elev, head_yaw)}; anchor_w: the feet point
         (world, the same pixel in every frame of a view); ground_mask: rest vertices that must stay planted in
         idle (soles); rig_out: where to save the rigged .blend; rest_pose: the pose the .blend is saved in;
         travel: {clip: dict(fwd=[...], ease=[...])} for the sheet player; ink: (outer px, inner px, at a creature
-        this many px tall), scaled per view to the creature's rest height."""
+        this many px tall), scaled per view to the creature's rest height; ground_lock: lift any frame whose lowest
+        point is under the floor back onto it (round kin with no legs)."""
         sc = self.sc; size = self.size
+        if ground_lock:   # a round body tilting about its centre swings its rim under the floor: lift those frames back onto it
+            for cn, poses in clips.items():
+                fixed = {}
+                for f, P in enumerate(poses):
+                    if id(P) in fixed:
+                        poses[f] = fixed[id(P)]; continue
+                    self.apply_pose(P); zmin = float(self.eval_pts()[:, 2].min())
+                    Q = P
+                    if zmin < -0.002:
+                        cog = dict(P.get('cog', {})); l = cog.get('l', (0, 0, 0))
+                        cog['l'] = (l[0], l[1], l[2] - zmin); Q = {**P, 'cog': cog}
+                    fixed[id(P)] = Q; poses[f] = Q
         root_motion = {k: [tuple(p.get('cog', {}).get('l', (0, 0, 0))) for p in v] for k, v in clips.items()}
         pts = self.sample(clips)
         rest = pts[('idle', 0)]
