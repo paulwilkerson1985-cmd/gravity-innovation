@@ -10,9 +10,9 @@ head/ear bones are placed on the turned head. Clips: quad.py. Usage (see ../cind
 
 SPEC keys (world units, +X forward, +Z up, the kin's rest model; ear and tail may be left out):
   name, blend, turn=(deg, lift_deg, pivot), head_zone=(z0, z1, x0, x1, zx0, zx1, xback0, xback1)
-  ear=dict(c, rx, ry, w=(0.17, 0.31), axis=None (long axis; default the ellipsoid's local +Z: an upright ear)), legs=dict(front_x, hind_x, y, top, hind_lean=0.04, reach=0.24, ground_band=0 (z below it: nearest leg only), seg={leg: (top, foot, radius)} for legs that are not vertical), anchor=(x, y, z),
+  ear=dict(c, rx, ry, w=(0.17, 0.31), axis=None (long axis; default the ellipsoid's local +Z: an upright ear)), legs=dict(front_x, hind_x, y, top, hind_lean=0.04, reach=0.24, ground_band=0 (z below it: nearest leg only), seg={leg: (top, foot, radius[, (slots, r)])} for legs that are not vertical; the optional claim makes those materials within r of the foot ride the leg rigidly), anchor=(x, y, z),
   body_c, hips=(head, tail), chest=(head, tail), head=(head, tail), tail=[p0, p1, p2, p3],
-  tail_zone=(x0, x1, z0, z1, z2a, z2b, z3a, z3b), tail_axis='z' ('x': segment splits z2/z3 are -x values), tail_pitch=1.0 (multiplies the clips' tail pitch), faint_head=1.0 (multiplies the faint's head pitch), chest_split=(x0, x1), eye_centre, motion=dict(scale, faint_drop, faint_leg)
+  tail_zone=(x0, x1, z0, z1, z2a, z2b, z3a, z3b), tail_axis='z' ('x': segment splits z2/z3 are -x values), tail_pitch=1.0 (multiplies the clips' tail pitch), faint_head=1.0 (multiplies the faint's head pitch), faint_front=1.0 (the same for the front legs' pitch), chest_split=(x0, x1), eye_centre, motion=dict(scale, faint_drop, faint_leg)
 """
 import os, math
 import numpy as np
@@ -50,9 +50,9 @@ def run_quad(S, here):
     L = S['legs']
     LEGS = {'leg_f.L': (L['front_x'], L['y']), 'leg_f.R': (L['front_x'], -L['y']),
             'leg_b.L': (L['hind_x'], L['y']), 'leg_b.R': (L['hind_x'], -L['y'])}
-    SEG = L.get('seg', {})     # legs given as 3-D segments (top, foot, radius): arms reaching down to knuckles
-    for nm, (a, b, r) in SEG.items():
-        LEGS[nm] = (b[0], b[1])
+    SEG = L.get('seg', {})     # legs given as 3-D segments (top, foot, radius[, claim]): arms reaching down to knuckles
+    for nm, sg in SEG.items():
+        LEGS[nm] = (sg[1][0], sg[1][1])
     lean = L.get('hind_lean', 0.04)
     kit.begin_bones()
     bone = kit.bone
@@ -92,6 +92,9 @@ def run_quad(S, here):
             ab = b - a; t = np.clip(((co0 - a) @ ab) / (ab @ ab), 0, 1)
             d = np.linalg.norm(co0 - (a + t[:, None] * ab), axis=1)
             W[nm] = sm(0.0, 0.25, t) * sm(r, r * 0.66, d)     # fades in below the shoulder
+            if len(SEG[nm]) > 3:   # claim=(slots, radius): those parts near the foot ride the leg rigidly (a boulder fist must not shear)
+                slots, cr = SEG[nm][3]
+                W[nm] = np.maximum(W[nm], (vertex_slot_mask(o, set(slots)) & (np.linalg.norm(co0 - b, axis=1) < cr)).astype(float))
         else:
             cx = lx + (0.0 if lx < 0 else 0.04)
             d = np.sqrt(((x - cx) / 1.35) ** 2 + (y - ly) ** 2)
@@ -161,6 +164,16 @@ def run_quad(S, here):
                 continue
             seen.add(id(P))
             r = P['head']['r']; P['head'] = {**P['head'], 'r': (r[0], r[1] * fh, r[2])}
+    ff = S.get('faint_front', 1.0)   # knuckle-walkers: arms angled forward would swing the fists up; 0 keeps them planted
+    if ff != 1.0:
+        seen = set()
+        for P in CLIPS['faint']:
+            if id(P) in seen:
+                continue
+            seen.add(id(P))
+            for b in ('leg_f.L', 'leg_f.R'):
+                if b in P and 'r' in P[b]:
+                    r = P[b]['r']; P[b] = {**P[b], 'r': (r[0], r[1] * ff, r[2])}
     head_back = float(os.environ.get('HEAD_BACK', S.get('head_back', 20)))
     VIEWS = {'front': dict(yaw=35.0, elev=12.0),
              'back': dict(yaw=float(os.environ.get('YAW_BACK', -12)), elev=float(os.environ.get('ELEV_BACK', 30)), head_yaw=-head_back)}
