@@ -297,3 +297,10 @@ The whole HTML UI moves from the cream handheld panels + Orbkin Pixel to the HD-
 - **Arenas:** smooth native resolution; they beat the pixel arena 10-0.
 - **Method:** pre-rendered Blender sprite sheets (front and back 3/4; idle, attack, hit, faint). The live real-time toon GLB lost twice to the static Blender render.
 - **Status:** the Ashkit slice is built but not accepted yet; the back camera needs to show the face. See `docs/HANDOFF.md` and `art/`. Raw votes are in `art/votes/`.
+
+## 2026-10-16: Ashkit gate 2 (pre-rendered sheets)
+- **Back view (your kin):** camera at −12° yaw (owner default), plus a back-view-only 20° head turn toward the camera. At −12° alone the two ears stacked into one spike, and round 1 lost every crop vote. With the turn, round 2 won 16/16 crop votes and `better` on all four shots. Evidence: `art/ashkit/review/GATE2.md`. Unsealed, so it waits on the owner.
+- **Dark ear backs** are an Ashkit marking (owner default). They read the near ear against the skull.
+- **Socks stay dark.** Gate 1's critic asked for lighter socks so the face wins. Round 1 tried it, and every judge preferred the static art's dark paws for grounding, so they were restored.
+- **Hit strobe starts after a 100 ms contact hold** (`HIT_CONTACT_HOLD_MS` in `render/creature.ts`). The target stays drawn and flashed for one 12 fps drawing plus a frame, so a pre-rendered attacker's contact frame shows the blow land. Before, the strobe hid the target about 36 ms after impact. This applies to the tweened hit path; the HD-2D cel path already held its recoil cel for 5-6 frames.
+

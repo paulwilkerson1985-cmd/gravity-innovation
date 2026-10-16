@@ -63,6 +63,13 @@ So spend effort on characters first, UI second, motion third, environments last.
 
   Check front, 3/4, side and back renders before accepting any character.
 - **The player's own creature should show its face.** A true back 3/4 view hid the face, put the near eye on the outline and merged the near ear, and it lost every in-battle comparison. Use a camera only about 10–15° behind the side, as genre references do.
+- **A side-on camera stacks the ears; turn the head instead.** Moving the back camera to −12° showed the face,
+  but the two ears lined up into one spike, and every crop vote was lost. A back-view-only head turn of about 20°
+  toward the camera separated the ears and won every crop vote. Check that pairs of features (ears, eyes, horns)
+  still separate at the camera you pick.
+- **Keep what the baseline wins on.** A critic asked for lighter socks so the face would lead. Every judge then
+  preferred the old dark paws, which ground the creature. Read the judges' reasons for the baseline before
+  applying a critic's value advice.
 - **Back views matter.** The player's own creature is seen from behind most of the time. Give it markings and shape interest from the back, and match the back camera to the real battle camera.
 - **Battle feel**: the target must react on the impact frame. A promise/await bug delayed hit reactions by 1.7-2.1 s and was the cheapest big win. Use a directional, integer-pixel camera kick instead of a jittery shake, attack key poses sized in visible units, and drawn hurt frames.
 - **Procedural code-built environments beat CC0 kit-bashes and Blender-authored shells** for a stylised look, when built with good rules: aligned courses, texel-consistent UVs, baked AO, and value rules by height. CC0 photo scans only help when mapped to the palette.

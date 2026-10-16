@@ -61,13 +61,37 @@ Branch: `claude/new-session-0opnq8`. Never push to `main`; the owner merges.
   - back camera at about −12°, or keep −35° with a stronger head turn? [−12°]
   - add dark ear backs as an Ashkit marking? [yes]
 
+**Gate 2 (2026-10-16, `../art/ashkit/review/GATE2.md`): the fixes are in, and round 2 beat the static art.**
+- Applied with the defaults above: −12° back camera, dark ear backs, and fixes 3–9 (mouth, chin, hind legs,
+  crouch, faint paws; the forehead strokes did not recur). Fix 8's lighter socks were tried and reverted,
+  because every round-1 judge preferred the dark paws.
+- Round 1 (camera and fixes only) still lost all four shots. At −12° the two ears lined up into one spike.
+- Round 2 adds a **back-view-only 20° head turn** toward the camera (`anim.py` `HEAD_BACK`). Result: **`better` on
+  all four shots** (cave and meadow, desk and phone). The 2x crop votes went **16/16** (gate 1: 0/16), the
+  floors passed, the canaries passed, and `ip_check` is PASS.
+- The run is unsealed, so this is **queued for the owner**: `../art/ashkit/review/gate2_side_by_side.jpg`.
+- **The attack motion still loses** to the static art's procedural lunge (strip judge 0/4; weak canary, but
+  consistent with gate 1). The sheet clip needs a deeper crouch, a bolder stretch, a landing bounce with
+  overshoot and a shorter settle. When judging sheet strips, align the window to the drawn crouch (GATE2.md
+  "Motion").
+- Fix 3 is now in the game code: a hit target stays drawn for `HIT_CONTACT_HOLD_MS` (100 ms) before it strobes.
+- `pack.py` writes `opaqueExt` again, which the sheet player needs. The prototype's `SHEET_EXTENT` is updated.
+- To rebuild the prototype battle, apply `../art/ashkit/prerender-integration.patch` and copy
+  `../art/ashkit/prototype/*.ts` into `src/render/hd2d/`. Then put the sheets (full, and half via
+  `SCALE=0.5 pack.py`) in `public/kinsheets/{full,half}/`. The static D stills go in `public/kinart/D/`: render
+  `../art/creatures/blender-d/*.blend` and crop them to the `META` boxes in `hires.ts`. The gate URLs are in
+  GATE2.md.
+
 ## Next steps
 1. **Fable review** of the Ashkit slice: the owner asked for this once their Fable quota resets, at 7 PM US Central on 2026-10-16 (00:00 UTC 2026-10-17).
    - **Role:** senior creature artist plus art director.
-   - **Inputs:** `../art/ashkit/review/` (gate sheet, turnaround, face before/after, contact sheet, video, `GATE.md`).
+   - **Inputs:** `../art/ashkit/review/`: the gate-2 files first (`GATE2.md`, `gate2_side_by_side.jpg`,
+     `gate2_turnaround.png`, `gate2_face_before_after.png`, `gate2_contact_sheet.jpg`), then gate 1 for history.
    - **Measure against:** the owner's anatomy checklist.
    - **Output:** a verdict and fixes.
-2. **Apply the Ashkit fixes, re-gate, and show the owner a side-by-side.** When it at least matches the static art in battle, it becomes the template.
+2. **Done (gate 2):** the Ashkit fixes are applied and re-gated, and the side-by-side is ready for the owner.
+   Round 2 beat the static art on all four shots (stills). The attack clip still loses on motion; the default
+   is one more attack-clip pass. Once the owner confirms, it becomes the template.
 3. **Production plan for all 20 kin:**
    - per-kin Blender scripts following `../art/creatures/blender-d/` and `../art/ashkit/scripts/`;
    - the anatomy checklist with front, 3/4, side and back renders;

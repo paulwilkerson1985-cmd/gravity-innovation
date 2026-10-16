@@ -1,5 +1,9 @@
 # Progress
 
+## 2026-10-16 — Ashkit gate 2: pre-rendered sheets beat the static art in battle
+- Applied the gate-1 fixes with the owner defaults: −12° back camera with a back-view head turn, dark ear backs, a simpler mouth and chin, hind legs under the hips, a deeper crouch and faint paws on the ground. Re-rendered and packed all 84 frames. The game's hit strobe now waits 100 ms so the contact frame shows the hit. Details: `art/ashkit/review/GATE2.md`.
+- Evidence: frozen-clock captures (cave and meadow, desk and phone) against the static D still in the same build. Round 2 is `better` on 4/4 shots, with crop votes 16/16 (gate 1: 0/16). Floors pass, `ip_check` is PASS. Unsealed, so queued for the owner. Motion: the Bump strip judge still prefers the static art's lunge, 0/4 (weak canary). The contact-frame fix is verified on the frames (the foe stays drawn f75-f80). `npm run verify`: 290 unit tests; Playwright 99 passed, 25 skipped, 0 failed.
+
 ## 2026-10-15 — UI skin: slab2 (owner's pick)
 - The whole HTML UI (battle HUD, command/move menus, title, starter, route, menu hub, party/box/bestiary/bag/shop, settings, arena, Hall of Fame) now uses the HD-2D slab: dark translucent 9-slice panels with a one-texel gold hairline and the Alegreya superfamily (six vendored OFL woff2, awaited before the first scene). Pixel font retired from every screen. Decision, vote counts and numbers: `docs/DECISIONS.md` "UI skin: slab2"; system: `docs/UI.md`; before/after: `docs/screenshots/ui-slab/`.
 - Evidence: `npm run verify` (typecheck, lint, unit tests, build, Playwright incl. `e2e/layout.spec.ts` one-line labels / floors / overlaps on 4 viewports); `legibility.mjs` floors all PASS; UI-only judge 8/8 `better` (cave/meadow/volcanic/coast, desktop + phone), battle canvas frames byte-identical.
