@@ -1,0 +1,368 @@
+diff --git a/game/src/data/trainers.ts b/game/src/data/trainers.ts
+index e711b66..3522110 100644
+--- a/game/src/data/trainers.ts
++++ b/game/src/data/trainers.ts
+@@ -17,9 +17,10 @@ export const TRAINERS: TrainerData[] = [
+   {
+     id: 'hiker-brann', name: 'Brann', title: 'Ridge Hiker', routeId: 'ridge', ai: 'skilled',
+     party: [
++      // RUNOFF: Cragmaul leads so the cave capture shows Ashkit vs Cragmaul.
++      { species: 'cragmaul', level: 14, moves: ['quake-stomp', 'bedrock-brace', 'pebble-toss', 'bump'] },
+       { species: 'pebblet', level: 11 },
+       { species: 'pebblet', level: 12 },
+-      { species: 'cragmaul', level: 14, moves: ['quake-stomp', 'bedrock-brace', 'pebble-toss', 'bump'] },
+     ],
+     reward: 650,
+     intro: 'These rocks have stood a thousand years. My team is just as stubborn!',
+diff --git a/game/src/render/hd2d/fx.ts b/game/src/render/hd2d/fx.ts
+index f4e281b..d1f92a1 100644
+--- a/game/src/render/hd2d/fx.ts
++++ b/game/src/render/hd2d/fx.ts
+@@ -20,6 +20,7 @@
+ // One mesh (one draw call) per batch; all materials are persistent and pre-compiled by
+ // warmPixelFx (registered with the Renderer), so no program links mid-battle.
+ import * as THREE from 'three';
++import { nativeFxScale } from './hires';
+ import { Rng } from '../../engine/rng';
+ import { PixelTile, ditherIndex, fbm, type Ramp } from './textures';
+ import { markPersistent } from '../materials';
+@@ -558,6 +559,7 @@ const FLIP_VERT = /* glsl */ `
+   attribute vec3 aTint;
+   attribute float aGlow;
+   uniform vec2 uRes;
++  uniform float uK;
+   varying vec2 vUv;
+   varying float vFade;
+   varying vec3 vTint;
+@@ -566,7 +568,7 @@ const FLIP_VERT = /* glsl */ `
+     vec4 clip = projectionMatrix * viewMatrix * vec4(position, 1.0);
+     vec2 ndc = clip.xy / clip.w;
+     // Anchor on a pixel corner, then whole-pixel corner offsets: texels land on the grid.
+-    vec2 px = floor((ndc * 0.5 + 0.5) * uRes + 0.5) + aCorner;
++    vec2 px = floor((ndc * 0.5 + 0.5) * uRes + 0.5) + aCorner * uK;
+     gl_Position = vec4((px / uRes * 2.0 - 1.0) * clip.w, clip.z, clip.w);
+     vUv = aUv; vFade = aFade; vTint = aTint; vGlow = aGlow;
+   }`;
+@@ -590,6 +592,7 @@ const PTS_VERT = /* glsl */ `
+   attribute float aSize;
+   attribute vec3 aColor;
+   uniform vec2 uRes;
++  uniform float uK;
+   varying vec3 vColor;
+   void main() {
+     vColor = aColor;
+@@ -598,7 +601,7 @@ const PTS_VERT = /* glsl */ `
+     vec2 px = (clip.xy / clip.w * 0.5 + 0.5) * uRes;
+     px = mod(aSize, 2.0) > 0.5 ? floor(px) + 0.5 : floor(px + 0.5);
+     gl_Position = vec4((px / uRes * 2.0 - 1.0) * clip.w, clip.z, clip.w);
+-    gl_PointSize = aSize;
++    gl_PointSize = aSize * uK;
+   }`;
+ const PTS_FRAG = /* glsl */ `
+   varying vec3 vColor;
+@@ -628,14 +631,14 @@ const blendOf = (b: PixelBlend) => (b === 'add' ? THREE.AdditiveBlending : THREE
+ function newFlipMat(blend: PixelBlend): THREE.ShaderMaterial {
+   return markPersistent(new THREE.ShaderMaterial({
+     vertexShader: FLIP_VERT, fragmentShader: FLIP_FRAG,
+-    uniforms: { uMap: { value: getAtlas().tex }, uRes: { value: new THREE.Vector2(640, 360) } },
++    uniforms: { uMap: { value: getAtlas().tex }, uRes: { value: new THREE.Vector2(640, 360) }, uK: { value: 1 } },
+     transparent: true, depthWrite: false, depthTest: true, blending: blendOf(blend), fog: false,
+   }));
+ }
+ function newPtsMat(blend: PixelBlend): THREE.ShaderMaterial {
+   return markPersistent(new THREE.ShaderMaterial({
+     vertexShader: PTS_VERT, fragmentShader: PTS_FRAG,
+-    uniforms: { uRes: { value: new THREE.Vector2(640, 360) } },
++    uniforms: { uRes: { value: new THREE.Vector2(640, 360) }, uK: { value: 1 } },
+     transparent: true, depthWrite: false, depthTest: true, blending: blendOf(blend), fog: false,
+   }));
+ }
+@@ -656,7 +659,7 @@ const takeGlow = () => glowPool.pop() ?? markPersistent(newGlowMat());
+ const resV = new THREE.Vector2();
+ /** Keep a batch material's uRes in sync with the drawing buffer. */
+ function trackRes(mesh: THREE.Object3D, mat: THREE.ShaderMaterial) {
+-  mesh.onBeforeRender = (r) => { r.getDrawingBufferSize(resV); (mat.uniforms.uRes!.value as THREE.Vector2).copy(resV); };
++  mesh.onBeforeRender = (r) => { r.getDrawingBufferSize(resV); (mat.uniforms.uRes!.value as THREE.Vector2).copy(resV); if (mat.uniforms.uK) mat.uniforms.uK.value = nativeFxScale.k; };
+ }
+ 
+ // ------------------------------------------------------------------ flipbook batch
+diff --git a/game/src/render/hd2d/pipeline.ts b/game/src/render/hd2d/pipeline.ts
+index c626a8d..9b96df9 100644
+--- a/game/src/render/hd2d/pipeline.ts
++++ b/game/src/render/hd2d/pipeline.ts
+@@ -19,6 +19,7 @@ import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+ import { warmPrograms } from '../materials';
+ import { warmPixelFx } from './fx';
+ import { applyScreenFx } from './transition';
++import { HybridComposite, arenaNative, hybridRequested, nativeFxScale } from './hires';
+ 
+ export type Quality = 'high' | 'low';
+ 
+@@ -362,6 +363,10 @@ export class Hd2dPipeline {
+   private gtao: GTAOPass | null = null;
+   private ms: number[] = [];
+   private frames = 0;
++  /** RUNOFF: device-res composite (hi-res kin art / native arena); null on the normal path. */
++  composite: HybridComposite | null = null;
++  /** RUNOFF: the grid scale the tier would use; tilt radius scales by it in native mode. */
++  nativeK = 1;
+   /** Hooks run right before the composer renders (sprite baking). */
+   readonly beforeRender: ((renderer: THREE.WebGLRenderer) => void)[] = [];
+ 
+@@ -374,8 +379,13 @@ export class Hd2dPipeline {
+     if (flags.has('pcf')) this.settings.shadowType = THREE.PCFShadowMap;
+     this.grade = grade;
+     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0 });
++    const hybrid = hybridRequested();
++    // Native arena on the high tier: 4× MSAA if cheap (`?msaa=0` turns it off).
++    const samples = hybrid && arenaNative() && quality === 'high' && params().get('msaa') !== '0' ? 4 : 0;
++    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples });
++    if (hybrid) rt.depthTexture = new THREE.DepthTexture(size.x, size.y);
+     this.composer = new EffectComposer(renderer, rt);
++    if (hybrid) this.composer.renderToScreen = false;
+     this.composer.setPixelRatio(1);
+     this.composer.setSize(size.x, size.y);
+     this.composer.addPass(new RenderPass(scene, camera));
+@@ -397,6 +407,7 @@ export class Hd2dPipeline {
+     // One pass does tone mapping, sRGB output and the grade (no separate OutputPass).
+     this.gradePass = new ShaderPass(GradeShader);
+     this.composer.addPass(this.gradePass);
++    if (hybrid) this.composite = new HybridComposite(renderer, this.gradePass.uniforms as Record<string, THREE.IUniform>, scene, camera);
+     this.applyGrade(flags.has('nograde'));
+   }
+ 
+@@ -418,7 +429,7 @@ export class Hd2dPipeline {
+       u.uVig.value = g.vignette; u.uVigSoft.value = g.vignetteSoft; u.uDither.value = g.dither;
+       u.uBottom.value = g.bottomShade ?? GRADE_DEFAULTS.bottomShade; u.uBottomH.value = g.bottomShadeHeight ?? GRADE_DEFAULTS.bottomShadeHeight;
+     }
+-    const tilt = this.settings.tiltShift && !off ? (g.tiltScale ?? this.settings.tilt) : 0;
++    const tilt = (this.settings.tiltShift && !off ? (g.tiltScale ?? this.settings.tilt) : 0) * (arenaNative() ? this.nativeK : 1);
+     u.uTiltTop.value = g.tiltTop * tilt; u.uTiltBottom.value = g.tiltBottom * tilt;
+     u.uFocusTop.value = g.focusTop; u.uFocusBottom.value = g.focusBottom;
+   }
+@@ -459,6 +470,7 @@ export class Hd2dPipeline {
+     if (this.frames === 0 || this.frames === 30) this.warm();
+     this.frames++;
+     this.composer.render();
++    if (this.composite) this.composite.render(this.composer.readBuffer.texture, this.composer.writeBuffer.depthTexture);
+     r.toneMapping = prevTone; r.toneMappingExposure = prevExp;
+     this.ms.push(performance.now() - t0);
+     if (this.ms.length > 60) this.ms.shift();
+@@ -488,6 +500,7 @@ export class Hd2dPipeline {
+ 
+   dispose() {
+     this.composer.dispose();
++    this.composite?.dispose();
+     this.bloom?.dispose();
+     this.gtao?.dispose();
+   }
+@@ -498,12 +511,15 @@ export class Hd2dPipeline {
+  * frame (shadow + sprite + post passes), the internal resolution policy of the tier. Returns
+  * an uninstall function that restores the default renderer state (call it on scene exit).
+  */
+-export function installPipeline(r: { gl: THREE.WebGLRenderer; setInternal(p: { height: number; minShort: number } | null): void }, p: Hd2dPipeline): () => void {
++export function installPipeline(r: { gl: THREE.WebGLRenderer; equivScale?: number; setInternal(p: { height: number; minShort: number; hybrid?: boolean; native?: boolean } | null): void }, p: Hd2dPipeline): () => void {
+   const gl = r.gl;
+   gl.shadowMap.enabled = true;
+   gl.shadowMap.type = p.settings.shadowType;
+   gl.info.autoReset = false;
+-  r.setInternal({ height: p.settings.internalHeight, minShort: p.settings.minShort });
++  r.setInternal({ height: p.settings.internalHeight, minShort: p.settings.minShort, hybrid: !!p.composite, native: arenaNative() && !!p.composite });
++  p.nativeK = r.equivScale ?? 1;
++  nativeFxScale.k = arenaNative() && p.composite ? p.nativeK : 1;
++  p.regrade();
+   p.setSize();
+   return () => {
+     gl.shadowMap.enabled = false;
+diff --git a/game/src/render/renderer.ts b/game/src/render/renderer.ts
+index 99d3d80..fd4530d 100644
+--- a/game/src/render/renderer.ts
++++ b/game/src/render/renderer.ts
+@@ -13,6 +13,7 @@ export class Renderer {
+   constructor(parent: HTMLElement) {
+     this.gl = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'default', preserveDrawingBuffer: false });
+     this.gl.outputColorSpace = THREE.SRGBColorSpace;
++    this.origDbs = this.gl.getDrawingBufferSize;
+     this.canvas = this.gl.domElement;
+     this.canvas.id = 'view';
+     parent.appendChild(this.canvas);
+@@ -29,10 +30,15 @@ export class Renderer {
+    * `minShort` = minimum internal short side; the actual size is an integer pixel grid
+    * (see pixelGrid). null = the default ~420 px height (fractional ratio, unchanged).
+    */
+-  private internal: { height: number; minShort: number } | null = null;
++  private internal: { height: number; minShort: number; hybrid?: boolean; native?: boolean } | null = null;
+ 
+-  /** Change the internal-resolution policy (HD-2D tiers) and resize the drawing buffer. */
+-  setInternal(p: { height: number; minShort: number } | null) {
++  /**
++   * Change the internal-resolution policy (HD-2D tiers) and resize the drawing buffer.
++   * RUNOFF PROTOTYPE: `hybrid` = the canvas is DEVICE resolution, the scene renders on the grid
++   * (getDrawingBufferSize still reports the grid) and a final pass upscales it nearest and
++   * composites device-res layers; `native` = the grid is the device resolution (s = 1).
++   */
++  setInternal(p: { height: number; minShort: number; hybrid?: boolean; native?: boolean } | null) {
+     this.internal = p;
+     this.resize();
+   }
+@@ -60,17 +66,27 @@ export class Renderer {
+       // HD-2D: the drawing buffer is the internal pixel grid itself (pixel ratio 1) and the
+       // canvas is shown at exactly bw·s / dpr CSS px, upscaled nearest-neighbour by CSS.
+       const dpr = window.devicePixelRatio || 1;
+-      const { scale, bw, bh } = Renderer.pixelGrid(w, h, dpr, p);
++      let { scale, bw, bh } = Renderer.pixelGrid(w, h, dpr, p);
++      this.equivScale = scale;
++      if (p.native) { scale = 1; bw = Math.ceil(w * dpr - 1e-6); bh = Math.ceil(h * dpr - 1e-6); }
+       const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== 1 || this.grid[0] !== bw || this.grid[1] !== bh || this.grid[2] !== scale;
+       this.width = w;
+       this.height = h;
+       this.grid = [bw, bh, scale];
+       this.gl.setPixelRatio(1);
+-      this.gl.setSize(bw, bh, false);
++      const g = this.gl as unknown as { getDrawingBufferSize: (t: THREE.Vector2) => THREE.Vector2 };
++      if (p.hybrid) {
++        this.gl.setSize(bw * scale, bh * scale, false);
++        g.getDrawingBufferSize = (t: THREE.Vector2) => t.set(this.grid[0], this.grid[1]);
++      } else {
++        g.getDrawingBufferSize = this.origDbs;
++        this.gl.setSize(bw, bh, false);
++      }
+       this.canvas.style.width = `${(bw * scale) / dpr}px`;
+       this.canvas.style.height = `${(bh * scale) / dpr}px`;
+       return changed;
+     }
++    (this.gl as unknown as { getDrawingBufferSize: unknown }).getDrawingBufferSize = this.origDbs;
+     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+     const ratio = Math.min(dpr, Math.max(0.35, TARGET_INTERNAL_HEIGHT / h));
+     const changed = w !== this.width || h !== this.height || this.gl.getPixelRatio() !== ratio || this.grid[2] !== 0;
+@@ -85,6 +101,10 @@ export class Renderer {
+   /** HD-2D pixel grid in effect: [buffer w, buffer h, device px per internal px]; zeros on the default path. */
+   private grid: [number, number, number] = [0, 0, 0];
+ 
++  private origDbs!: (t: THREE.Vector2) => THREE.Vector2;
++  /** The grid scale the tier would use (native mode renders at s = 1 but scales FX/tilt by this). */
++  equivScale = 1;
++
+   /** Device px per internal px of the HD-2D grid (0 when the default policy is active). */
+   get pixelScale(): number { return this.grid[2]; }
+ 
+diff --git a/game/src/scenes/hd2dBattle.ts b/game/src/scenes/hd2dBattle.ts
+index 75fb2f3..d65dd9a 100644
+--- a/game/src/scenes/hd2dBattle.ts
++++ b/game/src/scenes/hd2dBattle.ts
+@@ -19,6 +19,12 @@ import { arenaById, resolveArena, type ArenaContext, type ArenaDef, type CameraP
+ import { Figure, heroFigure, trainerFigure } from '../render/hd2d/characters';
+ import { layoutMode } from './framing';
+ import { FLAME } from '../render/creatures/parts';
++import { HybridComposite, arenaNative, hasKinArt, smoothTextures } from '../render/hd2d/hires';
++
++/** RUNOFF: hi-res art creature height vs today's normalised kin size ([yours, foe]); `?artscale=` multiplies. */
++const ART_GROW = [1.8, 2.05] as const;
++const ART_K = Number(new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('artscale') ?? 1) || 1;
++const hiddenKinMat = new THREE.MeshBasicMaterial({ visible: false });
+ 
+ /** The arena chosen for a battle and the context it was chosen from. */
+ export interface Hd2dTerrain { def: ArenaDef; ctx: ArenaContext }
+@@ -213,6 +219,7 @@ export class Hd2dBattleStage {
+     scene.background = new THREE.Color(def.background);
+     scene.fog = def.fog === null ? null : new THREE.Fog(new THREE.Color(def.fog), 18, 42);
+     this.spots = [this.rig.spots[0].clone(), this.rig.spots[1].clone()];
++    if (arenaNative()) smoothTextures(this.rig.group);
+     this.pipeline = new Hd2dPipeline(game.renderer.gl, scene, camera, this.quality, def.grade?.());
+     this.uninstall = installPipeline(game.renderer, this.pipeline);
+     this.baker = new SpriteBaker(scene, camera, this.rig.spriteLight);
+@@ -237,7 +244,8 @@ export class Hd2dBattleStage {
+   }
+ 
+   private addFigure(f: Figure) {
+-    this.figures.set(f, this.baker.add(f.mesh, figureSpriteOptions(f, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: 0.05 })));
++    const native = arenaNative() ? { pxPerTexel: 1, texelHeight: undefined } : {};
++    this.figures.set(f, this.baker.add(f.mesh, figureSpriteOptions(f, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: 0.05, ...native })));
+   }
+ 
+   /** Yaw for your kin: a side / 3-4 profile facing the foe across the screen. */
+@@ -246,8 +254,24 @@ export class Hd2dBattleStage {
+   /** Sprite-ify a kin as it is sent out. */
+   attachKin(view: CreatureView, side: 0 | 1) {
+     this.detachKin(side);
++    const comp = this.pipeline.composite;
++    if (comp && hasKinArt(view.speciesId)) {
++      // RUNOFF: the hi-res art billboard replaces the pixel sprite; the mesh keeps animating unseen.
++      view.inner.quaternion.identity();
++      view.mesh.material = hiddenKinMat;
++      view.mesh.castShadow = false;
++      view.shadow.visible = false;
++      view.cels = false;
++      view.idleGain = 1.35;
++      view.blinkFps = 0;
++      comp.addKin(view, side, view.speciesId!, this.artHeight(view, side));
++      this.views[side] = view;
++      this.hires[side] = true;
++      return;
++    }
+     poseFlatKin(view, this.camera);
+-    const sub = this.baker.add(view.mesh, kinSpriteOptions(view, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: side === 0 ? 0.1 : 0.04 }));
++    const native = arenaNative() ? { pxPerTexel: 1, texelHeight: undefined } : {};
++    const sub = this.baker.add(view.mesh, kinSpriteOptions(view, { pxPerTexel: this.pxPerTexel, inScene: this.inScene, lift: side === 0 ? 0.1 : 0.04, ...native }));
+     if (this.pxPerTexel) sub.opts.texelHeight = undefined;
+     // Dark kin get a light rim inside their outline (they would melt into a dark floor).
+     sub.setLightRim(view.dark ? 0.35 : 0);
+@@ -257,7 +281,19 @@ export class Hd2dBattleStage {
+     view.shadow.visible = !!this.inScene;
+   }
+ 
++  /** RUNOFF: which sides draw the hi-res art. */
++  private hires: [boolean, boolean] = [false, false];
++
++  /** RUNOFF: creature height (world) of a kin's hi-res art. */
++  private artHeight(view: CreatureView, side: 0 | 1): number {
++    // Portrait phones stack the two kin closely: 15 % smaller there so they do not overlap.
++    const portrait = layoutMode(this.game.renderer.width, this.game.renderer.height) === 'portrait' ? 0.85 : 1;
++    return KIN_SIZE[side] * STAGE_K[stageOf(view.speciesId)]! * ART_GROW[side] * ART_K * portrait;
++  }
++
+   detachKin(side: 0 | 1) {
++    this.pipeline.composite?.removeKin(side);
++    this.hires[side] = false;
+     this.baker.remove(this.kin[side]);
+     this.kin[side] = null;
+     this.views[side] = null;
+@@ -271,7 +307,8 @@ export class Hd2dBattleStage {
+     const size = Math.max(bb.max.y - bb.min.y, 0.8 * Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)) * view.baseScale;
+     const k = (KIN_SIZE[side] * STAGE_K[stageOf(view.speciesId)]! / size) * Math.pow(size / 1.1, 0.4);
+     view.root.scale.setScalar(THREE.MathUtils.clamp(k, 0.5, 1.7));
+-    const r = kinRadius(view);
++    let r = kinRadius(view);
++    if (this.pipeline.composite && hasKinArt(view.speciesId)) r = Math.max(r, 0.8 * HybridComposite.halfWidth(view.speciesId!, this.artHeight(view, side)));
+     this.radius[side] = r;
+     if (side === 0) this.placeHero(true);
+     return r;
+@@ -376,12 +413,13 @@ export class Hd2dBattleStage {
+     if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = dist + fogNear; this.scene.fog.far = dist + fogFar; }
+     this.pipeline.setSize();
+     // Dust motes: 1 internal px on high (the pixel grid is already chunky), 1.5 on low.
+-    this.rig.setPixelSize(this.quality === 'high' ? 1 : 1.5);
++    this.rig.setPixelSize((this.quality === 'high' ? 1 : 1.5) * (arenaNative() && this.pipeline.composite ? this.game.renderer.equivScale : 1));
++    this.pipeline.composite?.setLight(this.rig.spriteLight, cam);
+     // The camera basis may have changed: re-stage the people and re-pose flat kin.
+     if (!this.hero.walking) this.placeHero(false);
+     if (this.foeTrainer && !this.foeTrainer.walking) this.faceFront(this.foeTrainer.mesh);
+-    if (this.views[0]) poseFlatKin(this.views[0], cam);
+-    if (this.views[1]) poseFlatKin(this.views[1], cam);
++    if (this.views[0] && !this.hires[0]) poseFlatKin(this.views[0], cam);
++    if (this.views[1] && !this.hires[1]) poseFlatKin(this.views[1], cam);
+   }
+ 
+   private baseOffset: [number, number, number, number] | null = null;
+@@ -412,7 +450,9 @@ export class Hd2dBattleStage {
+     const o = this.baseOffset;
+     if (!o) return;
+     const s = o[3] / Math.max(1, this.game.renderer.gl.getDrawingBufferSize(new THREE.Vector2()).y); // CSS px per internal px
+-    const ox = this.panPx[0] + this.shakePx[0], oy = this.panPx[1] + this.shakePx[1];
++    // RUNOFF native arena: shakes are authored in grid px; scale them to device px.
++    const nk = arenaNative() && this.pipeline.composite ? this.game.renderer.equivScale : 1;
++    const ox = this.panPx[0] + this.shakePx[0] * nk, oy = this.panPx[1] + this.shakePx[1] * nk;
+     this.camera.setViewOffset(o[2], o[3], o[0] + ox * s, o[1] + oy * s, o[2], o[3]);
+     this.camera.updateProjectionMatrix();
+     // The content moves the other way: left for +x, up (+y in buffer coordinates) for +y.
