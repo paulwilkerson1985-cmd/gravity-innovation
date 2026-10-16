@@ -8,11 +8,11 @@ head/ear bones are placed on the turned head. Clips: quad.py. Usage (see ../cind
     from quadrig import run_quad
     run_quad(SPEC, HERE)
 
-SPEC keys (world units, +X forward, +Z up, the kin's rest model):
+SPEC keys (world units, +X forward, +Z up, the kin's rest model; ear and tail may be left out):
   name, blend, turn=(deg, lift_deg, pivot), head_zone=(z0, z1, x0, x1, zx0, zx1, xback0, xback1)
-  ear=dict(c, rx, ry, w=(0.17, 0.31)), legs=dict(front_x, hind_x, y, top, hind_lean=0.04, reach=0.24, ground_band=0 (z below it: nearest leg only)),
+  ear=dict(c, rx, ry, w=(0.17, 0.31), axis=None (long axis; default the ellipsoid's local +Z: an upright ear)), legs=dict(front_x, hind_x, y, top, hind_lean=0.04, reach=0.24, ground_band=0 (z below it: nearest leg only), seg={leg: (top, foot, radius)} for legs that are not vertical), anchor=(x, y, z),
   body_c, hips=(head, tail), chest=(head, tail), head=(head, tail), tail=[p0, p1, p2, p3],
-  tail_zone=(x0, x1, z0, z1, z2a, z2b, z3a, z3b), chest_split=(x0, x1), eye_centre, motion=dict(scale, faint_drop, faint_leg)
+  tail_zone=(x0, x1, z0, z1, z2a, z2b, z3a, z3b), tail_axis='z' ('x': segment splits z2/z3 are -x values), tail_pitch=1.0 (multiplies the clips' tail pitch), faint_head=1.0 (multiplies the faint's head pitch), chest_split=(x0, x1), eye_centre, motion=dict(scale, faint_drop, faint_leg)
 """
 import os, math
 import numpy as np
@@ -42,7 +42,7 @@ def run_quad(S, here):
 
     kit.bake_shape_key('battle')
 
-    EAR = S['ear']; ew = EAR.get('w', (0.17, 0.31))
+    EAR = S.get('ear'); ew = EAR.get('w', (0.17, 0.31)) if EAR else None
 
     def ear_R(s):
         return np.array(Euler([math.radians(a) for a in (EAR['rx'] * s, EAR['ry'], 0)], 'XYZ').to_matrix())
@@ -50,6 +50,9 @@ def run_quad(S, here):
     L = S['legs']
     LEGS = {'leg_f.L': (L['front_x'], L['y']), 'leg_f.R': (L['front_x'], -L['y']),
             'leg_b.L': (L['hind_x'], L['y']), 'leg_b.R': (L['hind_x'], -L['y'])}
+    SEG = L.get('seg', {})     # legs given as 3-D segments (top, foot, radius): arms reaching down to knuckles
+    for nm, (a, b, r) in SEG.items():
+        LEGS[nm] = (b[0], b[1])
     lean = L.get('hind_lean', 0.04)
     kit.begin_bones()
     bone = kit.bone
@@ -64,14 +67,19 @@ def run_quad(S, here):
     bone('chest', *S['chest'], 'body')
     hh = head_xform(list(S['head']))
     bone('head', hh[0], hh[1], 'chest')
-    for s, side in ((1, 'L'), (-1, 'R')):
-        R = ear_R(s); c = np.array((EAR['c'][0], EAR['c'][1] * s, EAR['c'][2])); ax = R @ np.array((0, 0, 1.0))
+    for s, side in (((1, 'L'), (-1, 'R')) if EAR else ()):
+        R = ear_R(s); c = np.array((EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]))
+        ax = np.array(EAR['axis']) * np.array((1, s, 1)) if 'axis' in EAR else R @ np.array((0, 0, 1.0))   # the ear's long axis
         p = head_xform([c - ax * 0.12, c + ax * 0.46])
         bone(f'ear.{side}', p[0], p[1], 'head')
     for nm, (x, y) in LEGS.items():
-        bone(nm, (x + (lean if x < 0 else 0.0), y, L['top']), (x + 0.02, y, 0.04), 'root')
-    T = S['tail']
-    bone('tail1', T[0], T[1], 'hips'); bone('tail2', T[1], T[2], 'tail1'); bone('tail3', T[2], T[3], 'tail2')
+        if nm in SEG:
+            bone(nm, SEG[nm][0], SEG[nm][1], 'root')
+        else:
+            bone(nm, (x + (lean if x < 0 else 0.0), y, L['top']), (x + 0.02, y, 0.04), 'root')
+    T = S.get('tail')
+    if T:
+        bone('tail1', T[0], T[1], 'hips'); bone('tail2', T[1], T[2], 'tail1'); bone('tail3', T[2], T[3], 'tail2')
     kit.end_bones()
 
     # ---------------------------------------------------------------- procedural weights (symmetric basis)
@@ -79,9 +87,15 @@ def run_quad(S, here):
     W = {}
     Lsum = np.zeros(n)
     for nm, (lx, ly) in LEGS.items():
-        cx = lx + (0.0 if lx < 0 else 0.04)
-        d = np.sqrt(((x - cx) / 1.35) ** 2 + (y - ly) ** 2)
-        W[nm] = sm(L['top'], L['top'] - 0.26, z) * sm(L.get('reach', 0.24), L.get('reach', 0.24) * 0.66, d)
+        if nm in SEG:
+            a, b, r = (np.asarray(SEG[nm][0], float), np.asarray(SEG[nm][1], float), SEG[nm][2])
+            ab = b - a; t = np.clip(((co0 - a) @ ab) / (ab @ ab), 0, 1)
+            d = np.linalg.norm(co0 - (a + t[:, None] * ab), axis=1)
+            W[nm] = sm(0.0, 0.25, t) * sm(r, r * 0.66, d)     # fades in below the shoulder
+        else:
+            cx = lx + (0.0 if lx < 0 else 0.04)
+            d = np.sqrt(((x - cx) / 1.35) ** 2 + (y - ly) ** 2)
+            W[nm] = sm(L['top'], L['top'] - 0.26, z) * sm(L.get('reach', 0.24), L.get('reach', 0.24) * 0.66, d)
         Lsum += W[nm]
     band = L.get('ground_band', 0.0)
     if band:   # everything near the ground (paws, claws) belongs fully to its nearest leg
@@ -98,9 +112,9 @@ def run_quad(S, here):
     Lsum = np.minimum(Lsum, 1.0)
     rem = 1 - Lsum
     H = head_w(co0) * rem
-    emb = vertex_slot_mask(o, {'ember', 'ember_core'}) & (x < S['tail_zone'][0] + 0.3)
-    tz = S['tail_zone']
-    Tw = sm(tz[0], tz[1], x) * sm(tz[2], tz[3], z)
+    tz = S.get('tail_zone') or (-99, -99.1, 0, 0.1, 0, 0.1, 0, 0.1)
+    emb = vertex_slot_mask(o, {'ember', 'ember_core'}) & (x < tz[0] + 0.3)
+    Tw = sm(tz[0], tz[1], x) * sm(tz[2], tz[3], z) if T else np.zeros(n)
     Tw[emb] = 1.0
     Tw *= rem
     Tw = np.minimum(Tw, rem - H)
@@ -109,15 +123,17 @@ def run_quad(S, here):
     cf = sm(cs[0], cs[1], x)
     W['chest'] = body * cf; W['hips'] = body * (1 - cf)
     esum = np.zeros(n)
-    for s, side in ((1, 'L'), (-1, 'R')):
+    for s, side in (((1, 'L'), (-1, 'R')) if EAR else ()):
         l = (co0 - np.array((EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]))) @ ear_R(s)
         rad = (l[:, 0] / ew[0]) ** 2 + (l[:, 1] / ew[1]) ** 2
         e = sm(-0.24, -0.04, l[:, 2]) * sm(1.15, 0.85, rad) * (np.sign(y) == s)
         W[f'ear.{side}'] = H * e; esum += e
     W['head'] = H * (1 - esum)
-    f2 = sm(tz[4], tz[5], z); f3 = sm(tz[6], tz[7], z)
+    tc = -x if S.get('tail_axis', 'z') == 'x' else z     # a tail lying back along the ground splits along -X
+    f2 = sm(tz[4], tz[5], tc); f3 = sm(tz[6], tz[7], tc)
     f2[emb] = 1; f3[emb] = 1
-    W['tail1'] = Tw * (1 - f2); W['tail2'] = Tw * f2 * (1 - f3); W['tail3'] = Tw * f2 * f3
+    if T:
+        W['tail1'] = Tw * (1 - f2); W['tail2'] = Tw * f2 * (1 - f3); W['tail3'] = Tw * f2 * f3
     kit.set_weights(W)
     kit.add_blink(head_centre=S['eye_centre'])
 
@@ -126,9 +142,28 @@ def run_quad(S, here):
     CLIPS, TRAVEL, REST = quad_clips(LEGS, scale=float(os.environ.get('MOTION_SCALE', M.get('scale', 1.0))),
                                      faint_drop=float(os.environ.get('FAINT_DROP', M.get('faint_drop', 0.0))),
                                      faint_leg_drop=float(os.environ.get('FAINT_LEG', M.get('faint_leg', 0.0))))
+    tp = S.get('tail_pitch', 1.0)    # the clips pitch an upright tail; a tail lying back along the ground needs it flipped
+    if tp != 1.0:
+        seen = set()
+        for poses in CLIPS.values():
+            for P in poses:
+                if id(P) in seen:      # a pose held over several frames is one object: flip it once
+                    continue
+                seen.add(id(P))
+                for b in ('tail1', 'tail2', 'tail3'):
+                    if b in P and 'r' in P[b]:
+                        r = P[b]['r']; P[b] = {**P[b], 'r': (r[0], r[1] * tp, r[2])}
+    fh = S.get('faint_head', 1.0)    # tusks / horns: a kin that cannot droop its head that far in the faint
+    if fh != 1.0:
+        seen = set()
+        for P in CLIPS['faint']:
+            if id(P) in seen or 'head' not in P or 'r' not in P['head']:
+                continue
+            seen.add(id(P))
+            r = P['head']['r']; P['head'] = {**P['head'], 'r': (r[0], r[1] * fh, r[2])}
     head_back = float(os.environ.get('HEAD_BACK', S.get('head_back', 20)))
     VIEWS = {'front': dict(yaw=35.0, elev=12.0),
              'back': dict(yaw=float(os.environ.get('YAW_BACK', -12)), elev=float(os.environ.get('ELEV_BACK', 30)), head_yaw=-head_back)}
-    ANCHOR_W = ((L['front_x'] + L['hind_x']) / 2 + 0.07, 0.0, 0.0)   # middle of the four paws (toes forward)
+    ANCHOR_W = S.get('anchor') or ((L['front_x'] + L['hind_x']) / 2 + 0.07, 0.0, 0.0)   # middle of the four paws (toes forward)
     return kit.run(CLIPS, VIEWS, ANCHOR_W, ground_mask=co0[:, 2] < 0.03,
                    rig_out=os.path.join(here, f"{S['name']}_rig.blend"), rest_pose=REST, travel=TRAVEL)
