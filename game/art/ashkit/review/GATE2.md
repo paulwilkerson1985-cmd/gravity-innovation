@@ -114,3 +114,23 @@ floor's value, so a darker contact shadow or a rim would help. Cragmaul's browns
    baked battle turn. Keep it, or try about 12° with ears splayed outward instead? Default: keep.
 3. The attack animation (`gate2_attack_strips.jpg`, about 1 min): do one more attack-clip pass before the
    other 19 kin, or move on and tune motion later? Default: one more pass.
+
+## Round 3: the attack pass and the final sheets (2026-10-16, later)
+
+After "keep going" (owner defaults kept: Ashkit is the template, the back-view head turn stays):
+- **Attack clip pass** (`../../kin/lib/quad.py`, authored on Ashkit): a deep crouch reached in one drawing and held as a
+  coiled wind-up, a bolder stretched leap, a two-drawing hop back that lands behind the start, a landing squash, then
+  settle. Contact stays on drawing 6, so there's no added latency. The sheet JSON now carries the attack's **travel
+  curve** (`travel.fwd`/`travel.ease`: the position snaps with the drawing except in the air). The sheet player
+  (`prototype/kinsheet.ts`, `attackTravel`) follows it instead of its old table, so held drawings no longer slide.
+- The new poses moved the shared camera framing, so **all 84 frames were re-rendered** (a partial render had mixed
+  framings; `sheetkit` now refuses that).
+- **Final verification** (same run, same baseline `?kinsheet=0`, dist with the final sheets):
+  - Stills: cave desk `better` (4/4 frame), cave phone `better` (4/4 frame, 4/4 crop), meadow desk `better` (4/4,
+    4/4), meadow phone `no_difference` (3/4 frame, 2/4 crop; canary weak at 2/2). **None `worse`.** Floors pass.
+  - Attack strip (window aligned to the drawn crouch, f50-120): **`better`, 4/4 at confidence 3** ("a held,
+    readable crouch anticipation, a committed lunge, clear recoil with squash on landing"). The blur canary is weak
+    again (confidence 1-2), so this is thin evidence by rule 9, but it reverses gate 2's `worse` 0/4.
+  - Motion lint: anticipation 10 frames and 7.7 texels deep (static 5.7), strike 11 frames, overshoot 5.1 texels
+    (static 14.5), distinct poses 0.50 (keyed drawings).
+- Judge cost for round 3: about $1.9.
