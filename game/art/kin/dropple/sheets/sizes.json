@@ -1,0 +1,73 @@
+{
+ "dropple_idle_front": {
+  "atlas": "1228x1203",
+  "cell": "303x397",
+  "bytes": 556384,
+  "gpu_mb": 5.64,
+  "gpu_mb_mips": 7.51
+ },
+ "dropple_attack_front": {
+  "atlas": "1860x1449",
+  "cell": "368x479",
+  "bytes": 911564,
+  "gpu_mb": 10.28,
+  "gpu_mb_mips": 13.71
+ },
+ "dropple_hit_front": {
+  "atlas": "1011x810",
+  "cell": "333x401",
+  "bytes": 340102,
+  "gpu_mb": 3.12,
+  "gpu_mb_mips": 4.17
+ },
+ "dropple_faint_front": {
+  "atlas": "1895x866",
+  "cell": "375x429",
+  "bytes": 588822,
+  "gpu_mb": 6.26,
+  "gpu_mb_mips": 8.35
+ },
+ "dropple_idle_back": {
+  "atlas": "1232x1185",
+  "cell": "304x391",
+  "bytes": 506482,
+  "gpu_mb": 5.57,
+  "gpu_mb_mips": 7.43
+ },
+ "dropple_attack_back": {
+  "atlas": "1950x1431",
+  "cell": "386x473",
+  "bytes": 888486,
+  "gpu_mb": 10.64,
+  "gpu_mb_mips": 14.19
+ },
+ "dropple_hit_back": {
+  "atlas": "1023x804",
+  "cell": "337x398",
+  "bytes": 306370,
+  "gpu_mb": 3.14,
+  "gpu_mb_mips": 4.18
+ },
+ "dropple_faint_back": {
+  "atlas": "1930x866",
+  "cell": "382x429",
+  "bytes": 530700,
+  "gpu_mb": 6.38,
+  "gpu_mb_mips": 8.5
+ },
+ "_extent": {
+  "front": {
+   "left": 0.4989,
+   "right": 0.4989
+  },
+  "back": {
+   "left": 0.525,
+   "right": 0.533
+  }
+ },
+ "_total": {
+  "bytes": 4628910,
+  "gpu_mb": 51.03,
+  "gpu_mb_mips": 68.04
+ }
+}
