@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { getDex } from '../src/engine';
-import { buildCreatureGeometry, CreatureView, speciesIdForLook } from '../src/render/creature';
+import { buildCreatureGeometry, CreatureView, HIT_CONTACT_HOLD_MS, hitStrobeOn, speciesIdForLook } from '../src/render/creature';
 import { DESIGNS, LINES } from '../src/render/creatures/designs';
 
 const dex = getDex();
@@ -155,6 +155,16 @@ describe('creature models', () => {
       expect(c1 - c0).toBeGreaterThan(8);
       for (let c = c0; c <= c1; c++) expect(shutPerCycle.get(c), `${id} blink ${c}`).toBe(c % 3 === 1 ? 2 : 1);
       v.dispose();
+    }
+  });
+
+  it('a hit target stays drawn through the contact hold, then strobes', () => {
+    for (const dur of [320, 420]) {
+      for (let ms = 0; ms < HIT_CONTACT_HOLD_MS; ms += 1000 / 60) expect(hitStrobeOn(ms / dur, dur), `${dur} ms @ ${ms}`).toBe(true);
+      let hidden = 0;
+      for (let ms = HIT_CONTACT_HOLD_MS; ms < dur; ms += 1000 / 60) if (!hitStrobeOn(ms / dur, dur)) hidden++;
+      expect(hidden, `${dur} ms strobes after the hold`).toBeGreaterThan(0);
+      for (let ms = 0; ms < dur; ms += 1000 / 60) expect(hitStrobeOn(ms / dur, dur, true)).toBe(true);
     }
   });
 

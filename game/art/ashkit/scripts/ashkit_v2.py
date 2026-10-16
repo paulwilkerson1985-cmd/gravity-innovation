@@ -9,6 +9,13 @@ Construction fixes vs bakeoff/D/work/ashkit.py:
   * all four paws planted on one ground plane (the raised paw is gone), legs under shoulders / hips;
   * chest bib as a 3-D ellipsoid zone (no hard vertical edge in side view);
   * battle pose = a 'battle' shape key that turns the head toward the camera (rest mesh stays symmetric).
+Gate-1 fixes (2026-10-16, game/art/ashkit/review/GATE.md):
+  * dark ear backs (a red-fox marking), so the near ear reads against the orange skull from behind;
+  * a shorter, gently upturned mouth with no philtrum line, and a chin fill under the snout so the
+    cream jaw no longer folds into a second ink line under the mouth;
+  * hind legs set back under the hips with a slight hock angle (front and hind read differently);
+  * socks stay sooty (round 1 tried lighter, shorter socks; every judge preferred the dark paws that ground
+    the creature, so they went back) and now also cover the set-back hind paws.
 Env: SPP, SIZE, OUTDIR, MODE=turn|battle|both, BLEND.
 """
 import sys, os, time, math
@@ -24,7 +31,7 @@ P = dict(  # tunables (round-by-round)
     head_turn=float(os.environ.get('TURN', 16)), head_lift=float(os.environ.get('LIFT', 4)),
 )
 
-ORANGE = srgb('#ff7a2e'); CREAM = srgb('#ffe9c6'); SOOT = srgb('#3b2d33'); EMBER = srgb('#ffb02a'); EMBER_CORE = srgb('#fff3b0')
+ORANGE = srgb('#ff7a2e'); CREAM = srgb('#ffe9c6'); SOOT = srgb('#3b2d33'); EAR_BACK = srgb('#4a2a26'); EMBER = srgb('#ffb02a'); EMBER_CORE = srgb('#fff3b0')
 EYE = srgb('#2b1a1e'); WHITE = srgb('#ffffff'); NOSE = srgb('#2b1a1e')
 INK = '#2a1418'
 
@@ -38,16 +45,21 @@ B.add(C, 0.60, size=(0.95, 1.06, 0.92))                       # head (as big as 
 for s in (-1, 1):
     B.add((0.60, 0.37 * s, 0.98), 0.27)                       # cheek fluff
 B.add(P['snout'], P['snout_r'], size=P['snout_size'], stiff=3.0)  # short defined snout
+B.add((0.70, 0, 0.84), 0.25, size=(1.3, 1.1, 0.8))           # chin + throat fill: no fold (ink line) under the snout
 # legs: all four planted on z=0. Front legs under the shoulders, hind legs under the hips;
 # a small haunch / shoulder mass above each so the legs grow out of the body instead of pegs.
 GROUND = 0.0
-legs = [(0.25, 0.26), (0.25, -0.26), (-0.31, 0.27), (-0.31, -0.27)]
+# Hind legs sit under the hips (set back 0.09 from the first pass) and lean back from the hip to a
+# hock above the paw, so front and hind legs read differently in profile.
+HIND_X, HOCK = -0.40, 0.05
+legs = [(0.25, 0.26), (0.25, -0.26), (HIND_X, 0.27), (HIND_X, -0.27)]
 for (x, y) in legs:
-    top = Vector((x, y, 0.50)); foot = Vector((x, y, 0.15))
+    hind = x < 0
+    top = Vector((x + (HOCK if hind else 0), y, 0.50)); foot = Vector((x, y, 0.15))
     B.chain(top, foot, 0.148, 0.135, n=5)
     B.add((x + 0.06, y, GROUND + 0.105), 0.15, size=(1.35, 1.0, 0.70), stiff=2.5)   # paw, toes forward
 for s in (-1, 1):
-    B.add((-0.30, 0.25 * s, 0.56), 0.26, size=(1.1, 0.9, 1.0))  # haunch
+    B.add((HIND_X + 0.03, 0.25 * s, 0.56), 0.26, size=(1.1, 0.9, 1.0))  # haunch
     B.add((0.24, 0.24 * s, 0.58), 0.21)                        # shoulder
 # short fluffy tail rising from the rump and curling up (slightly to the far side so it reads in 3/4)
 for co, r in [((-0.50, 0.03, 0.74), 0.23), ((-0.64, 0.07, 0.88), 0.22), ((-0.71, 0.10, 1.04), 0.19)]:
@@ -127,11 +139,12 @@ nb, _ = snap((sx + 1, 0, zf), (sx, 0, zf))     # philtrum foot on the snout fron
 lobe = {}
 for s in (-1, 1):
     # each lobe: cast sideways from the snout axis -> points ON the snout flank, a smile that dips then rises
-    lobe[s] = [snap((x, s, z), (x, 0, z))[0] for (x, z) in ((1.135, zf - 0.030), (1.09, zf - 0.050), (1.04, zf - 0.044), (0.99, zf - 0.016), (0.955, zf + 0.012))]
+    # a short smile: the corner ends under the front edge of the eye and turns gently up (no down-hook)
+    lobe[s] = [snap((x, s, z), (x, 0, z))[0] for (x, z) in ((1.135, zf - 0.036), (1.10, zf - 0.028), (1.06, zf - 0.015), (1.025, zf + 0.002))]
     print('  mouth lobe', s, [tuple(round(v, 3) for v in q) for q in lobe[s]])
-smile = list(reversed(lobe[-1])) + [nb] + lobe[1]
-parts.append(assign(tube('mouth', [tuple(q) for q in smile], [0.007, 0.010, 0.012, 0.012, 0.012, 0.012, 0.012, 0.012, 0.012, 0.010, 0.007], res=8), mat_nose))
-parts.append(assign(tube('philtrum', [tuple(top), tuple(top.lerp(nb, 0.45)), tuple(top.lerp(nb, 0.85))], [0.011, 0.011, 0.009], res=6), mat_nose))
+mid, _ = snap((sx + 1, 0, zf - 0.040), (sx, 0, zf - 0.040))   # the smile's low point is its centre
+smile = list(reversed(lobe[-1])) + [mid] + lobe[1]
+parts.append(assign(tube('mouth', [tuple(q) for q in smile], [0.007, 0.010, 0.012, 0.012, 0.012, 0.012, 0.012, 0.010, 0.007], res=8), mat_nose))
 MOUTH = smile
 # ember flame on the tail tip: outer teardrop + pale core (as D)
 fl = ellipsoid('ember', (-0.73, 0.11, 1.27), (0.19, 0.19, 0.30), rot=(0, -12, 0), taper=0.88)
@@ -167,6 +180,16 @@ def ear_tip(co, nm):
     return bm & m
 
 
+def ear_back(co, nm):
+    """The back of each ear above its root: dark brown, so the near ear reads against the orange skull."""
+    m = np.zeros(len(co), dtype=bool)
+    for s in (-1, 1):
+        l = ear_local(co, s)
+        inside = (l[:, 0] / 0.16) ** 2 + (l[:, 1] / 0.33) ** 2 + (l[:, 2] / 0.53) ** 2 < 1.0
+        m |= inside & (l[:, 0] < 0.02) & (l[:, 2] > -0.10)
+    return bm & m
+
+
 def mask(co, nm):
     # fox mask: snout + cheeks. Seen from the side the top edge runs from just under the eye
     # diagonally back and down along the jaw (no vertical cut); toward the flanks it sweeps up the cheek.
@@ -182,8 +205,9 @@ zones = [
     (lambda co, nm: bm & (((co[:, 0] - 0.56) / 0.26) ** 2 + (co[:, 1] / 0.30) ** 2 + ((co[:, 2] - 0.66) / 0.30) ** 2 < 1), CREAM),       # chest bib
     (mask, CREAM),
     (inner_ear, CREAM),
+    (ear_back, EAR_BACK),
     (ear_tip, SOOT),
-    (lambda co, nm: bm & (co[:, 2] < 0.27) & (co[:, 0] > -0.55), SOOT),   # sooty socks, same height on all four
+    (lambda co, nm: bm & (co[:, 2] < 0.27) & (co[:, 0] > -0.62), SOOT),   # sooty socks, same height on all four
 ]
 paint_zones(body, ORANGE, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=1)

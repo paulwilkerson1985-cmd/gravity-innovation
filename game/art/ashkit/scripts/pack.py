@@ -33,6 +33,7 @@ def bleed(a, iters=6):
 
 
 report = {}
+extent = {}      # per view: widest opaque reach left / right of the feet over every frame, in rest heights
 sheet_rows = []
 for vn, vm in meta['views'].items():
     for cn, nf in meta['clips'].items():
@@ -68,6 +69,14 @@ for vn, vm in meta['views'].items():
         Image.fromarray(atlas).save(wp, 'WEBP', lossless=True, quality=100, method=6, exact=True)
         ax, ay = vm['anchor']
         ax, ay = ax * SC, ay * SC
+        # Opaque extents (alpha > 50 %) per frame rel. to the feet anchor: [left x, right x, top y] (sheet px, y up).
+        ext = []
+        for im in ims:
+            oy, ox = np.where(im[..., 3] > 127)
+            ext.append([round(float(ox.min() - ax), 1), round(float(ox.max() + 1 - ax), 1), round(float(ay - oy.min()), 1)])
+        rest = vm['rest_h_px'] * SC
+        e = extent.setdefault(vn, dict(left=0.0, right=0.0))
+        e['left'] = max(e['left'], max(-x[0] for x in ext) / rest); e['right'] = max(e['right'], max(x[1] for x in ext) / rest)
         j = dict(
             image=name + '.webp', kin='ashkit', clip=cn, view=vn,
             viewNote=('front 3/4 facing right (foe; mirror X to face left)' if vn == 'front'
@@ -82,6 +91,7 @@ for vn, vm in meta['views'].items():
             restHeightPx=round(vm['rest_h_px'] * SC, 1),
             rootOffsetPx=[[round(a * SC, 2), round(b * SC, 2)] for a, b in vm['root_px'][cn]],
             events=EVENTS[cn],
+            opaqueExt=ext,
             frames=rects,
         )
         json.dump(j, open(os.path.join(OUT, name + '.json'), 'w'), indent=1, default=int)
@@ -113,6 +123,8 @@ for label, ims, (ax, ay) in sheet_rows:
 sp = os.path.join(OUT, 'contact_sheet.png')
 sheet.save(sp)
 tot_b = sum(v['bytes'] for v in report.values()); tot_g = sum(v['gpu_mb'] for v in report.values())
+report['_extent'] = {k: {kk: round(vv, 4) for kk, vv in v.items()} for k, v in extent.items()}
+print('SHEET_EXTENT (hires.ts)', report['_extent'])
 report['_total'] = dict(bytes=tot_b, gpu_mb=round(tot_g, 2), gpu_mb_mips=round(tot_g * 4 / 3, 2))
 json.dump(report, open(os.path.join(OUT, 'sizes.json'), 'w'), indent=1)
 print('total', report['_total'], 'sheet', sp)

@@ -7,7 +7,13 @@ planted paws never slide when the body breathes or crouches.  'blink' shape key 
 The step-1 'battle' head turn is baked into the rest mesh first (bones placed on the turned head).
 
 Env: VIEWS=front,back  CLIPS=idle,attack,hit,faint  FRAMES=0,3 (subset)  SPP=12  SIZE=512
-     OUT=<frames dir>  ELEV_BACK=30  YAW_BACK=-35  DRY=1 (no render; framing + checks only)
+     OUT=<frames dir>  ELEV_BACK=30  YAW_BACK=-12  HEAD_BACK=20  DRY=1 (no render; framing + checks only)
+Gate-1 fixes (2026-10-16, ../review/GATE.md): the back view (your kin) moved from -35 to -12 yaw so the face
+shows (owner default); hind legs follow the model (under the hips); a deeper attack crouch that reads from
+above and behind; faint paws stay on the ground plane.
+Gate-2 round 2: at -12 the two ears line up into one spike (every judge), so the back view also turns the
+head HEAD_BACK degrees further toward the camera (on top of the baked 16 deg battle turn): the ears separate
+and more of the face shows. Back view only; the front view is unchanged.
 """
 import sys, os, time, math, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -74,7 +80,8 @@ def ear_R(s):
     return np.array(Euler([math.radians(a) for a in (EAR['rx'] * s, EAR['ry'], 0)], 'XYZ').to_matrix())
 
 
-LEGS = {'leg_f.L': (0.25, 0.26), 'leg_f.R': (0.25, -0.26), 'leg_b.L': (-0.31, 0.27), 'leg_b.R': (-0.31, -0.27)}
+HIND_X = -0.40   # as ashkit_v2.py (hind legs under the hips)
+LEGS = {'leg_f.L': (0.25, 0.26), 'leg_f.R': (0.25, -0.26), 'leg_b.L': (HIND_X, 0.27), 'leg_b.R': (HIND_X, -0.27)}
 arm_d = bpy.data.armatures.new('rig'); arm = link(bpy.data.objects.new('rig', arm_d))
 activate(arm); bpy.ops.object.mode_set(mode='EDIT')
 eb = arm_d.edit_bones
@@ -102,7 +109,8 @@ for s, side in ((1, 'L'), (-1, 'R')):
     p = head_xform([c - ax * 0.12, c + ax * 0.45])
     bone(f'ear.{side}', p[0], p[1], 'head')
 for nm, (x, y) in LEGS.items():
-    bone(nm, (x + 0.03, y, 0.46), (x + 0.03, y, 0.04), 'root')
+    top = x + (0.06 if x < 0 else 0.03)   # hind legs lean back from the hip to the hock (ashkit_v2.py HOCK)
+    bone(nm, (top, y, 0.46), (x + 0.01 if x < 0 else x + 0.03, y, 0.04), 'root')
 bone('tail1', (-0.50, 0.03, 0.78), (-0.64, 0.07, 0.95), 'hips')
 bone('tail2', (-0.64, 0.07, 0.95), (-0.71, 0.10, 1.13), 'tail1')
 bone('tail3', (-0.71, 0.10, 1.13), (-0.73, 0.11, 1.55), 'tail2')
@@ -183,11 +191,20 @@ def wq(roll=0.0, pitch_up=0.0, yaw_l=0.0):
             @ Quaternion((1, 0, 0), math.radians(roll)))
 
 
+HEAD_BACK = float(os.environ.get('HEAD_BACK', 20))
+VIEW_HEAD_YAW = {'front': 0.0, 'back': -HEAD_BACK}   # extra head yaw per view (negative swings the snout toward -Y, the camera side)
+head_yaw = 0.0
+
+
 def apply_pose(P):
-    """P: {bone: dict(r=(roll,pitch_up,yaw_l), l=(x,y,z) world, s=float|(sa,sy,sa))}; 'blink': 0..1."""
+    """P: {bone: dict(r=(roll,pitch_up,yaw_l), l=(x,y,z) world, s=float|(sa,sy,sa))}; 'blink': 0..1.
+    The global head_yaw (set per view) is added to the head's yaw."""
     for nm in BONES:
         pb = arm.pose.bones[nm]; p = P.get(nm, {})
-        q = wq(*p.get('r', (0, 0, 0)))
+        r = p.get('r', (0, 0, 0))
+        if nm == 'head':
+            r = (r[0], r[1], r[2] + head_yaw)
+        q = wq(*r)
         pb.rotation_quaternion = RQ[nm].inverted() @ q @ RQ[nm]
         pb.location = RM[nm].inverted() @ Vector(p.get('l', (0, 0, 0)))
         s = p.get('s', 1.0)
@@ -283,8 +300,10 @@ def clip_attack():
     """Pounce, 14 frames: 0 rest | 1-3 anticipation crouch (weight back, ears pinned, tail up) | 4 launch
     (stretch 1.12 along the leap) | 5 airborne reach | 6-7 contact squash, held one frame | 8 rebound hop |
     9-10 land back | 11-13 settle with a small overshoot."""
-    crouch = {'cog': dict(l=(-0.07, 0, -0.06), s=(1.05, 0.91, 1.05)), 'body': dict(r=(0, 4, 0)),
-              'chest': dict(r=(0, -6, 0)), 'head': dict(r=(0, -2, 0)),
+    # a deep crouch (body low, head pushed down toward the target) so the anticipation reads from above
+    # and behind as well as from the front
+    crouch = {'cog': dict(l=(-0.09, 0, -0.11), s=(1.08, 0.85, 1.08)), 'body': dict(r=(0, 6, 0)),
+              'chest': dict(r=(0, -10, 0)), 'head': dict(r=(0, -9, 0)),
               'ear.L': dict(r=(0, -24, 0)), 'ear.R': dict(r=(0, -24, 0)),
               'tail1': dict(r=(0, 14, 0)), 'tail2': dict(r=(0, 10, 0)), 'tail3': dict(r=(0, 6, 0)),
               **legs(front=(0, -6, 0), back=(0, 4, 0))}
@@ -356,13 +375,14 @@ def clip_faint():
               'ear.L': dict(r=(8, -20, 0)), 'ear.R': dict(r=(-8, -20, 0)),
               'tail1': dict(r=(0, -18, 0)), 'tail2': dict(r=(0, -20, 0)), 'tail3': dict(r=(0, -10, 0)),
               **legs(front=(0, 30, 0), back=(0, -30, 0)), 'blink': 0.8}
-    down = {'cog': dict(l=(0.0, 0, -0.17), s=(1.05, 0.88, 1.05)), 'body': dict(r=(10, -3, 0)),
+    down = {'cog': dict(l=(0.0, 0, -0.16), s=(1.05, 0.88, 1.05)), 'body': dict(r=(10, -3, 0)),
             'chest': dict(r=(0, -6, 0)), 'head': dict(r=(8, -20, -4)),
             'ear.L': dict(r=(12, -26, 0)), 'ear.R': dict(r=(-10, -26, 0)),
             'tail1': dict(r=(0, -34, 0)), 'tail2': dict(r=(0, -34, 0)), 'tail3': dict(r=(0, -18, 0)),
-            'leg_f.L': dict(r=(0, 62, 0), l=(0, 0, -0.04)), 'leg_f.R': dict(r=(0, 62, 0), l=(0, 0, -0.04)),
-            'leg_b.L': dict(r=(0, -62, 0), l=(0, 0, -0.04)), 'leg_b.R': dict(r=(0, -62, 0), l=(0, 0, -0.04)), 'blink': 1.0}
-    settle = blend(down, {**down, 'cog': dict(l=(0.0, 0, -0.175), s=(1.06, 0.87, 1.06)),
+            # legs fold flat; lowered only as far as keeps the paws ON the ground plane (was -0.04: a 2 px sink)
+            'leg_f.L': dict(r=(0, 62, 0), l=(0, 0, -0.031)), 'leg_f.R': dict(r=(0, 62, 0), l=(0, 0, -0.031)),
+            'leg_b.L': dict(r=(0, -62, 0), l=(0, 0, -0.031)), 'leg_b.R': dict(r=(0, -62, 0), l=(0, 0, -0.031)), 'blink': 1.0}
+    settle = blend(down, {**down, 'cog': dict(l=(0.0, 0, -0.164), s=(1.06, 0.87, 1.06)),
                           'head': dict(r=(8, -22, -4))}, 1.0)
     keys = {0: REST, 1: flinch, 2: sway1, 3: sway2, 5: buckle, 7: down, 8: settle, 9: settle}
     return keyed(keys, 10, kinds={5: 'in'})
@@ -402,12 +422,20 @@ for cn in CLIPS:
 print('checks', json.dumps(checks))
 
 # ------------------------------------------------------------------ cameras / framing (one camera per view, shared by all clips)
-VIEWS = {'front': (35.0, 12.0), 'back': (float(os.environ.get('YAW_BACK', -35)), float(os.environ.get('ELEV_BACK', 30)))}
-ANCHOR_W = np.array((0.03, 0.0, 0.0))
-allp = np.vstack([v[::7] for v in pts_cache.values()])
+VIEWS = {'front': (35.0, 12.0), 'back': (float(os.environ.get('YAW_BACK', -12)), float(os.environ.get('ELEV_BACK', 30)))}
+ANCHOR_W = np.array(((0.25 + HIND_X) / 2 + 0.06, 0.0, 0.0))   # middle of the four paws (toes forward 0.06)
 restH = {}
 CAM = {}
 for vn, (yaw, elev) in VIEWS.items():
+    head_yaw = VIEW_HEAD_YAW[vn]
+    if head_yaw:   # frame this view on its own head turn
+        vc = {}
+        for cn, poses in CLIPS.items():
+            for f, P in enumerate(poses):
+                apply_pose(P); vc[(cn, f)] = eval_pts()
+    else:
+        vc = pts_cache
+    allp = np.vstack([v[::7] for v in vc.values()]); rest = vc[('idle', 0)]
     d, rot, right, up = camera_basis(yaw, elev)
     R, U = np.array(right), np.array(up)
     xs, ys = allp @ R, allp @ U
@@ -428,6 +456,8 @@ cam = link(bpy.data.objects.new('cam', cd)); sc.camera = cam
 
 
 def set_view(vn):
+    global head_yaw
+    head_yaw = VIEW_HEAD_YAW[vn]
     c = CAM[vn]
     cd.ortho_scale = c['ortho']
     cam.location = c['center'] + c['d'] * 30
@@ -486,6 +516,7 @@ mp = os.path.join(OUTF, 'meta.json')
 if os.path.exists(mp) and sel_f:
     old = json.load(open(mp)); old['timing'].update(meta['timing']); meta['timing'] = old['timing']
 json.dump(meta, open(mp, 'w'), indent=1, default=lambda v: list(v))
+head_yaw = 0.0
 apply_pose(REST)
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(PRE, 'ashkit_rig.blend'), compress=True)
 print(f'ANIM total {time.perf_counter() - T0:.1f}s')

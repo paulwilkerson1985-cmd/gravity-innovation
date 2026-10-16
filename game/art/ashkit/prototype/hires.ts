@@ -295,8 +295,9 @@ export interface KinRect { x0: number; x1: number; y0: number; y1: number }
 
 /** PRERENDER: a sheet kin's opaque extents rel. to its feet, as a fraction of its rest height (all clips, all frames). */
 export const SHEET_EXTENT: Record<SheetView, { left: number; right: number }> = {
-  back: { left: 194 / 425.2, right: 222 / 425.2 },
-  front: { left: 188 / 436.2, right: 219 / 436.2 },
+  // Gate 2 sheets (back view at -12 yaw with a 20 deg head turn, side-on: the tail and the lunge reach further); pack.py prints these.
+  back: { left: 0.544, right: 0.577 },
+  front: { left: 0.443, right: 0.516 },
 };
 
 const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion();

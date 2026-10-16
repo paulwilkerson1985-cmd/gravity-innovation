@@ -266,6 +266,15 @@ const lin = (k: number) => k;
 const outQuart = (k: number) => 1 - (1 - k) ** 4;
 /** Contact distance toward the target (units), as in the tweened lunge. */
 const REACH = 0.95;
+/**
+ * The hit target stays drawn (flashed) this long after impact before the blink strobe starts: one
+ * 12 fps drawing of a pre-rendered attacker plus a frame, so the contact frame shows the blow land.
+ */
+export const HIT_CONTACT_HOLD_MS = 100;
+/** Is a tweened hit's target drawn at progress k of a `durMs` reaction? (strobe after the contact hold) */
+export function hitStrobeOn(k: number, durMs: number, calm = false): boolean {
+  return calm || k * durMs < HIT_CONTACT_HOLD_MS || (Math.floor(k * 9) % 2 === 0 && k < 0.7);
+}
 
 export type Archetype = 'quad' | 'blob' | 'fly' | 'serp';
 export const archetypeOf = (idle: IdleStyle): Archetype =>
@@ -715,13 +724,14 @@ export class CreatureView {
       this.body.quaternion.setFromAxisAngle(back, -0.12);
       await tween(70, () => {});
     }
-    await tween(strong ? 420 : 320, (k) => {
+    const dur = strong ? 420 : 320;
+    await tween(dur, (k) => {
       const sp = spring(k, strong ? 2.5 : 2, 4.5);
       this.body.quaternion.setFromAxisAngle(back, -amp * sp);
       this.squash(1 - 0.18 * Math.max(0, sp));
       this.inner.position.z = z0 - Math.sin(Math.min(1, k * 1.6) * Math.PI) * (strong ? 0.22 : 0.14) * (1 - k * 0.5);
       this.inner.position.x = x0 + Math.sin(k * Math.PI * 7) * 0.05 * (1 - k);
-      const on = o.calm || k < 0.08 || (Math.floor(k * 9) % 2 === 0 && k < 0.7);
+      const on = hitStrobeOn(k, dur, o.calm);
       const f = on ? (strong ? 1 : 0.85) * (1 - k * 0.6) : 0;
       this.material.emissive.setRGB(f, f, f);
       this.blinkOff = !on && k < 0.7;
