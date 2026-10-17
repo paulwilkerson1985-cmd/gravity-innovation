@@ -30,7 +30,7 @@ B.add((0.90, 0, 1.10), 0.19, stiff=3.0)                           # jaw block
 B.add((0.88, 0, 1.39), 0.20, size=(1.0, 1.25, 0.55), stiff=4.0)
 # rock plates: a few firm bumps on the shoulders and hump so the boulder skin reads in the silhouette
 for (x, y, z, r) in [(0.30, 0.62, 1.60, 0.16), (0.12, -0.58, 1.58, 0.15), (-0.40, 0.22, 1.42, 0.17), (-0.48, -0.20, 1.20, 0.15), (-0.05, 0.0, 1.72, 0.14), (0.42, -0.30, 1.52, 0.12)]:
-    B.add((x, y, z), r, stiff=4.0)
+    B.add((x, y, z), r, stiff=3.0)        # (3.0, was 4.0: the base fillets instead of an inked crease ring)
 # arms: from the shoulders down-forward to fists on the ground, outside the torso (near fist a little forward)
 ARMS = {1: (0.62, 0.70), -1: (0.86, 0.74)}
 for s, (fx, fy) in ARMS.items():

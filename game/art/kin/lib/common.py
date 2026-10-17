@@ -103,7 +103,7 @@ def ellipsoid(name, loc, scale, rot=(0, 0, 0), segs=32, rings=16, taper=None, ta
     if taper is not None:
         me = o.data
         co = np.empty(len(me.vertices) * 3); me.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
-        t = (co[:, taper_axis] + 1) / 2  # 0 at -axis, 1 at +axis
+        t = np.clip((co[:, taper_axis] + 1) / 2, 0, 1)  # 0 at -axis, 1 at +axis (clipped: t**1.6 of a hair below 0 is NaN)
         f = 1 - taper * t ** 1.6
         for ax in range(3):
             if ax != taper_axis:

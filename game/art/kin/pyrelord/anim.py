@@ -9,7 +9,7 @@ import sheetkit  # noqa: F401  (imports bpy before mathutils)
 from quadrig import run_quad
 
 SPEC = dict(
-    name='pyrelord', blend='pyrelord_final.blend',
+    name='pyrelord', blend='pyrelord_final.blend', eye_slots=('eye', 'pupil'),     # the pupils close with the lids
     turn=(16.0, 4.0, (0.62, 0.0, 1.52)),                       # as model.py's 'battle' key
     head_zone=(1.70, 1.92, 0.92, 1.10, 1.55, 1.75, 0.10, 0.35),
     ear=dict(c=(0.80, 0.30, 2.42), rx=-24, ry=-30, w=(0.15, 0.27)),

@@ -138,7 +138,7 @@ def run_quad(S, here):
     if T:
         W['tail1'] = Tw * (1 - f2); W['tail2'] = Tw * f2 * (1 - f3); W['tail3'] = Tw * f2 * f3
     kit.set_weights(W)
-    kit.add_blink(head_centre=S['eye_centre'])
+    kit.add_blink(head_centre=S['eye_centre'], eye_slots=S.get('eye_slots', ('eye',)))   # e.g. ('eye', 'pupil')
 
     # ---------------------------------------------------------------- clips, views, run
     M = S['motion']
