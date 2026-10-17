@@ -1,0 +1,139 @@
+{
+ "image": "pyrelord_hit_back.webp",
+ "kin": "pyrelord",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 5.3163,
+  "pxPerUnit": 48.155
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 325,
+  "h": 446
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 51.5,
+  "y": 60
+ },
+ "anchor": {
+  "x": 82,
+  "y": 133,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 133.5,
+  "y": 193
+ },
+ "restHeightPx": 140.3,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -7.3,
+   0.775
+  ],
+  [
+   -5.84,
+   0.62
+  ],
+  [
+   1.46,
+   -0.155
+  ],
+  [
+   0.44,
+   -0.045
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -71.5,
+   77,
+   129
+  ],
+  [
+   -67.5,
+   58.5,
+   125
+  ],
+  [
+   -66.5,
+   63,
+   126.5
+  ],
+  [
+   -81,
+   77.5,
+   132.5
+  ],
+  [
+   -73.5,
+   77,
+   130
+  ],
+  [
+   -71.5,
+   77,
+   129
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 160.5,
+   "h": 146.5
+  },
+  {
+   "x": 163.5,
+   "y": 1,
+   "w": 160.5,
+   "h": 146.5
+  },
+  {
+   "x": 1,
+   "y": 149.5,
+   "w": 160.5,
+   "h": 146.5
+  },
+  {
+   "x": 163.5,
+   "y": 149.5,
+   "w": 160.5,
+   "h": 146.5
+  },
+  {
+   "x": 1,
+   "y": 298,
+   "w": 160.5,
+   "h": 146.5
+  },
+  {
+   "x": 163.5,
+   "y": 298,
+   "w": 160.5,
+   "h": 146.5
+  }
+ ],
+ "scale": 0.5
+}

@@ -1,0 +1,139 @@
+{
+ "image": "rillback_hit_front.webp",
+ "kin": "rillback",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 3.927,
+  "pxPerUnit": 65.19
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 406,
+  "h": 390
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 16.5,
+  "y": 66
+ },
+ "anchor": {
+  "x": 108.5,
+  "y": 116.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 125,
+  "y": 182.5
+ },
+ "restHeightPx": 116.75,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -5.605,
+   -0.815
+  ],
+  [
+   -4.485,
+   -0.655
+  ],
+  [
+   1.12,
+   0.165
+  ],
+  [
+   0.335,
+   0.05
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -102.5,
+   91.5,
+   108
+  ],
+  [
+   -107.5,
+   79.5,
+   115.5
+  ],
+  [
+   -106.5,
+   83,
+   115
+  ],
+  [
+   -99.5,
+   91,
+   109.5
+  ],
+  [
+   -101.5,
+   91,
+   108.5
+  ],
+  [
+   -102.5,
+   91.5,
+   108
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 201,
+   "h": 128
+  },
+  {
+   "x": 204,
+   "y": 1,
+   "w": 201,
+   "h": 128
+  },
+  {
+   "x": 1,
+   "y": 131,
+   "w": 201,
+   "h": 128
+  },
+  {
+   "x": 204,
+   "y": 131,
+   "w": 201,
+   "h": 128
+  },
+  {
+   "x": 1,
+   "y": 261,
+   "w": 201,
+   "h": 128
+  },
+  {
+   "x": 204,
+   "y": 261,
+   "w": 201,
+   "h": 128
+  }
+ ],
+ "scale": 0.5
+}

@@ -1,0 +1,139 @@
+{
+ "image": "petalwisp_hit_back.webp",
+ "kin": "petalwisp",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 1.537,
+  "pxPerUnit": 166.555
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 383,
+  "h": 417
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 50.5,
+  "y": 21.5
+ },
+ "anchor": {
+  "x": 73,
+  "y": 212.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 123.5,
+  "y": 234
+ },
+ "restHeightPx": 188.05,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -13.035,
+   -7.27
+  ],
+  [
+   -10.425,
+   -5.815
+  ],
+  [
+   1.63,
+   2.71
+  ],
+  [
+   0.49,
+   0.815
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -62.5,
+   51.5,
+   197.5
+  ],
+  [
+   -72,
+   51,
+   211.5
+  ],
+  [
+   -70.5,
+   51.5,
+   210.5
+  ],
+  [
+   -58,
+   49.5,
+   189
+  ],
+  [
+   -61.5,
+   51,
+   195
+  ],
+  [
+   -62.5,
+   51.5,
+   197.5
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 125.5,
+   "h": 206.5
+  },
+  {
+   "x": 128.5,
+   "y": 1,
+   "w": 125.5,
+   "h": 206.5
+  },
+  {
+   "x": 256,
+   "y": 1,
+   "w": 125.5,
+   "h": 206.5
+  },
+  {
+   "x": 1,
+   "y": 209.5,
+   "w": 125.5,
+   "h": 206.5
+  },
+  {
+   "x": 128.5,
+   "y": 209.5,
+   "w": 125.5,
+   "h": 206.5
+  },
+  {
+   "x": 256,
+   "y": 209.5,
+   "w": 125.5,
+   "h": 206.5
+  }
+ ],
+ "scale": 0.5
+}

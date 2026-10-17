@@ -1,0 +1,139 @@
+{
+ "image": "cindertail_hit_front.webp",
+ "kin": "cindertail",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 3.5439,
+  "pxPerUnit": 72.235
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 467,
+  "h": 386
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 58.5,
+  "y": 35.5
+ },
+ "anchor": {
+  "x": 80.5,
+  "y": 183.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 139,
+  "y": 219
+ },
+ "restHeightPx": 184.55,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -7.395,
+   -1.075
+  ],
+  [
+   -5.915,
+   -0.86
+  ],
+  [
+   1.48,
+   0.215
+  ],
+  [
+   0.445,
+   0.065
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -75,
+   71,
+   180
+  ],
+  [
+   -78.5,
+   49.5,
+   169.5
+  ],
+  [
+   -77.5,
+   55,
+   172.5
+  ],
+  [
+   -80,
+   72,
+   182.5
+  ],
+  [
+   -76.5,
+   71,
+   180.5
+  ],
+  [
+   -75,
+   71,
+   180
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 153.5,
+   "h": 191
+  },
+  {
+   "x": 156.5,
+   "y": 1,
+   "w": 153.5,
+   "h": 191
+  },
+  {
+   "x": 312,
+   "y": 1,
+   "w": 153.5,
+   "h": 191
+  },
+  {
+   "x": 1,
+   "y": 194,
+   "w": 153.5,
+   "h": 191
+  },
+  {
+   "x": 156.5,
+   "y": 194,
+   "w": 153.5,
+   "h": 191
+  },
+  {
+   "x": 312,
+   "y": 194,
+   "w": 153.5,
+   "h": 191
+  }
+ ],
+ "scale": 0.5
+}

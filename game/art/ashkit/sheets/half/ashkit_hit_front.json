@@ -1,0 +1,139 @@
+{
+ "image": "ashkit_hit_front.webp",
+ "kin": "ashkit",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 2.806,
+  "pxPerUnit": 91.235
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 548,
+  "h": 427
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 28.5,
+  "y": 24
+ },
+ "anchor": {
+  "x": 85.5,
+  "y": 201.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 114,
+  "y": 225.5
+ },
+ "restHeightPx": 204.05,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -7.475,
+   -1.09
+  ],
+  [
+   -5.98,
+   -0.87
+  ],
+  [
+   1.495,
+   0.22
+  ],
+  [
+   0.45,
+   0.065
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -73.5,
+   94,
+   197
+  ],
+  [
+   -84.5,
+   78.5,
+   183.5
+  ],
+  [
+   -82,
+   82.5,
+   187.5
+  ],
+  [
+   -70,
+   94.5,
+   201
+  ],
+  [
+   -72.5,
+   94.5,
+   198.5
+  ],
+  [
+   -73.5,
+   94,
+   197
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 180.5,
+   "h": 211.5
+  },
+  {
+   "x": 183.5,
+   "y": 1,
+   "w": 180.5,
+   "h": 211.5
+  },
+  {
+   "x": 366,
+   "y": 1,
+   "w": 180.5,
+   "h": 211.5
+  },
+  {
+   "x": 1,
+   "y": 214.5,
+   "w": 180.5,
+   "h": 211.5
+  },
+  {
+   "x": 183.5,
+   "y": 214.5,
+   "w": 180.5,
+   "h": 211.5
+  },
+  {
+   "x": 366,
+   "y": 214.5,
+   "w": 180.5,
+   "h": 211.5
+  }
+ ],
+ "scale": 0.5
+}

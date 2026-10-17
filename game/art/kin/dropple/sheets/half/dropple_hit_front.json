@@ -1,0 +1,139 @@
+{
+ "image": "dropple_hit_front.webp",
+ "kin": "dropple",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 2.424,
+  "pxPerUnit": 105.61
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 509,
+  "h": 410
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 47,
+  "y": 44
+ },
+ "anchor": {
+  "x": 83.5,
+  "y": 194,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 130.5,
+  "y": 238
+ },
+ "restHeightPx": 189.7,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -5.19,
+   -5.95
+  ],
+  [
+   -4.15,
+   -5.325
+  ],
+  [
+   0.865,
+   -2.185
+  ],
+  [
+   0.26,
+   -0.67
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -81,
+   77.5,
+   187
+  ],
+  [
+   -82.5,
+   83,
+   167
+  ],
+  [
+   -82,
+   82,
+   172.5
+  ],
+  [
+   -80,
+   74.5,
+   193
+  ],
+  [
+   -80.5,
+   76.5,
+   189
+  ],
+  [
+   -81,
+   77.5,
+   187
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 167.5,
+   "h": 203
+  },
+  {
+   "x": 170.5,
+   "y": 1,
+   "w": 167.5,
+   "h": 203
+  },
+  {
+   "x": 340,
+   "y": 1,
+   "w": 167.5,
+   "h": 203
+  },
+  {
+   "x": 1,
+   "y": 206,
+   "w": 167.5,
+   "h": 203
+  },
+  {
+   "x": 170.5,
+   "y": 206,
+   "w": 167.5,
+   "h": 203
+  },
+  {
+   "x": 340,
+   "y": 206,
+   "w": 167.5,
+   "h": 203
+  }
+ ],
+ "scale": 0.5
+}

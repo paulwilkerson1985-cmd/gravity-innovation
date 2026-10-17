@@ -1,0 +1,139 @@
+{
+ "image": "pebblet_hit_front.webp",
+ "kin": "pebblet",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 1.4816,
+  "pxPerUnit": 172.78
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 663,
+  "h": 445
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 6.5,
+  "y": 18.5
+ },
+ "anchor": {
+  "x": 117.5,
+  "y": 216.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 124,
+  "y": 235
+ },
+ "restHeightPx": 207.05,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -7.645,
+   -2.195
+  ],
+  [
+   -6.115,
+   -1.875
+  ],
+  [
+   1.275,
+   -1.335
+  ],
+  [
+   0.38,
+   -0.4
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -106,
+   100.5,
+   208
+  ],
+  [
+   -116.5,
+   96.5,
+   181
+  ],
+  [
+   -115,
+   97.5,
+   187
+  ],
+  [
+   -103,
+   100,
+   216
+  ],
+  [
+   -105,
+   100.5,
+   210
+  ],
+  [
+   -106,
+   100.5,
+   208
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 219,
+   "h": 220.5
+  },
+  {
+   "x": 222,
+   "y": 1,
+   "w": 219,
+   "h": 220.5
+  },
+  {
+   "x": 443,
+   "y": 1,
+   "w": 219,
+   "h": 220.5
+  },
+  {
+   "x": 1,
+   "y": 223.5,
+   "w": 219,
+   "h": 220.5
+  },
+  {
+   "x": 222,
+   "y": 223.5,
+   "w": 219,
+   "h": 220.5
+  },
+  {
+   "x": 443,
+   "y": 223.5,
+   "w": 219,
+   "h": 220.5
+  }
+ ],
+ "scale": 0.5
+}

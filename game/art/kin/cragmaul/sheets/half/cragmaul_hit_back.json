@@ -1,0 +1,139 @@
+{
+ "image": "cragmaul_hit_back.webp",
+ "kin": "cragmaul",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 3.3439,
+  "pxPerUnit": 76.555
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 375,
+  "h": 537
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 7.5,
+  "y": 44.5
+ },
+ "anchor": {
+  "x": 93,
+  "y": 150,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 100.5,
+  "y": 194.5
+ },
+ "restHeightPx": 170.4,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -9.735,
+   1.035
+  ],
+  [
+   -7.79,
+   0.83
+  ],
+  [
+   1.945,
+   -0.205
+  ],
+  [
+   0.585,
+   -0.06
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -74,
+   81.5,
+   145.5
+  ],
+  [
+   -92.5,
+   92,
+   138
+  ],
+  [
+   -88.5,
+   90,
+   140
+  ],
+  [
+   -71,
+   81.5,
+   149
+  ],
+  [
+   -73,
+   81.5,
+   146.5
+  ],
+  [
+   -74,
+   81.5,
+   145.5
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 185.5,
+   "h": 177
+  },
+  {
+   "x": 188.5,
+   "y": 1,
+   "w": 185.5,
+   "h": 177
+  },
+  {
+   "x": 1,
+   "y": 180,
+   "w": 185.5,
+   "h": 177
+  },
+  {
+   "x": 188.5,
+   "y": 180,
+   "w": 185.5,
+   "h": 177
+  },
+  {
+   "x": 1,
+   "y": 359,
+   "w": 185.5,
+   "h": 177
+  },
+  {
+   "x": 188.5,
+   "y": 359,
+   "w": 185.5,
+   "h": 177
+  }
+ ],
+ "scale": 0.5
+}

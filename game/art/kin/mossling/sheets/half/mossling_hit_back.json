@@ -1,0 +1,139 @@
+{
+ "image": "mossling_hit_back.webp",
+ "kin": "mossling",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 2.12,
+  "pxPerUnit": 120.755
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 584,
+  "h": 426
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 24,
+  "y": 32
+ },
+ "anchor": {
+  "x": 106,
+  "y": 183.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 130,
+  "y": 215.5
+ },
+ "restHeightPx": 190.35,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -6.735,
+   -4.005
+  ],
+  [
+   -5.385,
+   -3.705
+  ],
+  [
+   1.12,
+   -3.135
+  ],
+  [
+   0.335,
+   -0.88
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -85.5,
+   75.5,
+   171
+  ],
+  [
+   -105,
+   85.5,
+   148.5
+  ],
+  [
+   -101.5,
+   83.5,
+   153.5
+  ],
+  [
+   -79.5,
+   71.5,
+   182.5
+  ],
+  [
+   -83.5,
+   74.5,
+   174
+  ],
+  [
+   -85.5,
+   75.5,
+   171
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 192.5,
+   "h": 211
+  },
+  {
+   "x": 195.5,
+   "y": 1,
+   "w": 192.5,
+   "h": 211
+  },
+  {
+   "x": 390,
+   "y": 1,
+   "w": 192.5,
+   "h": 211
+  },
+  {
+   "x": 1,
+   "y": 214,
+   "w": 192.5,
+   "h": 211
+  },
+  {
+   "x": 195.5,
+   "y": 214,
+   "w": 192.5,
+   "h": 211
+  },
+  {
+   "x": 390,
+   "y": 214,
+   "w": 192.5,
+   "h": 211
+  }
+ ],
+ "scale": 0.5
+}

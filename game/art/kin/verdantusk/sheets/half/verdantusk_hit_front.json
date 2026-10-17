@@ -1,0 +1,139 @@
+{
+ "image": "verdantusk_hit_front.webp",
+ "kin": "verdantusk",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 4.0742,
+  "pxPerUnit": 62.835
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 397,
+  "h": 552
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 17,
+  "y": 36.5
+ },
+ "anchor": {
+  "x": 88.5,
+  "y": 168.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 105.5,
+  "y": 205
+ },
+ "restHeightPx": 174.25,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -7.72,
+   -1.125
+  ],
+  [
+   -6.175,
+   -0.9
+  ],
+  [
+   1.545,
+   0.225
+  ],
+  [
+   0.465,
+   0.065
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -77,
+   107,
+   163
+  ],
+  [
+   -87.5,
+   104,
+   153
+  ],
+  [
+   -85,
+   105.5,
+   155.5
+  ],
+  [
+   -75.5,
+   104.5,
+   167.5
+  ],
+  [
+   -76.5,
+   106,
+   164.5
+  ],
+  [
+   -77,
+   107,
+   163
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 196.5,
+   "h": 182
+  },
+  {
+   "x": 199.5,
+   "y": 1,
+   "w": 196.5,
+   "h": 182
+  },
+  {
+   "x": 1,
+   "y": 185,
+   "w": 196.5,
+   "h": 182
+  },
+  {
+   "x": 199.5,
+   "y": 185,
+   "w": 196.5,
+   "h": 182
+  },
+  {
+   "x": 1,
+   "y": 369,
+   "w": 196.5,
+   "h": 182
+  },
+  {
+   "x": 199.5,
+   "y": 369,
+   "w": 196.5,
+   "h": 182
+  }
+ ],
+ "scale": 0.5
+}

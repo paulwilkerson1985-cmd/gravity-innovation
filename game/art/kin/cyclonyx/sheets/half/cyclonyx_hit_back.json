@@ -1,0 +1,139 @@
+{
+ "image": "cyclonyx_hit_back.webp",
+ "kin": "cyclonyx",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 2.3544,
+  "pxPerUnit": 108.73
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 424,
+  "h": 531
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 12.5,
+  "y": 34
+ },
+ "anchor": {
+  "x": 141.5,
+  "y": 186.5,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 154,
+  "y": 220.5
+ },
+ "restHeightPx": 150.45,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -8.51,
+   -4.745
+  ],
+  [
+   -6.805,
+   -3.795
+  ],
+  [
+   1.065,
+   1.77
+  ],
+  [
+   0.32,
+   0.53
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -138.5,
+   66.5,
+   184
+  ],
+  [
+   -140.5,
+   51,
+   155
+  ],
+  [
+   -141,
+   55,
+   163.5
+  ],
+  [
+   -138,
+   67.5,
+   173
+  ],
+  [
+   -138.5,
+   67,
+   186
+  ],
+  [
+   -138.5,
+   66.5,
+   184
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 210,
+   "h": 175
+  },
+  {
+   "x": 213,
+   "y": 1,
+   "w": 210,
+   "h": 175
+  },
+  {
+   "x": 1,
+   "y": 178,
+   "w": 210,
+   "h": 175
+  },
+  {
+   "x": 213,
+   "y": 178,
+   "w": 210,
+   "h": 175
+  },
+  {
+   "x": 1,
+   "y": 355,
+   "w": 210,
+   "h": 175
+  },
+  {
+   "x": 213,
+   "y": 355,
+   "w": 210,
+   "h": 175
+  }
+ ],
+ "scale": 0.5
+}

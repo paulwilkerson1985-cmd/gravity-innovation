@@ -1,0 +1,139 @@
+{
+ "image": "flickwing_hit_back.webp",
+ "kin": "flickwing",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 1.8798,
+  "pxPerUnit": 136.185
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 459,
+  "h": 391
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 27.5,
+  "y": 31.5
+ },
+ "anchor": {
+  "x": 87.5,
+  "y": 204,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 115,
+  "y": 235.5
+ },
+ "restHeightPx": 158.45,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -10.655,
+   -5.945
+  ],
+  [
+   -8.525,
+   -4.755
+  ],
+  [
+   1.33,
+   2.215
+  ],
+  [
+   0.4,
+   0.665
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -77.5,
+   58,
+   199
+  ],
+  [
+   -86.5,
+   47,
+   194
+  ],
+  [
+   -85,
+   49,
+   191.5
+  ],
+  [
+   -73.5,
+   62.5,
+   203
+  ],
+  [
+   -76.5,
+   59.5,
+   202
+  ],
+  [
+   -77.5,
+   58,
+   199
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 151,
+   "h": 193.5
+  },
+  {
+   "x": 154,
+   "y": 1,
+   "w": 151,
+   "h": 193.5
+  },
+  {
+   "x": 307,
+   "y": 1,
+   "w": 151,
+   "h": 193.5
+  },
+  {
+   "x": 1,
+   "y": 196.5,
+   "w": 151,
+   "h": 193.5
+  },
+  {
+   "x": 154,
+   "y": 196.5,
+   "w": 151,
+   "h": 193.5
+  },
+  {
+   "x": 307,
+   "y": 196.5,
+   "w": 151,
+   "h": 193.5
+  }
+ ],
+ "scale": 0.5
+}

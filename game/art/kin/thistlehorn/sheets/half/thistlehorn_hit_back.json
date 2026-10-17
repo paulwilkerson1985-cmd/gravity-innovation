@@ -1,0 +1,139 @@
+{
+ "image": "thistlehorn_hit_back.webp",
+ "kin": "thistlehorn",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 3.3244,
+  "pxPerUnit": 77.005
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 368,
+  "h": 549
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 18.5,
+  "y": 42.5
+ },
+ "anchor": {
+  "x": 76,
+  "y": 164,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 94.5,
+  "y": 206.5
+ },
+ "restHeightPx": 168.25,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -9.04,
+   0.96
+  ],
+  [
+   -7.23,
+   0.77
+  ],
+  [
+   1.81,
+   -0.19
+  ],
+  [
+   0.54,
+   -0.06
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -66,
+   100.5,
+   156
+  ],
+  [
+   -75,
+   69.5,
+   162.5
+  ],
+  [
+   -73,
+   74,
+   163
+  ],
+  [
+   -63.5,
+   105,
+   155.5
+  ],
+  [
+   -65,
+   102,
+   156
+  ],
+  [
+   -66,
+   100.5,
+   156
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 182,
+   "h": 181
+  },
+  {
+   "x": 185,
+   "y": 1,
+   "w": 182,
+   "h": 181
+  },
+  {
+   "x": 1,
+   "y": 184,
+   "w": 182,
+   "h": 181
+  },
+  {
+   "x": 185,
+   "y": 184,
+   "w": 182,
+   "h": 181
+  },
+  {
+   "x": 1,
+   "y": 367,
+   "w": 182,
+   "h": 181
+  },
+  {
+   "x": 185,
+   "y": 367,
+   "w": 182,
+   "h": 181
+  }
+ ],
+ "scale": 0.5
+}

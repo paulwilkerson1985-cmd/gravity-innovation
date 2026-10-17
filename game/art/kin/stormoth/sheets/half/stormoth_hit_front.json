@@ -1,0 +1,139 @@
+{
+ "image": "stormoth_hit_front.webp",
+ "kin": "stormoth",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 2.2747,
+  "pxPerUnit": 112.545
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 380,
+  "h": 489
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 17,
+  "y": 33
+ },
+ "anchor": {
+  "x": 116.5,
+  "y": 198,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 133.5,
+  "y": 231
+ },
+ "restHeightPx": 129.75,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -7.375,
+   -7.68
+  ],
+  [
+   -5.9,
+   -6.145
+  ],
+  [
+   0.92,
+   2.335
+  ],
+  [
+   0.275,
+   0.7
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -93,
+   68,
+   182.5
+  ],
+  [
+   -116,
+   53,
+   182
+  ],
+  [
+   -113,
+   55,
+   177.5
+  ],
+  [
+   -72,
+   70.5,
+   197
+  ],
+  [
+   -86,
+   69.5,
+   190.5
+  ],
+  [
+   -93,
+   68,
+   182.5
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 188,
+   "h": 161
+  },
+  {
+   "x": 191,
+   "y": 1,
+   "w": 188,
+   "h": 161
+  },
+  {
+   "x": 1,
+   "y": 164,
+   "w": 188,
+   "h": 161
+  },
+  {
+   "x": 191,
+   "y": 164,
+   "w": 188,
+   "h": 161
+  },
+  {
+   "x": 1,
+   "y": 327,
+   "w": 188,
+   "h": 161
+  },
+  {
+   "x": 191,
+   "y": 327,
+   "w": 188,
+   "h": 161
+  }
+ ],
+ "scale": 0.5
+}

@@ -1,0 +1,139 @@
+{
+ "image": "maelstrode_hit_front.webp",
+ "kin": "maelstrode",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 2.2401,
+  "pxPerUnit": 114.28
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 342,
+  "h": 494
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 9,
+  "y": 38.5
+ },
+ "anchor": {
+  "x": 82.5,
+  "y": 152,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 91.5,
+  "y": 190.5
+ },
+ "restHeightPx": 158.25,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -81.5,
+   76,
+   151
+  ],
+  [
+   -81.5,
+   45.5,
+   142.5
+  ],
+  [
+   -81.5,
+   45.5,
+   145.5
+  ],
+  [
+   -81.5,
+   85.5,
+   148
+  ],
+  [
+   -81.5,
+   79,
+   151
+  ],
+  [
+   -81.5,
+   76,
+   151
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 169,
+   "h": 162.5
+  },
+  {
+   "x": 172,
+   "y": 1,
+   "w": 169,
+   "h": 162.5
+  },
+  {
+   "x": 1,
+   "y": 165.5,
+   "w": 169,
+   "h": 162.5
+  },
+  {
+   "x": 172,
+   "y": 165.5,
+   "w": 169,
+   "h": 162.5
+  },
+  {
+   "x": 1,
+   "y": 330,
+   "w": 169,
+   "h": 162.5
+  },
+  {
+   "x": 172,
+   "y": 330,
+   "w": 169,
+   "h": 162.5
+  }
+ ],
+ "scale": 0.5
+}

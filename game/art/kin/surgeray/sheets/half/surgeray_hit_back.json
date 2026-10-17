@@ -1,0 +1,139 @@
+{
+ "image": "surgeray_hit_back.webp",
+ "kin": "surgeray",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 2.4161,
+  "pxPerUnit": 105.955
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 383,
+  "h": 440
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 18.5,
+  "y": 55.5
+ },
+ "anchor": {
+  "x": 122.5,
+  "y": 107,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 141,
+  "y": 162.5
+ },
+ "restHeightPx": 138.2,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -119.5,
+   57,
+   104.5
+  ],
+  [
+   -111.5,
+   25,
+   103.5
+  ],
+  [
+   -113,
+   28,
+   106
+  ],
+  [
+   -121.5,
+   66,
+   100
+  ],
+  [
+   -120,
+   59.5,
+   103.5
+  ],
+  [
+   -119.5,
+   57,
+   104.5
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 189.5,
+   "h": 144.5
+  },
+  {
+   "x": 192.5,
+   "y": 1,
+   "w": 189.5,
+   "h": 144.5
+  },
+  {
+   "x": 1,
+   "y": 147.5,
+   "w": 189.5,
+   "h": 144.5
+  },
+  {
+   "x": 192.5,
+   "y": 147.5,
+   "w": 189.5,
+   "h": 144.5
+  },
+  {
+   "x": 1,
+   "y": 294,
+   "w": 189.5,
+   "h": 144.5
+  },
+  {
+   "x": 192.5,
+   "y": 294,
+   "w": 189.5,
+   "h": 144.5
+  }
+ ],
+ "scale": 0.5
+}

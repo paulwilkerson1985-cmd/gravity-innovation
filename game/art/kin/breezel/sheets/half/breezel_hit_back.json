@@ -1,0 +1,139 @@
+{
+ "image": "breezel_hit_back.webp",
+ "kin": "breezel",
+ "clip": "hit",
+ "view": "back",
+ "viewNote": "back 3/4 from behind-left (your kin), facing right and away",
+ "camera": {
+  "yaw": -12.0,
+  "elevation": 30.0,
+  "ortho": 2.3571,
+  "pxPerUnit": 108.61
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 542,
+  "h": 435
+ },
+ "sourceSize": {
+  "w": 256,
+  "h": 256
+ },
+ "cellOffset": {
+  "x": 43.5,
+  "y": 29
+ },
+ "anchor": {
+  "x": 86,
+  "y": 181,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 129.5,
+  "y": 210
+ },
+ "restHeightPx": 192.55,
+ "rootOffsetPx": [
+  [
+   0,
+   0
+  ],
+  [
+   -6.375,
+   -10.055
+  ],
+  [
+   -5.1,
+   -8.815
+  ],
+  [
+   1.06,
+   -3.975
+  ],
+  [
+   0.32,
+   -1.19
+  ],
+  [
+   0,
+   0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -70.5,
+   73,
+   166.5
+  ],
+  [
+   -85.5,
+   91.5,
+   148
+  ],
+  [
+   -82.5,
+   88,
+   152.5
+  ],
+  [
+   -71.5,
+   66.5,
+   180
+  ],
+  [
+   -71,
+   71,
+   171
+  ],
+  [
+   -70.5,
+   73,
+   166.5
+  ]
+ ],
+ "frames": [
+  {
+   "x": 1,
+   "y": 1,
+   "w": 178.5,
+   "h": 215.5
+  },
+  {
+   "x": 181.5,
+   "y": 1,
+   "w": 178.5,
+   "h": 215.5
+  },
+  {
+   "x": 362,
+   "y": 1,
+   "w": 178.5,
+   "h": 215.5
+  },
+  {
+   "x": 1,
+   "y": 218.5,
+   "w": 178.5,
+   "h": 215.5
+  },
+  {
+   "x": 181.5,
+   "y": 218.5,
+   "w": 178.5,
+   "h": 215.5
+  },
+  {
+   "x": 362,
+   "y": 218.5,
+   "w": 178.5,
+   "h": 215.5
+  }
+ ],
+ "scale": 0.5
+}
