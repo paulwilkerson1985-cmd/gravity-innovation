@@ -1,0 +1,73 @@
+{
+ "breezel_idle_front": {
+  "atlas": "1248x1245",
+  "cell": "308x411",
+  "bytes": 714864,
+  "gpu_mb": 5.93,
+  "gpu_mb_mips": 7.9
+ },
+ "breezel_attack_front": {
+  "atlas": "1905x1455",
+  "cell": "377x481",
+  "bytes": 1032508,
+  "gpu_mb": 10.57,
+  "gpu_mb_mips": 14.1
+ },
+ "breezel_hit_front": {
+  "atlas": "1017x878",
+  "cell": "335x435",
+  "bytes": 411754,
+  "gpu_mb": 3.41,
+  "gpu_mb_mips": 4.54
+ },
+ "breezel_faint_front": {
+  "atlas": "1925x882",
+  "cell": "381x437",
+  "bytes": 671098,
+  "gpu_mb": 6.48,
+  "gpu_mb_mips": 8.64
+ },
+ "breezel_idle_back": {
+  "atlas": "1224x1254",
+  "cell": "302x414",
+  "bytes": 667114,
+  "gpu_mb": 5.86,
+  "gpu_mb_mips": 7.81
+ },
+ "breezel_attack_back": {
+  "atlas": "1915x1455",
+  "cell": "379x481",
+  "bytes": 1002432,
+  "gpu_mb": 10.63,
+  "gpu_mb_mips": 14.17
+ },
+ "breezel_hit_back": {
+  "atlas": "1065x874",
+  "cell": "351x433",
+  "bytes": 377232,
+  "gpu_mb": 3.55,
+  "gpu_mb_mips": 4.73
+ },
+ "breezel_faint_back": {
+  "atlas": "1880x874",
+  "cell": "372x433",
+  "bytes": 647912,
+  "gpu_mb": 6.27,
+  "gpu_mb_mips": 8.36
+ },
+ "_extent": {
+  "front": {
+   "left": 0.5002,
+   "right": 0.5054
+  },
+  "back": {
+   "left": 0.5194,
+   "right": 0.5039
+  }
+ },
+ "_total": {
+  "bytes": 5524914,
+  "gpu_mb": 52.7,
+  "gpu_mb_mips": 70.27
+ }
+}
