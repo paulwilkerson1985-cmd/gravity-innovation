@@ -62,6 +62,43 @@ def snap(target, origin):
     return hit, n.normalized()
 
 
+def crisp_zones(o, sdfs, edge=0.012, passes=2):
+    """Split the edges that a colour edge crosses (or comes within `edge` of), `passes` times, before paint_soft.
+    Vertex colours interpolate linearly across a triangle, so on a 0.02-voxel body every zone edge was at least one
+    voxel (3-4 px at 512) of airbrush whatever paint_soft's edge (polish review 2, cross-kin 4); two passes make the
+    triangles under the edge a quarter voxel. Flat split (no smoothing): shading and silhouette are unchanged.
+    Candidate for lib/common.py (paint_soft(..., crisp=True))."""
+    import bmesh
+    for _ in range(passes):
+        co, nm = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co, nm), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.verts.ensure_lookup_table(); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+def unit_sd(o, f):
+    """f's signed distance rescaled to unit gradient ALONG the surface (estimated over the mesh edges), so every zone
+    edge is the same width: a 3-D ellipsoid that meets the skin at a grazing angle, or a normal-based term, changes
+    slowly along the surface and painted a wide airbrushed band (polish 3, cross-kin 4)."""
+    me = o.data
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', ev); ev = ev.reshape(-1, 2)
+
+    def g(co, nm):
+        d = np.asarray(f(co, nm), float)
+        ln = np.maximum(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1), 1e-6)
+        gr = np.abs(d[ev[:, 0]] - d[ev[:, 1]]) / ln
+        acc = np.zeros(len(d)); cnt = np.zeros(len(d))
+        np.add.at(acc, ev[:, 0], gr); np.add.at(acc, ev[:, 1], gr); np.add.at(cnt, ev[:, 0], 1); np.add.at(cnt, ev[:, 1], 1)
+        return d / np.clip(acc / np.maximum(cnt, 1), 0.25, 4.0)
+    return g
+
+
 # ------------------------------------------------------------------ hard parts
 mat_body = toon_material('body', attr='Col', ink=INK)
 mat_eye = toon_material('eye', EYE, ink=INK)
@@ -135,7 +172,8 @@ def bend_board(o):
 board = bend_board(ellipsoid('board', (BX, 0, bz), (0.80, 0.40, 0.11), segs=64, rings=32))
 parts.append(assign(board, mat_board))
 # the stripe is a narrower, slightly taller copy of the board's lens: flush along its length, no floating band
-stripe = bend_board(ellipsoid('stripe', (BX, 0, bz), (0.76, 0.11, 0.124), segs=64, rings=32))
+# (polish 3: y 0.17, z 0.132, so the visible band is about 0.18 wide, not a navy edge line: it survives at 300 px)
+stripe = bend_board(ellipsoid('stripe', (BX, 0, bz), (0.76, 0.17, 0.132), segs=64, rings=32))
 parts.append(assign(stripe, mat_stripe))
 facing(board, d_cam, label='board top (battle camera)')
 print('  board seated at z', round(bz, 3))
@@ -148,12 +186,6 @@ body = union(body, parts)
 set_smooth(body, angle=50)
 
 # ------------------------------------------------------------------ colour zones (vertex colours)
-bm = vertex_slot_mask(body, {'body'})
-zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.12), STRIPE),                                                      # webbed paws
-]
-paint_zones(body, BLUE, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=1)
 
 
 def belly_sd(co, nm):
@@ -161,9 +193,16 @@ def belly_sd(co, nm):
     return np.maximum(sd_ellipse((-0.18, 0, 0.42), (0.66, 0.30, 0.20))(co, nm), (nm[:, 2] + 0.45) * 0.2)
 
 
-paint_soft(body, [(belly_sd, AQUA),
-                  (sd_ellipse((0.80, 0, 0.92), (0.24, 0.30, 0.32)), AQUA),                            # chest / throat
-                  (sd_ellipse((1.46, 0, 1.12), (0.25, 0.28, 0.14)), AQUA)], mask=bm, edge=0.012)      # whisker pad (snout ellipsoid)
+ZONES = [(lambda co, nm: co[:, 2] - 0.12, STRIPE),                                               # webbed paws
+         (belly_sd, AQUA),
+         (sd_ellipse((0.80, 0, 0.92), (0.24, 0.30, 0.32)), AQUA),                               # chest / throat
+         (sd_ellipse((1.46, 0, 1.12), (0.25, 0.28, 0.14)), AQUA)]                               # whisker pad (snout ellipsoid)
+# every zone is a signed distance (unit gradient along the skin) painted with paint_soft on a mesh split fine under its
+# edge (polish 3, cross-kin 4: boolean zones + smoothstep_blend and the one-voxel vertex-colour ramp read as airbrush)
+crisp_zones(body, [f for f, _ in ZONES], edge=0.012)
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, BLUE, [], mask=bm)
+paint_soft(body, [(unit_sd(body, f), c) for f, c in ZONES], mask=bm, edge=0.012)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)
@@ -204,7 +243,7 @@ key = add_battle_key(body, P['head_turn'], P['head_lift'])
 OUTDIR = os.environ.get('OUTDIR', os.path.join(HERE, 'rounds', 'r1'))
 os.makedirs(OUTDIR, exist_ok=True)
 SPP = int(os.environ.get('SPP', 12)); SIZE = int(os.environ.get('SIZE', 768)); MODE = os.environ.get('MODE', 'both')
-setup_render(samples=SPP, ink_px=6.0 * SIZE / 1024, inner_px=3.2 * SIZE / 1024, crease_deg=100)
+setup_render(samples=SPP, ink_px=6.0 * SIZE / 1024, inner_px=3.2 * SIZE / 1024, crease_deg=115)    # 115: no hook strokes at the inner thighs (polish 3)
 sc.cycles.use_denoising = True; sc.cycles.denoiser = 'OPENIMAGEDENOISE'
 if MODE in ('turn', 'both'):
     from turn import turnaround

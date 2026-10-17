@@ -61,6 +61,44 @@ co[:, 2] = np.maximum(co[:, 2], GROUND)
 body.data.vertices.foreach_set('co', co.ravel()); body.data.update()
 print('  blockout tris', tri_count(body), f'{time.perf_counter() - T0:.1f}s', 'zmin', co[:, 2].min())
 
+
+
+def fuse(o, parts, voxel, region, iters=8):
+    """Boolean-union parts into o, voxel-remesh the result and smooth it where region(co) > 0 (0..1), so the parts
+    grow out of the body: no inked intersection rings and no hairlines where neighbouring parts overlap (polish 3).
+    Candidate for lib/common.py."""
+    union(o, parts)
+    o.data.remesh_voxel_size = voxel; o.data.remesh_voxel_adaptivity = 0.0
+    activate(o); bpy.ops.object.voxel_remesh()
+    co, _ = mesh_arrays(o)
+    w = np.clip(np.asarray(region(co), float), 0, 1)
+    g = o.vertex_groups.new(name='fuse')
+    for i in np.where(w > 1e-3)[0]:
+        g.add([int(i)], float(w[i]), 'REPLACE')
+    m = o.modifiers.new('fs', 'SMOOTH'); m.iterations = iters; m.factor = 0.5; m.vertex_group = 'fuse'
+    activate(o); bpy.ops.object.modifier_apply(modifier='fs')
+    o.vertex_groups.remove(o.vertex_groups['fuse'])
+    set_smooth(o)
+    return o
+
+
+def sm(e0, e1, x):
+    t = np.clip((x - e0) / (e1 - e0), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+# cream flame ruff on the chest: three tapered tongues fused into the chest (polish 3: five boolean tongues inked a
+# hairline at every overlap and the side pair hung below the chin as a blade). The middle tongue is the long one; the
+# side pair is sunk in the chest, so from the side the ruff is a chest bulge. Thickness (minor axis) 0.16.
+RUFF = [((0.50, 0.0, 0.94), (0.16, 0.17, 0.40), 0.0), ((0.44, 0.13, 0.97), (0.16, 0.15, 0.32), 12.0),
+        ((0.44, -0.13, 0.97), (0.16, 0.15, 0.32), -12.0)]
+tongues = [ellipsoid(f'ruff{i}', c, sz, rot=(-rx, 158, 0), taper=0.92, segs=64, rings=48) for i, (c, sz, rx) in enumerate(RUFF)]
+# smooth the roots and the valleys between the tongues, not their free tips
+body = fuse(body, tongues, 0.014, lambda co: sm(0.42, 0.30, np.linalg.norm((co - (0.50, 0, 0.98)) / (1.0, 1.25, 1.2), axis=1))
+            * sm(0.66, 0.80, co[:, 2]))
+co, nm = mesh_arrays(body)
+print('  ruff fused, tris', tri_count(body))
+
 dg = bpy.context.evaluated_depsgraph_get()
 bvh = BVHTree.FromObject(body, dg)
 
@@ -72,6 +110,43 @@ def snap(target, origin):
     if hit is None:
         raise RuntimeError(f'no hit {target}')
     return hit, n.normalized()
+
+
+def crisp_zones(o, sdfs, edge=0.012, passes=2):
+    """Split the edges that a colour edge crosses (or comes within `edge` of), `passes` times, before paint_soft.
+    Vertex colours interpolate linearly across a triangle, so on a 0.02-voxel body every zone edge was at least one
+    voxel (3-4 px at 512) of airbrush whatever paint_soft's edge (polish review 2, cross-kin 4); two passes make the
+    triangles under the edge a quarter voxel. Flat split (no smoothing): shading and silhouette are unchanged.
+    Candidate for lib/common.py (paint_soft(..., crisp=True))."""
+    import bmesh
+    for _ in range(passes):
+        co, nm = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co, nm), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.verts.ensure_lookup_table(); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+def unit_sd(o, f):
+    """f's signed distance rescaled to unit gradient ALONG the surface (estimated over the mesh edges), so every zone
+    edge is the same width: a 3-D ellipsoid that meets the skin at a grazing angle, or a normal-based term, changes
+    slowly along the surface and painted a wide airbrushed band (polish 3, cross-kin 4)."""
+    me = o.data
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', ev); ev = ev.reshape(-1, 2)
+
+    def g(co, nm):
+        d = np.asarray(f(co, nm), float)
+        ln = np.maximum(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1), 1e-6)
+        gr = np.abs(d[ev[:, 0]] - d[ev[:, 1]]) / ln
+        acc = np.zeros(len(d)); cnt = np.zeros(len(d))
+        np.add.at(acc, ev[:, 0], gr); np.add.at(acc, ev[:, 1], gr); np.add.at(cnt, ev[:, 0], 1); np.add.at(cnt, ev[:, 1], 1)
+        return d / np.clip(acc / np.maximum(cnt, 1), 0.25, 4.0)
+    return g
 
 
 # ------------------------------------------------------------------ hard parts
@@ -147,20 +222,10 @@ parts.append(assign(tube('mouth', [tuple(q) for q in smile], [0.006, 0.009, 0.01
 # flame plume on the tail tip (big); its pale core is the flame material's camera-facing band (centred in every view)
 fl = ellipsoid('ember', (-1.06, 0.07, 1.90), (0.27, 0.27, 0.44), rot=(0, -14, 0), taper=0.9)
 parts.append(assign(fl, mat_ember))
-# cream flame ruff on the chest: five overlapping tongues sunk 40% into the chest, one mass (polish review 2);
-# painted with the body (cream zone, gold only on the middle tongue's tip)
-RUFF_ROT = np.array(Euler((0, math.radians(158), 0), 'XYZ').to_matrix())
-RUFF = []
-for i, (y, h, w) in enumerate(((0.0, 0.40, 0.15), (-0.12, 0.34, 0.14), (0.12, 0.34, 0.14), (-0.21, 0.27, 0.12), (0.21, 0.27, 0.12))):
-    c = (0.50 - 0.08 * abs(y), y, 1.06 - h * 0.30); sz = (0.14, w, h)
-    t = ellipsoid(f'ruff{i}', c, sz, rot=(0, 158, 0), taper=0.92)
-    parts.append(assign(t, mat_body)); RUFF.append((np.array(c), np.array(sz)))
-
 body = union(body, parts)
 set_smooth(body, angle=50)
 
 # ------------------------------------------------------------------ colour zones (vertex colours)
-bm = vertex_slot_mask(body, {'body'})
 
 
 def ear_local(co, s):
@@ -193,52 +258,40 @@ def ear_tip_l(l):
     return np.maximum(0.27 - l[:, 2], (ear_k(l) - 1.15) * 0.14)
 
 
-def ruff_local(co, c, sz):
-    l = (co - c) @ RUFF_ROT
-    t = np.clip((l[:, 2] / sz[2] + 1) / 2, 0, 1); f = np.maximum(1 - 0.92 * t ** 1.6, 0.08)
-    k = np.sqrt((l[:, 0] / (sz[0] * f)) ** 2 + (l[:, 1] / (sz[1] * f)) ** 2 + (l[:, 2] / sz[2]) ** 2)
-    return l, k
-
-
-def ruff_sd(co, nm):
-    # the lower (free) part of each tongue only: the buried upper halves graze the shoulders
-    out = []
-    for c, sz in RUFF:
-        l, k = ruff_local(co, c, sz)
-        out.append(np.maximum((k - 1.0) * 0.10 - 0.012, -0.25 * sz[2] - l[:, 2]))
-    return np.min(out, axis=0)
-
-
-def ruff_gold(co, nm):
-    c, sz = RUFF[0]
-    l, k = ruff_local(co, c, sz)
-    return np.maximum((k - 1.0) * 0.10 - 0.012, 0.42 * sz[2] - l[:, 2])
-
-
 def belly_sd(co, nm):
     # ellipsoid AND downward faces only: the box zone also painted the inner thighs (polish review 2, cross-kin 1)
     return np.maximum(sd_ellipse((-0.12, 0, 0.60), (0.34, 0.22, 0.22))(co, nm), (nm[:, 2] + 0.45) * 0.2)
 
 
-def mask(co, nm):
+def mask_sd(co, nm):
     # fox mask: snout, cheeks and jaw cream; the top edge passes below the eyes and sweeps up the cheek
     ay = np.abs(co[:, 1])
     ztop = (P['eye_z'] - P['eye_h'] - 0.03) + 0.12 * np.clip((ay - 0.26) / 0.26, 0, 1) ** 1.5
     jaw = 1.38 + 0.80 * (co[:, 0] - 0.80) + 0.20 * np.clip((ay - 0.20) / 0.4, 0, 1)
-    back = (co[:, 0] - 0.50) > 0.6 * (1.40 - co[:, 2])
-    return bm & (co[:, 2] < np.minimum(ztop, jaw)) & (co[:, 2] > 1.02) & back
+    back = (co[:, 0] - 0.50) - 0.6 * (1.40 - co[:, 2])
+    return np.maximum.reduce([co[:, 2] - np.minimum(ztop, jaw), 1.02 - co[:, 2], -back / 1.17])
 
 
-zones = [
-    (mask, CREAM),
-    (lambda co, nm: bm & (co[:, 2] < 0.36) & (co[:, 0] > -0.75), SOOT),   # tall soot boots
-]
-paint_zones(body, ORANGE, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=1)
-paint_soft(body, [(belly_sd, CREAM),
-                  (sd_ellipse((0.56, 0, 1.10), (0.20, 0.25, 0.34)), CREAM),        # chest
-                  (ruff_sd, CREAM), (ruff_gold, GOLD),
-                  (ear_sdf(inner_ear_l), CREAM), (ear_sdf(ear_back_l), EAR_BACK), (ear_sdf(ear_tip_l), SOOT)], mask=bm, edge=0.012)
+def ruff_sd(co, nm):
+    # the ruff and the chest under it: one flat cream zone (front-facing, so the inner forelegs stay orange)
+    return np.maximum(sd_ellipse((0.60, 0, 0.90), (0.18, 0.30, 0.36))(co, nm), (-0.25 - nm[:, 0]) * 0.2)
+
+
+def ruff_gold(co, nm):
+    # one hard gold tip zone: the middle tongue below a level line (no per-tongue gradient)
+    return np.maximum.reduce([ruff_sd(co, nm), co[:, 2] - 0.72, np.abs(co[:, 1]) - 0.09])
+
+
+chest_sd = sd_ellipse((0.56, 0, 1.10), (0.20, 0.25, 0.34))
+boots_sd = lambda co, nm: np.maximum(co[:, 2] - 0.36, -0.75 - co[:, 0])     # tall soot boots
+ZONES = [(belly_sd, CREAM), (chest_sd, CREAM), (ruff_sd, CREAM), (ruff_gold, GOLD), (mask_sd, CREAM), (boots_sd, SOOT),
+         (ear_sdf(inner_ear_l), CREAM), (ear_sdf(ear_back_l), EAR_BACK), (ear_sdf(ear_tip_l), SOOT)]
+# every zone is a signed distance painted with paint_soft on a mesh split fine under its edge (polish 3, cross-kin 4:
+# the boolean zones + smoothstep_blend and the one-voxel vertex-colour ramp read as airbrush)
+crisp_zones(body, [f for f, _ in ZONES], edge=0.012)
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, ORANGE, [], mask=bm)
+paint_soft(body, [(unit_sd(body, f), c) for f, c in ZONES], mask=bm, edge=0.012)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

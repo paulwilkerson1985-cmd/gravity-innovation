@@ -53,19 +53,88 @@ for co, r in [((-0.92, 0.0, 1.36), 0.15), ((-1.10, 0.02, 1.52), 0.14), ((-1.24, 
     B.add(co, r)
 # mane collar: a stiff ring around the neck that the flame tongues grow out of (polish review 2: the tongues alone
 # read as a row of dorsal fins)
+# (polish 3: ring radius 0.34, twelve balls, so the tongue bases sit in one raised band)
 NC = Vector((0.66, 0, 1.72)); AX = Vector((0.55, 0, 0.83)).normalized()
 U = Vector((0, 1, 0)); Wv = AX.cross(U).normalized()
-for i in range(8):
-    a = (i / 8) * math.tau + 0.25
+RING_R = 0.34
+for i in range(12):
+    a = (i / 12) * math.tau + 0.25
     out = U * math.cos(a) + Wv * math.sin(a)
     if out.z < -0.60:
         continue                                            # not under the throat (keeps the chest line)
-    B.add(NC + out * 0.30, 0.14, stiff=3.2)
+    B.add(NC + out * RING_R, 0.14, stiff=3.2)
 body = B.mesh(voxel=0.022)
 co, nm = mesh_arrays(body)
 co[:, 2] = np.maximum(co[:, 2], GROUND)
 body.data.vertices.foreach_set('co', co.ravel()); body.data.update()
 print('  blockout tris', tri_count(body), f'{time.perf_counter() - T0:.1f}s')
+
+
+
+def fuse(o, parts, voxel, region, iters=8):
+    """Boolean-union parts into o, voxel-remesh the result and smooth it where region(co) > 0 (0..1), so the parts
+    grow out of the body: no inked intersection rings and no hairlines where neighbouring parts overlap (polish 3).
+    Candidate for lib/common.py."""
+    union(o, parts)
+    o.data.remesh_voxel_size = voxel; o.data.remesh_voxel_adaptivity = 0.0
+    activate(o); bpy.ops.object.voxel_remesh()
+    co, _ = mesh_arrays(o)
+    w = np.clip(np.asarray(region(co), float), 0, 1)
+    g = o.vertex_groups.new(name='fuse')
+    for i in np.where(w > 1e-3)[0]:
+        g.add([int(i)], float(w[i]), 'REPLACE')
+    m = o.modifiers.new('fs', 'SMOOTH'); m.iterations = iters; m.factor = 0.5; m.vertex_group = 'fuse'
+    activate(o); bpy.ops.object.modifier_apply(modifier='fs')
+    o.vertex_groups.remove(o.vertex_groups['fuse'])
+    set_smooth(o)
+    return o
+
+
+def sm(e0, e1, x):
+    t = np.clip((x - e0) / (e1 - e0), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+# fiery mane collar: flame tongues fanning out of the collar ring, fused with the body BEFORE the ink (polish 3: as
+# boolean parts every overlap between neighbours was inked, a row of crossed paper fins).
+MANE = []
+tongues = []
+for i, a in enumerate(math.pi / 2 + k * 0.6 for k in (0, -1, 1, -2, 2, -3, 3)):
+    # seven tongues, symmetric about the spine, on the top and upper sides of the ring only (the low ones fanned across
+    # the neck from the side); the middle one and the second pair long, the others short
+    out = U * math.cos(a) + Wv * math.sin(a)
+    base = NC + out * RING_R
+    dirn = (out * 0.50 + Vector((-0.55, 0, 0.72))).normalized()   # fan out and up (never end-on to the cameras)
+    hgt = 0.42 if i in (0, 3, 4) else 0.34
+    tongues.append(ellipsoid(f'mane{i}', base + dirn * hgt * 0.50, (0.15, 0.15, hgt), track=dirn, taper=0.9, segs=64, rings=48))
+    MANE.append((np.array(base), np.array(dirn), hgt))
+
+
+def collar_dist(co):
+    """Distance from the collar ring's circle (the band's core)."""
+    r = co - np.array(NC); ax = np.array(AX)
+    h = r @ ax; rad = np.linalg.norm(r - h[:, None] * ax[None, :], axis=1)
+    return np.hypot(h, rad - RING_R)
+
+
+def tongue_axis(co):
+    """Per tongue: (t along its axis from the base, distance from the axis); stacked over tongues."""
+    T, D = [], []
+    for base, dirn, hgt in MANE:
+        r = co - base; t = r @ dirn
+        T.append(t); D.append(np.linalg.norm(r - t[:, None] * dirn[None, :], axis=1))
+    return np.array(T), np.array(D)
+
+
+def fuse_region(co):
+    # the band and the lower half of every tongue: roots and the valleys between neighbours melt, free tips stay sharp
+    T, D = tongue_axis(co)
+    tw = np.max(sm(0.30, 0.18, D) * sm(0.30, 0.20, T), axis=0)
+    return np.maximum(sm(0.30, 0.18, collar_dist(co)), tw)
+
+
+body = fuse(body, tongues, 0.016, fuse_region, iters=10)
+print('  mane fused, tris', tri_count(body))
 
 dg = bpy.context.evaluated_depsgraph_get()
 bvh = BVHTree.FromObject(body, dg)
@@ -78,6 +147,43 @@ def snap(target, origin):
     if hit is None:
         raise RuntimeError(f'no hit {target}')
     return hit, n.normalized()
+
+
+def crisp_zones(o, sdfs, edge=0.012, passes=2):
+    """Split the edges that a colour edge crosses (or comes within `edge` of), `passes` times, before paint_soft.
+    Vertex colours interpolate linearly across a triangle, so on a 0.02-voxel body every zone edge was at least one
+    voxel (3-4 px at 512) of airbrush whatever paint_soft's edge (polish review 2, cross-kin 4); two passes make the
+    triangles under the edge a quarter voxel. Flat split (no smoothing): shading and silhouette are unchanged.
+    Candidate for lib/common.py (paint_soft(..., crisp=True))."""
+    import bmesh
+    for _ in range(passes):
+        co, nm = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co, nm), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.verts.ensure_lookup_table(); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+def unit_sd(o, f):
+    """f's signed distance rescaled to unit gradient ALONG the surface (estimated over the mesh edges), so every zone
+    edge is the same width: a 3-D ellipsoid that meets the skin at a grazing angle, or a normal-based term, changes
+    slowly along the surface and painted a wide airbrushed band (polish 3, cross-kin 4)."""
+    me = o.data
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', ev); ev = ev.reshape(-1, 2)
+
+    def g(co, nm):
+        d = np.asarray(f(co, nm), float)
+        ln = np.maximum(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1), 1e-6)
+        gr = np.abs(d[ev[:, 0]] - d[ev[:, 1]]) / ln
+        acc = np.zeros(len(d)); cnt = np.zeros(len(d))
+        np.add.at(acc, ev[:, 0], gr); np.add.at(acc, ev[:, 1], gr); np.add.at(cnt, ev[:, 0], 1); np.add.at(cnt, ev[:, 1], 1)
+        return d / np.clip(acc / np.maximum(cnt, 1), 0.25, 4.0)
+    return g
 
 
 # ------------------------------------------------------------------ hard parts
@@ -112,8 +218,11 @@ def flame_material(name, outer, core, thr=0.80, glow_outer=0.75, glow_core=1.0, 
 
 
 mat_ember = flame_material('ember', EMBER, EMBER_CORE, ink='#b2321a')
-mat_stud = flame_material('stud', EMBER, EMBER_CORE, thr=0.70, ink='#b2321a')    # own slot: the rig claims 'ember' near the tail
-mat_mane = toon_material('mane', attr='Col', glow=0.75, ink='#b2321a')           # ember, core colour painted on the tips
+mat_stud = flame_material('stud', EMBER, EMBER_CORE, thr=0.55, ink='#b2321a')    # own slot: the rig claims 'ember' near the tail
+# the mane is now body surface: its glow comes from a painted 'Glow' vertex attribute (0 on the body, 0.75 on the mane)
+_nt = mat_body.node_tree
+_ga = _nt.nodes.new('ShaderNodeVertexColor'); _ga.layer_name = 'Glow'
+_nt.links.new(_ga.outputs['Color'], next(n for n in _nt.nodes if n.type == 'GROUP').inputs['Glow'])
 assign(body, mat_body)
 parts = []
 d_cam, rot, right, up = camera_basis()
@@ -165,24 +274,12 @@ for s in (-1, 1):
 for i, (y, h, x) in enumerate(((0.0, 0.34, 0.90), (-0.11, 0.24, 0.86), (0.11, 0.24, 0.86))):
     parts.append(assign(ellipsoid(f'crown{i}', (x, y, 2.38 + h * 0.55), (0.10, 0.10, h), rot=(-14 * (y / 0.11 if y else 0), -12, 0), taper=0.9), mat_ember))
 # (the crown's pale core is the flame material's camera-facing band: centred in every view)
-# fiery mane collar: tongues of flame fanning out of the collar ring, bases sunk in it (polish review 2)
-MANE = []
-for i in range(10):
-    a = (i / 10) * math.tau + 0.25
-    out = U * math.cos(a) + Wv * math.sin(a)
-    if out.z < -0.55:
-        continue                                            # no tongues under the throat
-    base = NC + out * 0.30
-    dirn = (out * 0.50 + Vector((-0.55, 0, 0.72))).normalized()   # fan out and up (never end-on to the cameras)
-    hgt = 0.34 + 0.08 * (i % 2)
-    q = ellipsoid(f'mane{i}', base + dirn * hgt * 0.50, (0.15, 0.15, hgt), track=dirn, taper=0.9, segs=48, rings=32)
-    parts.append(assign(q, mat_mane)); MANE.append((np.array(base), np.array(dirn), hgt))
-# ember studs along the spine: twice the size, seated 30% into the back
+# ember studs along the spine: round ember nubs seated 40% into the back (polish 3: as flame tongues they joined the
+# collar into one stegosaurus row from the side)
 for i, x in enumerate((0.12, -0.20, -0.50)):
     sp, sn = snap((x, 0, 3.0), (x, 0, 1.2))
-    hz = 0.17
-    parts.append(assign(ellipsoid(f'stud{i}', sp + sn * (0.4 * hz), (0.12, 0.10, hz), track=(sn + Vector((-0.35, 0, 0))).normalized(),
-                                  taper=0.6), mat_stud))
+    r = 0.105 - 0.012 * i
+    parts.append(assign(ellipsoid(f'stud{i}', sp + sn * (0.2 * r), (r, r, r), segs=48, rings=24), mat_stud))
 # comet flame on the tail tip (pale core from the flame material)
 parts.append(assign(ellipsoid('ember', (-1.38, 0.05, 2.22), (0.27, 0.27, 0.50), rot=(0, -18, 0), taper=0.9), mat_ember))
 # gold claws on every paw (big enough to survive 300 px)
@@ -195,7 +292,6 @@ body = union(body, parts)
 set_smooth(body, angle=50)
 
 # ------------------------------------------------------------------ colour zones (vertex colours)
-bm = vertex_slot_mask(body, {'body'})
 
 
 def ear_local(co, s):
@@ -221,40 +317,45 @@ def ear_back_l(l):
 
 
 def belly_sd(co, nm):
-    # ellipsoid AND downward faces only: the box zone also painted the inner forelegs (polish review 2, cross-kin 1)
-    return np.maximum(sd_ellipse((-0.22, 0, 0.86), (0.46, 0.30, 0.22))(co, nm), (nm[:, 2] + 0.45) * 0.2)
+    # ellipsoid AND downward faces only; shorter in x (polish 3: its front end still smeared the inner forelegs)
+    return np.maximum(sd_ellipse((-0.28, 0, 0.86), (0.34, 0.24, 0.22))(co, nm), (nm[:, 2] + 0.45) * 0.2)
+
+
+def mane_sd(co, nm):
+    # the collar band and every tongue (fused into the body surface, so the mane is a colour zone)
+    T, D = tongue_axis(co)
+    return np.minimum(collar_dist(co) - 0.17, np.min(np.maximum(D - 0.17, -T), axis=0))
 
 
 def mane_tip(co, nm):
-    out = []
-    for base, dirn, hgt in MANE:
-        r = co - base; t = r @ dirn
-        rad = np.linalg.norm(r - t[:, None] * dirn[None, :], axis=1)
-        out.append(np.maximum(1.15 * hgt - t, rad - 0.22))
-    return np.min(out, axis=0)
+    T, D = tongue_axis(co)
+    hg = np.array([h for _, _, h in MANE])[:, None]
+    return np.min(np.maximum(1.22 * hg - T, D - 0.20), axis=0)
 
 
-def mask(co, nm):
+def mask_sd(co, nm):
     ay = np.abs(co[:, 1])
     ztop = (P['eye_z'] - P['eye_h'] - 0.03) + 0.12 * np.clip((ay - 0.26) / 0.26, 0, 1) ** 1.5
     jaw = 1.74 + 0.80 * (co[:, 0] - 1.12) + 0.20 * np.clip((ay - 0.22) / 0.4, 0, 1)
-    back = (co[:, 0] - 0.80) > 0.6 * (1.78 - co[:, 2])
-    return bm & (co[:, 2] < np.minimum(ztop, jaw)) & (co[:, 2] > 1.40) & back
+    back = (co[:, 0] - 0.80) - 0.6 * (1.78 - co[:, 2])
+    return np.maximum.reduce([co[:, 2] - np.minimum(ztop, jaw), 1.40 - co[:, 2], -back / 1.17])
 
 
-zones = [
-    (mask, GOLD),
-    (lambda co, nm: bm & (co[:, 2] < 0.58) & (co[:, 0] > -1.25), SOOT),                                # gauntlets
-    (lambda co, nm: bm & (co[:, 2] < 0.66) & (co[:, 2] >= 0.58) & (co[:, 0] > -1.25), GOLD_D),         # gold bands
-]
-paint_zones(body, CRIMSON, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=1)
-paint_soft(body, [(belly_sd, GOLD),
-                  (sd_ellipse((0.78, 0, 1.40), (0.24, 0.34, 0.40)), GOLD),          # chest
-                  (ear_sdf(inner_ear_l), GOLD), (ear_sdf(ear_back_l), EAR_BACK)], mask=bm, edge=0.012)
-mm = vertex_slot_mask(body, {'mane'})
-paint_zones(body, EMBER, [], mask=mm)
-paint_soft(body, [(mane_tip, EMBER_CORE)], mask=mm, edge=0.015)
+ZONES = [(mask_sd, GOLD),
+         (lambda co, nm: np.maximum(co[:, 2] - 0.58, -1.25 - co[:, 0]), SOOT),                               # gauntlets
+         (lambda co, nm: np.maximum.reduce([co[:, 2] - 0.66, 0.58 - co[:, 2], -1.25 - co[:, 0]]), GOLD_D),   # gold bands
+         (belly_sd, GOLD),
+         (sd_ellipse((0.78, 0, 1.40), (0.24, 0.34, 0.40)), GOLD),                                             # chest
+         (ear_sdf(inner_ear_l), GOLD), (ear_sdf(ear_back_l), EAR_BACK),
+         (mane_sd, EMBER), (mane_tip, EMBER_CORE)]
+# every zone is a signed distance (unit gradient along the skin) painted with paint_soft on a mesh split fine under its
+# edge (polish 3, cross-kin 4: boolean zones + smoothstep_blend and the one-voxel vertex-colour ramp read as airbrush)
+crisp_zones(body, [f for f, _ in ZONES], edge=0.012)
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, CRIMSON, [], mask=bm)
+paint_soft(body, [(unit_sd(body, f), c) for f, c in ZONES], mask=bm, edge=0.012)
+paint_zones(body, (0.0, 0.0, 0.0), [], attr='Glow')
+paint_soft(body, [(unit_sd(body, mane_sd), (0.75, 0.75, 0.75))], attr='Glow', mask=bm, edge=0.012)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

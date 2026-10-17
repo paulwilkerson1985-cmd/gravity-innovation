@@ -39,11 +39,11 @@ for s in (-1, 1):
     y = LY * s
     B.add((FRONT_X - 0.04, y, 0.92), 0.22)                      # shoulder
     B.chain((FRONT_X, y, 0.84), (FRONT_X + 0.01, y, 0.14), 0.12, 0.085, n=6)
-    B.add((FRONT_X + 0.03, y, GROUND + 0.06), 0.095, size=(1.4, 1.05, 0.7), stiff=3.5)    # hoof (flat front, not a round cap)
+    B.add((FRONT_X + 0.02, y, GROUND + 0.09), 0.085, stiff=3.0)                         # pastern (the hoof is a hard part)
     B.add((HIND_X + 0.04, y, 0.92), 0.25, size=(1.1, 0.85, 1.05))                         # haunch
     B.chain((HIND_X + 0.02, y, 0.84), (HIND_X - 0.08, y, 0.40), 0.14, 0.095, n=5)
     B.chain((HIND_X - 0.08, y, 0.40), (HIND_X, y, 0.14), 0.09, 0.085, n=4)
-    B.add((HIND_X + 0.03, y, GROUND + 0.06), 0.095, size=(1.4, 1.05, 0.7), stiff=3.5)
+    B.add((HIND_X + 0.02, y, GROUND + 0.09), 0.085, stiff=3.0)
 # the mossy mantle: a raised lumpy cushion lying on the back; stiff, so it makes a silhouette step the ink follows
 # (polish review 2: the flatter cushion left the mantle a stain with a wandering edge)
 MANTLE_BALLS = [(-0.10, 0, 1.30, 0.26), (0.08, 0.06, 1.28, 0.20), (-0.32, -0.05, 1.27, 0.20), (0.0, -0.12, 1.32, 0.16), (-0.20, 0.13, 1.33, 0.15)]
@@ -69,6 +69,43 @@ def snap(target, origin):
     return hit, n.normalized()
 
 
+def crisp_zones(o, sdfs, edge=0.012, passes=2):
+    """Split the edges that a colour edge crosses (or comes within `edge` of), `passes` times, before paint_soft.
+    Vertex colours interpolate linearly across a triangle, so on a 0.02-voxel body every zone edge was at least one
+    voxel (3-4 px at 512) of airbrush whatever paint_soft's edge (polish review 2, cross-kin 4); two passes make the
+    triangles under the edge a quarter voxel. Flat split (no smoothing): shading and silhouette are unchanged.
+    Candidate for lib/common.py (paint_soft(..., crisp=True))."""
+    import bmesh
+    for _ in range(passes):
+        co, nm = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co, nm), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.verts.ensure_lookup_table(); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+def unit_sd(o, f):
+    """f's signed distance rescaled to unit gradient ALONG the surface (estimated over the mesh edges), so every zone
+    edge is the same width: a 3-D ellipsoid that meets the skin at a grazing angle, or a normal-based term, changes
+    slowly along the surface and painted a wide airbrushed band (polish 3, cross-kin 4)."""
+    me = o.data
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', ev); ev = ev.reshape(-1, 2)
+
+    def g(co, nm):
+        d = np.asarray(f(co, nm), float)
+        ln = np.maximum(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1), 1e-6)
+        gr = np.abs(d[ev[:, 0]] - d[ev[:, 1]]) / ln
+        acc = np.zeros(len(d)); cnt = np.zeros(len(d))
+        np.add.at(acc, ev[:, 0], gr); np.add.at(acc, ev[:, 1], gr); np.add.at(cnt, ev[:, 0], 1); np.add.at(cnt, ev[:, 1], 1)
+        return d / np.clip(acc / np.maximum(cnt, 1), 0.25, 4.0)
+    return g
+
+
 # ------------------------------------------------------------------ hard parts
 mat_body = toon_material('body', attr='Col', ink=INK)
 mat_eye = toon_material('eye', EYE, ink=INK)
@@ -78,6 +115,7 @@ mat_leaf = toon_material('leaf', MOSS, ink=INK)
 mat_horn = toon_material('horn', HORN, ink='#6a5a3a')
 mat_thistle = toon_material('thistle', THISTLE, glow=0.1, ink='#4a1868')
 mat_calyx = toon_material('calyx', MOSS_L, ink=INK)
+mat_hoof = toon_material('hoof', HOOF, ink=INK)
 assign(body, mat_body)
 parts = []
 d_cam, rot, right, up = camera_basis()
@@ -89,6 +127,27 @@ for s in (-1, 1):
     e = ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), EAR['s'],
                   rot=(-24 * s, EAR['ry'], EAR['rz'] * s), taper=0.55, taper_axis=1 if s > 0 else 1)
     parts.append(assign(e, mat_body))
+
+
+
+def hoof(name, x, y):
+    """A hoof: a short tapered cylinder with a flat front face (polish 3: the metaball hoof was a round cap)."""
+    bpy.ops.mesh.primitive_cylinder_add(vertices=32, radius=1.0, depth=1.0, location=(0, 0, 0))
+    o = bpy.context.object; o.name = name
+    me = o.data
+    co = np.empty(len(me.vertices) * 3); me.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
+    top = co[:, 2] > 0
+    co[:, :2] *= np.where(top, 0.80, 1.0)[:, None]                 # narrower at the pastern
+    co[:, 0] = np.minimum(co[:, 0], 0.62 + 0.25 * (co[:, 0] - 0.62))  # flat front face
+    co[:, 0] *= 0.125; co[:, 1] *= 0.105; co[:, 2] = (co[:, 2] + 0.5) * 0.15
+    co += (x + 0.03, y, 0.0)
+    me.vertices.foreach_set('co', co.ravel()); me.update()
+    set_smooth(o, angle=40)
+    return o
+
+
+for (lx, ly) in ((FRONT_X, LY), (FRONT_X, -LY), (HIND_X, LY), (HIND_X, -LY)):
+    parts.append(assign(hoof(f'hoof{lx}{ly}', lx, ly), mat_hoof))
 
 # eyes (big, round: a gentle grazer) with glints
 for s in (-1, 1):
@@ -145,21 +204,20 @@ body = union(body, parts)
 set_smooth(body, angle=50)
 
 # ------------------------------------------------------------------ colour zones (vertex colours)
-bm = vertex_slot_mask(body, {'body'})
 
 
-def ear_inner(co, nm):
-    m = np.zeros(len(co), dtype=bool)
+def ear_inner_sd(co, nm):
+    out = []
     for s in (-1, 1):
-        c = np.array((EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]))
-        d = co - c
-        m |= (np.abs(d[:, 1]) < 0.22) & (np.abs(d[:, 0]) < 0.06) & (np.abs(d[:, 2]) < 0.10) & (nm[:, 2] > 0.3) & (np.abs(co[:, 1]) > 0.38)
-    return bm & m
+        d = co - np.array((EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]))
+        out.append(np.maximum.reduce([np.abs(d[:, 1]) - 0.22, np.abs(d[:, 0]) - 0.06, np.abs(d[:, 2]) - 0.10, (0.3 - nm[:, 2]) * 0.2,
+                                      0.38 - np.abs(co[:, 1])]))
+    return np.minimum(*out)
 
 
 def belly_sd(co, nm):
-    # ellipsoid AND downward faces only: the box zone also painted the inner legs (polish review 2, cross-kin 1)
-    return np.maximum(sd_ellipse((-0.12, 0, 0.68), (0.36, 0.26, 0.20))(co, nm), (nm[:, 2] + 0.45) * 0.2)
+    # ellipsoid AND downward faces only; narrower and shorter (polish 3: the ends still smeared the inner hind legs)
+    return np.maximum(sd_ellipse((-0.07, 0, 0.68), (0.28, 0.15, 0.20))(co, nm), (nm[:, 2] + 0.45) * 0.2)
 
 
 def mantle_sd(co, nm):
@@ -169,16 +227,16 @@ def mantle_sd(co, nm):
     return np.maximum((q - 1.0) * 0.42, 1.02 - co[:, 2] + 0.12 * ((co[:, 0] + 0.15) / 0.42) ** 2)
 
 
-zones = [
-    (ear_inner, LIME),
-    (lambda co, nm: bm & (co[:, 2] < 0.14), HOOF),                                                        # hooves
-]
-paint_zones(body, GREEN, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=1)
-paint_soft(body, [(belly_sd, LIME),
-                  (sd_ellipse((0.62, 0, 1.00), (0.18, 0.21, 0.28)), LIME),                            # chest
-                  (sd_ellipse((1.16, 0, 1.32), (0.30, 0.24, 0.13)), LIME),                            # muzzle, snapped to the snout tip
-                  (mantle_sd, MANTLE)], mask=bm, edge=0.012)
+ZONES = [(ear_inner_sd, LIME), (belly_sd, LIME),
+         (sd_ellipse((0.62, 0, 1.00), (0.18, 0.21, 0.28)), LIME),                            # chest
+         (sd_ellipse((1.16, 0, 1.32), (0.30, 0.24, 0.13)), LIME),                            # muzzle, snapped to the snout tip
+         (mantle_sd, MANTLE)]
+# every zone is a signed distance (unit gradient along the skin) painted with paint_soft on a mesh split fine under its
+# edge (polish 3, cross-kin 4: boolean zones + smoothstep_blend and the one-voxel vertex-colour ramp read as airbrush)
+crisp_zones(body, [f for f, _ in ZONES], edge=0.012)
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, GREEN, [], mask=bm)
+paint_soft(body, [(unit_sd(body, f), c) for f, c in ZONES], mask=bm, edge=0.012)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

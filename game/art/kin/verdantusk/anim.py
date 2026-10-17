@@ -12,7 +12,9 @@ SPEC = dict(
     name='verdantusk', blend='verdantusk_final.blend',
     turn=(14.0, 3.0, (0.70, 0.0, 1.16)),                       # as model.py's 'battle' key
     head_zone=(9.0, 9.1, 0.76, 0.94, 0.40, 0.60, 0.40, 0.50),  # (no height-only term: the grove is not head)
-    ear=dict(c=(0.82, 0.76, 1.50), rx=-10, ry=10, axis=(0.0, 1.0, 0.0), w=(0.14, 0.36)),   # ear moved out (polish review 2)
+    # polish 3: stalked leaf ears rising out and back from the skull (model.py EAR_BASE + EAR_DIR * 0.14; rx, ry turn the
+    # ear frame's +Z onto EAR_DIR, so the bone pivots at the stalk and the weights follow the leaf)
+    ear=dict(c=(0.858, 0.529, 1.639), rx=-39.7, ry=-22.9, w=(0.26, 0.26)),
     legs=dict(front_x=0.48, hind_x=-0.76, y=0.42, top=0.86, hind_lean=0.02, reach=0.40, ground_band=0.40),
     body_c=(-0.20, 0, 1.12),
     hips=((-0.95, 0, 1.12), (-0.20, 0, 1.16)), chest=((-0.20, 0, 1.16), (0.70, 0, 1.16)), head=((0.70, 0, 1.16), (1.30, 0, 1.30)),

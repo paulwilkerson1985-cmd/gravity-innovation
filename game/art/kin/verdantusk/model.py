@@ -10,6 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'lib'))
 from common import *
 from mathutils.bvhtree import BVHTree
+from mathutils import Matrix
 
 T0 = time.perf_counter()
 sc = reset_scene()
@@ -59,6 +60,43 @@ def snap(target, origin):
     return hit, n.normalized()
 
 
+def crisp_zones(o, sdfs, edge=0.012, passes=2):
+    """Split the edges that a colour edge crosses (or comes within `edge` of), `passes` times, before paint_soft.
+    Vertex colours interpolate linearly across a triangle, so on a 0.02-voxel body every zone edge was at least one
+    voxel (3-4 px at 512) of airbrush whatever paint_soft's edge (polish review 2, cross-kin 4); two passes make the
+    triangles under the edge a quarter voxel. Flat split (no smoothing): shading and silhouette are unchanged.
+    Candidate for lib/common.py (paint_soft(..., crisp=True))."""
+    import bmesh
+    for _ in range(passes):
+        co, nm = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co, nm), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.verts.ensure_lookup_table(); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+def unit_sd(o, f):
+    """f's signed distance rescaled to unit gradient ALONG the surface (estimated over the mesh edges), so every zone
+    edge is the same width: a 3-D ellipsoid that meets the skin at a grazing angle, or a normal-based term, changes
+    slowly along the surface and painted a wide airbrushed band (polish 3, cross-kin 4)."""
+    me = o.data
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', ev); ev = ev.reshape(-1, 2)
+
+    def g(co, nm):
+        d = np.asarray(f(co, nm), float)
+        ln = np.maximum(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1), 1e-6)
+        gr = np.abs(d[ev[:, 0]] - d[ev[:, 1]]) / ln
+        acc = np.zeros(len(d)); cnt = np.zeros(len(d))
+        np.add.at(acc, ev[:, 0], gr); np.add.at(acc, ev[:, 1], gr); np.add.at(cnt, ev[:, 0], 1); np.add.at(cnt, ev[:, 1], 1)
+        return d / np.clip(acc / np.maximum(cnt, 1), 0.25, 4.0)
+    return g
+
+
 # ------------------------------------------------------------------ hard parts
 mat_body = toon_material('body', attr='Col', ink=INK)
 mat_eye = toon_material('eye', EYE, ink=INK)
@@ -74,12 +112,22 @@ parts = []
 d_cam, rot, right, up = camera_basis()
 Lw = (-0.55 * right + 0.72 * up + 0.42 * d_cam).normalized()
 
-# leaf ears: big drooping leaves out to the sides, clear of the skull (polish review 2: buried, only the flat face
-# showed, an ink ring on the side of the head)
-EAR = dict(c=(0.82, 0.76, 1.50), rx=-10, ry=10)
+# leaf ears: big leaves on short stalks, rising out and back from the top of the skull so they leave it in every
+# view (polish 3: the leaf lay flush on the skull and read as a closed ink oval in 3/4 and side); the face of the
+# leaf turns forward and up, toward the cameras
+EAR_BASE, EAR_DIR, EAR_LEN = Vector((0.90, 0.44, 1.54)), Vector((-0.30, 0.64, 0.71)).normalized(), 0.30
+EAR_C = EAR_BASE + EAR_DIR * (EAR_LEN + 0.06)              # leaf centre (its round end sits on the stalk)
 for s in (-1, 1):
-    parts.append(assign(ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), (0.22, 0.32, 0.09), rot=(-55 * s, 10, 22 * s), taper=0.5,
-                                  taper_axis=1, segs=64, rings=32), mat_body))   # (48 segments put a vertex past -1: NaN taper)
+    m = Vector((1, s, 1))
+    L = EAR_DIR * m
+    Nf = Vector((0.55, 0.30 * s, 0.75)); Nf = (Nf - L * Nf.dot(L)).normalized()   # leaf face normal
+    Wd = Nf.cross(L).normalized()
+    leaf = ellipsoid(f'ear{s}', (0, 0, 0), (0.20, 0.065, EAR_LEN), taper=0.55, segs=64, rings=48)
+    leaf.matrix_world = Matrix.Translation(EAR_C * m) @ Matrix((Wd, Nf, L)).transposed().to_4x4()
+    apply_xform(leaf)
+    parts.append(assign(leaf, mat_body))
+    b = EAR_BASE * m
+    parts.append(assign(tube(f'stalk{s}', [tuple(b - L * 0.16), tuple(b), tuple(b + L * 0.10)], [0.075, 0.065, 0.055], res=10), mat_body))
 
 # small fierce eyes tucked under the brow
 for s in (-1, 1):
@@ -164,13 +212,6 @@ body = union(body, parts)
 set_smooth(body, angle=50)
 
 # ------------------------------------------------------------------ colour zones (vertex colours)
-bm = vertex_slot_mask(body, {'body'})
-zones = [
-    (lambda co, nm: bm & (co[:, 0] > 1.10) & (co[:, 2] > 1.44) & (co[:, 2] < 1.64) & (np.abs(co[:, 1]) < 0.44), LEAF_D),   # brow
-    (lambda co, nm: bm & (co[:, 2] < 0.64) & (np.abs(co[:, 1]) > 0.20), BARK),                            # bark shins
-]
-paint_zones(body, GREEN, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=1)
 
 
 def belly_sd(co, nm):
@@ -178,9 +219,17 @@ def belly_sd(co, nm):
     return np.maximum(sd_ellipse((-0.15, 0, 0.66), (0.52, 0.34, 0.20))(co, nm), (nm[:, 2] + 0.45) * 0.2)
 
 
-paint_soft(body, [(belly_sd, LIME),
-                  (sd_ellipse((0.86, 0, 0.98), (0.24, 0.40, 0.30)), LIME),                            # throat
-                  (sd_ellipse((1.58, 0, 0.99), (0.30, 0.34, 0.18)), LIME)], mask=bm, edge=0.014)      # snout: an ellipsoid on the snout tip
+ZONES = [(lambda co, nm: np.maximum.reduce([1.10 - co[:, 0], 1.44 - co[:, 2], co[:, 2] - 1.64, np.abs(co[:, 1]) - 0.44]), LEAF_D),  # brow
+         (lambda co, nm: np.maximum(co[:, 2] - 0.64, 0.20 - np.abs(co[:, 1])), BARK),                      # bark shins
+         (belly_sd, LIME),
+         (sd_ellipse((0.86, 0, 0.98), (0.24, 0.40, 0.30)), LIME),                                       # throat
+         (sd_ellipse((1.58, 0, 0.99), (0.30, 0.34, 0.18)), LIME)]                                       # snout tip
+# every zone is a signed distance (unit gradient along the skin) painted with paint_soft on a mesh split fine under its
+# edge (polish 3, cross-kin 4: boolean zones + smoothstep_blend and the one-voxel vertex-colour ramp read as airbrush)
+crisp_zones(body, [f for f, _ in ZONES], edge=0.014)
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, GREEN, [], mask=bm)
+paint_soft(body, [(unit_sd(body, f), c) for f, c in ZONES], mask=bm, edge=0.014)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

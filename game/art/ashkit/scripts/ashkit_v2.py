@@ -65,7 +65,7 @@ for s in (-1, 1):
 # short fluffy tail rising from the rump and curling up (slightly to the far side so it reads in 3/4)
 for co, r in [((-0.50, 0.03, 0.74), 0.23), ((-0.64, 0.07, 0.88), 0.22), ((-0.71, 0.10, 1.04), 0.19)]:
     B.add(co, r)
-B.add((-0.55, 0, 0.66), 0.30, stiff=1.6)                                # rump fill: the haunch pair left an inked cleft (polish review 2)
+B.add((-0.52, 0, 0.58), 0.38, stiff=1.6)                                # rump fill: the haunch pair left an inked cleft (polish 3: r 0.38, lower)
 body = B.mesh(voxel=0.018)
 # flatten the paw soles exactly onto the ground plane (one plane for all four)
 co, nm = mesh_arrays(body)
@@ -85,6 +85,43 @@ def snap(target, origin):
     if hit is None:
         raise RuntimeError(f'no hit {target}')
     return hit, n.normalized()
+
+
+def crisp_zones(o, sdfs, edge=0.012, passes=2):
+    """Split the edges that a colour edge crosses (or comes within `edge` of), `passes` times, before paint_soft.
+    Vertex colours interpolate linearly across a triangle, so on a 0.02-voxel body every zone edge was at least one
+    voxel (3-4 px at 512) of airbrush whatever paint_soft's edge (polish review 2, cross-kin 4); two passes make the
+    triangles under the edge a quarter voxel. Flat split (no smoothing): shading and silhouette are unchanged.
+    Candidate for lib/common.py (paint_soft(..., crisp=True))."""
+    import bmesh
+    for _ in range(passes):
+        co, nm = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co, nm), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.verts.ensure_lookup_table(); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+def unit_sd(o, f):
+    """f's signed distance rescaled to unit gradient ALONG the surface (estimated over the mesh edges), so every zone
+    edge is the same width: a 3-D ellipsoid that meets the skin at a grazing angle, or a normal-based term, changes
+    slowly along the surface and painted a wide airbrushed band (polish 3, cross-kin 4)."""
+    me = o.data
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', ev); ev = ev.reshape(-1, 2)
+
+    def g(co, nm):
+        d = np.asarray(f(co, nm), float)
+        ln = np.maximum(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1), 1e-6)
+        gr = np.abs(d[ev[:, 0]] - d[ev[:, 1]]) / ln
+        acc = np.zeros(len(d)); cnt = np.zeros(len(d))
+        np.add.at(acc, ev[:, 0], gr); np.add.at(acc, ev[:, 1], gr); np.add.at(cnt, ev[:, 0], 1); np.add.at(cnt, ev[:, 1], 1)
+        return d / np.clip(acc / np.maximum(cnt, 1), 0.25, 4.0)
+    return g
 
 
 # ------------------------------------------------------------------ hard parts
@@ -181,7 +218,6 @@ body = union(body, parts)
 set_smooth(body, angle=50)
 
 # ------------------------------------------------------------------ colour zones (vertex colours)
-bm = vertex_slot_mask(body, {'body'})
 
 
 def ear_local(co, s):
@@ -211,25 +247,28 @@ def ear_back_l(l):
     return np.maximum.reduce([(k - 1.0) * 0.16, l[:, 0] - 0.02, -0.10 - l[:, 2]])
 
 
-def mask(co, nm):
+def mask_sd(co, nm):
     # fox mask: snout + cheeks. Seen from the side the top edge runs from just under the eye
     # diagonally back and down along the jaw (no vertical cut); toward the flanks it sweeps up the cheek.
     ay = np.abs(co[:, 1])
     ztop = (P['eye_z'] - P['eye_h'] - 0.035) + 0.14 * np.clip((ay - 0.30) / 0.30, 0, 1) ** 1.5
     jaw = 1.07 + 0.85 * (co[:, 0] - 0.74) + 0.22 * np.clip((ay - 0.22) / 0.4, 0, 1)
-    back = (co[:, 0] - 0.30) > 0.6 * (0.98 - co[:, 2])          # diagonal back edge, meets the chest bib
-    return bm & (co[:, 2] < np.minimum(ztop, jaw)) & (co[:, 2] > 0.60) & back
+    back = (co[:, 0] - 0.30) - 0.6 * (0.98 - co[:, 2])          # diagonal back edge, meets the chest bib
+    return np.maximum.reduce([co[:, 2] - np.minimum(ztop, jaw), 0.60 - co[:, 2], -back / 1.17])
 
 
-zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.42) & (co[:, 2] > 0.26) & (np.abs(co[:, 1]) < 0.30) & (co[:, 0] > -0.40) & (co[:, 0] < 0.16), CREAM),  # belly
-    (lambda co, nm: bm & (((co[:, 0] - 0.56) / 0.26) ** 2 + (co[:, 1] / 0.30) ** 2 + ((co[:, 2] - 0.66) / 0.30) ** 2 < 1), CREAM),       # chest bib
-    (mask, CREAM),
-    (lambda co, nm: bm & (co[:, 2] < 0.27) & (co[:, 0] > -0.62), SOOT),   # sooty socks, same height on all four
-]
-paint_zones(body, ORANGE, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=1)
-paint_soft(body, [(ear_sdf(inner_ear_l), CREAM), (ear_sdf(ear_back_l), EAR_BACK), (ear_sdf(ear_tip_l), SOOT)], mask=bm, edge=0.012)
+ZONES = [
+    (lambda co, nm: np.maximum.reduce([0.26 - co[:, 2], co[:, 2] - 0.42, np.abs(co[:, 1]) - 0.30, -0.40 - co[:, 0], co[:, 0] - 0.16]), CREAM),  # belly
+    (sd_ellipse((0.56, 0, 0.66), (0.26, 0.30, 0.30)), CREAM),                                                     # chest bib
+    (mask_sd, CREAM),
+    (lambda co, nm: np.maximum(co[:, 2] - 0.27, -0.62 - co[:, 0]), SOOT),          # sooty socks, same height on all four
+    (ear_sdf(inner_ear_l), CREAM), (ear_sdf(ear_back_l), EAR_BACK), (ear_sdf(ear_tip_l), SOOT)]
+# every zone is a signed distance (unit gradient along the skin) painted with paint_soft on a mesh split fine under its
+# edge (polish 3, cross-kin 4: boolean zones + smoothstep_blend and the one-voxel vertex-colour ramp read as airbrush)
+crisp_zones(body, [f for f, _ in ZONES], edge=0.012)
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, ORANGE, [], mask=bm)
+paint_soft(body, [(unit_sd(body, f), c) for f, c in ZONES], mask=bm, edge=0.012)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)
