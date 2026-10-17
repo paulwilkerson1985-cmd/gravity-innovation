@@ -43,6 +43,17 @@ _build = serpentrig.serpent_clips
 def _clips(scale=1.0, down=-76.0):
     clips, travel, rest = _build(scale=scale, down=down)
     clips['attack'] = attack_head_up()
+    # faint: the shared clip only swings the tail sideways, so the whip tail stayed upright with the fork in the air
+    # while the neck lay on the floor; let it droop back toward the floor as the body sags
+    droop = float(os.environ.get('TAIL_DROOP', 30))     # 38+ sinks the tail under the floor
+    seen = set()
+    for f, P in enumerate(clips['faint']):
+        if id(P) in seen:
+            continue
+        seen.add(id(P))
+        k = min(1.0, max(0.0, (f - 3) / 4.0))           # from the sag (f4) to lying (f7)
+        r = P.get('tail', {}).get('r', (0, 0, 0))
+        P['tail'] = {**P.get('tail', {}), 'r': (r[0], r[1] + droop * k, r[2])}
     return clips, travel, rest
 
 
