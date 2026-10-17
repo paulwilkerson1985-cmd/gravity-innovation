@@ -56,6 +56,20 @@ full and half, contact sheet and turnaround in `review/`.
 
 None of the new kin is gated yet: the contact sheets were checked by eye only (grounding, framing, clip readability).
 
+## Template fixes from Fable review 1 (2026-10-17, `../ashkit/review/FABLE_REVIEW_1.md`)
+Applied in the shared code, so every kin gets them on its next render (all 19 were queued for re-render):
+- **Far eye:** sheetkit hides an eye in any view where it faces the camera less than `FAR_EYE_T` (0.25). The
+  back-view sliver and the hit "crown dot" were both the far eye at the silhouette edge. The run prints each eye's
+  facing per view and `meta.json` lists the hidden eyes. Set a kin's `eye_centre` behind the eyes, or the test
+  measures sideways (Surgeray).
+- **Faint paws:** the folded legs shorten toward the hips (`quad.FOLD`); the lying drawings snap to the floor
+  (`ground_snap`), and stagger, attack and hit drawings lift if a paw dips under it (`ground_lift`, moving `root`).
+- **Hop-back:** leans forward with the forelegs tucked (it read as rearing up and begging).
+- **Idle:** bigger breath, nod, glance and tail sway. There is no baked blink, because the loop is one second long:
+  the sheet player should blink now and then.
+- Not done yet (SHOULD/NICE in the review): back markings on flat-backed kin, a hock bend on the quad legs, inking the
+  tail flame, a faint body roll toward the camera, matching `restHeightPx` in game.
+
 ## Lessons from the production run
 - Probe a few poses (`SPP=4 SIZE=384 VIEWS=.. CLIPS=.. FRAMES=..`, a separate `OUT`) before queueing a 6-13 minute
   render: every defect found this run (sheared fists, smeared tips, inward fists) showed in 3-5 probe frames.
