@@ -37,13 +37,13 @@ half, contact sheet in `review/`.
 
 | kin | rig | model | sheets | notes |
 |---|---|---|---|---|
-| ashkit | quad | final pass running | fable1 sheets (pre-polish) | the template; ember core painted by facing, crisp ear bands |
-| cindertail | quad | final pass running | fable1 sheets (pre-polish) | ruff as one mass (pass 2), belly faces down only |
-| pyrelord | quad | final pass running | fable1 sheets (pre-polish) | metaball collar; pupils blink (`eye_slots`) |
-| thistlehorn | quad | final pass running | fable1 sheets (pre-polish) | thick curved horn, saddle mantle |
-| rillback | quad | final pass running | fable1 sheets (pre-polish) | rockered board with a flush stripe |
-| verdantusk | quad | final pass running | pre-polish | ears out of the skull (pass 2), V tail leaves, rump fill |
-| cragmaul | quad | final pass running | pre-polish | brow as a stiff metaball, larger eyes |
+| ashkit | quad | verified (pass 3) | queued | the template; ember core painted by facing, crisp ear bands |
+| cindertail | quad | verified (pass 3) | queued | ruff as one mass (pass 2), belly faces down only |
+| pyrelord | quad | verified (pass 3) | queued | metaball collar; pupils blink (`eye_slots`) |
+| thistlehorn | quad | verified (pass 3) | queued | thick curved horn, saddle mantle |
+| rillback | quad | verified (pass 3) | queued | rockered board with a flush stripe |
+| verdantusk | quad | verified (pass 3) | queued | ears out of the skull (pass 2), V tail leaves, rump fill |
+| cragmaul | quad | verified (pass 3) | queued | brow as a stiff metaball, larger eyes |
 | dropple | hop | verified | final | flipper fins, two placed shines, capped ripple bands |
 | mossling | hop | verified | final | dark folds between clumps (cavity), toed feet |
 | pebblet | hop | verified | rendering | colour per stone facet |
@@ -55,6 +55,13 @@ half, contact sheet in `review/`.
 | cyclonyx | fly | verified (pass 2) | queued | five-point wings, level spread streamers |
 | petalwisp | fly | verified (pass 2) | queued | pink back of head, tilted wisp |
 | maelstrode | serpent | verified (pass 2) | queued | no centre crest, tall splayed dorsals, belly V |
+
+Shared-helper debt: the polish passes wrote these inline in the kin scripts; move them into `lib/common.py` (with a
+re-render to prove identical output) before the next new kin: `crisp_zones` + `unit_sd` (cel-crisp signed-distance
+colour edges: split the mesh under each edge; quads), `flame_material` + the per-vertex `Glow` hook (Ashkit,
+Cindertail, Pyrelord), `belly_sd`, `fuse` (union + remesh + local smooth), `wing_frame` / `place_wing` and `clip_convex`
+(fliers), `paint_facets` (Pebblet, Vulcrag), `cavity` (Mossling), `frame_rot` (Breezel), `bolt_outline` / `skin_bolt`
+(Surgeray). Lesson: `crease_deg` only removes crease ink; outline strokes on bumps need a geometry change.
 
 Display poses: wings and the ray face the low battle camera (yaw 35 + the 16 deg battle turn, elevation 12), so side
 turnaround views of the fliers are edge-on by design; judge models on `battle.png` and the 3/4 first.
