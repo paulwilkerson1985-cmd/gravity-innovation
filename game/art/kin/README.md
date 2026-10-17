@@ -29,32 +29,35 @@ Per kin: `model.py` (blockout, face parts snapped to the skull, union, colour zo
 Run with the bpy 5.2.2 venv: `MODE=both SIZE=512 SPP=8 OUTDIR=... python -I model.py`, then `OUT=<frames> python -I anim.py`
 (`DRY=1` for checks and framing only), then `python3 lib/pack.py <frames> <sheets>`.
 
-## Status (2026-10-17)
-All 18 species in docs/CREATURES.md have a model and a rig spec. "full set" = idle/attack/hit/faint x front/back, packed
-full and half, contact sheet and turnaround in `review/`.
+## Status (2026-10-17, after polish review 2)
+All 18 species in docs/CREATURES.md have a polished model, a rig spec and (done or queued) final sheets. Reviews:
+`review/POLISH_REVIEW_2_*.md` (Fable art-director pass per body plan), `review/VERIFY_REVIEW_2_*.md` (its check of
+the fixes). "final" = sheets rendered from the verified model: idle/attack/hit/faint x front/back, packed full and
+half, contact sheet in `review/`.
 
-| kin | rig | sheets | notes |
-|---|---|---|---|
-| ashkit | quad | done | the template; gate 2 `better` 4/4 stills; see `../ashkit/review/GATE2.md` |
-| cindertail | quad | full set | re-render with the final quadrig before shipping (checks and framing are identical) |
-| pyrelord | quad | full set | faint drop 0.35 / legs 0.29; `ground_band` 0.30 keeps the claws on the legs |
-| thistlehorn | quad | full set | leaf ears on axis (0,1,0) |
-| rillback | quad | full set | `tail_axis` x, `tail_pitch` -0.15 keeps the tail off the floor in the faint |
-| verdantusk | quad | full set | `faint_head` -0.2 keeps the tusks out of the floor |
-| cragmaul | quad | re-rendering | v1 sheets sheared the boulder fists: fixed with the rigid foot claim and `faint_front` 0 |
-| dropple | hop | full set | curl on tip1/tip2, fins |
-| mossling | hop | full set | sprout on one leaf bone |
-| pebblet | hop | re-rendering | chipped facets; `squash` 0.4 (v1 flattened like jelly in the faint) |
-| breezel | hop | full set | boolean-joined head (metaballs blended it into a skittle); swirl on tip1/tip2, wings on fins |
-| vulcrag | hop | queued | lathed volcano profile; fists on fins with `gain` -0.8; `squash` 0.5; motion 0.7 |
-| surgeray | hop | queued | bent lens slab + head mound; wings on wide capsules at half gain; tail-tip bolt claimed by slot |
-| flickwing | fly | queued | buzzing wings (6 beats per idle); antennae and sparks per-side slots |
-| stormoth | fly | queued | slab wings with bolt and spots in a V, 2 slow beats; banded abdomen on tip1 |
-| cyclonyx | fly | queued | raptor; underwing + primaries on the wing slots; streamers on tip1/tip2 |
-| petalwisp | fly | queued | no wings: leaf arms on leaf1/leaf2, the wisp tail on tip1 |
-| maelstrode | serpent | queued | strike straightens the S; faint drops the neck base 66 deg (the barbels just touch) |
+| kin | rig | model | sheets | notes |
+|---|---|---|---|---|
+| ashkit | quad | final pass running | fable1 sheets (pre-polish) | the template; ember core painted by facing, crisp ear bands |
+| cindertail | quad | final pass running | fable1 sheets (pre-polish) | ruff as one mass (pass 2), belly faces down only |
+| pyrelord | quad | final pass running | fable1 sheets (pre-polish) | metaball collar; pupils blink (`eye_slots`) |
+| thistlehorn | quad | final pass running | fable1 sheets (pre-polish) | thick curved horn, saddle mantle |
+| rillback | quad | final pass running | fable1 sheets (pre-polish) | rockered board with a flush stripe |
+| verdantusk | quad | final pass running | pre-polish | ears out of the skull (pass 2), V tail leaves, rump fill |
+| cragmaul | quad | final pass running | pre-polish | brow as a stiff metaball, larger eyes |
+| dropple | hop | verified | final | flipper fins, two placed shines, capped ripple bands |
+| mossling | hop | verified | final | dark folds between clumps (cavity), toed feet |
+| pebblet | hop | verified | rendering | colour per stone facet |
+| breezel | hop | verified | queued | wings outside the body (per-side wing materials) |
+| vulcrag | hop | verified | queued | shoulder/elbow arms, crusted fists, branching cracks |
+| surgeray | hop | verified | queued | rebuilt from formulas, tipped 26 deg to the camera, battle turn 36 deg |
+| stormoth | fly | verified | final | front-facing display wings, flush bolt |
+| flickwing | fly | verified (pass 2) | queued | glowing lantern pitched to show in battle |
+| cyclonyx | fly | verified (pass 2) | queued | five-point wings, level spread streamers |
+| petalwisp | fly | verified (pass 2) | queued | pink back of head, tilted wisp |
+| maelstrode | serpent | verified (pass 2) | queued | no centre crest, tall splayed dorsals, belly V |
 
-None of the new kin is gated yet: the contact sheets were checked by eye only (grounding, framing, clip readability).
+Display poses: wings and the ray face the low battle camera (yaw 35 + the 16 deg battle turn, elevation 12), so side
+turnaround views of the fliers are edge-on by design; judge models on `battle.png` and the 3/4 first.
 
 ## Template fixes from Fable review 1 (2026-10-17, `../ashkit/review/FABLE_REVIEW_1.md`)
 Applied in the shared code, so every kin gets them on its next render (all 19 were queued for re-render):
