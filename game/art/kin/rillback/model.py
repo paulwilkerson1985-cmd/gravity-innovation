@@ -43,6 +43,7 @@ for s in (-1, 1):
 # paddle tail: thick at the root, flattening and tapering back along the ground
 for co, r in [((-1.02, 0, 0.62), 0.22), ((-1.24, 0, 0.50), 0.18), ((-1.44, 0, 0.40), 0.14)]:
     B.add(co, r, size=(1.0, 1.25, 0.62))
+B.add((-0.88, 0, 0.58), 0.24, size=(1.0, 1.45, 0.75), stiff=1.5)   # tail-root fill: the tail met the haunches in two hooked folds (polish 3)
 body = B.mesh(voxel=0.018)
 co, nm = mesh_arrays(body)
 co[:, 2] = np.maximum(co[:, 2], GROUND)
@@ -172,8 +173,8 @@ def bend_board(o):
 board = bend_board(ellipsoid('board', (BX, 0, bz), (0.80, 0.40, 0.11), segs=64, rings=32))
 parts.append(assign(board, mat_board))
 # the stripe is a narrower, slightly taller copy of the board's lens: flush along its length, no floating band
-# (polish 3: y 0.17, z 0.132, so the visible band is about 0.18 wide, not a navy edge line: it survives at 300 px)
-stripe = bend_board(ellipsoid('stripe', (BX, 0, bz), (0.76, 0.17, 0.132), segs=64, rings=32))
+# (polish 3: y 0.21, z 0.138, so the visible band is about 0.30 wide, not a navy edge line: it survives at 300 px)
+stripe = bend_board(ellipsoid('stripe', (BX, 0, bz), (0.76, 0.21, 0.138), segs=64, rings=32))
 parts.append(assign(stripe, mat_stripe))
 facing(board, d_cam, label='board top (battle camera)')
 print('  board seated at z', round(bz, 3))
