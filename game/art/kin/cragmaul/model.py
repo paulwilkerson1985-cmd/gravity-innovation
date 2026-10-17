@@ -45,6 +45,43 @@ displace(body, strength=0.035, scale=0.30, tex_type='CLOUDS', depth=1)
 set_smooth(body)
 print('  blockout tris', tri_count(body), f'{time.perf_counter() - T0:.1f}s')
 
+def crisp_zones(o, sdfs, edge=0.012, passes=2):
+    """Split the edges that a colour edge crosses (or comes within `edge` of), `passes` times, before paint_soft.
+    Vertex colours interpolate linearly across a triangle, so on a 0.02-voxel body every zone edge was at least one
+    voxel (3-4 px at 512) of airbrush whatever paint_soft's edge (polish review 2, cross-kin 4); two passes make the
+    triangles under the edge a quarter voxel. Flat split (no smoothing): shading and silhouette are unchanged.
+    Candidate for lib/common.py (paint_soft(..., crisp=True))."""
+    import bmesh
+    for _ in range(passes):
+        co, nm = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co, nm), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.verts.ensure_lookup_table(); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+def unit_sd(o, f):
+    """f's signed distance rescaled to unit gradient ALONG the surface (estimated over the mesh edges), so every zone
+    edge is the same width: a 3-D ellipsoid that meets the skin at a grazing angle, or a normal-based term, changes
+    slowly along the surface and painted a wide airbrushed band (polish 3, cross-kin 4)."""
+    me = o.data
+    ev = np.empty(len(me.edges) * 2, dtype=np.int64); me.edges.foreach_get('vertices', ev); ev = ev.reshape(-1, 2)
+
+    def g(co, nm):
+        d = np.asarray(f(co, nm), float)
+        ln = np.maximum(np.linalg.norm(co[ev[:, 0]] - co[ev[:, 1]], axis=1), 1e-6)
+        gr = np.abs(d[ev[:, 0]] - d[ev[:, 1]]) / ln
+        acc = np.zeros(len(d)); cnt = np.zeros(len(d))
+        np.add.at(acc, ev[:, 0], gr); np.add.at(acc, ev[:, 1], gr); np.add.at(cnt, ev[:, 0], 1); np.add.at(cnt, ev[:, 1], 1)
+        return d / np.clip(acc / np.maximum(cnt, 1), 0.25, 4.0)
+    return g
+
+
 mat_body = toon_material('body', attr='Col', ink=INK)
 mat_fist = toon_material('fist', FIST, ink=INK)
 mat_cry = toon_material('crystal', CYAN, glow=0.45, ink='#0e5a70')
@@ -95,18 +132,19 @@ co[:, 2] -= co[:, 2].min()
 body.data.vertices.foreach_set('co', co.ravel()); body.data.update()
 
 # ------------------------------------------------------------------ colour zones
-bm = vertex_slot_mask(body, {'body'})
-paint_zones(body, BROWN, mask=bm, zones=[
-    (lambda co, nm: bm & (co[:, 2] < 0.20) & (co[:, 0] < 0.2), BROWN_D),   # feet
-])
-smoothstep_blend(body, 'Col', iters=1)
-# soft zones along designed curves (polish review 2: the box jaw and the smeared chest-plate edge)
-paint_soft(body, [
+ZONES = [
+    (lambda co, nm: np.maximum(co[:, 2] - 0.20, co[:, 0] - 0.2), BROWN_D),                    # feet
     # light chest plate: front of the torso under the head, between the arms (front-facing only)
     (lambda co, nm: np.maximum(sd_ellipse((0.50, 0, 0.66), (0.34, 0.50, 0.48))(co, nm), (-0.15 - nm[:, 0]) * 0.2), CHEST),
     (sd_ellipse((1.00, 0, 1.07), (0.14, 0.21, 0.13)), CHEST),                                  # light jaw: an ellipsoid on the jaw tip
     (sd_ellipse((0.92, 0, 1.41), (0.16, 0.32, 0.10)), BROWN_D),                                # darker brow
-], mask=bm, edge=0.014)
+]
+# every zone is a signed distance (unit gradient along the skin) painted with paint_soft on a mesh split fine under its
+# edge (polish 3, cross-kin 4: the box zone + smoothstep_blend and the one-voxel vertex-colour ramp read as airbrush)
+crisp_zones(body, [f for f, _ in ZONES], edge=0.014)
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, BROWN, [], mask=bm)
+paint_soft(body, [(unit_sd(body, f), c) for f, c in ZONES], mask=bm, edge=0.014)
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)
 def smooth(e0, e1, x):
@@ -147,7 +185,7 @@ key = add_battle_key(body, 14.0, 3.0)
 OUTDIR = os.environ.get('OUTDIR', os.path.join(HERE, 'rounds', 'r1'))
 os.makedirs(OUTDIR, exist_ok=True)
 SPP = int(os.environ.get('SPP', 12)); SIZE = int(os.environ.get('SIZE', 768)); MODE = os.environ.get('MODE', 'both')
-setup_render(samples=SPP, ink_px=6.0 * SIZE / 1024, inner_px=3.0 * SIZE / 1024, crease_deg=100)
+setup_render(samples=SPP, ink_px=6.0 * SIZE / 1024, inner_px=3.0 * SIZE / 1024, crease_deg=125)    # 125: the stray back strokes (polish 3)
 sc.cycles.use_denoising = True; sc.cycles.denoiser = 'OPENIMAGEDENOISE'
 if MODE in ('turn', 'both'):
     from turn import turnaround
