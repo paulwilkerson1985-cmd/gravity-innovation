@@ -14,7 +14,7 @@ T0 = time.perf_counter()
 sc = reset_scene()
 P = dict(eye_y=0.16, eye_z=1.08, eye_w=0.11, eye_h=0.14, eye_d=0.045, eye_out=0.016, eye_fwd=0.10, turn=16.0)
 
-SKY = srgb('#9fd6ff'); SKY_D = srgb('#6fb4ec'); WHITE_B = srgb('#f6fbff'); CLOUD_D = srgb('#c9dcef'); ORANGE = srgb('#ff9a3c')
+SKY = srgb('#9fd6ff'); SKY_D = srgb('#6fb4ec'); WHITE_B = srgb('#f6fbff'); CLOUD = srgb('#dbe8f5'); CLOUD_D = srgb('#c9dcef'); ORANGE = srgb('#ff9a3c')
 EYE = srgb('#1a2438'); WHITE = srgb('#ffffff')
 INK = '#1a2a44'
 
@@ -51,8 +51,10 @@ mat_body = toon_material('body', attr='Col', ink=INK)
 mat_eye = toon_material('eye', EYE, ink=INK)
 mat_glint = toon_material('glint', WHITE, glow=1.0, ink='#ffffff')
 mat_beak = toon_material('beak', ORANGE, glow=0.1, ink='#7a3a10')
-mat_wing = toon_material('wing', SKY_D, ink=INK)
+mat_wing = {s: toon_material('wing.L' if s > 0 else 'wing.R', attr='Col', ink=INK) for s in (-1, 1)}   # one slot per side (rig)
+mat_tail = toon_material('tail', attr='Col', ink=INK)
 mat_tuft = toon_material('tuft', WHITE_B, ink=INK)
+mat_seam = toon_material('seam', srgb('#7a3a10'), ink='#7a3a10')
 assign(body, mat_body)
 parts = [assign(head, mat_body)]
 d_cam, rot, right, up = camera_basis()
@@ -72,33 +74,79 @@ for s in (-1, 1):
         parts.append(assign(ellipsoid(f'glint{s}{k}', loc, (r, r * 1.1, 0.013), track=f), mat_glint))
 # a small orange beak between and below the eyes, pointing forward and a little down
 bp, bn = snap((1.0, 0, 0.98), (H.x - 0.1, 0, 0.98))
-parts.append(assign(ellipsoid('beak', bp + Vector((0.035, 0, 0)), (0.10, 0.075, 0.06), rot=(0, 12, 0), taper=0.75, taper_axis=0), mat_beak))
-# stubby wings at the sides, tips out and back
+parts.append(assign(ellipsoid('beak', bp + Vector((0.05, 0, 0)), (0.13, 0.075, 0.06), rot=(0, 12, 0), taper=0.75, taper_axis=0), mat_beak))
+# a thin ink seam along the bite line, so the beak reads as a beak and not an orange nose dot
+by = Matrix.Rotation(math.radians(12), 3, 'Y')
+seam = [bp + Vector((0.05, 0, 0)) + by @ Vector((x, 0, z)) for x, z in ((-0.06, -0.004), (0.0, -0.006), (0.06, -0.006), (0.115, -0.002))]
+seam = [p + Vector((0, 0, 0)) for p in seam]
+parts.append(assign(tube('seam', [tuple(p) for p in seam], [0.006, 0.005, 0.004, 0.003], res=6), mat_seam))
+
+
+def frame_rot(t, n):
+    """Euler (deg) whose local +x is t (the taper end: the tip) and local +y is n (the thin axis: the flat side)."""
+    t = Vector(t).normalized(); n = (Vector(n) - t * Vector(n).dot(t)).normalized(); w = t.cross(n)
+    return [math.degrees(a) for a in Matrix((t, n, w)).transposed().to_euler('XYZ')]
+
+
+# stubby wings: centred outside the body (inside its radius they surfaced as flat inked ovals), the tip out, back
+# and down with a pale feathered tip
+WINGS = {}
 for s in (-1, 1):
-    parts.append(assign(ellipsoid(f'wing{s}', (-0.04, 0.48 * s, 0.56), (0.24, 0.08, 0.17), rot=(-20 * s, -10, -28 * s), taper=0.55, taper_axis=0), mat_wing))
-# a little white tail fan at the back (the player's own kin is seen from behind)
-for i, (y, rz, ry) in enumerate(((0.0, 0, -52), (0.13, 26, -42), (-0.13, -26, -42))):
-    parts.append(assign(ellipsoid(f'tail{i}', (-0.50, y, 0.54), (0.24, 0.10, 0.075), rot=(0, ry, 180 + rz), taper=0.7, taper_axis=0), mat_tuft))
+    c = Vector((-0.04, 0.62 * s, 0.58)); t = Vector((-0.70, 0.42 * s, -0.42)).normalized()
+    WINGS[s] = (c, t)
+    parts.append(assign(ellipsoid(f'wing{s}', c, (0.26, 0.10, 0.16), rot=frame_rot(t, (0.2, s, 0.45)), taper=0.55, taper_axis=0), mat_wing[s]))
+# a little tail fan at the back (the player's own kin is seen from behind): sky feathers with white tips
+TAILS = []
+for i, sp in enumerate((0.0, 0.42, -0.42)):     # an upright fan: from behind you see its face, from the side its edge
+    t = Vector((-0.45, sp, 0.89)).normalized()
+    c = Vector((-0.44, 0.06 * sp, 0.58)) + t * 0.17
+    TAILS.append((c, t))
+    parts.append(assign(ellipsoid(f'tail{i}', c, (0.22, 0.06, 0.13), rot=frame_rot(t, (1, 0, 0)), taper=0.35, taper_axis=0), mat_tail))
 # the wind-swirl tuft: a curl rising from the crown and rolling forward, and a small curl behind it
 top, _ = snap((H.x - 0.04, 0, 3.0), (H.x - 0.04, 0, H.z))
 curl = [(0, 0, -0.04), (-0.04, 0, 0.12), (0.02, 0, 0.27), (0.14, 0, 0.29), (0.19, 0, 0.19), (0.12, 0, 0.13), (0.07, 0, 0.18)]
-yaw = Matrix.Rotation(math.radians(35), 3, 'Z')
+yaw = Matrix.Rotation(math.radians(35), 3, 'Z')     # 35 faces the battle camera and the in-game back view
 parts.append(assign(tube('tuft', [tuple(top + yaw @ Vector(c)) for c in curl], [0.075, 0.07, 0.06, 0.05, 0.04, 0.03, 0.022], res=10), mat_tuft))
 back, _ = snap((H.x - 0.24, 0, 3.0), (H.x - 0.24, 0, H.z))
 curl2 = [(0, 0, -0.03), (-0.06, 0, 0.08), (-0.02, 0, 0.16), (0.05, 0, 0.13), (0.02, 0, 0.09)]
-parts.append(assign(tube('tuft2', [tuple(back + yaw @ Vector(c)) for c in curl2], [0.05, 0.045, 0.035, 0.025, 0.018], res=10), mat_tuft))
+yaw2 = Matrix.Rotation(math.radians(125), 3, 'Z')  # the small curl turns to the back cameras, so they see a curl, not a candle
+parts.append(assign(tube('tuft2', [tuple(back + yaw2 @ Vector(c)) for c in curl2], [0.05, 0.045, 0.035, 0.025, 0.018], res=10), mat_tuft))
 
 body = union(body, parts)
 set_smooth(body, angle=50)
 
 bm = vertex_slot_mask(body, {'body'})
-zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.30), WHITE_B),                                                                 # the cloud
-    (lambda co, nm: bm & (co[:, 2] < 0.10) & (nm[:, 2] < -0.2), CLOUD_D),                                               # its shaded underside
-    (lambda co, nm: bm & (co[:, 0] > 0.18) & (co[:, 2] > 0.30) & ((co[:, 1] / 0.30) ** 2 + ((co[:, 2] - 0.56) / 0.26) ** 2 < 1), WHITE_B),   # belly
-]
-paint_zones(body, SKY, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=3)
+paint_zones(body, SKY, [], mask=bm)
+
+
+def sd_cloud(co, nm):
+    return co[:, 2] - 0.30
+
+
+def sd_cloud_under(co, nm):
+    return np.maximum(co[:, 2] - 0.10, nm[:, 2] + 0.2)
+
+
+def sd_belly(co, nm):     # the belly stops above the cloud (z > 0.42), so the two whites keep the body's lower edge
+    k = np.sqrt((co[:, 1] / 0.30) ** 2 + ((co[:, 2] - 0.58) / 0.24) ** 2)
+    return np.maximum.reduce([(k - 1.0) * 0.24, 0.18 - co[:, 0], 0.42 - co[:, 2]])
+
+
+paint_soft(body, [(sd_cloud, CLOUD), (sd_cloud_under, CLOUD_D), (sd_belly, WHITE_B)], mask=bm, edge=0.012)
+for s in (-1, 1):                     # wings: SKY_D with a pale feathered tip
+    wm = vertex_slot_mask(body, {mat_wing[s].name}) & ~bm
+    paint_zones(body, SKY_D, [], mask=wm)
+    c, t = WINGS[s]
+    paint_soft(body, [(lambda co, nm, c=c, t=t: 0.12 - (co - np.array(c)) @ np.array(t), WHITE_B)], mask=wm, edge=0.012)
+tm = vertex_slot_mask(body, {'tail'}) & ~bm
+paint_zones(body, SKY, [], mask=tm)
+
+
+def sd_tail_tips(co, nm):
+    return np.min([0.09 - (co - np.array(c)) @ np.array(t) for c, t in TAILS], axis=0)
+
+
+paint_soft(body, [(sd_tail_tips, WHITE_B)], mask=tm, edge=0.012)
 
 
 def add_battle_key(o, turn_deg):

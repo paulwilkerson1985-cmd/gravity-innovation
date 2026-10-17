@@ -11,8 +11,8 @@ SPEC = dict(
     name='dropple', blend='dropple_final.blend', turn=16.0, height=1.62,
     apps=[dict(bone='tip1', head=(-0.03, 0, 1.12), tail=(-0.12, 0, 1.40), radius=0.30, root_fade=0.35),
           dict(bone='tip2', head=(-0.12, 0, 1.40), tail=(-0.40, 0, 1.64), parent='tip1', radius=0.24, root_fade=0.15),
-          dict(bone='fin.L', head=(0.04, 0.52, 0.32), tail=(0.12, 0.82, 0.28), radius=0.14, root_fade=0.05),
-          dict(bone='fin.R', head=(0.04, -0.52, 0.32), tail=(0.12, -0.82, 0.28), radius=0.14, root_fade=0.05)],
+          dict(bone='fin.L', head=(0.16, 0.58, 0.36), tail=(-0.10, 0.88, 0.32), radius=0.14, root_fade=0.05),
+          dict(bone='fin.R', head=(0.16, -0.58, 0.36), tail=(-0.10, -0.88, 0.32), radius=0.14, root_fade=0.05)],
     eye_centre=(0.0, 0.0, 0.70), scale=1.0,
 )
 run_hop(SPEC, HERE)

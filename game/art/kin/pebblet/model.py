@@ -12,7 +12,7 @@ from mathutils.bvhtree import BVHTree
 
 T0 = time.perf_counter()
 sc = reset_scene()
-P = dict(eye_y=0.20, eye_z=0.62, eye_w=0.11, eye_h=0.13, eye_d=0.045, eye_out=0.016, eye_fwd=0.10, turn=16.0)
+P = dict(eye_y=0.19, eye_z=0.62, eye_w=0.11, eye_h=0.13, eye_d=0.045, eye_out=0.016, eye_fwd=0.14, turn=16.0)   # eyes toward the front: the far-eye glint stays off the silhouette
 
 SAND = srgb('#c9935e'); SAND_D = srgb('#a8744a'); FACE = srgb('#f0d6ae'); CYAN = srgb('#5ce9ff'); EYE = srgb('#2a1a14')
 WHITE = srgb('#ffffff'); NOSE = srgb('#8a5a3a')
@@ -28,6 +28,7 @@ displace(body, strength=0.07, scale=0.55, tex_type='VORONOI')
 m = body.modifiers.new('chip', 'DECIMATE'); m.decimate_type = 'DISSOLVE'; m.angle_limit = math.radians(9)
 activate(body); bpy.ops.object.modifier_apply(modifier='chip')
 m = body.modifiers.new('tri', 'TRIANGULATE'); bpy.ops.object.modifier_apply(modifier='tri')
+FACETS = body.data.copy()                 # the big flat facets: colour zones are chosen per facet (see paint_facets)
 m = body.modifiers.new('cut', 'SUBSURF'); m.subdivision_type = 'SIMPLE'; m.levels = 3
 bpy.ops.object.modifier_apply(modifier='cut')
 co, nm = mesh_arrays(body)
@@ -82,17 +83,46 @@ for i, (x, y, h, r, rx, ry) in enumerate([(-0.18, 0.0, 0.42, 0.085, 0, -28), (-0
 body = union(body, parts)
 set_smooth(body, angle=12)              # keep the rock's facets
 
-bm = vertex_slot_mask(body, {'body'})
-zones = [
-    (lambda co, nm: bm & (co[:, 0] > 0.24) & ((co[:, 1] / 0.38) ** 2 + ((co[:, 2] - 0.50) / 0.30) ** 2 < 1), FACE),
-    (lambda co, nm: bm & (co[:, 2] < 0.10), SAND_D),
-    (lambda co, nm: bm & (co[:, 0] < -0.10) & (nm[:, 2] < 0.2) & (co[:, 2] > 0.10), SAND_D),
-    # stone flecks: small dark specks scattered off the face
-    (lambda co, nm: bm & ~((co[:, 0] > 0.20) & (np.abs(co[:, 1]) < 0.40)) &
-     (np.sin(co[:, 0] * 41.0 + 1.3) * np.sin(co[:, 1] * 37.0 + 0.7) * np.sin(co[:, 2] * 43.0 + 2.1) > 0.55), SAND_D),
-]
-paint_zones(body, SAND, zones, mask=bm)
-smoothstep_blend(body, 'Col', iters=2)
+def paint_facets(o, facets, base_rgb, pick, attr='Col', slot='body'):
+    """Flat per-facet colour for a faceted kin: a FACE_CORNER attribute where every corner of a polygon takes the
+    colour of the stone facet it lies on (the facet mesh before the fine cut). pick(centroid, normal, hash) -> rgb or
+    None per facet. No blending: a vertex blend over crisp facets reads as a smeared stain."""
+    from mathutils.bvhtree import BVHTree as _B
+    fb = _B.FromPolygons([v.co[:] for v in facets.vertices], [p.vertices[:] for p in facets.polygons])
+    fcol = []
+    for p in facets.polygons:
+        c = p.center
+        h = (math.sin(c.x * 127.1 + c.y * 311.7 + c.z * 74.7) * 43758.5453) % 1.0
+        fcol.append(pick(c, p.normal, h) or base_rgb)
+    me = o.data
+    sidx = [i for i, m in enumerate(me.materials) if m and m.name == slot]
+    n = len(me.polygons)
+    cen = np.empty(n * 3); me.polygons.foreach_get('center', cen); cen = cen.reshape(-1, 3)
+    pm = np.empty(n, dtype=np.int32); me.polygons.foreach_get('material_index', pm)
+    ls = np.empty(n, dtype=np.int32); me.polygons.foreach_get('loop_start', ls)
+    lt = np.empty(n, dtype=np.int32); me.polygons.foreach_get('loop_total', lt)
+    col = np.tile(np.array(base_rgb + (1.0,)), (len(me.loops), 1))
+    for i in np.where(np.isin(pm, sidx))[0]:
+        loc, _, fi, _ = fb.find_nearest(Vector(cen[i]))
+        if fi is not None:
+            col[ls[i]:ls[i] + lt[i], :3] = fcol[fi]
+    a = me.color_attributes.new(attr, 'FLOAT_COLOR', 'CORNER')
+    a.data.foreach_set('color', col.ravel())
+    me.update()
+
+
+def pick(c, nrm, h):
+    if c.x > 0.24 and (c.y / 0.38) ** 2 + ((c.z - 0.46) / 0.30) ** 2 < 1:
+        return FACE                                                   # the light face (oval centre lowered: no beard)
+    if c.x < -0.10 and (c.z < 0.10 or (nrm.z < 0.2 and c.z > 0.10)):
+        return SAND_D                                                 # the shaded back and base
+    if h < 0.07 and not (c.x > 0.20 and abs(c.y) < 0.40):
+        return SAND_D                                                 # stone flecks: whole facets, off the face
+    return None
+
+
+paint_facets(body, FACETS, SAND, pick)
+print('  facets', len(FACETS.polygons))
 
 
 def add_battle_key(o, turn_deg):
