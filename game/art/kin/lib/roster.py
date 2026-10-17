@@ -9,12 +9,12 @@ out = sys.argv[1]
 view = sys.argv[2] if len(sys.argv) > 2 else 'front'
 clip = sys.argv[3] if len(sys.argv) > 3 else 'idle'
 fi = int(sys.argv[4]) if len(sys.argv) > 4 else 0
-PPU = 95.0                       # roster px per world unit
+PPU = 82.0                       # roster px per world unit
 COLS, CW, CH = 6, 340, 260
 
 dirs = [('ashkit', os.path.join(HERE, '..', '..', 'ashkit', 'sheets'))]
 dirs += [(k, os.path.join(HERE, '..', k, 'sheets')) for k in sorted(os.listdir(os.path.join(HERE, '..')))
-         if k != 'lib' and os.path.isdir(os.path.join(HERE, '..', k))]
+         if os.path.exists(os.path.join(HERE, '..', k, 'model.py'))]
 tiles, missing = [], []
 for kin, d in dirs:
     jp = os.path.join(d, f'{kin}_{clip}_{view}.json')

@@ -29,7 +29,7 @@ Per kin: `model.py` (blockout, face parts snapped to the skull, union, colour zo
 Run with the bpy 5.2.2 venv: `MODE=both SIZE=512 SPP=8 OUTDIR=... python -I model.py`, then `OUT=<frames> python -I anim.py`
 (`DRY=1` for checks and framing only), then `python3 lib/pack.py <frames> <sheets>`.
 
-## Status (2026-10-17, after polish review 2)
+## Status (2026-10-17): all 18 kin polished and rendered
 All 18 species in docs/CREATURES.md have a polished model, a rig spec and (done or queued) final sheets. Reviews:
 `review/POLISH_REVIEW_2_*.md` (Fable art-director pass per body plan), `review/VERIFY_REVIEW_2_*.md` (its check of
 the fixes). "final" = sheets rendered from the verified model: idle/attack/hit/faint x front/back, packed full and
@@ -37,24 +37,27 @@ half, contact sheet in `review/`.
 
 | kin | rig | model | sheets | notes |
 |---|---|---|---|---|
-| ashkit | quad | verified (pass 3) | queued | the template; ember core painted by facing, crisp ear bands |
-| cindertail | quad | verified (pass 3) | queued | ruff as one mass (pass 2), belly faces down only |
-| pyrelord | quad | verified (pass 3) | queued | metaball collar; pupils blink (`eye_slots`) |
-| thistlehorn | quad | verified (pass 3) | queued | thick curved horn, saddle mantle |
-| rillback | quad | verified (pass 3) | queued | rockered board with a flush stripe |
-| verdantusk | quad | verified (pass 3) | queued | ears out of the skull (pass 2), V tail leaves, rump fill |
-| cragmaul | quad | verified (pass 3) | queued | brow as a stiff metaball, larger eyes |
+| ashkit | quad | verified | final | the template; ember core painted by facing, crisp ear bands |
+| cindertail | quad | verified | final | one-mass ruff, belly faces down only |
+| pyrelord | quad | verified | final | fused metaball collar, ember studs; pupils blink (`eye_slots`) |
+| thistlehorn | quad | verified | final | thick curved horn, saddle mantle, tapered hooves |
+| rillback | quad | verified | final | rockered board with a wide flush stripe |
+| verdantusk | quad | verified | final | stalked leaf ears; nit: back-view faint shows the tucked brown legs as patches |
+| cragmaul | quad | verified | final | metaball brow; nit: faint curls into a ball (ground snap moves the fists' root) |
 | dropple | hop | verified | final | flipper fins, two placed shines, capped ripple bands |
 | mossling | hop | verified | final | dark folds between clumps (cavity), toed feet |
-| pebblet | hop | verified | rendering | colour per stone facet |
-| breezel | hop | verified | queued | wings outside the body (per-side wing materials) |
-| vulcrag | hop | verified | queued | shoulder/elbow arms, crusted fists, branching cracks |
-| surgeray | hop | verified | queued | rebuilt from formulas, tipped 26 deg to the camera, battle turn 36 deg |
+| pebblet | hop | verified | final | colour per stone facet |
+| breezel | hop | verified | final | wings outside the body (per-side wing materials) |
+| vulcrag | hop | verified | final | nit: hit/faint stagger tips the cone and shows the base as a wedge |
+| surgeray | hop | verified | final | weakest: small and flat in the foe view, a tent from the back; design call pending (hovering ray or thicker manta) |
 | stormoth | fly | verified | final | front-facing display wings, flush bolt |
-| flickwing | fly | verified (pass 2) | queued | glowing lantern pitched to show in battle |
-| cyclonyx | fly | verified (pass 2) | queued | five-point wings, level spread streamers |
-| petalwisp | fly | verified (pass 2) | queued | pink back of head, tilted wisp |
-| maelstrode | serpent | verified (pass 2) | queued | no centre crest, tall splayed dorsals, belly V |
+| flickwing | fly | verified | final | glowing lantern pitched to show in battle |
+| cyclonyx | fly | verified | final | streamers at gain 0.45/0.35 (the faint knotted them) |
+| petalwisp | fly | verified | final | nit: thin closed eyes read blank late in the faint |
+| maelstrode | serpent | verified | final | no centre crest, tall splayed dorsals, belly V |
+
+Overview: `review/roster_front.jpg` (foe view) and `review/roster_back.jpg` (your-kin view), every kin at a shared world
+scale (`lib/roster.py`).
 
 Shared-helper debt: the polish passes wrote these inline in the kin scripts; move them into `lib/common.py` (with a
 re-render to prove identical output) before the next new kin: `crisp_zones` + `unit_sd` (cel-crisp signed-distance

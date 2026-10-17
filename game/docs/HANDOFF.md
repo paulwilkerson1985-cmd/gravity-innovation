@@ -96,6 +96,14 @@ this was written (`../art/kin/README.md` has the per-kin status and the producti
 eye on the contact sheets: Cragmaul's boulder fists sheared (rigid foot claim), Pebblet flattened like jelly (`squash`).
 None of the new kin is gated; a Fable review of the Ashkit slice was started (see below).
 
+**Update 2026-10-17 (later): all 18 kin are polished and have final sheets.** A Fable polish review per body plan
+(`../art/kin/review/POLISH_REVIEW_2_*.md`), fixes applied by implementer agents, then a Fable verification pass
+(`VERIFY_REVIEW_2_*.md`) and a last pass on what it flagged. Every contact sheet was checked by eye before commit.
+Overview images: `../art/kin/review/roster_front.jpg` and `roster_back.jpg`. Open: Surgeray's design (owner call:
+hovering ray or thicker manta), four small motion nits listed in `../art/kin/README.md`, moving the inline helpers the
+polish passes wrote into `lib/common.py`, and gating the new kin (none has been through the blind judge; Ashkit's
+sheets changed after gate 2).
+
 ## Next steps
 1. **Fable review** of the Ashkit slice: the owner asked for this once their Fable quota resets, at 7 PM US Central on 2026-10-16 (00:00 UTC 2026-10-17).
    - **Role:** senior creature artist plus art director.
