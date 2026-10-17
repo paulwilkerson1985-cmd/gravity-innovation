@@ -24,18 +24,18 @@
  },
  "cellOffset": {
   "x": 31,
-  "y": 143
+  "y": 141
  },
  "anchor": {
   "x": 216.0,
-  "y": 213.0,
+  "y": 214.0,
   "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
  },
  "anchorSource": {
   "x": 247.0,
-  "y": 356.0
+  "y": 355.0
  },
- "restHeightPx": 234.6,
+ "restHeightPx": 233.8,
  "rootOffsetPx": [
   [
    0.0,
@@ -74,12 +74,12 @@
   [
    -214.0,
    157.0,
-   211.0
+   212.0
   ],
   [
    -212.0,
    164.0,
-   211.0
+   212.0
   ],
   [
    -195.0,
