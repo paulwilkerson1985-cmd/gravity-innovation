@@ -1,0 +1,45 @@
+# Polish review 2: the fliers and the serpent (Flickwing, Stormoth, Cyclonyx, Petalwisp, Maelstrode)
+
+**Group verdict:** none is ready; every one is let down by the same three recipe habits (slabs seen edge-on from the battle camera, smeared or stair-stepped vertex-colour zones, proud decals with their own side walls), plus one real modelling error each. Fix the shared helpers first, then the per-kin items.
+
+## Flickwing: needs polish
+1. **MUST: body tufts poke through the wing cases.** `5_back.png` (and the zoom): yellow blotches inside both orange cases. The 22 metaball tufts at r 0.09 reach the case ellipsoids (0.05 thick at `C.z+0.36`). Skip tufts whose direction has `d.z > 0.45 and |d.y| > 0.25`, or lift the cases 0.04 and thicken them to 0.08 so they cover.
+2. **MUST: the face is mottled.** `1_front.png`: cloudy dirt patches across the cream FACE zone. `displace(strength=0.025, scale=0.10)` on the whole body bends normals enough that the 3-band ramp speckles. Mask the displacement off the face (apply it before the union with a vertex group `co.x < 0.12`), or drop it to 0.006 and put the fuzz into the silhouette only (tufts on the rim).
+3. **SHOULD: wings read as edge-on slivers.** Front view: two needles; battle view: the far wing is a line. The wing ellipsoids (0.012 thick) lie in a plane that contains the body's X axis. Yaw them 25-30° toward the camera side (`rot=(-18s, -12, -40s)`) and add a second, fainter "blur" wing 20° behind each (glow 0.5, no ink) so the buzz reads from every angle.
+4. **SHOULD: the lantern does not glow and the bands are flat hoops.** `3_side.png`: a cream ball with a thin orange disc cutting across it. Make the bands flush (same radius as the lantern surface, 0.02 wide, material boundary ink only), raise `glow` to 0.9 and shift LANTERN toward `#fff9c0` so it is distinct from FACE, and add a 0.02 emissive rim ring at the cap.
+5. **NICE:** the left spark sits tangent on the crest in `battle.png`; move the antenna roots out to `0.16s` or shorten the crest side tufts.
+
+## Stormoth: needs polish
+1. **MUST: wings edge-on in the hero view.** `battle.png` right wing is a dagger, `1_front.png` is a fried egg with knitting needles. The 34° raise about X keeps the wing plane through the X axis. Sweep them back harder (`-12s -> -34s` about Z) and pitch the leading edge up (`-6 -> -18` about Y) so the plane normal has `|n . d_cam| > 0.5` at yaw 35; assert that in the script.
+2. **MUST: the bolt is a proud plastic bar.** Zoom of the near wing: 0.034 slab on a 0.024 wing shows bevelled side walls and double ink, and it runs off the wing into the ruff. Make the bolt the same thickness as the wing (flush union, ink from `select_material_boundary`), clip BOLTP to the FORE outline, and shrink it 15%.
+3. **SHOULD: ink vanishes on indigo.** INK `#1a1030` on `#3d2fa0`: the wing edges have no visible outline in `battle.png`. Use `#07040f` for the wing materials (keep the warm ink on the gold body).
+4. **SHOULD: the abdomen tip is a stacked-cup plug.** `4_back34.png` zoom: the last violet band is a flat ring at the tip with a gold nub. Drop the third band (dx -0.20) or make all three flush and taper the abdomen to a rounded point (`taper=0.7`).
+5. **NICE: "feathery" antennae are spoons.** Replace the tapered ellipsoid with a slab outline with 5-6 serrations per side (`smooth_closed` on a comb), 0.012 thick.
+
+## Cyclonyx: needs polish
+1. **MUST: the white chest zone is a smeared, speckled edge** (`battle.png` zoom) with a hard horizontal step on the far flank. The predicate `nm[:,2] < 0.1` cuts along the voxel grid; `smoothstep_blend(3)` then airbrushes it. Define the chest as a designed curve (a bib: ellipse in XZ, tapering up to the throat) via a signed distance and a 1.5-voxel smoothstep (see cross-kin #2).
+2. **MUST: wings are ping-pong paddles with a carrot bunch glued on.** Zoom: a smooth oval, a blue thickness rim, four separate orange ovals with gaps. Give WING a scalloped trailing edge (4-5 primary points built into the outline), make the primaries one orange slab zone flush with the top slab (not ellipsoids), and taper the slab thickness to 0.008 at the tip (`bulge` on the root only).
+3. **SHOULD: near wing edge-on behind the crest** in `battle.png`; same fix as Stormoth #1: sweep -14s to -30s and pitch -8 to -16, then re-check the crest/wing tangency.
+4. **SHOULD: tail fan is a white nub; talons are two orange beads.** Widen the fan (3 ellipsoids -> one slab fan 0.30 wide with 5 points) and shape the talons as two tucked three-toe tubes, or hide them under the belly.
+5. **NICE:** the brow ridges float as drawn eyebrows at 512 px; sink them 0.01 and lengthen 20%.
+
+## Petalwisp: needs polish
+1. **MUST: the leaf arms are not mirrored.** Every view: one arm raised, one lowered, reading as one skewer through the neck. `rot=(-24*s, 0, 14*s + 180)`: after the 180° about Z the X tilt is doubled instead of mirrored. Use `rot=(-24, 0, 14*s + (0 if s > 0 else 180))` (X tilt not multiplied by s).
+2. **SHOULD: the crown is a paper cutout behind a ball.** `3_side.png`: flat pink and magenta blades side by side, head bulging in front. Cup the petals: tilt each 22° forward about its own tangent axis and give the pink layer `bulge` 0.03 (petal() frame with an extra rotation), magenta layer 0.02 behind, not 0.04.
+3. **SHOULD: the green neck boundary is a blurred band** (`1_front.png` zoom). Replace `co.z < T.z+0.24` plus 2 blend iterations with a signed-distance collar line (slight V at the front) and a 1.5-voxel edge (cross-kin #2).
+4. **NICE: the wisp tail reads as a drip.** Scale the spiral 1.6x (r 0.14 -> 0.22, 1.6 turns) and keep the point.
+
+## Maelstrode: rework the fins and coil, polish the rest
+1. **MUST: far eye is a sliver** in `battle.png`. Eyes snap at `eye_y*2.2`, on the sides of the head. Bring them forward: `eye_fwd 0.15 -> 0.45`, snap target `eye_y * 1.4`, and assert `f . d_cam > 0.35` for both eyes with the battle key on.
+2. **MUST: fins become rods and dashes.** `1_front.png`: the crest is a white rod with double ink; `5_back.png`: the dorsals are a dashed white line down the spine (the player's own view). Give every fin slab a lens profile (`bulge=0.05`, thickness 0.05 at the root tapering to 0.012) and splay the dorsals 12° alternately left/right so a face always shows; from behind the dorsals also need a darker fin-root crease.
+3. **MUST: the aqua belly ends in a stair-stepped, smeared cut** (`battle.png` zoom, the left edge of the stripe and the horizontal end at the coil). Paint it by angle around the tube axis (atan2 in the local cross-section), ending in a V 0.08 below the chin and fading into the coil at the first turn, with a signed-distance edge.
+4. **SHOULD: the whirlpool is a pool ring.** `2_threeq.png`: one torus, one groove. The turns (spacing 0.27 per turn, diameters 0.18-0.30) overlap and the 4 SMOOTH iterations fuse them. Set `rr = 0.10 + 0.46*t`, `TURNS 1.5`, SMOOTH iterations 1, and tint the groove with the BLUE_D zone instead of a flat top plate (`nm.z > 0.6` paints a lid).
+5. **SHOULD: the fluke and its stalk are a sprout.** Radii 0.035-0.085 against a 0.15 body. Double the stalk radii and make the fluke 0.26 wide with the lens profile.
+
+## Cross-kin patterns (fix once in lib/common.py)
+1. **Slabs edge-on to the battle camera.** `slab()` wings/fins lie in planes containing the body X axis, so the yaw-35 camera sees slivers (Stormoth, Cyclonyx, Flickwing wings; all five Maelstrode fins). Add `facing_check(obj, d_cam, min_dot=0.5)` that prints a warning per slab, give `slab()` a `taper` (root thickness -> tip thickness) and default `bulge=0.03`, and move wing placement into a shared `place_wing(root, raise, sweep, pitch)` with sweep defaulting to 30°.
+2. **Colour zones are either stair-stepped or airbrushed.** Binary predicates on a 0.014-0.016 voxel grid plus `smoothstep_blend` give both defects (Cyclonyx chest, Petalwisp collar, Maelstrode belly, Flickwing face). Change `paint_zones` to accept signed-distance functions and compute `w = smoothstep(-e, e, -sdf)` with `e = 1.5 * voxel`; delete the neighbour blur. Edges become crisp, anti-aliased and designable (bibs, collars, V-tips).
+3. **Proud decals.** Bands, bolts, spots and primaries thicker than the surface they sit on grow side walls that take ink and a ramp band (Flickwing bands, Stormoth bolt/bands, Cyclonyx primaries). Rule: decals flush (+0.002) and inked by a third lineset `select_material_boundary` at 1.5 px; stop using thickness to separate colours.
+4. **Displacement noise on faces.** `displace()` on fuzzy bodies speckles the cel ramp. Add a `mask_x` argument and never displace the face zone; cap strength at 0.008 on anything with a face.
+5. **Ink on dark fills.** Per-material ink should be <= 35% of the fill luminance; add a check in `toon_material` (Stormoth indigo, Maelstrode deep blue, Petalwisp magenta rims are all near-invisible).
+6. **Far-eye visibility.** Share one `place_eyes()` that snaps on the battle-turned head and asserts both eye normals face the camera (Maelstrode fails now; any snouted kin will).
