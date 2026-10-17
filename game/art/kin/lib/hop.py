@@ -92,9 +92,22 @@ def clip_faint():
     return keyed(keys, 10, kinds={5: 'in'})
 
 
-def build(scale=1.0):
-    """Returns (clips, travel, rest), translations scaled by `scale`."""
+def build(scale=1.0, squash=1.0):
+    """Returns (clips, travel, rest), translations scaled by `scale`; `squash` scales the squash and stretch (a stone
+    kin: 0.4, so a rock does not flatten like jelly)."""
     global k
     k = float(scale)
     clips = {'idle': clip_idle(), 'attack': clip_attack(), 'hit': clip_hit(), 'faint': clip_faint()}
+    if squash != 1.0:
+        seen = set()     # frames can share one pose dict: scale each once
+        for frames in clips.values():
+            for P in frames:
+                if id(P) in seen:
+                    continue
+                seen.add(id(P))
+                for b in ('cog', 'stretch'):
+                    if b in P and 's' in P[b]:
+                        v = P[b]['s']
+                        v = 1 + (v - 1) * squash if isinstance(v, (int, float)) else tuple(1 + (c - 1) * squash for c in v)
+                        P[b] = {**P[b], 's': v}
     return clips, {'attack': dict(fwd=ATTACK_TRAVEL, ease=ATTACK_EASE)}, REST

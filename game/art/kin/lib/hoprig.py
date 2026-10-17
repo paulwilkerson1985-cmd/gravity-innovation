@@ -11,7 +11,7 @@ the camera) is baked first. The back view's extra yaw turns 'body' (there is no 
 SPEC keys (world units, +X forward, +Z up, before the battle turn): name, blend, turn (deg, as model.py), height (rest height: sets the cog and leap bones),
 apps=[dict(bone, head, tail, parent='body', radius, falloff=0.6, slots=None)] (capsule weights along head->tail;
 slots: material names that belong fully to the bone; gain: scales the clip's rotations, negative reverses), eye_centre, scale (motion), head_back=20, anchor=(x, y, 0),
-clips='hop'|'fly' (fly: beats per idle, flap=(up, down) degrees; the hover is the model's lowest point).
+squash=1.0 (hop: scales squash and stretch; stone kin less), clips='hop'|'fly' (fly: beats per idle, flap=(up, down) degrees; the hover is the model's lowest point).
 """
 import os, math
 import numpy as np
@@ -69,7 +69,7 @@ def run_hop(S, here):
     if S.get('clips', 'hop') == 'fly':
         CLIPS, TRAVEL, REST = fly_clips(scale=scale, hover=hover, beats=S.get('beats', 2), flap=S.get('flap', (50.0, -30.0)))
     else:
-        CLIPS, TRAVEL, REST = hop_clips(scale=scale)
+        CLIPS, TRAVEL, REST = hop_clips(scale=scale, squash=S.get('squash', 1.0))
     for a in S.get('apps', []):     # gain scales (or, negative, reverses) an appendage's clip rotations
         g = a.get('gain', 1.0)
         if g != 1.0:

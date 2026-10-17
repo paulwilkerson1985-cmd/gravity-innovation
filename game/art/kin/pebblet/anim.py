@@ -10,6 +10,6 @@ from hoprig import run_hop
 
 SPEC = dict(
     name='pebblet', blend='pebblet_final.blend', turn=16.0, height=1.0,
-    apps=[], eye_centre=(0.0, 0.0, 0.62), scale=0.9,
+    apps=[], eye_centre=(0.0, 0.0, 0.62), scale=0.9, squash=0.4,   # stone: it does not flatten like jelly
 )
 run_hop(SPEC, HERE)
