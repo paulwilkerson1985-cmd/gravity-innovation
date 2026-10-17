@@ -89,6 +89,15 @@ for i in range(5):
     a = i * math.tau / 5
     q = bp + bn * 0.01 + (u * math.cos(a) + v * math.sin(a)) * 0.06
     parts.append(assign(ellipsoid(f'petal{i}', q, (0.045, 0.03, 0.015), track=bn, roll=math.degrees(a)), mat_petal))
+# back marking (Fable review 1: flat backs): two more small blossoms in the moss on the back
+for j, dirn in enumerate(((-0.75, 0.35, 0.55), (-0.70, -0.45, 0.30))):
+    bp2, bn2 = snap(Vector(C) + Vector(dirn) * 3, Vector(C))
+    parts.append(assign(ellipsoid(f'bloomb_c{j}', bp2 + bn2 * 0.02, (0.035, 0.035, 0.022), track=bn2), mat_centre))
+    u2 = bn2.orthogonal().normalized(); v2 = bn2.cross(u2)
+    for i in range(5):
+        a = i * math.tau / 5 + 0.4 * j
+        q = bp2 + bn2 * 0.01 + (u2 * math.cos(a) + v2 * math.sin(a)) * 0.052
+        parts.append(assign(ellipsoid(f'petalb{j}{i}', q, (0.04, 0.027, 0.014), track=bn2, roll=math.degrees(a)), mat_petal))
 
 body = union(body, parts)
 set_smooth(body, angle=50)
@@ -99,6 +108,7 @@ zones = [
     (lambda co, nm: bm & (co[:, 0] > 0.30) & (((np.abs(co[:, 1]) - 0.33) / 0.09) ** 2 + ((co[:, 2] - 0.57) / 0.06) ** 2 < 1), PINK),   # cheeks
     (lambda co, nm: bm & (co[:, 0] < 0.10) & (nm[:, 2] > 0.35) & (co[:, 2] > 0.75), MOSS_D),                          # darker moss on top
     (lambda co, nm: bm & (co[:, 2] < 0.10) & (co[:, 0] > 0.10), MOSS_D),                                              # feet
+    (lambda co, nm: bm & (co[:, 0] < -0.25) & (np.sin(co[:, 1] * 11.0 + 0.5) * np.sin(co[:, 2] * 10.0) > 0.45), MOSS_D),   # mottled moss on the back
 ]
 paint_zones(body, GRASS, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=3)

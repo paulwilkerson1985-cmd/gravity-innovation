@@ -88,6 +88,9 @@ zones = [
     # pale face: an oval on the front of the drop, around the mouth and under the eyes
     (lambda co, nm: bm & (co[:, 0] > 0.20) & ((co[:, 1] / 0.44) ** 2 + ((co[:, 2] - 0.50) / 0.30) ** 2 < 1), AQUA),
     (lambda co, nm: bm & (co[:, 2] > 1.36), TIP),                                                                    # the tip deepens
+    # back marking (Fable review 1: flat backs): two deeper-blue ripple bands across the back of the drop
+    (lambda co, nm: bm & (co[:, 0] < 0.05) & ((np.abs(co[:, 2] - (0.62 + 0.05 * np.sin(co[:, 1] * 9.0))) < 0.045) |
+                                              (np.abs(co[:, 2] - (0.92 + 0.05 * np.sin(co[:, 1] * 9.0 + 1.6))) < 0.04)), TIP),
 ]
 paint_zones(body, SKY, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=4)
