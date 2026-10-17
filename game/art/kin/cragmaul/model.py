@@ -25,6 +25,9 @@ for s in (-1, 1):
     B.add((0.12, 0.40 * s, 1.15), 0.30)                           # shoulder-torso fill
 B.add((0.78, 0, 1.22), 0.28)                                      # tiny head, sunk between the shoulders
 B.add((0.90, 0, 1.10), 0.19, stiff=3.0)                           # jaw block
+# rock brow: a stiff ridge that melts into the skull, so only its underside ledge is inked (polish review 2: a boolean
+# ellipsoid carried its own closed ink loop and read as a flat cap)
+B.add((0.88, 0, 1.39), 0.20, size=(1.0, 1.25, 0.55), stiff=4.0)
 # rock plates: a few firm bumps on the shoulders and hump so the boulder skin reads in the silhouette
 for (x, y, z, r) in [(0.30, 0.62, 1.60, 0.16), (0.12, -0.58, 1.58, 0.15), (-0.40, 0.22, 1.42, 0.17), (-0.48, -0.20, 1.20, 0.15), (-0.05, 0.0, 1.72, 0.14), (0.42, -0.30, 1.52, 0.12)]:
     B.add((x, y, z), r, stiff=4.0)
@@ -36,8 +39,9 @@ for s, (fx, fy) in ARMS.items():
 for s in (-1, 1):
     B.chain((-0.18, 0.34 * s, 0.70), (-0.20, 0.38 * s, 0.22), 0.20, 0.19, n=4)
     B.add((-0.10, 0.40 * s, 0.13), 0.19, size=(1.45, 1.05, 0.62), stiff=2.5)
-body = B.mesh(voxel=0.02)
-displace(body, strength=0.06, scale=0.30, tex_type='CLOUDS', depth=1)   # lumpy boulder skin
+body = B.mesh(voxel=0.02, smooth_iters=2)
+# lumpy boulder skin; gentler than 0.06, whose creases passed the crease angle and drew stray ink on back and shoulders
+displace(body, strength=0.035, scale=0.30, tex_type='CLOUDS', depth=1)
 set_smooth(body)
 print('  blockout tris', tri_count(body), f'{time.perf_counter() - T0:.1f}s')
 
@@ -46,6 +50,8 @@ mat_fist = toon_material('fist', FIST, ink=INK)
 mat_cry = toon_material('crystal', CYAN, glow=0.45, ink='#0e5a70')
 mat_eye = toon_material('eye', CYAN, glow=0.95, ink='#0e5a70')
 mat_mouth = toon_material('mouth', srgb('#2a1a1c'), ink=INK)
+# the pupil uses the 'glint' slot name so the sheet kit's blink and far-eye hide treat it with the eye
+mat_pupil = toon_material('glint', CYAN_D, glow=0.5, ink='#0e5a70')
 assign(body, mat_body)
 
 d_cam, rot, right, up = camera_basis()
@@ -70,14 +76,13 @@ for i, (x, y, h, r, rx, ry) in enumerate([(-0.22, 0.0, 0.62, 0.13, 0, -22), (-0.
     c = crystal(f'bc{i}', (x, y, 1.55), r, h, rot=(rx, ry, 0))
     parts.append(assign(c, mat_cry))
 
-# rock brow: heavy ridge over the eyes, and cyan glowing eyes beneath it
-brow = ellipsoid('brow', (0.88, 0, 1.39), (0.20, 0.25, 0.115), rot=(0, 20, 0))
-parts.append(assign(brow, mat_body))
+# cyan glowing eyes under the brow (now part of the blockout), big enough to read at sprite size, with a darker pupil
 Hc = Vector((0.78, 0, 1.22))
 for s in (-1, 1):
     dirn = Vector((0.92, 0.32 * s, 0.04)).normalized()
-    e = ellipsoid(f'eye{s}', Hc + dirn * 0.262, (0.075, 0.09, 0.035), track=dirn)
+    e = ellipsoid(f'eye{s}', Hc + dirn * 0.262, (0.10, 0.11, 0.035), track=dirn)
     parts.append(assign(e, mat_eye))
+    parts.append(assign(ellipsoid(f'pupil{s}', Hc + dirn * 0.287, (0.045, 0.058, 0.014), track=dirn), mat_pupil))
 # grim mouth line across the jaw
 mouth = tube('mouth', [(1.00, -0.15, 1.05), (1.08, -0.05, 1.035), (1.08, 0.05, 1.035), (1.00, 0.15, 1.05)], [0.012, 0.014, 0.014, 0.012], res=10)
 parts.append(assign(mouth, mat_mouth))
@@ -92,14 +97,16 @@ body.data.vertices.foreach_set('co', co.ravel()); body.data.update()
 # ------------------------------------------------------------------ colour zones
 bm = vertex_slot_mask(body, {'body'})
 paint_zones(body, BROWN, mask=bm, zones=[
-    # light chest plate: front of the torso under the head, between the arms
-    (lambda co, nm: bm & (((co[:, 0] - 0.50) / 0.34) ** 2 + ((co[:, 2] - 0.66) / 0.48) ** 2 < 1) & (np.abs(co[:, 1]) < 0.50) & (nm[:, 0] > -0.15), CHEST),
-    (lambda co, nm: bm & (co[:, 0] > 0.92) & (co[:, 2] < 1.21) & (co[:, 2] > 0.95) & (np.abs(co[:, 1]) < 0.22), CHEST),   # light jaw
-    # darker brow / knuckle-side arms shading
-    (lambda co, nm: bm & (co[:, 0] > 0.84) & (co[:, 2] > 1.30) & (co[:, 2] < 1.50) & (np.abs(co[:, 1]) < 0.34), BROWN_D),
     (lambda co, nm: bm & (co[:, 2] < 0.20) & (co[:, 0] < 0.2), BROWN_D),   # feet
 ])
 smoothstep_blend(body, 'Col', iters=1)
+# soft zones along designed curves (polish review 2: the box jaw and the smeared chest-plate edge)
+paint_soft(body, [
+    # light chest plate: front of the torso under the head, between the arms (front-facing only)
+    (lambda co, nm: np.maximum(sd_ellipse((0.50, 0, 0.66), (0.34, 0.50, 0.48))(co, nm), (-0.15 - nm[:, 0]) * 0.2), CHEST),
+    (sd_ellipse((1.00, 0, 1.07), (0.14, 0.21, 0.13)), CHEST),                                  # light jaw: an ellipsoid on the jaw tip
+    (sd_ellipse((0.92, 0, 1.41), (0.16, 0.32, 0.10)), BROWN_D),                                # darker brow
+], mask=bm, edge=0.014)
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)
 def smooth(e0, e1, x):

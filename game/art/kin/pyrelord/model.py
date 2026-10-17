@@ -51,6 +51,16 @@ for s in (-1, 1):
 # long tail rising up and back from the rump
 for co, r in [((-0.92, 0.0, 1.36), 0.15), ((-1.10, 0.02, 1.52), 0.14), ((-1.24, 0.04, 1.72), 0.13), ((-1.32, 0.05, 1.92), 0.12)]:
     B.add(co, r)
+# mane collar: a stiff ring around the neck that the flame tongues grow out of (polish review 2: the tongues alone
+# read as a row of dorsal fins)
+NC = Vector((0.66, 0, 1.72)); AX = Vector((0.55, 0, 0.83)).normalized()
+U = Vector((0, 1, 0)); Wv = AX.cross(U).normalized()
+for i in range(8):
+    a = (i / 8) * math.tau + 0.25
+    out = U * math.cos(a) + Wv * math.sin(a)
+    if out.z < -0.60:
+        continue                                            # not under the throat (keeps the chest line)
+    B.add(NC + out * 0.30, 0.14, stiff=3.2)
 body = B.mesh(voxel=0.022)
 co, nm = mesh_arrays(body)
 co[:, 2] = np.maximum(co[:, 2], GROUND)
@@ -78,8 +88,32 @@ mat_glint = toon_material('glint', WHITE, glow=1.0, ink='#ffffff')
 mat_nose = toon_material('nose', PUPIL, ink=INK)
 mat_soot = toon_material('soot', SOOT, ink=INK)
 mat_gold = toon_material('gold', GOLD_D, glow=0.15, ink='#8a5418')
-mat_ember = toon_material('ember', EMBER, glow=0.75, ink='#b2321a')
-mat_core = toon_material('ember_core', EMBER_CORE, glow=1.0, ink='#ff9a1e')
+
+
+def flame_material(name, outer, core, thr=0.80, glow_outer=0.75, glow_core=1.0, ink='#c8481c'):
+    """Toon flame whose pale core is the part of the surface facing the camera (N . I > thr): a centred inner
+    teardrop in every view (polish review 2, cross-kin 3; a core mesh pushed toward the battle camera showed as an
+    off-centre sliver in the turn views, and a centred one is swallowed by the union). Candidate for lib/common.py."""
+    m = toon_material(name, outer, glow=glow_outer, ink=ink)
+    nt = m.node_tree; N = nt.nodes.new; L = nt.links.new
+    grp = next(n for n in nt.nodes if n.type == 'GROUP')
+    geo = N('ShaderNodeNewGeometry')
+    dot = N('ShaderNodeVectorMath'); dot.operation = 'DOT_PRODUCT'
+    L(geo.outputs['Normal'], dot.inputs[0]); L(geo.outputs['Incoming'], dot.inputs[1])
+    step = N('ShaderNodeMath'); step.operation = 'GREATER_THAN'; step.inputs[1].default_value = thr
+    L(dot.outputs['Value'], step.inputs[0])
+    mix = N('ShaderNodeMix'); mix.data_type = 'RGBA'; mix.blend_type = 'MIX'
+    mix.inputs[6].default_value = (*outer, 1); mix.inputs[7].default_value = (*core, 1)
+    L(step.outputs[0], mix.inputs['Factor']); L(mix.outputs[2], grp.inputs['Base'])
+    gl = N('ShaderNodeMath'); gl.operation = 'MULTIPLY_ADD'; gl.inputs[1].default_value = glow_core - glow_outer
+    gl.inputs[2].default_value = glow_outer
+    L(step.outputs[0], gl.inputs[0]); L(gl.outputs[0], grp.inputs['Glow'])
+    return m
+
+
+mat_ember = flame_material('ember', EMBER, EMBER_CORE, ink='#b2321a')
+mat_stud = flame_material('stud', EMBER, EMBER_CORE, thr=0.70, ink='#b2321a')    # own slot: the rig claims 'ember' near the tail
+mat_mane = toon_material('mane', attr='Col', glow=0.75, ink='#b2321a')           # ember, core colour painted on the tips
 assign(body, mat_body)
 parts = []
 d_cam, rot, right, up = camera_basis()
@@ -88,7 +122,8 @@ Lw = (-0.55 * right + 0.72 * up + 0.42 * d_cam).normalized()
 # ears: smaller than the kit's relative to the head, swept back between the horns
 EAR = dict(c=(0.80, 0.30, 2.42), s=(0.10, 0.21, 0.38), rx=-24, ry=-30)
 for s in (-1, 1):
-    e = ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), EAR['s'], rot=(EAR['rx'] * s, EAR['ry'], 0), taper=0.92)
+    e = ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), EAR['s'], rot=(EAR['rx'] * s, EAR['ry'], 0), taper=0.92,
+                  segs=64, rings=48)      # dense: the inner-ear band is a cel edge, not an airbrush
     parts.append(assign(e, mat_body))
     # swept charcoal horns: from the brow back over the skull
     h = tube(f'horn{s}', [(0.98, 0.20 * s, 2.30), (0.86, 0.32 * s, 2.50), (0.62, 0.44 * s, 2.64), (0.36, 0.50 * s, 2.66)],
@@ -129,31 +164,32 @@ for s in (-1, 1):
 # flame crown between the horns
 for i, (y, h, x) in enumerate(((0.0, 0.34, 0.90), (-0.11, 0.24, 0.86), (0.11, 0.24, 0.86))):
     parts.append(assign(ellipsoid(f'crown{i}', (x, y, 2.38 + h * 0.55), (0.10, 0.10, h), rot=(-14 * (y / 0.11 if y else 0), -12, 0), taper=0.9), mat_ember))
-parts.append(assign(ellipsoid('crown_core', Vector((0.92, 0, 2.52)) + d_cam * 0.05, (0.055, 0.055, 0.18), rot=(0, -12, 0), taper=0.9), mat_core))
-# fiery mane collar: tongues of flame around the neck, sweeping back
-NC = Vector((0.66, 0, 1.72)); AX = Vector((0.55, 0, 0.83)).normalized()
-U = Vector((0, 1, 0)); Wv = AX.cross(U).normalized()
+# (the crown's pale core is the flame material's camera-facing band: centred in every view)
+# fiery mane collar: tongues of flame fanning out of the collar ring, bases sunk in it (polish review 2)
+MANE = []
 for i in range(10):
     a = (i / 10) * math.tau + 0.25
     out = U * math.cos(a) + Wv * math.sin(a)
     if out.z < -0.55:
         continue                                            # no tongues under the throat
     base = NC + out * 0.30
-    dirn = (out * 0.55 + Vector((-0.85, 0, 0.35))).normalized()
+    dirn = (out * 0.50 + Vector((-0.55, 0, 0.72))).normalized()   # fan out and up (never end-on to the cameras)
     hgt = 0.34 + 0.08 * (i % 2)
-    q = ellipsoid(f'mane{i}', base + dirn * hgt * 0.55, (0.10, 0.10, hgt), track=dirn, taper=0.9)
-    parts.append(assign(q, mat_ember if i % 3 else mat_core))
-# ember studs along the spine
-for i, (x, z) in enumerate(((0.12, 1.66), (-0.20, 1.62), (-0.50, 1.55))):
-    parts.append(assign(ellipsoid(f'stud{i}', (x, 0, z), (0.07, 0.06, 0.10), rot=(0, -20, 0), taper=0.6), mat_core))
-# comet flame on the tail tip
+    q = ellipsoid(f'mane{i}', base + dirn * hgt * 0.50, (0.15, 0.15, hgt), track=dirn, taper=0.9, segs=48, rings=32)
+    parts.append(assign(q, mat_mane)); MANE.append((np.array(base), np.array(dirn), hgt))
+# ember studs along the spine: twice the size, seated 30% into the back
+for i, x in enumerate((0.12, -0.20, -0.50)):
+    sp, sn = snap((x, 0, 3.0), (x, 0, 1.2))
+    hz = 0.17
+    parts.append(assign(ellipsoid(f'stud{i}', sp + sn * (0.4 * hz), (0.12, 0.10, hz), track=(sn + Vector((-0.35, 0, 0))).normalized(),
+                                  taper=0.6), mat_stud))
+# comet flame on the tail tip (pale core from the flame material)
 parts.append(assign(ellipsoid('ember', (-1.38, 0.05, 2.22), (0.27, 0.27, 0.50), rot=(0, -18, 0), taper=0.9), mat_ember))
-parts.append(assign(ellipsoid('ember_core', Vector((-1.37, 0.05, 2.14)) + d_cam * 0.16, (0.14, 0.14, 0.30), rot=(0, -18, 0), taper=0.9), mat_core))
-# gold claws on every paw
+# gold claws on every paw (big enough to survive 300 px)
 for (lx, ly) in ((FRONT_X, LY), (FRONT_X, -LY), (HIND_X, LY), (HIND_X, -LY)):
-    for j, dy in enumerate((-0.07, 0.0, 0.07)):
-        c0 = Vector((lx + 0.30, ly + dy, 0.05))
-        parts.append(assign(ellipsoid(f'claw{lx}{ly}{j}', c0, (0.035, 0.03, 0.06), rot=(0, 75, 0), taper=0.85), mat_gold))
+    for j, dy in enumerate((-0.075, 0.0, 0.075)):
+        c0 = Vector((lx + 0.30, ly + dy, 0.06))
+        parts.append(assign(ellipsoid(f'claw{lx}{ly}{j}', c0, (0.05, 0.045, 0.09), rot=(0, 75, 0), taper=0.85), mat_gold))
 
 body = union(body, parts)
 set_smooth(body, angle=50)
@@ -167,22 +203,35 @@ def ear_local(co, s):
     return (co - np.array((EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]))) @ R
 
 
-def inner_ear(co, nm):
-    m = np.zeros(len(co), dtype=bool)
-    for s in (-1, 1):
-        l = ear_local(co, s)
-        t = np.clip((l[:, 2] + 0.05) / 0.36, 0, 1)
-        m |= (l[:, 0] > 0.0) & (l[:, 2] > -0.05) & (l[:, 2] < 0.26) & (np.abs(l[:, 1]) < 0.16 * (1 - t) ** 0.8)
-    return bm & m
+# soft zones as signed distances (negative inside) for paint_soft: cel edges along the designed curve
+def ear_sdf(fn):
+    def f(co, nm):
+        return np.minimum(fn(ear_local(co, -1)), fn(ear_local(co, 1)))
+    return f
 
 
-def ear_back(co, nm):
-    m = np.zeros(len(co), dtype=bool)
-    for s in (-1, 1):
-        l = ear_local(co, s)
-        inside = (l[:, 0] / 0.13) ** 2 + (l[:, 1] / 0.24) ** 2 + (l[:, 2] / 0.41) ** 2 < 1.0
-        m |= inside & (l[:, 0] < 0.02) & (l[:, 2] > -0.08)
-    return bm & m
+def inner_ear_l(l):
+    t = np.clip((l[:, 2] + 0.05) / 0.36, 0, 1)
+    return np.maximum.reduce([np.abs(l[:, 1]) - 0.16 * (1 - t) ** 0.8, -0.05 - l[:, 2], l[:, 2] - 0.26, -l[:, 0]])
+
+
+def ear_back_l(l):
+    k = np.sqrt((l[:, 0] / 0.13) ** 2 + (l[:, 1] / 0.24) ** 2 + (l[:, 2] / 0.41) ** 2)
+    return np.maximum.reduce([(k - 1.0) * 0.13, l[:, 0] - 0.02, -0.08 - l[:, 2]])
+
+
+def belly_sd(co, nm):
+    # ellipsoid AND downward faces only: the box zone also painted the inner forelegs (polish review 2, cross-kin 1)
+    return np.maximum(sd_ellipse((-0.22, 0, 0.86), (0.46, 0.30, 0.22))(co, nm), (nm[:, 2] + 0.45) * 0.2)
+
+
+def mane_tip(co, nm):
+    out = []
+    for base, dirn, hgt in MANE:
+        r = co - base; t = r @ dirn
+        rad = np.linalg.norm(r - t[:, None] * dirn[None, :], axis=1)
+        out.append(np.maximum(1.15 * hgt - t, rad - 0.22))
+    return np.min(out, axis=0)
 
 
 def mask(co, nm):
@@ -194,16 +243,18 @@ def mask(co, nm):
 
 
 zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.98) & (co[:, 2] > 0.70) & (np.abs(co[:, 1]) < 0.34) & (co[:, 0] > -0.75) & (co[:, 0] < 0.30), GOLD),  # belly
-    (lambda co, nm: bm & (((co[:, 0] - 0.78) / 0.24) ** 2 + (co[:, 1] / 0.34) ** 2 + ((co[:, 2] - 1.40) / 0.40) ** 2 < 1), GOLD),           # chest
     (mask, GOLD),
-    (inner_ear, GOLD),
-    (ear_back, EAR_BACK),
-    (lambda co, nm: bm & (co[:, 2] < 0.58) & (co[:, 0] > -0.95), SOOT),                                # gauntlets
-    (lambda co, nm: bm & (co[:, 2] < 0.66) & (co[:, 2] >= 0.58) & (co[:, 0] > -0.95), GOLD_D),         # gold bands
+    (lambda co, nm: bm & (co[:, 2] < 0.58) & (co[:, 0] > -1.25), SOOT),                                # gauntlets
+    (lambda co, nm: bm & (co[:, 2] < 0.66) & (co[:, 2] >= 0.58) & (co[:, 0] > -1.25), GOLD_D),         # gold bands
 ]
 paint_zones(body, CRIMSON, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=1)
+paint_soft(body, [(belly_sd, GOLD),
+                  (sd_ellipse((0.78, 0, 1.40), (0.24, 0.34, 0.40)), GOLD),          # chest
+                  (ear_sdf(inner_ear_l), GOLD), (ear_sdf(ear_back_l), EAR_BACK)], mask=bm, edge=0.012)
+mm = vertex_slot_mask(body, {'mane'})
+paint_zones(body, EMBER, [], mask=mm)
+paint_soft(body, [(mane_tip, EMBER_CORE)], mask=mm, edge=0.015)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

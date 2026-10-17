@@ -16,7 +16,7 @@ from mathutils.bvhtree import BVHTree
 T0 = time.perf_counter()
 sc = reset_scene()
 P = dict(
-    eye_y=0.24, eye_z=1.70, eye_w=0.115, eye_h=0.15, eye_d=0.045, eye_out=0.014, eye_fwd=0.12, eye_slant=16.0,
+    eye_y=0.22, eye_z=1.70, eye_w=0.115, eye_h=0.15, eye_d=0.045, eye_out=0.014, eye_fwd=0.12, eye_slant=16.0,
     snout=(1.00, 0.0, 1.55), snout_r=0.19, snout_size=(1.75, 0.78, 0.70),
     head_turn=16.0, head_lift=4.0,
 )
@@ -53,6 +53,8 @@ for s in (-1, 1):
 # bushy tail: thickens as it rises up and back from the rump
 for co, r in [((-0.70, 0.02, 1.02), 0.16), ((-0.84, 0.04, 1.16), 0.22), ((-0.97, 0.06, 1.34), 0.26), ((-1.04, 0.07, 1.54), 0.25)]:
     B.add(co, r, size=(1.0, 0.92, 1.0))
+B.add((-1.08, 0.07, 1.70), 0.20)                               # tail ball: the plume grows out of fur (polish review 2)
+B.add((-0.52, 0, 0.90), 0.24, stiff=1.6)                      # rump fill: no inked cleft between the haunches
 body = B.mesh(voxel=0.018)
 co, nm = mesh_arrays(body)
 co[:, 2] = np.maximum(co[:, 2], GROUND)
@@ -77,16 +79,37 @@ mat_body = toon_material('body', attr='Col', ink=INK)
 mat_eye = toon_material('eye', EYE, ink=INK)
 mat_glint = toon_material('glint', WHITE, glow=1.0, ink='#ffffff')
 mat_nose = toon_material('nose', NOSE, ink=INK)
-mat_ember = toon_material('ember', EMBER, glow=0.75, ink='#c8481c')
-mat_core = toon_material('ember_core', EMBER_CORE, glow=1.0, ink='#ffb02a')
-mat_ruff = toon_material('ruff', CREAM, ink=INK)
-mat_ruff_gold = toon_material('ruff_gold', GOLD, glow=0.25, ink='#c0731c')
+
+
+def flame_material(name, outer, core, thr=0.80, glow_outer=0.75, glow_core=1.0, ink='#c8481c'):
+    """Toon flame whose pale core is the part of the surface facing the camera (N . I > thr): a centred inner
+    teardrop in every view (polish review 2, cross-kin 3; a core mesh pushed toward the battle camera showed as an
+    off-centre sliver from behind, and a centred one is swallowed by the union). Candidate for lib/common.py."""
+    m = toon_material(name, outer, glow=glow_outer, ink=ink)
+    nt = m.node_tree; N = nt.nodes.new; L = nt.links.new
+    grp = next(n for n in nt.nodes if n.type == 'GROUP')
+    geo = N('ShaderNodeNewGeometry')
+    dot = N('ShaderNodeVectorMath'); dot.operation = 'DOT_PRODUCT'
+    L(geo.outputs['Normal'], dot.inputs[0]); L(geo.outputs['Incoming'], dot.inputs[1])
+    step = N('ShaderNodeMath'); step.operation = 'GREATER_THAN'; step.inputs[1].default_value = thr
+    L(dot.outputs['Value'], step.inputs[0])
+    mix = N('ShaderNodeMix'); mix.data_type = 'RGBA'; mix.blend_type = 'MIX'
+    mix.inputs[6].default_value = (*outer, 1); mix.inputs[7].default_value = (*core, 1)
+    L(step.outputs[0], mix.inputs['Factor']); L(mix.outputs[2], grp.inputs['Base'])
+    gl = N('ShaderNodeMath'); gl.operation = 'MULTIPLY_ADD'; gl.inputs[1].default_value = glow_core - glow_outer
+    gl.inputs[2].default_value = glow_outer
+    L(step.outputs[0], gl.inputs[0]); L(gl.outputs[0], grp.inputs['Glow'])
+    return m
+
+
+mat_ember = flame_material('ember', EMBER, EMBER_CORE)
 assign(body, mat_body)
 parts = []
 # ears: tall, swept back and tilted outward, seated deep in the skull
 EAR = dict(c=(0.44, 0.27, 2.10), s=(0.11, 0.25, 0.48), rx=-22, ry=-26)
 for s in (-1, 1):
-    e = ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), EAR['s'], rot=(EAR['rx'] * s, EAR['ry'], 0), taper=0.92)
+    e = ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), EAR['s'], rot=(EAR['rx'] * s, EAR['ry'], 0), taper=0.92,
+                  segs=64, rings=48)      # dense: the inner-ear and tip bands are cel edges, not an airbrush
     parts.append(assign(e, mat_body))
 
 d_cam, rot, right, up = camera_basis()
@@ -121,17 +144,17 @@ for s in (-1, 1):
     lobe[s] = [snap((x, s, z), (x, 0, z))[0] for (x, z) in ((xt - 0.03, zf - 0.031), (xt - 0.08, zf - 0.024), (xt - 0.13, zf - 0.012), (xt - 0.17, zf + 0.004))]
 smile = list(reversed(lobe[-1])) + [mid] + lobe[1]
 parts.append(assign(tube('mouth', [tuple(q) for q in smile], [0.006, 0.009, 0.011, 0.011, 0.011, 0.011, 0.011, 0.009, 0.006], res=8), mat_nose))
-# flame plume on the tail tip (big), with a pale core turned toward the camera
+# flame plume on the tail tip (big); its pale core is the flame material's camera-facing band (centred in every view)
 fl = ellipsoid('ember', (-1.06, 0.07, 1.90), (0.27, 0.27, 0.44), rot=(0, -14, 0), taper=0.9)
 parts.append(assign(fl, mat_ember))
-fc = ellipsoid('ember_core', Vector((-1.05, 0.07, 1.84)) + d_cam * 0.16, (0.14, 0.14, 0.27), rot=(0, -14, 0), taper=0.9)
-parts.append(assign(fc, mat_core))
-# cream flame ruff on the chest: three tongues pointing down, the middle one gold-tipped
-# (big enough to break the chest silhouette in profile, like a flame bib)
-for i, (y, h, w, mat) in enumerate(((0.0, 0.34, 0.11, mat_ruff_gold), (-0.13, 0.29, 0.10, mat_ruff), (0.13, 0.29, 0.10, mat_ruff),
-                                    (-0.22, 0.22, 0.08, mat_ruff), (0.22, 0.22, 0.08, mat_ruff))):
-    t = ellipsoid(f'ruff{i}', (0.56 - 0.08 * abs(y), y, 1.10 - h * 0.30), (w * 0.8, w, h), rot=(0, 158, 0), taper=0.92)
-    parts.append(assign(t, mat))
+# cream flame ruff on the chest: five overlapping tongues sunk 40% into the chest, one mass (polish review 2);
+# painted with the body (cream zone, gold only on the middle tongue's tip)
+RUFF_ROT = np.array(Euler((0, math.radians(158), 0), 'XYZ').to_matrix())
+RUFF = []
+for i, (y, h, w) in enumerate(((0.0, 0.40, 0.15), (-0.12, 0.34, 0.14), (0.12, 0.34, 0.14), (-0.21, 0.27, 0.12), (0.21, 0.27, 0.12))):
+    c = (0.50 - 0.08 * abs(y), y, 1.06 - h * 0.30); sz = (0.14, w, h)
+    t = ellipsoid(f'ruff{i}', c, sz, rot=(0, 158, 0), taper=0.92)
+    parts.append(assign(t, mat_body)); RUFF.append((np.array(c), np.array(sz)))
 
 body = union(body, parts)
 set_smooth(body, angle=50)
@@ -145,29 +168,56 @@ def ear_local(co, s):
     return (co - np.array((EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]))) @ R
 
 
-def inner_ear(co, nm):
-    m = np.zeros(len(co), dtype=bool)
-    for s in (-1, 1):
-        l = ear_local(co, s)
-        t = np.clip((l[:, 2] + 0.05) / 0.45, 0, 1)
-        m |= (l[:, 0] > 0.0) & (l[:, 2] > -0.05) & (l[:, 2] < 0.33) & (np.abs(l[:, 1]) < 0.19 * (1 - t) ** 0.8)
-    return bm & m
+# soft zones as signed distances (negative inside) for paint_soft: cel edges along the designed curve
+def ear_sdf(fn):
+    def f(co, nm):
+        return np.minimum(fn(ear_local(co, -1)), fn(ear_local(co, 1)))
+    return f
 
 
-def ear_back(co, nm):
-    m = np.zeros(len(co), dtype=bool)
-    for s in (-1, 1):
-        l = ear_local(co, s)
-        inside = (l[:, 0] / 0.14) ** 2 + (l[:, 1] / 0.28) ** 2 + (l[:, 2] / 0.51) ** 2 < 1.0
-        m |= inside & (l[:, 0] < 0.02) & (l[:, 2] > -0.10)
-    return bm & m
+def ear_k(l):
+    return np.sqrt((l[:, 0] / 0.14) ** 2 + (l[:, 1] / 0.28) ** 2 + (l[:, 2] / 0.51) ** 2)
 
 
-def ear_tip(co, nm):
-    m = np.zeros(len(co), dtype=bool)
-    for s in (-1, 1):
-        m |= ear_local(co, s)[:, 2] > 0.27
-    return bm & m
+def inner_ear_l(l):
+    t = np.clip((l[:, 2] + 0.05) / 0.45, 0, 1)
+    return np.maximum.reduce([np.abs(l[:, 1]) - 0.19 * (1 - t) ** 0.8, -0.05 - l[:, 2], l[:, 2] - 0.33, -l[:, 0]])
+
+
+def ear_back_l(l):
+    return np.maximum.reduce([(ear_k(l) - 1.0) * 0.14, l[:, 0] - 0.02, -0.10 - l[:, 2]])
+
+
+def ear_tip_l(l):
+    # bounded to the ear itself: unbounded, the far side's test painted a soot patch under the tail plume
+    return np.maximum(0.27 - l[:, 2], (ear_k(l) - 1.15) * 0.14)
+
+
+def ruff_local(co, c, sz):
+    l = (co - c) @ RUFF_ROT
+    t = np.clip((l[:, 2] / sz[2] + 1) / 2, 0, 1); f = np.maximum(1 - 0.92 * t ** 1.6, 0.08)
+    k = np.sqrt((l[:, 0] / (sz[0] * f)) ** 2 + (l[:, 1] / (sz[1] * f)) ** 2 + (l[:, 2] / sz[2]) ** 2)
+    return l, k
+
+
+def ruff_sd(co, nm):
+    # the lower (free) part of each tongue only: the buried upper halves graze the shoulders
+    out = []
+    for c, sz in RUFF:
+        l, k = ruff_local(co, c, sz)
+        out.append(np.maximum((k - 1.0) * 0.10 - 0.012, -0.25 * sz[2] - l[:, 2]))
+    return np.min(out, axis=0)
+
+
+def ruff_gold(co, nm):
+    c, sz = RUFF[0]
+    l, k = ruff_local(co, c, sz)
+    return np.maximum((k - 1.0) * 0.10 - 0.012, 0.42 * sz[2] - l[:, 2])
+
+
+def belly_sd(co, nm):
+    # ellipsoid AND downward faces only: the box zone also painted the inner thighs (polish review 2, cross-kin 1)
+    return np.maximum(sd_ellipse((-0.12, 0, 0.60), (0.34, 0.22, 0.22))(co, nm), (nm[:, 2] + 0.45) * 0.2)
 
 
 def mask(co, nm):
@@ -180,16 +230,15 @@ def mask(co, nm):
 
 
 zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.70) & (co[:, 2] > 0.52) & (np.abs(co[:, 1]) < 0.26) & (co[:, 0] > -0.55) & (co[:, 0] < 0.18), CREAM),  # belly
-    (lambda co, nm: bm & (((co[:, 0] - 0.52) / 0.22) ** 2 + (co[:, 1] / 0.26) ** 2 + ((co[:, 2] - 1.10) / 0.34) ** 2 < 1), CREAM),          # chest
     (mask, CREAM),
-    (inner_ear, CREAM),
-    (ear_back, EAR_BACK),
-    (ear_tip, SOOT),
     (lambda co, nm: bm & (co[:, 2] < 0.36) & (co[:, 0] > -0.75), SOOT),   # tall soot boots
 ]
 paint_zones(body, ORANGE, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=1)
+paint_soft(body, [(belly_sd, CREAM),
+                  (sd_ellipse((0.56, 0, 1.10), (0.20, 0.25, 0.34)), CREAM),        # chest
+                  (ruff_sd, CREAM), (ruff_gold, GOLD),
+                  (ear_sdf(inner_ear_l), CREAM), (ear_sdf(ear_back_l), EAR_BACK), (ear_sdf(ear_tip_l), SOOT)], mask=bm, edge=0.012)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

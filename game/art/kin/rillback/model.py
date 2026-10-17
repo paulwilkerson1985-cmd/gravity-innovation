@@ -117,14 +117,32 @@ for s in (-1, 1):
 # probe the back's height under the board's middle and seat the board on it
 top, _ = snap((-0.16, 0, 3.0), (-0.16, 0, 0.7))
 bz = top.z + 0.02
-board = ellipsoid('board', (-0.14, 0, bz), (0.80, 0.40, 0.065), rot=(0, 2, 0))
+# (polish review 2: a thicker board with rocker, pitched so its top face turns to the battle camera, and a wider stripe;
+# the 0.065 plate read as a white sliver from the foe camera)
+BX, BPITCH, ROCKER, TAIL_LIFT = -0.14, 4.0, 0.07, 0.03
+
+
+def bend_board(o):
+    """Rocker (nose and tail curve up) and a pitch that drops the nose toward the camera and lifts the tail."""
+    me = o.data
+    co = np.empty(len(me.vertices) * 3); me.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
+    u = (co[:, 0] - BX) / 0.80
+    co[:, 2] += ROCKER * u ** 2 - math.tan(math.radians(BPITCH)) * (co[:, 0] - BX) + TAIL_LIFT * np.clip(-u, 0, 1)
+    me.vertices.foreach_set('co', co.ravel()); me.update()
+    return o
+
+
+board = bend_board(ellipsoid('board', (BX, 0, bz), (0.80, 0.40, 0.11), segs=64, rings=32))
 parts.append(assign(board, mat_board))
-parts.append(assign(ellipsoid('stripe', (-0.14, 0, bz + 0.055), (0.70, 0.075, 0.025), rot=(0, 2, 0)), mat_stripe))
+# the stripe is a narrower, slightly taller copy of the board's lens: flush along its length, no floating band
+stripe = bend_board(ellipsoid('stripe', (BX, 0, bz), (0.76, 0.11, 0.124), segs=64, rings=32))
+parts.append(assign(stripe, mat_stripe))
+facing(board, d_cam, label='board top (battle camera)')
 print('  board seated at z', round(bz, 3))
-# a little white head fin
-parts.append(assign(ellipsoid('fin', (0.92, 0, 1.70), (0.18, 0.035, 0.11), rot=(0, -25, 0), taper=0.6, taper_axis=0), mat_board))
-# tail fluke
-parts.append(assign(ellipsoid('fluke', (-1.62, 0, 0.36), (0.16, 0.36, 0.045), rot=(0, 8, 0)), mat_board))
+# (the head fin is cut: it is not in docs/CREATURES.md and read as a stray spike)
+# tail fluke: two thick lobes in a V with a notch between them (polish review 2: the flat disc read as a plate)
+for s in (-1, 1):
+    parts.append(assign(ellipsoid(f'fluke{s}', (-1.64, 0.15 * s, 0.37), (0.17, 0.25, 0.08), rot=(0, 8, -32 * s)), mat_board))
 
 body = union(body, parts)
 set_smooth(body, angle=50)
@@ -132,13 +150,20 @@ set_smooth(body, angle=50)
 # ------------------------------------------------------------------ colour zones (vertex colours)
 bm = vertex_slot_mask(body, {'body'})
 zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.55) & (co[:, 2] > 0.30) & (np.abs(co[:, 1]) < 0.36) & (co[:, 0] > -0.90) & (co[:, 0] < 0.55), AQUA),  # belly
-    (lambda co, nm: bm & (((co[:, 0] - 0.80) / 0.24) ** 2 + (co[:, 1] / 0.30) ** 2 + ((co[:, 2] - 0.92) / 0.32) ** 2 < 1), AQUA),          # chest / throat
-    (lambda co, nm: bm & (co[:, 0] > 1.28) & (co[:, 2] < 1.30), AQUA),                                    # whisker pad
     (lambda co, nm: bm & (co[:, 2] < 0.12), STRIPE),                                                      # webbed paws
 ]
 paint_zones(body, BLUE, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=1)
+
+
+def belly_sd(co, nm):
+    # ellipsoid AND downward faces only: the box zone also painted the inner legs (polish review 2, cross-kin 1)
+    return np.maximum(sd_ellipse((-0.18, 0, 0.42), (0.66, 0.30, 0.20))(co, nm), (nm[:, 2] + 0.45) * 0.2)
+
+
+paint_soft(body, [(belly_sd, AQUA),
+                  (sd_ellipse((0.80, 0, 0.92), (0.24, 0.30, 0.32)), AQUA),                            # chest / throat
+                  (sd_ellipse((1.46, 0, 1.12), (0.25, 0.28, 0.14)), AQUA)], mask=bm, edge=0.012)      # whisker pad (snout ellipsoid)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

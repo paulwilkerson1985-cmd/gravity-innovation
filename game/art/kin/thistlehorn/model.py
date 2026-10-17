@@ -39,14 +39,17 @@ for s in (-1, 1):
     y = LY * s
     B.add((FRONT_X - 0.04, y, 0.92), 0.22)                      # shoulder
     B.chain((FRONT_X, y, 0.84), (FRONT_X + 0.01, y, 0.14), 0.12, 0.085, n=6)
-    B.add((FRONT_X + 0.03, y, GROUND + 0.07), 0.095, size=(1.25, 1.0, 0.85), stiff=2.5)   # hoof
+    B.add((FRONT_X + 0.03, y, GROUND + 0.06), 0.095, size=(1.4, 1.05, 0.7), stiff=3.5)    # hoof (flat front, not a round cap)
     B.add((HIND_X + 0.04, y, 0.92), 0.25, size=(1.1, 0.85, 1.05))                         # haunch
     B.chain((HIND_X + 0.02, y, 0.84), (HIND_X - 0.08, y, 0.40), 0.14, 0.095, n=5)
     B.chain((HIND_X - 0.08, y, 0.40), (HIND_X, y, 0.14), 0.09, 0.085, n=4)
-    B.add((HIND_X + 0.03, y, GROUND + 0.07), 0.095, size=(1.25, 1.0, 0.85), stiff=2.5)
-# the mossy mantle: a lumpy cushion lying on the back
-for (x, y, z, r) in [(-0.10, 0, 1.30, 0.26), (0.12, 0.06, 1.28, 0.20), (-0.32, -0.05, 1.27, 0.20), (0.02, -0.12, 1.32, 0.16), (-0.20, 0.13, 1.33, 0.15)]:
-    B.add((x, y, z), r, size=(1.25, 1.1, 0.62), stiff=2.6)
+    B.add((HIND_X + 0.03, y, GROUND + 0.06), 0.095, size=(1.4, 1.05, 0.7), stiff=3.5)
+# the mossy mantle: a raised lumpy cushion lying on the back; stiff, so it makes a silhouette step the ink follows
+# (polish review 2: the flatter cushion left the mantle a stain with a wandering edge)
+MANTLE_BALLS = [(-0.10, 0, 1.30, 0.26), (0.08, 0.06, 1.28, 0.20), (-0.32, -0.05, 1.27, 0.20), (0.0, -0.12, 1.32, 0.16), (-0.20, 0.13, 1.33, 0.15)]
+MANTLE_SIZE = (1.25, 1.1, 0.95)
+for (x, y, z, r) in MANTLE_BALLS:
+    B.add((x, y, z), r, size=MANTLE_SIZE, stiff=3.5)
 body = B.mesh(voxel=0.018)
 co, nm = mesh_arrays(body)
 co[:, 2] = np.maximum(co[:, 2], GROUND)
@@ -114,26 +117,28 @@ for s in (-1, 1):
 smile = list(reversed(lobe[-1])) + [mid] + lobe[1]
 parts.append(assign(tube('mouth', [tuple(q) for q in smile], [0.005, 0.008, 0.010, 0.010, 0.010, 0.010, 0.010, 0.008, 0.005], res=8), mat_nose))
 
-# the signature horn: one bone horn from the forehead, curving forward and up, crowned by a thistle
-hp = [(0.80, 0.0, 1.70), (0.88, 0.0, 1.82), (0.98, 0.0, 1.90), (1.08, 0.0, 1.95)]
-parts.append(assign(tube('horn', hp, [0.075, 0.064, 0.052, 0.044], res=10), mat_horn))
-TC = Vector((1.13, 0.0, 2.04))
-parts.append(assign(ellipsoid('calyx', TC - Vector((0.02, 0, 0.07)), (0.10, 0.10, 0.08)), mat_calyx))
-parts.append(assign(ellipsoid('thistle', TC, (0.12, 0.12, 0.10)), mat_thistle))
-for i in range(11):   # the spiky crown of the bloom
-    a = i * 2.39996; zz = 0.25 + 0.7 * (i / 10)
+# the signature horn: one thick bone horn from the forehead, curving forward, up and over, crowned by a thistle whose
+# calyx is sunk into the horn tip (polish review 2: the thin stalk and ball read as a lollipop)
+hp = [(0.78, 0.0, 1.66), (0.86, 0.0, 1.83), (0.98, 0.0, 1.94), (1.10, 0.0, 1.99), (1.20, 0.0, 1.97)]
+parts.append(assign(tube('horn', hp, [0.12, 0.10, 0.085, 0.07, 0.06], res=12), mat_horn))
+TC = Vector((1.24, 0.0, 2.13))
+parts.append(assign(ellipsoid('calyx', Vector((1.22, 0, 2.01)), (0.12, 0.12, 0.10), segs=48, rings=24), mat_calyx))
+parts.append(assign(ellipsoid('thistle', TC, (0.17, 0.17, 0.14), segs=48, rings=24), mat_thistle))
+for i in range(13):   # the spiky crown of the bloom
+    a = i * 2.39996; zz = 0.25 + 0.7 * (i / 12)
     dirn = Vector((math.cos(a) * math.sqrt(1 - zz * zz), math.sin(a) * math.sqrt(1 - zz * zz), zz)).normalized()
-    parts.append(assign(ellipsoid(f'spine{i}', TC + dirn * 0.12, (0.026, 0.026, 0.07), track=dirn, taper=0.9), mat_thistle))
+    parts.append(assign(ellipsoid(f'spine{i}', TC + dirn * 0.15, (0.032, 0.032, 0.085), track=dirn, taper=0.9), mat_thistle))
 
 # the mantle's leaf fringe: rounded leaves lying flat down both flanks, and one down the rump
+# (polish review 2: three different leaves, overlapping, tucked under the mantle edge so only the free tips are inked)
 for s in (-1, 1):
-    for i, (x, z) in enumerate(((0.20, 1.16), (-0.08, 1.18), (-0.36, 1.14))):
-        # rounded leaf hanging from the mantle's edge, lying on the flank, tip pointing down
-        lf = ellipsoid(f'leaf{s}{i}', (x, 0.46 * s, z - 0.10), (0.15, 0.04, 0.21), rot=(180 + 42 * s, 4, 0), taper=0.45, taper_axis=2)
+    for i, (x, z, w, ry) in enumerate(((0.20, 1.12, 0.15, 10), (-0.06, 1.14, 0.19, -4), (-0.32, 1.11, 0.13, -12))):
+        # rounded leaf hanging from the mantle's edge, lying on the flank, tip pointing down; its top half in the body
+        lf = ellipsoid(f'leaf{s}{i}', (x, 0.385 * s, z - 0.10), (w, 0.07, 0.21), rot=(180 + 42 * s, ry, 0), taper=0.45, taper_axis=2)
         parts.append(assign(lf, mat_leaf))
-parts.append(assign(ellipsoid('leafrump', (-0.56, 0, 1.14), (0.15, 0.14, 0.035), rot=(0, 52, 0), taper=0.55, taper_axis=0), mat_leaf))
+parts.append(assign(ellipsoid('leafrump', (-0.56, 0, 1.14), (0.15, 0.14, 0.06), rot=(0, 52, 0), taper=0.55, taper_axis=0), mat_leaf))
 # leaf tail: two leaves rising up and back from the rump
-parts.append(assign(ellipsoid('tail0', (-0.70, 0.0, 1.16), (0.20, 0.035, 0.09), rot=(0, 38, 0), taper=0.6, taper_axis=0), mat_leaf))
+parts.append(assign(ellipsoid('tail0', (-0.70, 0.0, 1.16), (0.20, 0.06, 0.09), rot=(0, 38, 0), taper=0.6, taper_axis=0), mat_leaf))
 parts.append(assign(ellipsoid('tail1', (-0.66, 0.05, 1.26), (0.16, 0.03, 0.075), rot=(10, 60, 14), taper=0.6, taper_axis=0), mat_body))
 
 body = union(body, parts)
@@ -152,16 +157,28 @@ def ear_inner(co, nm):
     return bm & m
 
 
+def belly_sd(co, nm):
+    # ellipsoid AND downward faces only: the box zone also painted the inner legs (polish review 2, cross-kin 1)
+    return np.maximum(sd_ellipse((-0.12, 0, 0.68), (0.36, 0.26, 0.20))(co, nm), (nm[:, 2] + 0.45) * 0.2)
+
+
+def mantle_sd(co, nm):
+    # a saddle blanket over the cushion: rounded ends seen from above, a level hem along the flanks where the leaves
+    # hang (polish review 2: the normal test let the edge wander across the neck and flank like a stain)
+    q = np.sqrt(((co[:, 0] + 0.15) / 0.42) ** 2 + (co[:, 1] / 0.85) ** 2)
+    return np.maximum((q - 1.0) * 0.42, 1.02 - co[:, 2] + 0.12 * ((co[:, 0] + 0.15) / 0.42) ** 2)
+
+
 zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.80) & (co[:, 2] > 0.55) & (np.abs(co[:, 1]) < 0.30) & (co[:, 0] > -0.50) & (co[:, 0] < 0.25), LIME),  # belly
-    (lambda co, nm: bm & (((co[:, 0] - 0.55) / 0.20) ** 2 + (co[:, 1] / 0.26) ** 2 + ((co[:, 2] - 1.05) / 0.30) ** 2 < 1), LIME),          # chest
-    (lambda co, nm: bm & (co[:, 0] > 0.86) & (co[:, 2] < 1.47), LIME),                                   # muzzle
-    (lambda co, nm: bm & (co[:, 2] > 1.15) & (co[:, 0] < 0.34) & (co[:, 0] > -0.58) & (nm[:, 2] > 0.15), MANTLE),   # mossy mantle
     (ear_inner, LIME),
     (lambda co, nm: bm & (co[:, 2] < 0.14), HOOF),                                                        # hooves
 ]
 paint_zones(body, GREEN, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=1)
+paint_soft(body, [(belly_sd, LIME),
+                  (sd_ellipse((0.62, 0, 1.00), (0.18, 0.21, 0.28)), LIME),                            # chest
+                  (sd_ellipse((1.16, 0, 1.32), (0.30, 0.24, 0.13)), LIME),                            # muzzle, snapped to the snout tip
+                  (mantle_sd, MANTLE)], mask=bm, edge=0.012)
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)

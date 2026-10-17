@@ -39,6 +39,7 @@ for s in (-1, 1):
         B.add((lx, y * 0.95, 1.00), 0.34)                      # mossy thigh
         B.chain((lx, y, 0.86), (lx + 0.03, y, 0.18), 0.27, 0.25, n=5)   # pillar
         B.add((lx + 0.05, y, GROUND + 0.12), 0.27, size=(1.15, 1.1, 0.55), stiff=2.5)   # round foot
+B.add((-0.86, 0, 1.06), 0.42)                                  # rump fill: no inked cleft between the haunches (polish review 2)
 body = B.mesh(voxel=0.024)
 co, nm = mesh_arrays(body)
 co[:, 2] = np.maximum(co[:, 2], GROUND)
@@ -73,10 +74,12 @@ parts = []
 d_cam, rot, right, up = camera_basis()
 Lw = (-0.55 * right + 0.72 * up + 0.42 * d_cam).normalized()
 
-# leaf ears: big drooping leaves out to the sides
-EAR = dict(c=(0.82, 0.60, 1.50), rx=-10, ry=10)
+# leaf ears: big drooping leaves out to the sides, clear of the skull (polish review 2: buried, only the flat face
+# showed, an ink ring on the side of the head)
+EAR = dict(c=(0.82, 0.76, 1.50), rx=-10, ry=10)
 for s in (-1, 1):
-    parts.append(assign(ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), (0.22, 0.32, 0.06), rot=(-34 * s, 10, 22 * s), taper=0.5, taper_axis=1), mat_body))
+    parts.append(assign(ellipsoid(f'ear{s}', (EAR['c'][0], EAR['c'][1] * s, EAR['c'][2]), (0.22, 0.32, 0.09), rot=(-55 * s, 10, 22 * s), taper=0.5,
+                                  taper_axis=1, segs=64, rings=32), mat_body))   # (48 segments put a vertex past -1: NaN taper)
 
 # small fierce eyes tucked under the brow
 for s in (-1, 1):
@@ -112,9 +115,9 @@ def thistle(name, c, r):
 
 
 # thistle crown on the brow
-thistle('crown', (1.10, 0.0, 1.78), 0.10)
+thistle('crown', (1.10, 0.0, 1.80), 0.14)
 for s in (-1, 1):
-    thistle(f'crown{s}', (1.04, 0.16 * s, 1.72), 0.075)
+    thistle(f'crown{s}', (1.03, 0.19 * s, 1.73), 0.09)
 
 # the grove on the back: probe the back's top, then plant two little trees, bushes, ferns and blossoms on it
 
@@ -144,11 +147,18 @@ tree('tree1', -0.58, -0.14, 0.36, 0.24, (mat_leaf_d, mat_leaf_l))
 for i, (x, y, r, m) in enumerate(((0.30, -0.18, 0.20, mat_leaf_d), (-0.48, 0.30, 0.18, mat_leaf_l), (0.18, 0.28, 0.15, mat_leaf_l))):
     b = ground_on_back(x, y)
     parts.append(assign(ellipsoid(f'bush{i}', b + Vector((0, 0, r * 0.4)), (r, r, r * 0.8)), m))
-for i, (x, y, a) in enumerate(((0.05, -0.32, -50), (-0.32, -0.36, -30), (0.36, 0.34, 40), (-0.80, 0.0, 0))):
+# ferns: two clumps of three blades inside the grove (polish review 2: the lone rump and far-flank blades read as
+# stray spikes); blades thick enough not to read as paper, their bases sunk into the back
+for i, (x, y, a) in enumerate(((0.05, -0.32, -50), (-0.32, -0.36, -30))):
     b = ground_on_back(x, y)
-    parts.append(assign(ellipsoid(f'fern{i}', b + Vector((0, 0, 0.14)), (0.06, 0.04, 0.24), rot=(a * 0.6, -14, a), taper=0.8), mat_leaf_l))
-# leaf tail
-parts.append(assign(ellipsoid('tail0', (-1.04, 0, 1.12), (0.26, 0.04, 0.12), rot=(0, 35, 0), taper=0.6, taper_axis=0), mat_leaf_d))
+    for j, (da, dt, h) in enumerate(((0, -14, 0.24), (24, -30, 0.19), (-24, 2, 0.19))):
+        parts.append(assign(ellipsoid(f'fern{i}{j}', b + Vector((0, 0, h * 0.45)), (0.07, 0.06, h), rot=((a + da) * 0.6, dt, a + da), taper=0.8),
+                            mat_leaf_l))
+# leaf tail: two leaves fanned in a V, rising out of the top of the rump so they clear its silhouette from behind
+# (polish review 2: one buried leaf read as a crack in the rump cleft, then as a dark oval on the hip)
+for s in (-1, 1):
+    parts.append(assign(ellipsoid(f'tail{s}', (-1.38, 0.05 * s, 1.30), (0.30, 0.07, 0.12), rot=(0, 62, 28 * s), taper=0.6, taper_axis=0),
+                        mat_leaf_d))
 
 body = union(body, parts)
 set_smooth(body, angle=50)
@@ -156,14 +166,21 @@ set_smooth(body, angle=50)
 # ------------------------------------------------------------------ colour zones (vertex colours)
 bm = vertex_slot_mask(body, {'body'})
 zones = [
-    (lambda co, nm: bm & (co[:, 2] < 0.78) & (co[:, 2] > 0.48) & (np.abs(co[:, 1]) < 0.36) & (co[:, 0] > -0.70) & (co[:, 0] < 0.40), LIME),   # belly
-    (lambda co, nm: bm & (((co[:, 0] - 0.86) / 0.24) ** 2 + (co[:, 1] / 0.40) ** 2 + ((co[:, 2] - 0.98) / 0.30) ** 2 < 1), LIME),          # throat
-    (lambda co, nm: bm & (co[:, 0] > 1.30) & (co[:, 2] < 1.18), LIME),                                     # snout
     (lambda co, nm: bm & (co[:, 0] > 1.10) & (co[:, 2] > 1.44) & (co[:, 2] < 1.64) & (np.abs(co[:, 1]) < 0.44), LEAF_D),   # brow
     (lambda co, nm: bm & (co[:, 2] < 0.64) & (np.abs(co[:, 1]) > 0.20), BARK),                            # bark shins
 ]
 paint_zones(body, GREEN, zones, mask=bm)
 smoothstep_blend(body, 'Col', iters=1)
+
+
+def belly_sd(co, nm):
+    # ellipsoid AND downward faces only: the box zone also painted the inner legs (polish review 2, cross-kin 1)
+    return np.maximum(sd_ellipse((-0.15, 0, 0.66), (0.52, 0.34, 0.20))(co, nm), (nm[:, 2] + 0.45) * 0.2)
+
+
+paint_soft(body, [(belly_sd, LIME),
+                  (sd_ellipse((0.86, 0, 0.98), (0.24, 0.40, 0.30)), LIME),                            # throat
+                  (sd_ellipse((1.58, 0, 0.99), (0.30, 0.34, 0.18)), LIME)], mask=bm, edge=0.014)      # snout: an ellipsoid on the snout tip
 
 
 # ------------------------------------------------------------------ battle pose: head turned toward the camera (shape key)
