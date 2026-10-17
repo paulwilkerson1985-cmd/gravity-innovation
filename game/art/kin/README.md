@@ -49,7 +49,7 @@ half, contact sheet in `review/`.
 | pebblet | hop | verified | final | colour per stone facet |
 | breezel | hop | verified | final | wings outside the body (per-side wing materials) |
 | vulcrag | hop | verified | final | nit: hit/faint stagger tips the cone and shows the base as a wedge |
-| surgeray | hop | verified | final | weakest: small and flat in the foe view, a tent from the back; design call pending (hovering ray or thicker manta) |
+| surgeray | serpent | verified (redesign) | final | redesigned (owner): ray disc as a cape, upright lightning-rod neck, gold electrode tail fork; Fable: original |
 | stormoth | fly | verified | final | front-facing display wings, flush bolt |
 | flickwing | fly | verified | final | glowing lantern pitched to show in battle |
 | cyclonyx | fly | verified | final | streamers at gain 0.45/0.35 (the faint knotted them) |
