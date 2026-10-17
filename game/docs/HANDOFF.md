@@ -89,6 +89,13 @@ of the 4 stills and the strip with these final sheets was running when the sessi
 setup, dist with these sheets). The production kit is in `../art/kin/` (README there): Cindertail v1 sheets, Pyrelord
 v1 model.
 
+**Update 2026-10-17: every kin has a model, a rig and sheets (or a queued render).** All 18 species in CREATURES.md are
+built on four shared rigs: quadruped (`quadrig`), round hopper (`hoprig` + `hop`), flier (`hoprig` + `fly`) and coiled
+serpent (`serpentrig` + `serpent`). Full sheet sets are committed for 11 kin; the rest were in the render queue when
+this was written (`../art/kin/README.md` has the per-kin status and the production lessons). Defects found and fixed by
+eye on the contact sheets: Cragmaul's boulder fists sheared (rigid foot claim), Pebblet flattened like jelly (`squash`).
+None of the new kin is gated; a Fable review of the Ashkit slice was started (see below).
+
 ## Next steps
 1. **Fable review** of the Ashkit slice: the owner asked for this once their Fable quota resets, at 7 PM US Central on 2026-10-16 (00:00 UTC 2026-10-17).
    - **Role:** senior creature artist plus art director.
@@ -99,11 +106,11 @@ v1 model.
 2. **Done (gate 2):** the Ashkit fixes are applied and re-gated, and the side-by-side is ready for the owner.
    Round 2 beat the static art on all four shots (stills). The attack clip still loses on motion; the default
    is one more attack-clip pass. Once the owner confirms, it becomes the template.
-3. **Production plan for all 20 kin:**
-   - per-kin Blender scripts following `../art/creatures/blender-d/` and `../art/ashkit/scripts/`;
-   - the anatomy checklist with front, 3/4, side and back renders;
-   - sheets packed as WebP atlases, about 1–2 MB per kin;
-   - productionise the device-resolution kin layer and sheet player (`../art/ashkit/prototype/`).
+3. **Production for all kin:** models, rigs and sheets are done or queued for all 18 species (`../art/kin/`). Left:
+   - collect the queued renders and check each contact sheet;
+   - gate the new kin (blind judge against the static D art), at least one per body plan;
+   - productionise the device-resolution kin layer and sheet player (`../art/ashkit/prototype/`), loading every kin's
+     sheets (about 5 MB full, 1.3 MB half per kin).
 
    Then:
    - smooth-arena repaint;
