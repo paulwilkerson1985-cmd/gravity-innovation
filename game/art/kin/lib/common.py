@@ -13,8 +13,9 @@ import bpy, bmesh, math, os, time
 import numpy as np
 from mathutils import Vector, Matrix, Euler
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.dirname(HERE)
+# private: `from common import *` must not rebind the importing kin script's own HERE (it did; every kin's default
+# BLEND path pointed into lib/)
+_HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def srgb(hexstr, mul=1.0):

@@ -66,7 +66,7 @@ for `species=`, `view=`, `lineup=`, `battle=1&mine=&foe=`, `anim=`, `theme=`, `l
 | | Concept & silhouette | Signature | Palette |
 |---|---|---|---|
 | **Vulcrag** (Flame/Terra) | A squat volcano-cone golem — upright, wide base, crater top. Distinct from Cragmaul's hunched brute. | Erupting crater with a lava pool, glowing **magma veins**, molten fists, glowing eyes and mouth. | basalt black, magma orange, lava yellow |
-| **Surgeray** (Tide/Spark) | An electric ray resting on the ground — wing-fin tips touch the floor, nose slightly raised. | Yellow lightning bolts on the wings and back, bolt-tipped whip tail, electric-node antennae. | royal blue, pale belly, yellow |
+| **Surgeray** (Tide/Spark) | A ray beached on purpose: its disc spread on the ground like a cape, a stout neck rising from the front like a lightning rod to a broad, flat ray head with domed eyes. | Wing tips curled into yellow electric nodes, a bolt striking down each side of the neck and across each wing, a bolt-tipped whip tail rising behind. | royal blue, pale ice throat and underside, yellow |
 | **Petalwisp** (Flora/Gale) | A floating flower spirit (no bird parts): face in a blossom crown, petal skirt, leaf arms. | Wind-wisp tail spiralling to a point; six-petal crown. | pink, blush face, magenta undersides, leaf green |
 
 ## Animation (CreatureView)

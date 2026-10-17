@@ -304,7 +304,7 @@ def add_battle_key(o, turn_deg, lift_deg):
 key = add_battle_key(body, P['head_turn'], P['head_lift'])
 
 # ------------------------------------------------------------------ render
-OUTDIR = os.environ.get('OUTDIR', os.path.join(OUT, 'rounds', 'r1'))
+OUTDIR = os.environ.get('OUTDIR', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'rounds', 'r1'))
 os.makedirs(OUTDIR, exist_ok=True)
 SPP = int(os.environ.get('SPP', 12)); SIZE = int(os.environ.get('SIZE', 768)); MODE = os.environ.get('MODE', 'both')
 setup_render(samples=SPP, ink_px=6.0 * SIZE / 1024, inner_px=3.2 * SIZE / 1024, crease_deg=100)

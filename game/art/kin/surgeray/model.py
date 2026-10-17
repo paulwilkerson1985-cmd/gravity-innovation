@@ -1,97 +1,75 @@
-"""Surgeray - rare Tide/Spark single (docs/CREATURES.md): an electric ray resting on the ground; its wing-fin tips touch
-the floor, its head is raised.
+"""Surgeray - rare Tide/Spark single (docs/CREATURES.md): a ray that has beached itself on purpose. Its pectoral disc
+lies spread on the floor like a cape, and from the front of the disc a stout neck rises like a lightning rod to a broad,
+flat ray head with domed eyes and a wide manta grin.
 
-Signature: yellow lightning bolts on the wings and back, a bolt-tipped whip tail, electric-node antennae. Palette: royal
-blue, pale belly, yellow.
-
-The body is analytic, not a remeshed slab: a polar grid over the diamond outline, a thin wing slab with a rounded rim
-plus smooth domes for the body and the head (taut shading, clean ink, no crumples). It is then posed for the low battle
-camera with one smooth function (pose): the wings bend down to the floor, the head curls up, and the whole disc pitches
-toward the camera. The battle camera sits in front of the ray and low (12 deg), so a flat ray reads as a sliver and a
-nose-up ray shows its belly; pitched toward the camera, the top with its bolts faces it (the 'top facing' print).
-Bolts are laid in the rest frame on the height field and posed with the body, so they stay flush and undistorted.
-The antennae and nodes have per-side materials and the tail bolt its own slot, so the rig claims them exactly; the
-'battle' key turns the whole body toward the camera. Env: SPP, SIZE, OUTDIR, MODE=turn|battle|both, BLEND.
+Signature: the cape's two wing tips curl up into yellow electric nodes (terminals), a yellow lightning bolt strikes down
+each side of the neck and across each wing, and a whip tail rises behind with a bolt at its tip. Palette: royal blue,
+pale ice belly (neck front, jaw, chest bib), yellow. Built like Maelstrode: the disc (an analytic polar grid), the neck
+tube along shape.path() and the head are joined and voxel-remeshed into one surface; hard parts (eyes, nodes, the tail
+bolt) are unioned; colour zones are signed distances painted after splitting the mesh under each edge (crisp cel
+edges). The 'battle' key turns the whole body toward the camera. Env: SPP, SIZE, OUTDIR, MODE=turn|battle|both, BLEND.
 """
 import sys, os, time, math
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'lib'))
+sys.path.insert(0, HERE)
 from common import *
 from mathutils.bvhtree import BVHTree
-from mathutils.kdtree import KDTree
+from shape import path, HEAD_C, EYE_CENTRE
 
 T0 = time.perf_counter()
 sc = reset_scene()
-P = dict(turn=36.0,          # a flat ray reads from the front: turned further toward the camera than the round kin (16)
-         pitch=26.0,          # the disc tips toward the battle camera (deg, nose down)
-         droop=0.20,          # the wing tips bend down this far to the floor
-         head=0.10,           # the head curls up at the front (raises the face off the floor)
-         lead=0.0,            # the outer leading edges lift (so the wing tips, not the edges, touch the floor)
-         rim=0.022,           # half-thickness of the wing slab: the rounded rim's radius
-         tilt_az=0.0,         # the azimuth the disc tips toward (deg from +x; the battle camera is at -39)
-         tipfix=1.0,          # how far the raised wing tip is bent back down to the floor (1 = both tips touch)
-         eye_x=0.215, eye_y=0.105, eye_w=0.078, eye_h=0.095, eye_d=0.04, eye_out=0.016)
-import json
-P.update(json.loads(os.environ.get('POSE', '{}')))
-BACK_YAW = 36.0      # the back sheet turns the body turn + head_back (anim.py keeps the sum at 36, as before)
+P = dict(turn=16.0, curl=0.10, rim=0.030, voxel=0.012,
+         eye_x=0.50, eye_y=0.10, eye_z=1.02, eye_w=0.082, eye_h=0.092, eye_d=0.038, eye_out=0.018)
 
-ROYAL = srgb('#2a4ad8'); ROYAL_D = srgb('#1c34a8'); BELLY = srgb('#dfe8ff'); YELLOW = srgb('#ffe03a'); EYE = srgb('#141a3a')
-WHITE = srgb('#ffffff')
-INK = '#0c1440'
+ROYAL = srgb('#2a4ad8'); ROYAL_D = srgb('#1c34a8'); BELLY = srgb('#e2ecff'); YELLOW = srgb('#ffe03a')
+GOLD = srgb('#ffcc1e'); PUPIL = srgb('#10163a'); WHITE = srgb('#ffffff')
+INK = '#0c1440'; INK_Y = '#7a5a00'
 
 
 def sstep(e0, e1, x):
-    t = np.clip((x - e0) / (e1 - e0), 0, 1)
+    t = np.clip((np.asarray(x, float) - e0) / (e1 - e0), 0, 1)
     return t * t * (3 - 2 * t)
 
 
-# ------------------------------------------------------------------ the outline (x forward, y out): a broad diamond
-SPAN = 0.70
-HALF = [(0.40, 0.0), (0.375, 0.10), (0.30, 0.22), (0.14, 0.42), (-0.03, 0.62), (-0.13, 0.70), (-0.19, 0.62),
-        (-0.25, 0.45), (-0.33, 0.26), (-0.40, 0.11), (-0.44, 0.0)]
+# ------------------------------------------------------------------ the cape: a ray's disc spread on the floor
+SPAN = 0.74
+HALF = [(0.30, 0.0), (0.27, 0.12), (0.14, 0.33), (0.0, 0.56), (-0.08, 0.70), (-0.14, 0.74), (-0.20, 0.66), (-0.28, 0.46),
+        (-0.38, 0.26), (-0.48, 0.11), (-0.54, 0.0)]
 CTRL = HALF + [(x, -y) for x, y in reversed(HALF[1:-1])]
 OUTL = np.array(smooth_closed(CTRL, subdiv=12))
-CX = -0.04                                     # the polar centre (the outline is star-shaped about it)
+CX = -0.10
 _th = np.unwrap(np.arctan2(OUTL[:, 1], OUTL[:, 0] - CX))
-assert np.all(np.diff(_th) > 0), 'outline is not star-shaped about the centre'
+assert np.all(np.diff(_th) > 0) or np.all(np.diff(_th) < 0), 'outline is not star-shaped about the centre'
+_tm = np.mod(_th, 2 * np.pi); _o = np.argsort(_tm)
 _rr = np.hypot(OUTL[:, 0] - CX, OUTL[:, 1])
 RIM = P['rim']
 
 
 def radius(t):
-    return np.interp(np.mod(t, 2 * np.pi), np.mod(_th, 2 * np.pi)[np.argsort(np.mod(_th, 2 * np.pi))],
-                     _rr[np.argsort(np.mod(_th, 2 * np.pi))], period=2 * np.pi)
+    return np.interp(np.mod(t, 2 * np.pi), _tm[_o], _rr[_o], period=2 * np.pi)
 
 
 def bump(x, y, cx, sx, sy, h):
     return h * np.exp(-((x - cx) / sx) ** 2 - (y / sy) ** 2)
 
 
-def dome_top(x, y):      # the body (a low wide dome) and the head (a rounder rise at the front that carries the face)
-    return bump(x, y, -0.06, 0.30, 0.26, 0.090) + bump(x, y, 0.15, 0.17, 0.20, 0.125)
+def dome_top(x, y):      # the body's ridge along the middle, highest under the neck
+    return bump(x, y, -0.10, 0.34, 0.20, 0.085) + bump(x, y, 0.12, 0.16, 0.16, 0.06)
 
 
 def dome_bot(x, y):
-    return bump(x, y, -0.03, 0.30, 0.28, 0.050)
+    return bump(x, y, -0.10, 0.30, 0.24, 0.012)
 
 
-def wfall(q):            # 1 in the middle, 0 with zero slope where the rim starts (a smooth join)
+def wfall(q):
     return (1 - np.clip(q, 0, 1) ** 4) ** 1.5
 
 
-def qof(x, y):
-    R = radius(np.arctan2(y, x - CX))
-    return np.hypot(x - CX, y) / (R * (1 - RIM / R))
-
-
-def top_z(x, y):
-    return RIM + dome_top(x, y) * wfall(qof(x, y))
-
-
-def build_body(N=288, K=30, J=7):
+def build_disc(N=256, K=26, J=6):
     tt = np.linspace(0, 2 * np.pi, N, endpoint=False)
     R = radius(tt); s_in = 1 - RIM / R; cs, sn = np.cos(tt), np.sin(tt)
-    rings = []          # (x, y, z, rest side) per ring: side +1 top, -1 bottom
+    rings = []
     for k in range(1, K + 1):
         q = k / K; rho = s_in * R * q; x = CX + rho * cs; y = rho * sn
         rings.append((x, y, RIM + dome_top(x, y) * wfall(q)))
@@ -114,244 +92,261 @@ def build_body(N=288, K=30, J=7):
     for r in range(M - 1):
         F += [(vid(r, i), vid(r + 1, i), vid(r + 1, i + 1), vid(r, i + 1)) for i in range(N)]
     F += [(1, vid(M - 1, i + 1), vid(M - 1, i)) for i in range(N)]
-    me = bpy.data.meshes.new('surgeray'); me.from_pydata(V, [], F); me.update()
-    bm_ = bmesh.new(); bm_.from_mesh(me); bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces); bm_.to_mesh(me); bm_.free()
-    o = link(bpy.data.objects.new('surgeray', me))
-    n_top = 1 + (K + J - 1) * N          # vertex indices below this are the top surface (centre + top rings + upper rim)
-    return o, n_top
+    me = bpy.data.meshes.new('disc'); me.from_pydata(V, [], F); me.update()
+    b = bmesh.new(); b.from_mesh(me); bmesh.ops.recalc_face_normals(b, faces=b.faces); b.to_mesh(me); b.free()
+    return link(bpy.data.objects.new('disc', me))
 
 
-TIP = (-0.13, 0.70)
-
-
-def _bend(co):
-    """The wings bend down (each cross-section rotated with the centreline, so the slab keeps its thickness) and the
-    head curls up."""
-    co = np.asarray(co, float)
+def curl(co):
+    """The wing tips curl up off the floor (each cross-section turned with the centre line, so the slab keeps its
+    thickness); the rest of the rim stays on the floor."""
     x, y, z = co[:, 0], co[:, 1], co[:, 2]
     u = np.abs(y) / SPAN
-    c = -P['droop'] * u ** 2
-    a = np.arctan(-2 * P['droop'] * u / SPAN * np.sign(y))
+    t = sstep(0.50, 1.0, u)
+    c = P['curl'] * t ** 2
+    dc = P['curl'] * 2 * t * (6 * (u - 0.5) / 0.5 * (1 - (u - 0.5) / 0.5)) / 0.5 / SPAN   # d c / d|y|
+    dc = np.where((u > 0.5) & (u < 1.0), dc, 0.0)
+    a = np.arctan(dc) * np.sign(y)
     Y = y - z * np.sin(a); Z = c + z * np.cos(a)
-    Z = Z + P['head'] * sstep(-0.05, 0.42, x) ** 1.4 * (1 - sstep(0.12, 0.60, u))
-    Z = Z + P['lead'] * sstep(-0.10, 0.30, x) * sstep(0.25, 0.75, u)        # the outer leading edges lift off the floor
     return np.stack([x, Y, Z], 1)
 
 
-def _tilt(co):
-    """The disc tips by `pitch` degrees toward the azimuth tilt_az (rotation about the horizontal axis across it)."""
-    az = math.radians(P['tilt_az']); h = np.array((math.cos(az), math.sin(az), 0.0)); k = np.array((-h[1], h[0], 0.0))
-    t = math.radians(P['pitch'])
-    return co * math.cos(t) + np.cross(k, co) * math.sin(t) + np.outer(co @ k, k) * (1 - math.cos(t))
+disc = build_disc()
+c0, _ = mesh_arrays(disc)
+TOP_REST = c0[:, 2] > 0
+c1 = curl(c0)
+DZ = -c1[:, 2].min(); c1[:, 2] += DZ          # the cape's underside on the floor
+disc.data.vertices.foreach_set('co', c1.ravel()); disc.data.update()
+TIPS = [curl(np.array([[-0.14, 0.74 * s, 0.0]]))[0] + np.array([0, 0, DZ]) for s in (1, -1)]
+print('wing tips', [np.round(t, 3).tolist() for t in TIPS])
 
-
-def pose(co):
-    """Rest frame -> display pose: bend, tilt toward the camera, then the raised wing bent back down to the floor."""
-    co = np.asarray(co, float)
-    out = _tilt(_bend(co))
-    tz = _tilt(_bend(np.array([[TIP[0], TIP[1], 0.0], [TIP[0], -TIP[1], 0.0]])))[:, 2]
-    fix = np.where(co[:, 1] > 0, tz[0] - tz.min(), tz[1] - tz.min()) * P['tipfix']
-    out[:, 2] -= fix * sstep(0.15, 1.0, np.abs(co[:, 1]) / SPAN)
-    return out
-
-
-body, N_TOP = build_body()
-REST, _ = mesh_arrays(body)
-co = pose(REST)
+# ------------------------------------------------------------------ neck, head, tail: tubes along the centre line
+PTS, i_body, i_neck, i_head = path()
+neck_pts = [((0.04, 0.0, 0.10), 0.18), ((0.13, 0.0, 0.20), 0.17)] + PTS[i_neck:i_head] + [((0.36, 0.0, 0.94), 0.092)]
+neck = tube('neck', [p for p, r in neck_pts], [r for p, r in neck_pts], res=6, bevel_res=4)
+HC = Vector(HEAD_C)
+head = ellipsoid('head', HC, (0.20, 0.18, 0.11), rot=(0, -4, 0))
+snout = ellipsoid('snout', (HC.x + 0.12, 0, HC.z - 0.02), (0.14, 0.17, 0.085))
+domes = [ellipsoid(f'dome{s}', (P['eye_x'] - 0.035, P['eye_y'] * s, P['eye_z']), (0.085, 0.085, 0.08)) for s in (-1, 1)]
+tail_pts = [(p, max(r, 0.027)) for p, r in PTS[:i_body]] + [((-0.56, 0.0, 0.09), 0.05), ((-0.40, 0.0, 0.09), 0.06)]
+tail_o = tube('tail', [p for p, r in tail_pts], [r for p, r in tail_pts], res=8, bevel_res=4)
+body = join(disc, [neck, head, snout, tail_o] + domes)
+body.name = 'surgeray'; body.data.name = 'surgeray'
+activate(body)
+body.data.remesh_voxel_size = P['voxel']; bpy.ops.object.voxel_remesh()
+m = body.modifiers.new('sm', 'SMOOTH'); m.factor = 0.5; m.iterations = 3
+bpy.ops.object.modifier_apply(modifier='sm')
+co, nm = mesh_arrays(body)
 FLOOR = co[:, 2].min()
 co[:, 2] -= FLOOR
 body.data.vertices.foreach_set('co', co.ravel()); body.data.update()
-low = np.argsort(co[:, 2])[:6]
-print('wing tip heights', np.round(pose(np.array([[TIP[0], TIP[1], 0.0], [TIP[0], -TIP[1], 0.0]]))[:, 2] - FLOOR, 3).tolist())
-print('lowest rest points', np.round(REST[low], 2).tolist(), 'z', np.round(co[low, 2], 3).tolist())
-
-
-def pose_w(c):
-    out = pose(np.atleast_2d(c)); out[:, 2] -= FLOOR
-    return out
-
-
-set_smooth(body)
-# the measure the pose is for: the top surface's area-weighted facing to the battle camera (signed: > 0 is the top)
-D_BATTLE = np.array(battle_dir(turn=P['turn']))
-D_BACK = np.array(camera_basis(-12.0 + BACK_YAW, 30.0)[0])     # the back sheet's camera in this frame
-me = body.data
-tops = [f.index for f in me.polygons if all(v < N_TOP for v in f.vertices)]
-tmp = body.copy(); tmp.data = body.data.copy(); link(tmp)
-bm_ = bmesh.new(); bm_.from_mesh(tmp.data)
-bmesh.ops.delete(bm_, geom=[f for f in bm_.faces if f.index not in set(tops)], context='FACES')
-bm_.to_mesh(tmp.data); bm_.free()
-facing(tmp, D_BATTLE, min_dot=0.45, label='top |n.d| battle')
-nn = np.array([f.normal for f in tmp.data.polygons]); ar = np.array([f.area for f in tmp.data.polygons])
-for nm_, dv in (('battle', D_BATTLE), ('back', D_BACK)):
-    print(f'  top facing {nm_} signed: {float((nn @ dv * ar).sum() / ar.sum()):.3f}')
-bpy.data.objects.remove(tmp, do_unlink=True)
-
+print(f'  remeshed body: {tri_count(body)} tris, floor shift {FLOOR:.3f}')
 dg = bpy.context.evaluated_depsgraph_get()
 bvh = BVHTree.FromObject(body, dg)
 
 
-def surf(x, y):
-    """The posed top surface at rest (x, y): the point and its outward normal."""
-    p = Vector(pose_w((x, y, float(top_z(x, y))))[0])
-    hit, n, _, _ = bvh.find_nearest(p)
+def snap(target, origin):
+    target, origin = Vector(target), Vector(origin)
+    d = (target - origin).normalized()
+    hit, n, _, _ = bvh.ray_cast(origin, d, 5.0)
+    if hit is None:
+        raise RuntimeError(f'no hit {target}')
     return hit, n.normalized()
 
 
-def side(s):
-    return 'L' if s > 0 else 'R'
-
-
 mat_body = toon_material('body', attr='Col', ink=INK)
-mat_eye = toon_material('eye', EYE, ink=INK)
+mat_eye = toon_material('eye', GOLD, glow=0.25, ink=INK)
+mat_pupil = toon_material('pupil', PUPIL, ink=INK)
 mat_glint = toon_material('glint', WHITE, glow=1.0, ink='#ffffff')
 mat_mouth = toon_material('mouth', srgb('#0e1a5a'), ink=INK)
-mat_bolt = toon_material('bolt', YELLOW, glow=0.6, ink='#7a5a00')
-mat_tail = toon_material('tail', ROYAL_D, ink=INK)
-mat_tbolt = toon_material('tbolt', YELLOW, glow=0.6, ink='#7a5a00')      # own slot: the rig's tail tip claims it whole
-mat_ant = {s: toon_material(f'ant{side(s)}', ROYAL_D, ink=INK) for s in (-1, 1)}
-mat_node = {s: toon_material(f'node{side(s)}', YELLOW, glow=0.8, ink='#7a5a00') for s in (-1, 1)}
+mat_tbolt = toon_material('tbolt', YELLOW, glow=0.6, ink=INK_Y)        # own slot: rigid on the tail bone
+mat_node = {s: toon_material(f'node{"L" if s > 0 else "R"}', YELLOW, glow=0.8, ink=INK_Y) for s in (1, -1)}
 assign(body, mat_body)
 parts = []
 d_cam, rot, right, up = camera_basis()
 Lw = (-0.55 * right + 0.72 * up + 0.42 * d_cam).normalized()
+D_BAT = battle_dir(turn=P['turn'])
+D_BACK = camera_basis(-12.0 + P['turn'], 30.0)[0]
 
-# big eyes on the front of the head, looking out and up at the camera
+# eyes: gold irises with big dark pupils and glints in the domes on top of the head, looking forward and up
 EYES = []
 for s in (-1, 1):
-    p, n = surf(P['eye_x'], P['eye_y'] * s)
-    f = (n + Vector((0.25, 0, 0))).normalized()
+    p, n = snap((P['eye_x'] + 0.5, (P['eye_y'] + 0.28) * s, P['eye_z'] + 0.14), (P['eye_x'] - 0.06, P['eye_y'] * s, P['eye_z'] - 0.02))
+    f = (n + Vector((0.3, 0, 0.0))).normalized()
+    print(f'  eye {s}: faces the battle camera {f.dot(D_BAT):.2f}, the back camera {f.dot(D_BACK):.2f}')
     ec = p - f * (P['eye_d'] - P['eye_out'])
     EYES.append((ec, f))
     parts.append(assign(ellipsoid(f'eye{s}', ec, (P['eye_w'], P['eye_h'], P['eye_d']), track=f), mat_eye))
+    # the pupil looks toward the battle camera (the far eye shows its pupil, not a gold sliver)
+    db = Vector(tuple(D_BAT)); g = (f + (db - f * db.dot(f)) * 0.45).normalized()
+    pc = ec + g * (P['eye_d'] * 0.55)
+    parts.append(assign(ellipsoid(f'pupil{s}', pc, (P['eye_w'] * 0.62, P['eye_h'] * 0.68, P['eye_d'] * 0.6), track=g), mat_pupil))
+    f = g
     t = (Lw - f * Lw.dot(f)).normalized()
     upv = Vector((0, 0, 1)) - f * f.z; upv.normalize()
-    for k, (off, r) in enumerate(((0.45, 0.030), (-0.55, 0.014))):
+    for k, (off, r) in enumerate(((0.40, 0.020), (-0.48, 0.010))):
         dirv = (t if off > 0 else (-t * 0.6 - upv * 0.8).normalized())
-        u_ = abs(off)
-        loc = ec + dirv * (u_ * P['eye_w']) + f * (P['eye_d'] * math.sqrt(max(0.0, 1 - u_ * u_)) - 0.004)
-        parts.append(assign(ellipsoid(f'glint{s}{k}', loc, (r, r * 1.1, 0.011), track=f), mat_glint))
-EYE_MID = (EYES[0][0] + EYES[1][0]) / 2
-EYE_CENTRE = EYE_MID - (EYES[0][1] + EYES[1][1]).normalized() * 0.16
-# a small smile on the front lip (the corners sit further back, which reads as higher on the raised face)
-MOUTH_X = 0.352
-pts = [surf(MOUTH_X - 0.016 * (abs(yy) / 0.055) ** 2, yy) for yy in (-0.055, -0.028, 0.0, 0.028, 0.055)]
-parts.append(assign(tube('mouth', [tuple(p + n * 0.006) for p, n in pts], [0.006, 0.009, 0.010, 0.009, 0.006], res=6), mat_mouth))
+        loc = pc + dirv * (abs(off) * P['eye_w'] * 0.62) + f * (P['eye_d'] * 0.62)
+        parts.append(assign(ellipsoid(f'glint{s}{k}', loc, (r, r * 1.1, 0.009), track=f), mat_glint))
+# the wide manta grin across the front of the snout, its corners turned up
+MZ = HC.z - 0.035
+mpts = []
+for y in (-0.14, -0.10, -0.05, 0.0, 0.05, 0.10, 0.14):
+    z = MZ + 0.032 * (abs(y) / 0.14) ** 2.2
+    mpts.append(snap((2.0, y * 1.05, z), (HC.x + 0.05, y * 0.9, z))[0])
+parts.append(assign(tube('mouth', [tuple(p) for p in mpts], [0.008, 0.011, 0.013, 0.014, 0.013, 0.011, 0.008], res=8), mat_mouth))
+# the nodes: yellow terminals on the curled wing tips
+NODES = {}
+for s, tp in zip((1, -1), TIPS):
+    tp = Vector(tp)
+    nc = tp + Vector((0.0, 0.010 * s, 0.016))          # a bulb that ends the wing, not a ball held up
+    NODES[s] = nc
+    parts.append(assign(ellipsoid(f'node{s}', nc, (0.05, 0.05, 0.05)), mat_node[s]))
 
+body = union(body, parts)
 
-def bolt_outline(path, w0, w1):
-    """A lightning-bolt polygon around a zig-zag path: mitred offsets, the width tapering from w0 to w1 (a point)."""
-    Q = [np.array(p, float) for p in path]; n = len(Q); L, R = [], []
-    for i in range(n):
-        d0 = Q[i] - Q[i - 1] if i > 0 else Q[1] - Q[0]
-        d1 = Q[i + 1] - Q[i] if i < n - 1 else Q[-1] - Q[-2]
-        n0 = np.array([-d0[1], d0[0]]) / np.linalg.norm(d0); n1 = np.array([-d1[1], d1[0]]) / np.linalg.norm(d1)
-        m = n0 + n1; m /= np.linalg.norm(m)
-        k = min(2.0, 1.0 / max(0.3, m @ n1))
-        w = (w0 + (w1 - w0) * i / (n - 1)) / 2 * k
-        L.append(tuple(Q[i] + m * w)); R.append(tuple(Q[i] - m * w))
-    return L[:-1] + [tuple(Q[-1] + (Q[-1] - Q[-2]) / np.linalg.norm(Q[-1] - Q[-2]) * 0.03)] + R[:-1][::-1]
-
-
-def skin_bolt(path, name, w0, w1, mat, t=0.018, proud=0.005):
-    """A thin flat bolt laid on the rest height field, then posed with the body: flush, crisp and undistorted."""
-    o = slab(name, bolt_outline(path, w0, w1), t, plane='XY')
-    c, _ = mesh_arrays(o)
-    zl = c[:, 2] - (c[:, 2].max() + c[:, 2].min()) / 2
-    c[:, 2] = top_z(c[:, 0], c[:, 1]) + zl + t / 2 - (t - proud)
-    c = pose_w(c)
-    o.data.vertices.foreach_set('co', c.ravel()); o.data.update()
-    set_smooth(o, angle=60)
-    return assign(o, mat)
-
-
-# a bolt down the back and one across each wing
-parts.append(skin_bolt([(0.02, 0.03), (-0.07, -0.05), (-0.13, 0.05), (-0.23, -0.04), (-0.29, 0.04), (-0.37, -0.01)],
-                       'bolt_back', 0.065, 0.016, mat_bolt))
-for s in (-1, 1):
-    parts.append(skin_bolt([(0.07, 0.22 * s), (-0.03, 0.31 * s), (0.05, 0.37 * s), (-0.06, 0.48 * s), (-0.09, 0.57 * s)],
-                           f'bolt{s}', 0.06, 0.016, mat_bolt))
-# electric-node antennae on the head, behind the eyes
-ANT = {}
-for s in (-1, 1):
-    a0, an = surf(0.03, 0.14 * s)
-    stalk = [tuple(a0 - an * 0.02), tuple(a0 + Vector((-0.02, 0.04 * s, 0.09))), tuple(a0 + Vector((-0.05, 0.085 * s, 0.165)))]
-    parts.append(assign(tube(f'ant{s}', stalk, [0.018, 0.015, 0.012], res=8), mat_ant[s]))
-    nc = Vector(stalk[-1]) + Vector((0, 0, 0.035))
-    parts.append(assign(ellipsoid(f'node{s}', nc, (0.042, 0.042, 0.042)), mat_node[s]))
-    ANT[s] = (a0, nc)
-# the whip tail droops from the raised rear in an arc toward the camera side (-y): held off the floor it clears the near
-# wing's trailing edge in the battle view (on the floor it hid behind the wing), and the bolt rises from its end
-P0 = Vector(pose_w((-0.30, 0.0, 0.0))[0]); PE = Vector(pose_w((-0.44, 0.0, 0.0))[0])
-TAIL = [tuple(P0), tuple(PE + Vector((-0.02, 0.0, -0.01))), tuple(PE + Vector((-0.09, -0.13, -0.05))),
-        tuple(PE + Vector((-0.15, -0.27, -0.12))), tuple(PE + Vector((-0.17, -0.39, -0.18)))]
-tail_o = assign(tube('tail', TAIL, [0.040, 0.032, 0.022, 0.016, 0.013], res=8), mat_tail)
-TL = sum((Vector(TAIL[i + 1]) - Vector(TAIL[i])).length for i in range(1, len(TAIL) - 1))
-print(f'  tail length past the rear {TL:.2f} (body length {HALF[0][0] - HALF[-1][0]:.2f})')
-E = Vector(TAIL[-1]); te = (E - Vector(TAIL[-2])).normalized()
-ax = (te * 0.45 + Vector((0, 0, 0.9))).normalized()            # the bolt rises off the tail end like a little flag
-cmix = Vector(tuple(D_BATTLE + D_BACK)).normalized()
-nb = (cmix - ax * cmix.dot(ax)).normalized()                     # and faces both sheet cameras
+# the tail bolt (joined: rigid on the tail bone, its own slot)
+E = Vector(PTS[0][0]); te = (E - Vector(PTS[1][0])).normalized()
+ax = (te * 0.3 + Vector((0, 0, 0.9))).normalized()
+cmix = Vector(tuple(np.array(D_BAT) + np.array(D_BACK))).normalized()
+nb = (cmix - ax * cmix.dot(ax)).normalized()
 e1 = ax.cross(nb).normalized()
 BOLT = [(0.0, 0.0), (0.055, 0.11), (0.012, 0.11), (0.06, 0.24), (-0.055, 0.085), (-0.012, 0.085), (-0.05, 0.0)]
-tb = slab('tailbolt', [(bx * 1.15, bz * 1.15) for bx, bz in BOLT], 0.026, plane='XY')
+tb = slab('tailbolt', [(bx * 1.5, bz * 1.5) for bx, bz in BOLT], 0.03, plane='XY')
 c, _ = mesh_arrays(tb)
 c[:, 2] -= (c[:, 2].max() + c[:, 2].min()) / 2
-org = E - ax * 0.02 + e1 * (0.025 * 1.15)                        # the bolt's foot centred on the tail end
+org = E - ax * 0.03 + e1 * (0.025 * 1.5)
 w = np.array(org)[None, :] + c[:, :1] * np.array(e1)[None, :] + c[:, 1:2] * np.array(ax)[None, :] + c[:, 2:3] * np.array(nb)[None, :]
 tb.data.vertices.foreach_set('co', w.ravel()); tb.data.update()
 set_smooth(tb, angle=60)
 assign(tb, mat_tbolt)
-TB_TOP = Vector(tuple(w[np.argmax(w @ np.array(ax))]))
-
-KD = KDTree(len(co)); [KD.insert(Vector(v), i) for i, v in enumerate(co)]; KD.balance()
-body = union(body, parts)
-body = join(body, [tail_o, tb])     # the bent tube refuses the boolean, and a joined tube then gets eaten by the next one
+body = join(body, [tb])
 set_smooth(body, angle=50)
 
-# colour zones by REST position (each vertex looks up the nearest posed body vertex): exact, pose-independent shapes
+# ------------------------------------------------------------------ colour zones (signed distances, crisp edges)
+def seg_dist(q, A, B):
+    """Distance from 2-D points q to segment AB."""
+    ab = B - A; t = np.clip(((q - A) @ ab) / max(1e-12, ab @ ab), 0, 1)
+    return np.linalg.norm(q - (A + t[:, None] * ab), axis=1)
+
+
+def poly_sd(q, poly):
+    """Signed distance from 2-D points q to a closed polygon (negative inside)."""
+    poly = np.asarray(poly, float); n = len(poly)
+    d = np.full(len(q), 9.0); inside = np.zeros(len(q), bool)
+    for i in range(n):
+        A, B = poly[i], poly[(i + 1) % n]
+        d = np.minimum(d, seg_dist(q, A, B))
+        c = ((A[1] > q[:, 1]) != (B[1] > q[:, 1]))
+        xint = A[0] + (q[:, 1] - A[1]) * (B[0] - A[0]) / np.where(np.abs(B[1] - A[1]) < 1e-12, 1e-12, B[1] - A[1])
+        inside ^= c & (q[:, 0] < xint)
+    return np.where(inside, -d, d)
+
+
+def bolt_outline(path_, w0, w1):
+    """A lightning-bolt polygon round a zig-zag path: mitred offsets, the width tapering from w0 to w1, a point at the end."""
+    Q = [np.array(p, float) for p in path_]; n = len(Q); L, R = [], []
+    for i in range(n):
+        d0 = Q[i] - Q[i - 1] if i > 0 else Q[1] - Q[0]
+        d1 = Q[i + 1] - Q[i] if i < n - 1 else Q[-1] - Q[-2]
+        n0 = np.array([-d0[1], d0[0]]) / np.linalg.norm(d0); n1 = np.array([-d1[1], d1[0]]) / np.linalg.norm(d1)
+        mm = n0 + n1; mm /= np.linalg.norm(mm)
+        k = min(2.0, 1.0 / max(0.3, mm @ n1))
+        w_ = (w0 + (w1 - w0) * i / (n - 1)) / 2 * k
+        L.append(tuple(Q[i] + mm * w_)); R.append(tuple(Q[i] - mm * w_))
+    tip = tuple(Q[-1] + (Q[-1] - Q[-2]) / np.linalg.norm(Q[-1] - Q[-2]) * 0.035)
+    return L[:-1] + [tip] + R[:-1][::-1]
+
+
+# a bolt across each wing (top view, x/y), striking out from the ridge toward the curled tip
+WING_BOLT = {s: bolt_outline([(0.03, 0.18 * s), (-0.06, 0.25 * s), (0.02, 0.32 * s), (-0.10, 0.46 * s), (-0.07, 0.52 * s),
+                              (-0.14, 0.62 * s)], 0.075, 0.02) for s in (1, -1)}
+# a bolt striking down each side of the neck (side view, x/z), from under the jaw to the cape
+NECK_BOLT = bolt_outline([(0.32, 0.86), (0.25, 0.75), (0.31, 0.68), (0.22, 0.56), (0.28, 0.50), (0.21, 0.40)], 0.07, 0.02)
+
 bm = vertex_slot_mask(body, {'body'})
-cof, _ = mesh_arrays(body)
-RQ = np.array([REST[KD.find(Vector(v))[1]] for v in cof])
 paint_zones(body, ROYAL, [], mask=bm)
-FACE = np.array((0.40, 0.0, 0.0)); FACE_R = np.array((0.12, 0.18, 0.09))
 
 
-def sd_face(c, n):      # a soft oval around the mouth that runs into the pale underside, kept below the eyes
-    q = (RQ - FACE) / FACE_R
-    return (np.linalg.norm(q, axis=1) - 1.0) * 0.10
+def sd_wing_bolt(co, nm):
+    top = (nm[:, 2] > 0.25) & (np.abs(co[:, 1]) > 0.10)
+    d = np.minimum(poly_sd(co[:, :2], WING_BOLT[1]), poly_sd(co[:, :2], WING_BOLT[-1]))
+    return np.where(top, d, np.maximum(d, 0.03))
 
 
-paint_soft(body, [(lambda c, n: (np.abs(RQ[:, 1]) / SPAN - 0.80) * -0.15, ROYAL_D),     # wing tips, a shade deeper
-                  (lambda c, n: RQ[:, 2] + 0.002, BELLY),                                # the pale belly, up to the rim
-                  (sd_face, BELLY)], mask=bm, edge=0.010)
+def sd_neck_bolt(co, nm):
+    side = (np.abs(nm[:, 1]) > 0.30) & (co[:, 2] > 0.26)
+    d = poly_sd(co[:, [0, 2]], NECK_BOLT)
+    return np.where(side, d, np.maximum(d, 0.03))
+
+
+def sd_belly(co, nm):
+    """The pale front: a throat V on the neck's forward side (plane cuts in y, so the edge is straight and crisp; no
+    pale neck front below mid-height: that was the Lapras read) and the chin under the grin."""
+    zs = np.array([p[2] for p, r in PTS[i_neck - 1:i_head + 1]]); xs = np.array([p[0] for p, r in PTS[i_neck - 1:i_head + 1]])
+    cx = np.interp(co[:, 2], zs, xs)
+    wdt = 0.097 * np.sqrt(sstep(0.58, 0.86, co[:, 2])) - 0.012
+    neck_sd = np.maximum(np.abs(co[:, 1]) - wdt, cx - co[:, 0] - 0.02)
+    neck_sd = np.where(co[:, 2] < HC.z - 0.04, neck_sd, 1.0)
+    jaw = co[:, 2] - (MZ - 0.012 + 0.032 * (np.abs(co[:, 1]) / 0.14) ** 2.2)
+    chin = (np.linalg.norm((co - np.array((HC.x + 0.13, 0.0, HC.z - 0.10))) / np.array((0.17, 0.16, 0.10)), axis=1) - 1) * 0.10
+    jaw = np.maximum(jaw, chin)                                      # the chin only: under the grin, not a collar
+    return np.minimum(neck_sd, jaw)
+
+
+def sd_tip(co, nm):          # the curled wing tips a shade deeper round the nodes
+    return (0.56 - np.abs(co[:, 1]) / SPAN) * SPAN
+
+
+def sd_under(co, nm):
+    """The ray's pale underside, seen as a thin lip under the cape's rim and under the curled wing tips: below the
+    rim's mid-plane (a plane cut that rises with the curl, so the edge is a clean line, not the normal's stair-steps)."""
+    u = np.abs(co[:, 1]) / SPAN
+    mid = DZ + P['curl'] * sstep(0.50, 1.0, u) ** 2 - 0.004
+    return np.where(np.abs(co[:, 1]) > 0.24, co[:, 2] - mid, 1.0)
+
+
+ZONES = [(sd_tip, ROYAL_D), (sd_under, BELLY), (sd_belly, BELLY), (sd_wing_bolt, YELLOW), (sd_neck_bolt, YELLOW)]
+
+
+def crisp_zones(o, sdfs, edge=0.010, passes=2):
+    """Split the edges a colour edge crosses (or nears) so vertex colours change within a quarter voxel (as Cindertail)."""
+    for _ in range(passes):
+        co_, nm_ = mesh_arrays(o)
+        d = np.stack([np.asarray(f(co_, nm_), float) for f in sdfs], 1)
+        bmx = bmesh.new(); bmx.from_mesh(o.data); bmx.edges.ensure_lookup_table()
+        ev = np.array([(e.verts[0].index, e.verts[1].index) for e in bmx.edges], dtype=np.int64).reshape(-1, 2)
+        a, b = d[ev[:, 0]], d[ev[:, 1]]
+        hit = ((a * b < 0) | (np.minimum(np.abs(a), np.abs(b)) < edge)).any(1)
+        sel = [bmx.edges[i] for i in np.where(hit)[0]]
+        bmesh.ops.subdivide_edges(bmx, edges=sel, cuts=1, use_grid_fill=True)
+        bmx.to_mesh(o.data); bmx.free(); o.data.update()
+        print(f'  crisp_zones: split {len(sel)} edges -> {tri_count(o)} tris')
+
+
+crisp_zones(body, [f for f, _ in ZONES])
+bm = vertex_slot_mask(body, {'body'})
+paint_zones(body, ROYAL, [], mask=bm)
+paint_soft(body, ZONES, mask=bm, edge=0.004)
 
 
 def add_battle_key(o, turn_deg):
     o.shape_key_add(name='Basis')
     k = o.shape_key_add(name='battle')
-    c, _ = mesh_arrays(o)
+    c_, _ = mesh_arrays(o)
     a = math.radians(-turn_deg)
-    out = c.copy()
-    out[:, 0] = c[:, 0] * math.cos(a) - c[:, 1] * math.sin(a)
-    out[:, 1] = c[:, 0] * math.sin(a) + c[:, 1] * math.cos(a)
+    out = c_.copy()
+    out[:, 0] = c_[:, 0] * math.cos(a) - c_[:, 1] * math.sin(a)
+    out[:, 1] = c_[:, 0] * math.sin(a) + c_[:, 1] * math.cos(a)
     k.data.foreach_set('co', out.ravel())
     return k
 
-
-# rig landmarks for anim.py (rest frame, before the battle turn)
-r3 = lambda v: tuple(round(float(x), 3) for x in v)
-print('RIG eye_centre', r3(EYE_CENTRE), 'eyes', r3(EYES[0][0]), r3(EYES[1][0]))
-for s in (-1, 1):
-    print(f'RIG ear{side(s)}', r3(ANT[s][0]), r3(ANT[s][1]))
-    print(f'RIG fin{side(s)} root', r3(pose_w((-0.04, 0.24 * s, 0.0))[0]), 'tip', r3(pose_w((-0.13, 0.70 * s, 0.0))[0]))
-print('RIG tail', [r3(p) for p in TAIL], 'bolt top', r3(TB_TOP))
 
 key = add_battle_key(body, P['turn'])
 OUTDIR = os.environ.get('OUTDIR', os.path.join(HERE, 'rounds', 'r1'))
 os.makedirs(OUTDIR, exist_ok=True)
 SPP = int(os.environ.get('SPP', 12)); SIZE = int(os.environ.get('SIZE', 768)); MODE = os.environ.get('MODE', 'both')
-setup_render(samples=SPP, ink_px=6.0 * SIZE / 1024, inner_px=3.2 * SIZE / 1024, crease_deg=115, decal_px=1.5 * SIZE / 1024)
+setup_render(samples=SPP, ink_px=6.0 * SIZE / 1024, inner_px=3.2 * SIZE / 1024, crease_deg=100, decal_px=1.5 * SIZE / 512)
 sc.cycles.use_denoising = True; sc.cycles.denoiser = 'OPENIMAGEDENOISE'
 if MODE in ('turn', 'both'):
     from turn import turnaround
@@ -361,6 +356,10 @@ if MODE in ('battle', 'both'):
     key.value = 1.0
     cam, info = frame_camera([body], yaw=35, elev=12, size=SIZE, ground_px=int(SIZE * 900 / 1024))
     render(os.path.join(OUTDIR, 'battle.png'), 'battle')
+    if os.environ.get('BACKCAM'):
+        bpy.data.objects.remove(cam, do_unlink=True)
+        frame_camera([body], yaw=-12, elev=30, size=SIZE, ground_px=int(SIZE * 900 / 1024))
+        render(os.path.join(OUTDIR, 'backcam.png'), 'back camera')
     key.value = 0.0
 save_blend(os.environ.get('BLEND', os.path.join(HERE, 'surgeray_final.blend')))
 co, _ = mesh_arrays(body)

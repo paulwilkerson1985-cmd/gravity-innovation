@@ -304,3 +304,10 @@ The whole HTML UI moves from the cream handheld panels + Orbkin Pixel to the HD-
 - **Socks stay dark.** Gate 1's critic asked for lighter socks so the face wins. Round 1 tried it, and every judge preferred the static art's dark paws for grounding, so they were restored.
 - **Hit strobe starts after a 100 ms contact hold** (`HIT_CONTACT_HOLD_MS` in `render/creature.ts`). The target stays drawn and flashed for one 12 fps drawing plus a frame, so a pre-rendered attacker's contact frame shows the blow land. Before, the strobe hid the target about 36 ms after impact. This applies to the tweened hit path; the HD-2D cel path already held its recoil cel for 5-6 frames.
 
+- **Surgeray redesigned (2026-10-17, owner: "try a different design… maybe a monster like Lapras").** The flat
+  ground ray was small and flat from both battle cameras. Owner's body plan (an upright neck on a body resting low)
+  was taken as the plan to beat, not as a look: a divergence step blocked out three plans (A neck on a ground-cape
+  disc, B hovering kite, C rearing manta); A kept the most silhouette in the back view (20.1k px vs 9.1k / 8.5k).
+  Lapras identifiers were excluded by brief (no shell, horn, ear fins, grey-blue + cream palette or droopy face);
+  the ray heritage stays (cape disc with curled node wing tips, bolt whip tail). Serpent rig. Pending a Fable
+  originality check. Evidence: `art/kin/surgeray/review/`.
