@@ -16,6 +16,7 @@ LEGS = {}
 k = 1.0
 FD = 0.0    # faint: extra body drop (world units, beyond the scaled Ashkit drop) for a kin with a higher belly
 FL = 0.0    # faint: extra leg drop, so long legs fold under the lowered body instead of hanging from the hips
+FOLD = (0.85, 0.55, 0.85)   # faint: the folded legs shorten toward the hips (bone scale: across, along, across)
 
 
 def K(*v):
@@ -38,8 +39,9 @@ def legs(rot=None, loc=(0, 0, 0), front=None, back=None):
 
 # ------------------------------------------------------------------ clips (12 fps)
 def clip_idle():
-    """12-frame loop: breath (chest swells, body lifts 1 %), head nods with the breath one frame late,
-    tail sways with follow-through down the chain, left ear flicks on frames 7-9. Paws never move."""
+    """12-frame loop: breath (chest swells 3 %, body lifts 1.6 %), head nods with the breath one frame late and
+    glances a little, tail sways with follow-through down the chain, left ear flicks on frames 7-9. Paws never move.
+    No blink: the loop is one second long, so a blink here would twitch; the sheet player blinks now and then."""
     out = []
     for f in range(12):
         ph = 2 * math.pi * f / 12
@@ -48,14 +50,14 @@ def clip_idle():
         sw = lambda lag: math.sin(ph - lag * 2 * math.pi / 12)
         eflick = {7: 1.0, 8: 0.55, 9: 0.15}.get(f, 0.0)
         out.append({
-            'cog': dict(l=K(0, 0, 0.010 * br)),
-            'chest': dict(s=(1 + 0.022 * br, 1 + 0.010 * br, 1 + 0.022 * br)),
-            'head': dict(r=(0, 2.2 * br1 - 1.0, 0)),
+            'cog': dict(l=K(0, 0, 0.016 * br)),
+            'chest': dict(s=(1 + 0.034 * br, 1 + 0.014 * br, 1 + 0.034 * br)),
+            'head': dict(r=(0, 3.6 * br1 - 1.6, 1.5 * sw(3))),
             'ear.L': dict(r=(-14 * eflick, -10 * eflick, 0)),
             'ear.R': dict(r=(0, 1.5 * br1, 0)),
-            'tail1': dict(r=(0, 0, 9 * sw(0))),
-            'tail2': dict(r=(0, 0, 9 * sw(1))),
-            'tail3': dict(r=(0, 0, 10 * sw(2))),
+            'tail1': dict(r=(0, 0, 12 * sw(0))),
+            'tail2': dict(r=(0, 0, 13 * sw(1))),
+            'tail3': dict(r=(0, 0, 14 * sw(2))),
         })
     return out
 
@@ -106,10 +108,10 @@ def clip_attack():
                'leg_b.L': dict(r=(0, -8, 0), l=K(0.34, 0, 0.0)), 'leg_b.R': dict(r=(0, -8, 0), l=K(0.34, 0, 0.0))}
     contact2 = blend(contact, {**contact, 'cog': dict(l=K(0.36, 0, -0.015), s=(1.05, 0.91, 1.05)),
                                'tail3': dict(r=(0, 6, 0))}, 1.0)
-    hop = {'cog': dict(l=K(0.22, 0, 0.07)), 'body': dict(r=(0, 6, 0)), 'head': dict(r=(0, 2, 0)),
+    hop = {'cog': dict(l=K(0.22, 0, 0.07)), 'body': dict(r=(0, -4, 0)), 'head': dict(r=(0, 4, 0)),
            'ear.L': dict(r=(0, -6, 0)), 'ear.R': dict(r=(0, -6, 0)),
            'tail1': dict(r=(0, 6, 0)), 'tail2': dict(r=(0, 10, 0)), 'tail3': dict(r=(0, 8, 0)),
-           'leg_f.L': dict(r=(0, 18, 0), l=K(0.24, 0, 0.08)), 'leg_f.R': dict(r=(0, 16, 0), l=K(0.24, 0, 0.08)),
+           'leg_f.L': dict(r=(0, -8, 0), l=K(0.24, 0, 0.08)), 'leg_f.R': dict(r=(0, -6, 0), l=K(0.24, 0, 0.08)),
            'leg_b.L': dict(r=(0, -10, 0), l=K(0.20, 0, 0.07)), 'leg_b.R': dict(r=(0, -10, 0), l=K(0.20, 0, 0.07))}
     land = {'cog': dict(l=K(0.02, 0, -0.03), s=(1.04, 0.94, 1.04)), 'body': dict(r=(0, 2, 0)),
             'head': dict(r=(0, -3, 0)), 'ear.L': dict(r=(0, 8, 0)), 'ear.R': dict(r=(0, 8, 0)),
@@ -119,12 +121,12 @@ def clip_attack():
     # the wind-up: one drawing to get most of the way down, then a coiled hold that keeps moving slightly
     coil = {**crouch, 'cog': dict(l=K(-0.10, 0, -0.13), s=(1.10, 0.83, 1.10)), 'head': dict(r=(0, -12, 0)),
             'tail1': dict(r=(0, 18, 0)), 'tail2': dict(r=(0, 14, 0)), 'tail3': dict(r=(0, 10, 0))}
-    hop_up = {**hop, 'cog': dict(l=K(0.22, 0, 0.13)), 'body': dict(r=(0, 9, 0)),
-              'leg_f.L': dict(r=(0, 26, 0), l=K(0.24, 0, 0.14)), 'leg_f.R': dict(r=(0, 24, 0), l=K(0.24, 0, 0.14)),
+    hop_up = {**hop, 'cog': dict(l=K(0.22, 0, 0.13)), 'body': dict(r=(0, -8, 0)), 'head': dict(r=(0, 7, 0)),   # leaning in, forelegs tucked
+              'leg_f.L': dict(r=(0, -14, 0), l=K(0.24, 0, 0.14)), 'leg_f.R': dict(r=(0, -12, 0), l=K(0.24, 0, 0.14)),
               'leg_b.L': dict(r=(0, -16, 0), l=K(0.20, 0, 0.13)), 'leg_b.R': dict(r=(0, -16, 0), l=K(0.20, 0, 0.13))}
-    hop_down = {**hop, 'cog': dict(l=K(0.10, 0, 0.06)), 'body': dict(r=(0, 3, 0)), 'head': dict(r=(0, -2, 0)),
+    hop_down = {**hop, 'cog': dict(l=K(0.10, 0, 0.06)), 'body': dict(r=(0, -2, 0)), 'head': dict(r=(0, 0, 0)),
                 'tail1': dict(r=(0, 10, 0)), 'tail2': dict(r=(0, 14, 0)), 'tail3': dict(r=(0, 12, 0)),
-                'leg_f.L': dict(r=(0, 6, 0), l=K(0.10, 0, 0.05)), 'leg_f.R': dict(r=(0, 6, 0), l=K(0.10, 0, 0.05)),
+                'leg_f.L': dict(r=(0, -4, 0), l=K(0.10, 0, 0.05)), 'leg_f.R': dict(r=(0, -4, 0), l=K(0.10, 0, 0.05)),
                 'leg_b.L': dict(r=(0, -4, 0), l=K(0.10, 0, 0.05)), 'leg_b.R': dict(r=(0, -4, 0), l=K(0.10, 0, 0.05))}
     land_sq = {**land, 'cog': dict(l=K(0.0, 0, -0.06), s=(1.09, 0.86, 1.09)), 'head': dict(r=(0, -6, 0)),
                'ear.L': dict(r=(0, 14, 0)), 'ear.R': dict(r=(0, 14, 0)), 'tail2': dict(r=(0, -14, 0)), 'tail3': dict(r=(0, -12, 0))}
@@ -172,8 +174,10 @@ def clip_faint():
             'ear.L': dict(r=(12, -26, 0)), 'ear.R': dict(r=(-10, -26, 0)),
             'tail1': dict(r=(0, -34, 0)), 'tail2': dict(r=(0, -34, 0)), 'tail3': dict(r=(0, -18, 0)),
             # legs fold flat; lowered only as far as keeps the paws ON the ground plane (was -0.04: a 2 px sink)
-            'leg_f.L': dict(r=(0, 62, 0), l=LD()), 'leg_f.R': dict(r=(0, 62, 0), l=LD()),
-            'leg_b.L': dict(r=(0, -62, 0), l=LD()), 'leg_b.R': dict(r=(0, -62, 0), l=LD()), 'blink': 1.0}
+            # (Fable review 1: the folded socks poked out as dark wedges; they now also shorten toward the hips, and
+            # quadrig snaps the lying drawings onto the floor)
+            'leg_f.L': dict(r=(0, 62, 0), l=LD(), s=FOLD), 'leg_f.R': dict(r=(0, 62, 0), l=LD(), s=FOLD),
+            'leg_b.L': dict(r=(0, -62, 0), l=LD(), s=FOLD), 'leg_b.R': dict(r=(0, -62, 0), l=LD(), s=FOLD), 'blink': 1.0}
     settle = blend(down, {**down, 'cog': dict(l=tuple(np.add(K(0.0, 0, -0.164), (0, 0, -FD))), s=(1.06, 0.87, 1.06)),
                           'head': dict(r=(8, -22, -4))}, 1.0)
     keys = {0: REST, 1: flinch, 2: sway1, 3: sway2, 5: buckle, 7: down, 8: settle, 9: settle}

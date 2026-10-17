@@ -17,6 +17,6 @@ SPEC = dict(
           dict(bone='fin.R', head=(-0.02, -0.24, 0.20), tail=(-0.06, -0.80, 0.03), radius=0.45, root_fade=0.45, gain=0.5),
           dict(bone='tip1', head=(-0.42, 0, 0.17), tail=(-0.76, 0, 0.16), radius=0.10, root_fade=0.3),
           dict(bone='tip2', head=(-0.76, 0, 0.16), tail=(-1.20, 0, 0.45), parent='tip1', radius=0.20, root_fade=0.05, slots=('tbolt',))],
-    eye_centre=(0.34, 0.0, 0.30), scale=0.8,
+    eye_centre=(0.05, 0.0, 0.22), scale=0.8,   # behind the eyes: the far-eye test measures from here
 )
 run_hop(SPEC, HERE)

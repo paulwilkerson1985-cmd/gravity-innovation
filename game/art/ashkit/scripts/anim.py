@@ -133,4 +133,4 @@ VIEWS = {'front': dict(yaw=35.0, elev=12.0),
          'back': dict(yaw=float(os.environ.get('YAW_BACK', -12)), elev=float(os.environ.get('ELEV_BACK', 30)), head_yaw=-HEAD_BACK)}
 ANCHOR_W = ((0.25 + HIND_X) / 2 + 0.06, 0.0, 0.0)   # middle of the four paws (toes forward 0.06)
 kit.run(CLIPS, VIEWS, ANCHOR_W, ground_mask=co0[:, 2] < 0.03, rig_out=os.path.join(PRE, 'ashkit_rig.blend'), rest_pose=REST,
-        travel=TRAVEL)
+        travel=TRAVEL, ground_snap={'faint': [7, 8, 9]}, ground_lift={'faint': [4, 5, 6], 'attack': list(range(1, 13)), 'hit': [1, 2, 3, 4]})

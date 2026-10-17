@@ -179,4 +179,5 @@ def run_quad(S, here):
              'back': dict(yaw=float(os.environ.get('YAW_BACK', -12)), elev=float(os.environ.get('ELEV_BACK', 30)), head_yaw=-head_back)}
     ANCHOR_W = S.get('anchor') or ((L['front_x'] + L['hind_x']) / 2 + 0.07, 0.0, 0.0)   # middle of the four paws (toes forward)
     return kit.run(CLIPS, VIEWS, ANCHOR_W, ground_mask=co0[:, 2] < 0.03,
-                   rig_out=os.path.join(here, f"{S['name']}_rig.blend"), rest_pose=REST, travel=TRAVEL)
+                   rig_out=os.path.join(here, f"{S['name']}_rig.blend"), rest_pose=REST, travel=TRAVEL,
+                   ground_snap={'faint': [7, 8, 9]}, ground_lift={'faint': [4, 5, 6], 'attack': list(range(1, 13)), 'hit': [1, 2, 3, 4]})

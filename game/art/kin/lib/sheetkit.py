@@ -147,6 +147,7 @@ class Kit:
         """A 'blink' shape key: each eye squeezes to a lid line, its glints shrink and sink under the lid."""
         o = self.o; co = self.co; co0 = self.co0
         eye_m = vertex_slot_mask(o, set(eye_slots)); gl_m = vertex_slot_mask(o, set(glint_slots))
+        self.eyes = {}
         o.shape_key_add(name='Basis')
         kbl = o.shape_key_add(name='blink'); kbl.value = 0
         bco = co.copy()
@@ -163,7 +164,17 @@ class Kit:
             f = cen - np.array(head_centre); f /= np.linalg.norm(f)
             bco[g] = cen + (bco[g] - cen) * 0.25 - f * sink
             print(f'  eye {s}: centre {np.round(cen, 3)}, lid line z {zc:.3f}, verts {int(sel.sum())}')
+            self.eyes[s] = (cen, np.array(head_centre, float), sel)
         kbl.data.foreach_set('co', bco.ravel())
+        # 'hide<side>': that eye (and its glints) shrinks into the head. run() switches it on in a view where the eye
+        # only grazes the silhouette: a far eye at tangency reads as a sliver or a third eye (Fable review 1).
+        for s, (cen, hc, sel) in self.eyes.items():
+            f = cen - hc; f /= np.linalg.norm(f)
+            ext = float(np.max((co[sel] - cen) @ f))
+            hco = co.copy()
+            hco[sel] = cen - f * (1.5 * ext + 0.01) + (co[sel] - cen) * 0.05
+            kh = o.shape_key_add(name=f'hide{s}'); kh.value = 0
+            kh.data.foreach_set('co', hco.ravel())
 
     # -------------------------------------------------------------- posing
     def apply_pose(self, P):
@@ -185,6 +196,9 @@ class Kit:
         ks = self.o.data.shape_keys
         if ks and 'blink' in ks.key_blocks:
             ks.key_blocks['blink'].value = P.get('blink', 0.0)
+        for sd, v in getattr(self, 'hide', {}).items():
+            if ks and f'hide{sd}' in ks.key_blocks:
+                ks.key_blocks[f'hide{sd}'].value = v
 
     def eval_pts(self):
         bpy.context.view_layer.update()
@@ -203,13 +217,16 @@ class Kit:
         return out
 
     # -------------------------------------------------------------- the run
-    def run(self, clips, views, anchor_w, ground_mask, rig_out, rest_pose, travel=None, ink=(6.0, 3.2, 820.0), ground_lock=False):
+    def run(self, clips, views, anchor_w, ground_mask, rig_out, rest_pose, travel=None, ink=(6.0, 3.2, 820.0), ground_lock=False,
+            ground_snap=None, ground_lift=None):
         """clips: {name: [pose per frame]}; views: {name: dict(yaw, elev, head_yaw)}; anchor_w: the feet point
         (world, the same pixel in every frame of a view); ground_mask: rest vertices that must stay planted in
         idle (soles); rig_out: where to save the rigged .blend; rest_pose: the pose the .blend is saved in;
         travel: {clip: dict(fwd=[...], ease=[...])} for the sheet player; ink: (outer px, inner px, at a creature
         this many px tall), scaled per view to the creature's rest height; ground_lock: lift any frame whose lowest
-        point is under the floor back onto it (round kin with no legs)."""
+        point is under the floor back onto it (round kin with no legs); ground_snap: {clip: [frames]} that lie on the
+        floor, moved up or down so their lowest point is exactly on it; ground_lift: {clip: [frames]} lifted only when
+        a point is under the floor."""
         sc = self.sc; size = self.size
         if ground_lock:   # a round body tilting about its centre swings its rim under the floor: lift those frames back onto it
             for cn, poses in clips.items():
@@ -223,6 +240,21 @@ class Kit:
                         cog = dict(P.get('cog', {})); l = cog.get('l', (0, 0, 0))
                         cog['l'] = (l[0], l[1], l[2] - zmin); Q = {**P, 'cog': cog}
                     fixed[id(P)] = Q; poses[f] = Q
+        # ground_snap: these drawings lie on the floor (lowest point exactly at 0); ground_lift: lifted only if under it
+        for table, lift_only in ((ground_snap, False), (ground_lift, True)):
+            for cn, frames in (table or {}).items():
+                fixed = {}
+                for f in frames:
+                    P = clips[cn][f]
+                    if id(P) in fixed:
+                        clips[cn][f] = fixed[id(P)]; continue
+                    self.apply_pose(P); zmin = float(self.eval_pts()[:, 2].min())
+                    Q = P
+                    if not lift_only or zmin < -0.002:   # move 'root': quad legs hang from it, not from 'cog'
+                        rb = 'root' if 'root' in self.BONES else 'cog'
+                        r_ = dict(P.get(rb, {})); l = r_.get('l', (0, 0, 0))
+                        r_['l'] = (l[0], l[1], l[2] - zmin); Q = {**P, rb: r_}
+                    fixed[id(P)] = Q; clips[cn][f] = Q
         root_motion = {k: [tuple(p.get('cog', {}).get('l', (0, 0, 0))) for p in v] for k, v in clips.items()}
         pts = self.sample(clips)
         rest = pts[('idle', 0)]
@@ -261,13 +293,23 @@ class Kit:
                            right=right, up=up, anchor=anchor, px_per_unit=px, rest_h_px=(ry.max() - ry.min()) * px)
             print(f'view {vn}: ortho {ortho:.3f}, {px:.1f} px/unit, rest creature {CAM[vn]["rest_h_px"]:.0f} px tall, anchor {anchor}')
         self.head_yaw = 0.0
+        # a far eye that only grazes the silhouette in a view is hidden in that view (FAR_EYE_T: the facing below which)
+        T = float(os.environ.get('FAR_EYE_T', 0.25))
+        for vn, c in CAM.items():
+            a = math.radians(c['head_yaw'])
+            Rz = np.array([[math.cos(a), -math.sin(a), 0], [math.sin(a), math.cos(a), 0], [0, 0, 1]])
+            c['hide'] = {}
+            for sd, (cen, hc, sel) in getattr(self, 'eyes', {}).items():
+                fac = float((Rz @ ((cen - hc) / np.linalg.norm(cen - hc))) @ np.array(c['d']))
+                c['hide'][sd] = 1.0 if fac < T else 0.0
+                print(f'  view {vn}: eye {sd} faces the camera {fac:.2f}' + (' -> hidden' if fac < T else ''))
 
         cd = bpy.data.cameras.new('cam'); cd.type = 'ORTHO'; cd.clip_end = 100
         cam = link(bpy.data.objects.new('cam', cd)); sc.camera = cam
 
         def set_view(vn):
             c = CAM[vn]
-            self.head_yaw = c['head_yaw']
+            self.head_yaw = c['head_yaw']; self.hide = c['hide']
             cd.ortho_scale = c['ortho']
             cam.location = c['center'] + c['d'] * 30
             cam.rotation_euler = c['rot'].to_euler()
@@ -296,7 +338,7 @@ class Kit:
         meta = dict(kin=self.o.name, fps=self.fps, size=size, spp=self.spp, views={}, clips={k: len(v) for k, v in clips.items()},
                     checks=checks, timing={}, travel=travel or {})
         for vn, c in CAM.items():
-            meta['views'][vn] = dict(yaw=c['yaw'], elev=c['elev'], ortho=c['ortho'], anchor=c['anchor'], px_per_unit=c['px_per_unit'],
+            meta['views'][vn] = dict(yaw=c['yaw'], elev=c['elev'], ortho=c['ortho'], anchor=c['anchor'], px_per_unit=c['px_per_unit'], hidden_eyes=c['hide'],
                                      rest_h_px=c['rest_h_px'],
                                      root_px={cn: [[round(float(np.dot(np.array(l), np.array(c['right'])) * c['px_per_unit']), 2),
                                                     round(float(-np.dot(np.array(l), np.array(c['up'])) * c['px_per_unit']), 2)] for l in root_motion[cn]]
@@ -334,7 +376,7 @@ class Kit:
         if os.path.exists(mp) and sel_f:
             old = json.load(open(mp)); old['timing'].update(meta['timing']); meta['timing'] = old['timing']
         json.dump(meta, open(mp, 'w'), indent=1, default=lambda v: list(v))
-        self.head_yaw = 0.0
+        self.head_yaw = 0.0; self.hide = {}
         self.apply_pose(rest_pose)
         bpy.ops.wm.save_as_mainfile(filepath=rig_out, compress=True)
         print(f'ANIM total {time.perf_counter() - self.t0:.1f}s')
