@@ -16,7 +16,7 @@
  "durationMs": 500,
  "atlasSize": {
   "w": 650,
-  "h": 894
+  "h": 891
  },
  "sourceSize": {
   "w": 512,
@@ -24,18 +24,18 @@
  },
  "cellOffset": {
   "x": 102,
-  "y": 115
+  "y": 119
  },
  "anchor": {
   "x": 164.0,
-  "y": 267.0,
+  "y": 266.0,
   "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
  },
  "anchorSource": {
   "x": 266.0,
-  "y": 382.0
+  "y": 385.0
  },
- "restHeightPx": 280.4,
+ "restHeightPx": 280.5,
  "rootOffsetPx": [
   [
    0.0,
@@ -102,37 +102,37 @@
    "x": 2,
    "y": 2,
    "w": 321,
-   "h": 294
+   "h": 293
   },
   {
    "x": 327,
    "y": 2,
    "w": 321,
-   "h": 294
+   "h": 293
   },
   {
    "x": 2,
-   "y": 300,
+   "y": 299,
    "w": 321,
-   "h": 294
+   "h": 293
   },
   {
    "x": 327,
-   "y": 300,
+   "y": 299,
    "w": 321,
-   "h": 294
+   "h": 293
   },
   {
    "x": 2,
-   "y": 598,
+   "y": 596,
    "w": 321,
-   "h": 294
+   "h": 293
   },
   {
    "x": 327,
-   "y": 598,
+   "y": 596,
    "w": 321,
-   "h": 294
+   "h": 293
   }
  ]
 }

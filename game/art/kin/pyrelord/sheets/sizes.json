@@ -1,73 +1,73 @@
 {
  "pyrelord_idle_front": {
-  "atlas": "1256x1101",
-  "cell": "310x363",
-  "bytes": 732306,
-  "gpu_mb": 5.28,
-  "gpu_mb_mips": 7.03
+  "atlas": "1268x1104",
+  "cell": "313x364",
+  "bytes": 750538,
+  "gpu_mb": 5.34,
+  "gpu_mb_mips": 7.12
  },
  "pyrelord_attack_front": {
-  "atlas": "1449x1985",
-  "cell": "479x393",
-  "bytes": 1101790,
-  "gpu_mb": 10.97,
-  "gpu_mb_mips": 14.63
+  "atlas": "1443x1930",
+  "cell": "477x382",
+  "bytes": 1098808,
+  "gpu_mb": 10.62,
+  "gpu_mb_mips": 14.17
  },
  "pyrelord_hit_front": {
-  "atlas": "966x726",
-  "cell": "318x359",
-  "bytes": 417284,
+  "atlas": "969x726",
+  "cell": "319x359",
+  "bytes": 412390,
   "gpu_mb": 2.68,
-  "gpu_mb_mips": 3.57
+  "gpu_mb_mips": 3.58
  },
  "pyrelord_faint_front": {
-  "atlas": "1840x768",
-  "cell": "364x380",
-  "bytes": 627468,
-  "gpu_mb": 5.39,
-  "gpu_mb_mips": 7.19
+  "atlas": "1630x766",
+  "cell": "322x379",
+  "bytes": 665766,
+  "gpu_mb": 4.76,
+  "gpu_mb_mips": 6.35
  },
  "pyrelord_idle_back": {
-  "atlas": "918x1180",
-  "cell": "302x291",
-  "bytes": 552596,
-  "gpu_mb": 4.13,
-  "gpu_mb_mips": 5.51
+  "atlas": "921x1188",
+  "cell": "303x293",
+  "bytes": 561524,
+  "gpu_mb": 4.17,
+  "gpu_mb_mips": 5.57
  },
  "pyrelord_attack_back": {
-  "atlas": "1443x1610",
-  "cell": "477x318",
-  "bytes": 777642,
-  "gpu_mb": 8.86,
-  "gpu_mb_mips": 11.82
+  "atlas": "1443x1605",
+  "cell": "477x317",
+  "bytes": 773880,
+  "gpu_mb": 8.83,
+  "gpu_mb_mips": 11.78
  },
  "pyrelord_hit_back": {
-  "atlas": "650x894",
-  "cell": "321x294",
-  "bytes": 277556,
-  "gpu_mb": 2.22,
-  "gpu_mb_mips": 2.96
+  "atlas": "650x891",
+  "cell": "321x293",
+  "bytes": 277232,
+  "gpu_mb": 2.21,
+  "gpu_mb_mips": 2.95
  },
  "pyrelord_faint_back": {
-  "atlas": "680x1575",
-  "cell": "336x311",
-  "bytes": 486138,
-  "gpu_mb": 4.09,
-  "gpu_mb_mips": 5.45
+  "atlas": "652x1540",
+  "cell": "322x304",
+  "bytes": 476460,
+  "gpu_mb": 3.83,
+  "gpu_mb_mips": 5.11
  },
  "_extent": {
   "front": {
-   "left": 0.7136,
-   "right": 0.6315
+   "left": 0.7126,
+   "right": 0.6306
   },
   "back": {
-   "left": 0.8845,
-   "right": 0.8061
+   "left": 0.8805,
+   "right": 0.8057
   }
  },
  "_total": {
-  "bytes": 4972780,
-  "gpu_mb": 43.62,
-  "gpu_mb_mips": 58.16
+  "bytes": 5016598,
+  "gpu_mb": 42.44,
+  "gpu_mb_mips": 56.59
  }
 }

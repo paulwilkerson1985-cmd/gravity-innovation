@@ -1,73 +1,73 @@
 {
  "ashkit_idle_front": {
-  "atlas": "1340x1284",
-  "cell": "331x424",
-  "bytes": 883052,
-  "gpu_mb": 6.56,
-  "gpu_mb_mips": 8.75
+  "atlas": "1352x1293",
+  "cell": "334x427",
+  "bytes": 915422,
+  "gpu_mb": 6.67,
+  "gpu_mb_mips": 8.89
  },
  "ashkit_attack_front": {
-  "atlas": "1928x1840",
-  "cell": "478x456",
-  "bytes": 1140772,
-  "gpu_mb": 13.53,
-  "gpu_mb_mips": 18.04
+  "atlas": "1928x1796",
+  "cell": "478x445",
+  "bytes": 1136230,
+  "gpu_mb": 13.21,
+  "gpu_mb_mips": 17.61
  },
  "ashkit_hit_front": {
-  "atlas": "1059x856",
-  "cell": "349x424",
-  "bytes": 427278,
-  "gpu_mb": 3.46,
-  "gpu_mb_mips": 4.61
+  "atlas": "1059x854",
+  "cell": "349x423",
+  "bytes": 429690,
+  "gpu_mb": 3.45,
+  "gpu_mb_mips": 4.6
  },
  "ashkit_faint_front": {
-  "atlas": "1815x886",
-  "cell": "359x439",
-  "bytes": 729892,
-  "gpu_mb": 6.13,
-  "gpu_mb_mips": 8.18
+  "atlas": "1745x884",
+  "cell": "345x438",
+  "bytes": 722778,
+  "gpu_mb": 5.88,
+  "gpu_mb_mips": 7.85
  },
  "ashkit_idle_back": {
-  "atlas": "1284x1122",
-  "cell": "317x370",
-  "bytes": 590170,
-  "gpu_mb": 5.5,
-  "gpu_mb_mips": 7.33
+  "atlas": "1292x1131",
+  "cell": "319x373",
+  "bytes": 601722,
+  "gpu_mb": 5.57,
+  "gpu_mb_mips": 7.43
  },
  "ashkit_attack_back": {
-  "atlas": "1446x1975",
-  "cell": "478x391",
-  "bytes": 803960,
-  "gpu_mb": 10.89,
-  "gpu_mb_mips": 14.53
+  "atlas": "1446x1940",
+  "cell": "478x384",
+  "bytes": 797660,
+  "gpu_mb": 10.7,
+  "gpu_mb_mips": 14.27
  },
  "ashkit_hit_back": {
   "atlas": "1017x748",
   "cell": "335x370",
-  "bytes": 300306,
+  "bytes": 295656,
   "gpu_mb": 2.9,
   "gpu_mb_mips": 3.87
  },
  "ashkit_faint_back": {
   "atlas": "1785x764",
   "cell": "353x378",
-  "bytes": 487796,
+  "bytes": 481524,
   "gpu_mb": 5.2,
   "gpu_mb_mips": 6.94
  },
  "_extent": {
   "front": {
-   "left": 0.5111,
-   "right": 0.6505
+   "left": 0.512,
+   "right": 0.6516
   },
   "back": {
-   "left": 0.6227,
-   "right": 0.7009
+   "left": 0.6236,
+   "right": 0.7019
   }
  },
  "_total": {
-  "bytes": 5363226,
-  "gpu_mb": 54.17,
-  "gpu_mb_mips": 72.23
+  "bytes": 5380682,
+  "gpu_mb": 53.58,
+  "gpu_mb_mips": 71.44
  }
 }
