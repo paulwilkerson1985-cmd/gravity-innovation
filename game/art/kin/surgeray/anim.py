@@ -1,14 +1,22 @@
 """Surgeray - rig surgeray_final.blend and render its sprite frames with the serpent rig and clips
 (../lib/serpentrig.py, ../lib/serpent.py) along the centre line in shape.py: the cape (the ray's disc on the floor) rides
-the 'coil' bone whole, the neck n1..n4 and the head strike and sway, the whip tail (its bolt with it) rides 'tail'.
-The wing-tip nodes sit on the rigid cape, so they never shear. Env: as sheetkit.Kit.run plus YAW_BACK, ELEV_BACK,
-HEAD_BACK, MOTION_SCALE.
+the 'coil' bone whole, the neck n1..n4 and the head strike and sway, the whip tail and its gold electrode fork (material
+slot 'ttip', at the tail's end: weighted to the 'tail' bone alone, so it stays rigid) ride 'tail'. The wing-tip nodes
+sit on the rigid cape, so they never shear. Env: as sheetkit.Kit.run plus YAW_BACK, ELEV_BACK, HEAD_BACK, MOTION_SCALE.
+
+Attack (review 3, nice): the shared serpent anticipation curls the neck back with the head pitched down, which knots
+the head onto Surgeray's chest; here the anticipation pulls the head back and UP (the base leans back, the upper neck
+stays upright, the body stretches, the tail cocks away from the lifted head), then the shared strike (frames 4-13) follows unchanged. Swapped in through the
+clip builder serpentrig calls, so lib/ stays untouched.
 """
 import sys, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', 'lib'))
 sys.path.insert(0, HERE)
 import sheetkit  # noqa: F401  (imports bpy before mathutils)
+import serpent
+import serpentrig
+from sheetkit import blend
 from serpentrig import run_serpent
 from shape import path, EYE_CENTRE
 
@@ -16,4 +24,27 @@ SPEC = dict(
     name='surgeray', blend='surgeray_final.blend', turn=16.0, path=path(), head_c=EYE_CENTRE,
     eye_slots=('eye', 'pupil'), blend_w=0.06, scale=1.0, faint_down=-70,
 )
+
+
+def attack_head_up():
+    """serpent.clip_attack with frames 1-3 replaced: rear back with the head lifted (not cocked down onto the chest)."""
+    neck, K = serpent.neck, serpent.K
+    shared = serpent.clip_attack()
+    rear = {'cog': dict(s=(0.99, 0.99, 1.03)), **neck((8, 6, -2, -6), keep=0.85, nod=6, tail=8)}
+    coil = {'cog': dict(s=(0.98, 0.98, 1.05), l=K(-0.02, 0, 0)), **neck((14, 10, -4, -10), keep=0.85, nod=10, tail=12)}
+    out = list(shared)
+    out[1], out[2], out[3] = rear, blend(rear, coil, 0.7), coil
+    return out
+
+
+_build = serpentrig.serpent_clips
+
+
+def _clips(scale=1.0, down=-76.0):
+    clips, travel, rest = _build(scale=scale, down=down)
+    clips['attack'] = attack_head_up()
+    return clips, travel, rest
+
+
+serpentrig.serpent_clips = _clips
 run_serpent(SPEC, HERE)
