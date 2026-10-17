@@ -1,0 +1,73 @@
+{
+ "cragmaul_idle_front": {
+  "atlas": "1300x1206",
+  "cell": "321x398",
+  "bytes": 494834,
+  "gpu_mb": 5.98,
+  "gpu_mb_mips": 7.97
+ },
+ "cragmaul_attack_front": {
+  "atlas": "1944x1696",
+  "cell": "482x420",
+  "bytes": 1109568,
+  "gpu_mb": 12.58,
+  "gpu_mb_mips": 16.77
+ },
+ "cragmaul_hit_front": {
+  "atlas": "1116x816",
+  "cell": "368x404",
+  "bytes": 388982,
+  "gpu_mb": 3.47,
+  "gpu_mb_mips": 4.63
+ },
+ "cragmaul_faint_front": {
+  "atlas": "1725x834",
+  "cell": "341x413",
+  "bytes": 654664,
+  "gpu_mb": 5.49,
+  "gpu_mb_mips": 7.32
+ },
+ "cragmaul_idle_back": {
+  "atlas": "1276x1077",
+  "cell": "315x355",
+  "bytes": 394964,
+  "gpu_mb": 5.24,
+  "gpu_mb_mips": 6.99
+ },
+ "cragmaul_attack_back": {
+  "atlas": "1476x1920",
+  "cell": "488x380",
+  "bytes": 934286,
+  "gpu_mb": 10.81,
+  "gpu_mb_mips": 14.41
+ },
+ "cragmaul_hit_back": {
+  "atlas": "750x1074",
+  "cell": "371x354",
+  "bytes": 312526,
+  "gpu_mb": 3.07,
+  "gpu_mb_mips": 4.1
+ },
+ "cragmaul_faint_back": {
+  "atlas": "1650x724",
+  "cell": "326x358",
+  "bytes": 516242,
+  "gpu_mb": 4.56,
+  "gpu_mb_mips": 6.08
+ },
+ "_extent": {
+  "front": {
+   "left": 0.4742,
+   "right": 0.7577
+  },
+  "back": {
+   "left": 0.5634,
+   "right": 0.8568
+  }
+ },
+ "_total": {
+  "bytes": 4806066,
+  "gpu_mb": 51.2,
+  "gpu_mb_mips": 68.27
+ }
+}
