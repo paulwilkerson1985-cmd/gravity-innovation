@@ -1,0 +1,138 @@
+{
+ "image": "vulcrag_hit_front.webp",
+ "kin": "vulcrag",
+ "clip": "hit",
+ "view": "front",
+ "viewNote": "front 3/4 facing right (foe; mirror X to face left)",
+ "camera": {
+  "yaw": 35.0,
+  "elevation": 12.0,
+  "ortho": 2.1856,
+  "pxPerUnit": 234.26
+ },
+ "fps": 12,
+ "loop": false,
+ "frameCount": 6,
+ "durationMs": 500,
+ "atlasSize": {
+  "w": 878,
+  "h": 1176
+ },
+ "sourceSize": {
+  "w": 512,
+  "h": 512
+ },
+ "cellOffset": {
+  "x": 47,
+  "y": 76
+ },
+ "anchor": {
+  "x": 195.0,
+  "y": 345.0,
+  "note": "feet: ground point under the rest paws, cell px; the same pixel in every frame and every clip of this view"
+ },
+ "anchorSource": {
+  "x": 242.0,
+  "y": 421.0
+ },
+ "restHeightPx": 357.9,
+ "rootOffsetPx": [
+  [
+   0.0,
+   -0.0
+  ],
+  [
+   -8.06,
+   -40.23
+  ],
+  [
+   -6.45,
+   -33.66
+  ],
+  [
+   1.34,
+   -12.35
+  ],
+  [
+   0.4,
+   -3.71
+  ],
+  [
+   0.0,
+   -0.0
+  ]
+ ],
+ "events": {
+  "recoil": 1
+ },
+ "opaqueExt": [
+  [
+   -191.0,
+   214.0,
+   325.0
+  ],
+  [
+   -186.0,
+   238.0,
+   337.0
+  ],
+  [
+   -188.0,
+   235.0,
+   337.0
+  ],
+  [
+   -193.0,
+   203.0,
+   344.0
+  ],
+  [
+   -192.0,
+   211.0,
+   331.0
+  ],
+  [
+   -191.0,
+   214.0,
+   325.0
+  ]
+ ],
+ "frames": [
+  {
+   "x": 2,
+   "y": 2,
+   "w": 435,
+   "h": 388
+  },
+  {
+   "x": 441,
+   "y": 2,
+   "w": 435,
+   "h": 388
+  },
+  {
+   "x": 2,
+   "y": 394,
+   "w": 435,
+   "h": 388
+  },
+  {
+   "x": 441,
+   "y": 394,
+   "w": 435,
+   "h": 388
+  },
+  {
+   "x": 2,
+   "y": 786,
+   "w": 435,
+   "h": 388
+  },
+  {
+   "x": 441,
+   "y": 786,
+   "w": 435,
+   "h": 388
+  }
+ ]
+}

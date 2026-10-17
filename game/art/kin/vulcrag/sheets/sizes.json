@@ -1,0 +1,73 @@
+{
+ "vulcrag_idle_front": {
+  "atlas": "1293x1504",
+  "cell": "427x372",
+  "bytes": 795454,
+  "gpu_mb": 7.42,
+  "gpu_mb_mips": 9.89
+ },
+ "vulcrag_attack_front": {
+  "atlas": "1904x1680",
+  "cell": "472x416",
+  "bytes": 1099700,
+  "gpu_mb": 12.2,
+  "gpu_mb_mips": 16.27
+ },
+ "vulcrag_hit_front": {
+  "atlas": "878x1176",
+  "cell": "435x388",
+  "bytes": 395196,
+  "gpu_mb": 3.94,
+  "gpu_mb_mips": 5.25
+ },
+ "vulcrag_faint_front": {
+  "atlas": "900x2030",
+  "cell": "446x402",
+  "bytes": 680046,
+  "gpu_mb": 6.97,
+  "gpu_mb_mips": 9.29
+ },
+ "vulcrag_idle_back": {
+  "atlas": "1624x1263",
+  "cell": "402x417",
+  "bytes": 855468,
+  "gpu_mb": 7.82,
+  "gpu_mb_mips": 10.43
+ },
+ "vulcrag_attack_back": {
+  "atlas": "1852x1860",
+  "cell": "459x461",
+  "bytes": 1215606,
+  "gpu_mb": 13.14,
+  "gpu_mb_mips": 17.52
+ },
+ "vulcrag_hit_back": {
+  "atlas": "1305x872",
+  "cell": "431x432",
+  "bytes": 426076,
+  "gpu_mb": 4.34,
+  "gpu_mb_mips": 5.79
+ },
+ "vulcrag_faint_back": {
+  "atlas": "1374x1804",
+  "cell": "454x447",
+  "bytes": 756726,
+  "gpu_mb": 9.46,
+  "gpu_mb_mips": 12.61
+ },
+ "_extent": {
+  "front": {
+   "left": 0.6231,
+   "right": 0.7125
+  },
+  "back": {
+   "left": 0.5977,
+   "right": 0.5803
+  }
+ },
+ "_total": {
+  "bytes": 6224272,
+  "gpu_mb": 65.29,
+  "gpu_mb_mips": 87.05
+ }
+}
