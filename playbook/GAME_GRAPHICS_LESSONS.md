@@ -83,6 +83,10 @@ So spend effort on characters first, UI second, motion third, environments last.
   - labels on one line;
   - touch targets at least 44 px.
 - **Performance**: smooth native-resolution rendering cost 6x (desktop) to 13x (phone) the frame time of a 640x360 pixel buffer in the software renderer. Plan quality tiers and measure on a real phone before committing.
+- **Rigging a roster from a few body plans** (Orbkin, 18 kin): four shared rigs (quadruped, round hopper, flier, coiled serpent) plus a short per-kin spec covered every species. Two habits saved the most time:
+  - probe 3-5 key poses at low samples before queueing a full sheet render; every rig defect showed up there;
+  - any rigid part (a boulder fist, a bolt, a crystal) belongs fully to one bone, claimed by its material. Soft distance weights shear it.
+- **Blender modelling traps**: metaballs blend a head into the body (use a separate mesh and a boolean); a self-touching tube silently drops out of a boolean union (keep turns apart, or voxel-remesh); squash-and-stretch tuned for jelly makes stone look like jelly (scale it per kin).
 
 ## 5. Process and infrastructure
 
