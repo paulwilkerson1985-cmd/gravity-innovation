@@ -14,8 +14,9 @@ SPEC = dict(
     # wings raised in a V in a plane facing the front (model.py WROOT, wing_frame sweep 6 / dihedral 44)
     apps=[dict(bone='fin.L', head=(-0.06, 0.18, 0.72), tail=(-0.13, 0.82, 1.35), radius=0.01, slots=('wingL', 'underL', 'primL')),
           dict(bone='fin.R', head=(-0.06, -0.18, 0.72), tail=(-0.13, -0.82, 1.35), radius=0.01, slots=('wingR', 'underR', 'primR')),
-          dict(bone='tip1', head=(-0.46, 0, 0.50), tail=(-0.80, 0, 0.44), radius=0.15, root_fade=0.3),
-          dict(bone='tip2', head=(-0.80, 0, 0.44), tail=(-1.16, 0, 0.72), parent='tip1', radius=0.22, root_fade=0.05)],
+          # the streamers droop and spread +-0.25 (model.py): tip2 reaches them both, its root fade keeps it off the body
+          dict(bone='tip1', head=(-0.46, 0, 0.50), tail=(-0.78, 0, 0.52), radius=0.25, root_fade=0.3),
+          dict(bone='tip2', head=(-0.78, 0, 0.52), tail=(-1.16, 0, 0.66), parent='tip1', radius=0.50, root_fade=0.05)],
     eye_centre=(0.24, 0.0, 0.94), scale=1.0,
 )
 run_hop(SPEC, HERE)

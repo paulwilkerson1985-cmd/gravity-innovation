@@ -103,26 +103,29 @@ for s in (-1, 1):
     bar = [tuple(b0 - Vector((0, 0.02 * s, 0))), tuple(b0 + Vector((0.02, 0.08 * s, -0.06))), tuple(b0 + Vector((0.03, 0.12 * s, -0.17))),
            tuple(b0 + Vector((0.08, 0.13 * s, -0.24)))]
     parts.append(assign(tube(f'barbel{s}', bar, [0.032, 0.026, 0.018, 0.010], res=8), mat_barbel))
-# the crest: a scalloped white fin along the top of the head, sweeping back
-CREST = smooth_closed([(0.10, 0.0), (0.04, 0.10), (-0.04, 0.16), (-0.10, 0.13), (-0.16, 0.20), (-0.24, 0.12), (-0.30, 0.02), (-0.20, -0.04), (0.0, -0.04)], subdiv=5)
-ct, _ = snap((HC.x - 0.02, 0, 3.0), (HC.x - 0.02, 0, HC.z))
-parts.append(assign(slab('crest', cw(CREST), FIN_T, loc=tuple(ct + Vector((0, 0, -0.03))), plane='XZ', taper=(1, 1.0, 0.3)), mat_fin))
+# no centre crest (verify 2): from the front it was a white horn between the frills, and leaned back or rooted behind the
+# crown it read as a bone sticking out of the head; the frills and the dorsal fins carry the white-fin signature
 # frills: fanned white fins behind the jaw on each side
 FRILL = smooth_closed([(0.0, 0.0), (-0.05, 0.12), (-0.14, 0.18), (-0.20, 0.10), (-0.24, 0.0), (-0.20, -0.08), (-0.10, -0.08)], subdiv=5)
 for s in (-1, 1):
     fp, _ = snap((HC.x - 0.10, 3.0 * s, HC.z - 0.02), (HC.x - 0.10, 0, HC.z - 0.02))
     parts.append(assign(slab(f'frill{s}', cw([(x * 1.3, z * 1.3) for x, z in FRILL]), 0.04, loc=tuple(fp + Vector((-0.02, 0.02 * s, 0))), rot=(0, 0, 34 * s), plane='XZ', taper=(0, 0.3, 1.0)), mat_fin))
 # dorsal fins down the back of the neck: each placed by a frame (base along the neck, standing out of the back)
-FIN = [(0.0, 0.0), (0.05, 0.08), (0.14, 0.12), (0.14, 0.0)]
+FIN = [(0.0, 0.0), (0.05, 0.13), (0.14, 0.19), (0.14, 0.0)]     # 0.22 proud of the neck (verify 2: slots cut into the neck)
 neck = [Vector(p) for p, r in PTS[i_neck:i_head]]
 FIN_BASES = []
 for j, (u, sc_) in enumerate(((0.22, 0.8), (0.48, 1.0), (0.74, 0.85))):
     k = int(u * (len(neck) - 1)); a, b = neck[k], neck[min(k + 1, len(neck) - 1)]
     c = a.lerp(b, u * (len(neck) - 1) - k)
     T = (b - a).normalized()
-    hit, n = snap(c + Vector((-1.0, 0, 0)), c)
-    Nb = (n - T * n.dot(T)); Nb.y = 0; Nb.normalize()
-    sp_ = math.radians(20 if j % 2 == 0 else -20)                 # splayed alternately: a face always shows from behind
+    # staggered: each root sits 35 deg off the back line, alternately left and right, and the fin splays a further 15 deg,
+    # so from behind every fin breaks the neck's silhouette (verify 2: inside it they read as slots cut into the neck)
+    sg = 1 if j % 2 == 0 else -1
+    b0 = Vector((-1.0, 0, 0)); b0 = (b0 - T * b0.dot(T)).normalized()
+    ra = math.radians(35 * sg); b0 = (b0 * math.cos(ra) + T.cross(b0) * math.sin(ra)).normalized()
+    hit, n = snap(c + b0, c)
+    Nb = (n - T * n.dot(T)).normalized()
+    sp_ = math.radians(15 * sg)
     Nb = (Nb * math.cos(sp_) + T.cross(Nb) * math.sin(sp_)).normalized()
     fin = slab(f'dorsal{j}', cw([(x * sc_ * 1.3, z * sc_ * 1.3) for x, z in FIN]), FIN_T * 0.8, plane='XZ', taper=FIN_TAPER)
     M = Matrix((-T, Nb.cross(-T).normalized(), Nb)).transposed().to_4x4(); M.translation = hit - Nb * 0.02
@@ -130,9 +133,12 @@ for j, (u, sc_) in enumerate(((0.22, 0.8), (0.48, 1.0), (0.74, 0.85))):
     FIN_BASES.append(np.array(hit))
     parts.append(assign(fin, mat_fin))
 # the tail fluke: two white lobes at the tip rising from the centre
-FLUKE = smooth_closed([(0.0, 0.0), (0.10, 0.08), (0.16, 0.18), (0.06, 0.12), (0.0, 0.06), (-0.06, 0.12), (-0.16, 0.18), (-0.10, 0.08)], subdiv=4)
+# a waisted base as wide as the stalk's top, so the round stalk flattens into the fluke (verify 2: a sawn-off post)
+FLUKE = smooth_closed([(0.0, -0.02), (0.04, 0.0), (0.10, 0.08), (0.16, 0.18), (0.06, 0.12), (0.0, 0.07), (-0.06, 0.12), (-0.16, 0.18),
+                       (-0.10, 0.08), (-0.04, 0.0)], subdiv=4)
 tip = Vector(PTS[0][0])
-fl = slab('fluke', cw([(x * 1.45, z * 1.45) for x, z in FLUKE]), FIN_T, loc=tuple(tip + Vector((0, 0, -0.06))), rot=(0, 0, 70), plane='XZ', taper=FIN_TAPER)
+fl = slab('fluke', cw([(x * 1.45, z * 1.45) for x, z in FLUKE]), FIN_T * 1.5, loc=tuple(tip + Vector((0, 0, -0.03))), rot=(0, 0, 70), plane='XZ',
+           taper=(1, 1.0, 0.16))      # thick enough at the base to hold the stalk's tip inside it (verify 2: a seam in the lobes)
 facing(fl, d_bat, label='fluke battle')
 parts.append(assign(fl, mat_fin))
 
@@ -175,11 +181,13 @@ def sd_belly(co, nm):
     arc = th * rad
     k = np.clip((_sv - (S_NECK - 0.22)) / 0.34, 0, 1); k = np.sqrt(k)        # closes to a point where the neck meets the coil
     w = 0.95 * rad * k
-    return np.maximum(arc - w, _sv - (S_TOP - 0.7 * arc))
+    # the top end: a designed V in world space (verify 2: by arclength it smeared under the chin, where the nearest
+    # centre-line point jumps across the bend into the head)
+    vee = co[:, 2] - (Z_TOP - 1.3 * np.abs(co[:, 1]))
+    return np.maximum(arc - w, vee)
 
 
-_neck_z = [(s_, z_) for s_, z_ in zip(_S, _D[:, 2]) if s_ > S_NECK]
-S_TOP = next(s_ for s_, z_ in _neck_z if z_ > HC.z - 0.16 - 0.08)     # 0.08 under the chin
+Z_TOP = HC.z - 0.16 - 0.15          # the V's point, 0.15 under the chin: clear of the chin's shadow
 
 
 def sd_groove(co, nm):        # the whirlpool's grooves: where a coil turn meets the next, a deeper blue
@@ -187,11 +195,8 @@ def sd_groove(co, nm):        # the whirlpool's grooves: where a coil turn meets
     return np.where(coil, _other - 0.045, 1.0)
 
 
-def sd_finroot(co, nm):       # a darker crease round each dorsal root, so the fins read from behind
-    return np.min([np.linalg.norm(co - b_, axis=1) for b_ in FIN_BASES], axis=0) - 0.05
-
-
-paint_soft(body, [(sd_groove, BLUE_D), (sd_finroot, BLUE_D), (sd_belly, AQUA)], mask=bm, edge=0.013)
+# the dorsal roots: no dark blob any more (verify 2: a soft blob above each fin); the union seam's crease ink is the line
+paint_soft(body, [(sd_groove, BLUE_D), (sd_belly, AQUA)], mask=bm, edge=0.013)
 
 
 def add_battle_key(o, turn_deg):

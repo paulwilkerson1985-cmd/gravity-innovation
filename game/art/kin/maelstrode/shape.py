@@ -12,7 +12,9 @@ TURNS = 1.5          # with rr 0.10 + 0.46 t the turns sit 0.31 apart: a groove 
 def path():
     """[(point, radius)] from the fluke tip to the snout, and the indices where the coil, the neck and the head begin."""
     out = []
-    for p, r in (((-0.02, 0.0, 0.48), 0.06), ((0.0, 0.0, 0.36), 0.085), ((0.03, 0.0, 0.22), 0.10)):   # the tail rising from the centre (thicker: review 2 #5)
+    # the tail rising from the centre (thicker: review 2 #5), tapering into the fluke's base with a rounded tip that
+    # stays inside the fluke (verify 2: a sawn-off post)
+    for p, r in (((-0.02, 0.0, 0.45), 0.03), ((-0.01, 0.0, 0.39), 0.05), ((0.0, 0.0, 0.31), 0.08), ((0.03, 0.0, 0.22), 0.10)):
         out.append((p, r))
     i_coil = len(out)
     n = 44

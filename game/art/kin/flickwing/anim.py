@@ -16,7 +16,8 @@ SPEC = dict(
           dict(bone='fin.R', head=(-0.10, -0.26, 0.88), tail=(-0.17, -0.82, 1.26), radius=0.01, slots=('wingR', 'wblurR')),
           dict(bone='ear.L', head=(0.25, 0.16, 0.98), tail=(0.28, 0.34, 1.46), radius=0.01, slots=('antL', 'sparkL')),
           dict(bone='ear.R', head=(0.25, -0.16, 0.98), tail=(0.28, -0.34, 1.46), radius=0.01, slots=('antR', 'sparkR')),
-          dict(bone='tip1', head=(-0.30, 0, 0.58), tail=(-0.72, 0, 0.44), radius=0.01, slots=('lantern', 'band', 'lanrim'))],
+          # the lantern hangs pitched down 25 deg (model.py LPITCH); one band at its root, no rim ring
+          dict(bone='tip1', head=(-0.28, 0, 0.56), tail=(-0.62, 0, 0.21), radius=0.01, slots=('lantern', 'band'))],
     eye_centre=(0.0, 0.0, 0.66), scale=1.0,
 )
 run_hop(SPEC, HERE)

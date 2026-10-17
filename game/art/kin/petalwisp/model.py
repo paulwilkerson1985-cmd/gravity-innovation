@@ -103,8 +103,11 @@ for i in range(7):
     b = i * math.tau / 7 + 0.2
     out = Vector((math.cos(b), math.sin(b), 0))
     dirv = (out * 0.55 + Vector((0, 0, -0.85))).normalized()
-    parts.append(assign(petal(f'skirt{i}', T + out * 0.15 + dirv * 0.12 + Vector((0, 0, 0.04)), dirv, out, (0.11, 0.03, 0.17)), mat_petal))
-    parts.append(assign(petal(f'skirtu{i}', T + out * 0.11 + dirv * 0.10 + Vector((0, 0, 0.04)), dirv, out, (0.10, 0.03, 0.15)), mat_under))
+    # odd petals sit 0.01 further out: neighbours overlap cleanly instead of one edge just grazing through the next
+    # (verify 2: an ink fleck on a skirt petal where skirt5 met skirt6)
+    parts.append(assign(petal(f'skirt{i}', T + out * (0.15 + 0.01 * (i % 2)) + dirv * 0.12 + Vector((0, 0, 0.04)), dirv, out, (0.11, 0.03, 0.17)), mat_petal))
+    # set a little further in and thinner, so no under petal pokes a point through its pink twin (verify 2: an ink fleck)
+    parts.append(assign(petal(f'skirtu{i}', T + out * 0.095 + dirv * 0.095 + Vector((0, 0, 0.04)), dirv, out, (0.10, 0.025, 0.15)), mat_under))
 # leaf arms
 for s in (-1, 1):
     # mirrored (review 2 #1): the 180 deg about Z already mirrors the tilt, so the X tilt is not multiplied by s
@@ -112,12 +115,16 @@ for s in (-1, 1):
 # the wind-wisp tail: a spiral narrowing to a point, down and back from under the skirt
 wisp = []      # 1.6 turns, wide (review 2 #4: a drip); the turns must not touch (a self-intersecting tube drops out of the boolean)
 NW = 21
+WTILT = math.radians(35)
 for j in range(NW):
     t = j / (NW - 1)
     a = 1.6 * math.tau * t
     # narrow under the skirt, opening to r 0.22 below its hem, then closing to the point
     r = 0.05 + 0.20 * (t / 0.55) ** 2 if t <= 0.55 else 0.25 * (1 - t) / 0.45 + 0.01
-    wisp.append((T.x - 0.38 * t + r * math.cos(a), r * math.sin(a), T.z - 0.06 - (T.z - 0.06 - HOVER) * t))
+    # the spiral's plane tilted WTILT about Y (front of each turn lower), toward square to the tail's down-and-back run:
+    # level, it lay flat under the hem and read as a hoop or saucer from the front (verify 2)
+    ox, oy = r * math.cos(a), r * math.sin(a)
+    wisp.append((T.x - 0.38 * t + ox * math.cos(WTILT), oy, T.z - 0.06 - (T.z - 0.06 - HOVER) * t - ox * math.sin(WTILT) * min(1.0, t / 0.3, (1 - t) / 0.4)))   # level again at the point: it stays the lowest point
 parts.append(assign(tube('wisp', wisp, [0.075 * (1 - j / (NW - 1)) + 0.008 for j in range(NW)], res=6), mat_wisp))
 
 body = union(body, parts)
@@ -137,7 +144,11 @@ def sd_blush(co, nm):
     return np.maximum(e, (H.x + 0.10) - co[:, 0])
 
 
-paint_soft(body, [(sd_collar, srgb('#4fb846')), (sd_blush, BLUSH)], mask=bm, edge=0.011)
+def sd_nape(co, nm):          # the back of the head crown pink: the face only on the front hemisphere (verify 2: a blank
+    return co[:, 0] - (H.x + 0.02)    # white hexagon framed by petals from behind)
+
+
+paint_soft(body, [(sd_nape, PINK), (sd_collar, srgb('#4fb846')), (sd_blush, BLUSH)], mask=bm, edge=0.011)
 
 
 def add_battle_key(o, turn_deg):

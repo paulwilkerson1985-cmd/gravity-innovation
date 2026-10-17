@@ -98,21 +98,26 @@ for s in (-1, 1):
                tuple(f0 + dv * 0.085 + Vector((0, 0, -0.05)))]
         parts.append(assign(tube(f'toe{s}{k}', toe, [0.024, 0.02, 0.015, 0.006], res=6), mat_talon))
 # a white tail fan (one slab, five points, lifted so the battle camera sees it) and the two long streamers with
-# orange tips (review 2 #4)
+# orange tips (review 2 #4). The fan is wide (0.30 long, spread +-48 deg) and sits on the tail base behind the
+# streamer roots (verify 2: a small white scrap at the wing root that read as torn paper)
 fan = []
 for k in range(5):
-    a = math.radians(-34 + 17 * k)
+    a = math.radians(-48 + 24 * k)
     if k:
-        b = math.radians(-34 + 17 * k - 8.5)
+        b = math.radians(-48 + 24 * k - 12)
         fan.append((-0.25 * math.cos(b), 0.25 * math.sin(b)))
-    fan.append((-0.31 * math.cos(a), 0.31 * math.sin(a)))
-fan = [(0.03, -0.05)] + fan + [(0.03, 0.05)]
-# (already clockwise: slab() folds a concave counter-clockwise outline, see cw() below)
-parts.append(assign(slab('fan', fan, 0.022, loc=(-0.44, 0, HOVER + 0.38), rot=(0, 45, 0), plane='XY', bevel=0.004), mat_fan))   # cocked up: faces the battle and the back cameras
+    fan.append((-0.30 * math.cos(a), 0.30 * math.sin(a)))
+fan = smooth_closed([(0.03, -0.06)] + fan + [(0.03, 0.06)], subdiv=4)     # rounded feather ends, like the wing's scallops
+parts.append(assign(slab('fan', fan, 0.022, loc=(-0.52, 0, HOVER + 0.36), rot=(0, 38, 0), plane='XY', bevel=0.004), mat_fan))   # cocked up: faces the battle and the back cameras
+# the streamers spread +-22 deg and run out level, each orange tip carrying on along its streamer, so from behind they
+# are two orange-tipped lines fanning out of the rump, not two teardrops hanging under it (verify 2). Drooped 30 deg
+# (the review's first suggestion) they hung below the body like a pair of legs: the back camera looks down 12 deg,
+# so anything far behind and low lands under the rump; spread wider, the tips poked out beside the belly in front.
 for s in (-1, 1):
-    st = [(-0.46, 0.04 * s, HOVER + 0.36), (-0.74, 0.07 * s, HOVER + 0.30), (-0.98, 0.10 * s, HOVER + 0.34), (-1.12, 0.12 * s, HOVER + 0.46)]
+    st = [(-0.46, 0.04 * s, HOVER + 0.36), (-0.72, 0.12 * s, HOVER + 0.38), (-0.96, 0.20 * s, HOVER + 0.42), (-1.10, 0.25 * s, HOVER + 0.46)]
     parts.append(assign(tube(f'streamer{s}', st, [0.032, 0.026, 0.02, 0.016], res=8), mat_streamer))
-    parts.append(assign(ellipsoid(f'stip{s}', (-1.14, 0.125 * s, HOVER + 0.55), (0.03, 0.05, 0.10), rot=(0, -20, 0), taper=0.6, taper_axis=2), mat_stip))
+    tdir = Vector((-0.80, 0.30 * s, 0.42)).normalized()
+    parts.append(assign(ellipsoid(f'stip{s}', Vector(st[-1]) + tdir * 0.08, (0.03, 0.05, 0.10), taper=0.6, taper_axis=2, track=tdir), mat_stip))
 
 # the wings (review 2 #2/#3): one outline with a scalloped trailing edge (five primary points), the primaries one
 # orange zone and the underwing one pale zone, both flush with the sky-blue slab (+0.0015 a side, inked by the decal

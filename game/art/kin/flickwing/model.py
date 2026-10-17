@@ -58,8 +58,7 @@ mat_body = toon_material('body', attr='Col', ink=INK)
 mat_eye = toon_material('eye', EYE, ink=INK)
 mat_glint = toon_material('glint', WHITE, glow=1.0, ink='#ffffff')
 mat_mouth = toon_material('mouth', srgb('#6a3a10'), ink=INK)
-mat_lantern = toon_material('lantern', LANTERN, glow=0.9, ink='#8a6a10')
-mat_lanrim = toon_material('lanrim', srgb('#ffffe8'), glow=1.0, ink='#8a6a10')
+mat_lantern = toon_material('lantern', attr='Col', glow=0.9, ink='#8a6a10')     # painted: warm at the root, white-hot at the tip
 mat_band = toon_material('band', ORANGE, ink=INK)
 mat_case = toon_material('case', ORANGE, ink=INK)
 mat_tuft = toon_material('tuft', YELLOW, ink=INK)
@@ -92,22 +91,23 @@ parts.append(assign(tube('mouth', [tuple(p) for p in pts], [0.007, 0.010, 0.011,
 top, _ = snap((C.x + 0.06, 0, 3.0), (C.x + 0.06, 0, C.z))
 for i, (y, rx, ry, l) in enumerate(((0.0, 0, -6, 0.20), (0.07, -26, -2, 0.12), (-0.07, 26, -2, 0.12), (0.04, -12, -30, 0.13), (-0.04, 12, -30, 0.13))):
     parts.append(assign(ellipsoid(f'crest{i}', top + Vector((-0.02, y, l * 0.55)), (0.05, 0.04, l), rot=(rx, ry, 0), taper=0.85, taper_axis=2), mat_tuft))
-# the lantern tail: a glowing segment hanging behind. Built along its own axis (UV rings across the axis) so the two
-# orange bands, the glowing rim and the orange cap are face materials on the one surface: flush, no side walls, inked
-# only where the materials meet (review 2 #4)
-L0 = Vector((C.x - 0.46, 0, C.z - 0.10))
-LA = Vector((0.94, 0, 0.34)).normalized()                        # lantern axis, toward the body
+# the lantern tail: a glowing segment hanging behind. Built along its own axis (UV rings across the axis) so the orange
+# band is a face material on the one surface: flush, no side walls (review 2 #4). One thin band at the root only, and
+# the tip is the lantern's own glow, not an orange cap: end-on from behind the cap and rings read as a bullseye
+# (verify 2). Pitched down 25 deg so it peeks out below the near flank in the battle view (verify 2).
+LPITCH = math.radians(25)
+_off = Vector((-0.46, 0, -0.10)); _a0 = Vector((0.94, 0, 0.34))
+_rot = Matrix.Rotation(-LPITCH, 3, 'Y')                         # -Y rotation swings a backward offset downward
+L0 = C + _rot @ _off
+LA = (_rot @ _a0).normalized()                                   # lantern axis, toward the body
 lan = ellipsoid('lantern', L0, (0.21, 0.20, 0.25), segs=40, rings=56, taper=0.25, taper_axis=2, track=LA)
 lan.data.materials.clear()
-for m_ in (mat_lantern, mat_band, mat_lanrim):
+for m_ in (mat_lantern, mat_band):
     lan.data.materials.append(m_)
 _fc = np.empty(len(lan.data.polygons) * 3); lan.data.polygons.foreach_get('center', _fc); _fc = _fc.reshape(-1, 3)
 _u = (_fc - np.array(L0)) @ np.array(LA)                         # position along the axis, -0.25 (tip) .. 0.25 (root)
 _mi = np.zeros(len(_u), dtype=np.int32)
-for c_ in (0.13, 0.0):
-    _mi[np.abs(_u - c_) < 0.022] = 1                              # two bands
-_mi[(_u < -0.185) & (_u >= -0.205)] = 2                          # a glowing rim ring around the cap
-_mi[_u < -0.205] = 1                                             # the orange cap
+_mi[np.abs(_u - 0.025) < 0.010] = 1                              # one thin band (0.02) at the root, just proud of the body
 lan.data.polygons.foreach_set('material_index', _mi); lan.data.update()
 parts.append(lan)
 # lifted orange wing cases on the back, opened up and out
@@ -166,6 +166,16 @@ def sd_back(co, nm):          # the darker crown of the back
 
 
 paint_soft(body, [(sd_back, YELLOW_D), (sd_face, FACE)], mask=bm, edge=0.014)
+# the lantern's glow (verify 2: a flat cream egg): warm gold by the band, LANTERN through the middle, white-hot at the tip
+lm = vertex_slot_mask(body, {'lantern'}) & ~bm
+_co, _ = mesh_arrays(body)
+_t = np.clip((0.015 - (_co - np.array(L0)) @ np.array(LA)) / 0.24, 0, 1)         # 0 at the band, 1 at the tip
+_ca = body.data.color_attributes['Col']
+_col = np.empty(len(_co) * 4); _ca.data.foreach_get('color', _col); _col = _col.reshape(-1, 4)
+_g = np.array([srgb('#ffd860'), LANTERN, srgb('#ffffff')])
+_k = np.clip(_t * 2, 0, 2); _i = np.minimum(_k.astype(int), 1); _f = (_k - _i)[:, None]
+_col[lm, :3] = (_g[_i] * (1 - _f) + _g[_i + 1] * _f)[lm]
+_ca.data.foreach_set('color', _col.ravel()); body.data.update()
 
 
 def add_battle_key(o, turn_deg):
