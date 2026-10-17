@@ -146,9 +146,11 @@ def crystal(name, loc, r, h, rot=(0, 0, 0), sides=6, tip=0.45, tip_r=0.35):
     return o
 
 
-def slab(name, pts2d, thickness, loc=(0, 0, 0), rot=(0, 0, 0), plane='XZ', bevel=0.0, scale=1.0, bulge=0.0):
+def slab(name, pts2d, thickness, loc=(0, 0, 0), rot=(0, 0, 0), plane='XZ', bevel=0.0, scale=1.0, bulge=0.0, taper=None):
     """Filled closed outline (2-D points) solidified to a slab. plane 'XZ' => points are (x, z), normal along Y.
-    bulge > 0 pushes the centre of the slab outwards (lens profile) using distance to outline."""
+    bulge > 0 pushes the centre of the slab outwards (lens profile) using distance to outline.
+    taper=(i, f0, f1): the thickness runs from f0 at the low end of 2-D coordinate i to f1 at its high end (a wing or
+    fin thick at the root, thin at the tip)."""
     bm = bmesh.new()
     verts = []
     for (a, b) in pts2d:
@@ -179,6 +181,13 @@ def slab(name, pts2d, thickness, loc=(0, 0, 0), rot=(0, 0, 0), plane='XZ', bevel
         bm.to_mesh(me); bm.free()
     so = o.modifiers.new('so', 'SOLIDIFY'); so.thickness = thickness; so.offset = 0.0; so.use_even_offset = True
     bpy.ops.object.modifier_apply(modifier='so')
+    if taper:
+        ti, f0, f1 = taper
+        ax = {'XZ': (0, 2, 1), 'XY': (0, 1, 2)}.get(plane, (1, 2, 0))      # the two plane axes, then the normal axis
+        co = np.empty(len(me.vertices) * 3); me.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
+        u = co[:, ax[ti]]; t = (u - u.min()) / max(1e-9, u.max() - u.min())
+        co[:, ax[2]] *= f0 + (f1 - f0) * t
+        me.vertices.foreach_set('co', co.ravel()); me.update()
     if bevel:
         bv = o.modifiers.new('bv', 'BEVEL'); bv.width = bevel; bv.segments = 3; bv.limit_method = 'ANGLE'; bv.angle_limit = math.radians(40)
         bpy.ops.object.modifier_apply(modifier='bv')
@@ -214,7 +223,8 @@ def tube(name, points, radii, loc=(0, 0, 0), res=8, bevel_res=3):
     return o
 
 
-def displace(o, strength, scale, tex_type='CLOUDS', depth=1, seed=0, mid=0.5):
+def displace(o, strength, scale, tex_type='CLOUDS', depth=1, seed=0, mid=0.5, keep=None):
+    """keep(co) -> 0..1 per vertex scales the displacement (e.g. 0 on the face, so the toon ramp does not speckle it)."""
     tex = bpy.data.textures.new(o.name + '_dsp', tex_type)
     tex.noise_scale = scale
     if tex_type == 'CLOUDS':
@@ -223,7 +233,16 @@ def displace(o, strength, scale, tex_type='CLOUDS', depth=1, seed=0, mid=0.5):
         tex.distance_metric = 'DISTANCE'
     m = o.modifiers.new('dsp', 'DISPLACE'); m.texture = tex; m.strength = strength; m.mid_level = mid
     m.texture_coords = 'LOCAL'
+    if keep is not None:
+        co = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', co); co = co.reshape(-1, 3)
+        w = np.clip(np.asarray(keep(co), float), 0, 1)
+        g = o.vertex_groups.new(name='dsp_keep')
+        for i in np.where(w > 1e-4)[0]:
+            g.add([int(i)], float(w[i]), 'REPLACE')
+        m.vertex_group = 'dsp_keep'
     activate(o); bpy.ops.object.modifier_apply(modifier='dsp')
+    if keep is not None:
+        o.vertex_groups.remove(o.vertex_groups['dsp_keep'])
 
 
 def tri_count(o):
@@ -403,6 +422,46 @@ def paint_zones(o, base_rgb, zones, attr='Col', mask=None):
     return a
 
 
+def paint_soft(o, zones, attr='Col', mask=None, edge=0.02):
+    """Soft colour zones on top of the current colours: zones = [(sdf(co, nm) -> float array, rgb), ...], negative
+    inside; each blends in over +-edge (about 1.5 voxels), later zones over earlier. Unlike boolean predicates plus
+    smoothstep_blend, the edge follows the designed curve: no voxel stair-steps and no airbrushed smear."""
+    me = o.data
+    co, nm = mesh_arrays(o)
+    a = me.color_attributes[attr]
+    col = np.empty(len(me.vertices) * 4); a.data.foreach_get('color', col); col = col.reshape(-1, 4)
+    for sdf, rgb in zones:
+        d = np.asarray(sdf(co, nm), float)
+        t = np.clip((edge - d) / (2 * edge), 0, 1); w = t * t * (3 - 2 * t)
+        if mask is not None:
+            w = w * mask
+        col[:, :3] = col[:, :3] * (1 - w[:, None]) + np.array(rgb)[None, :] * w[:, None]
+    a.data.foreach_set('color', col.ravel())
+    me.update()
+
+
+def sd_ellipse(c, r):
+    """Signed distance (approx., in units of the radii scaled to world) of an axis-aligned ellipsoid; for paint_soft."""
+    c = np.asarray(c, float); r = np.asarray(r, float)
+    def f(co, nm):
+        q = (co - c) / r
+        k = np.linalg.norm(q, axis=1)
+        return (k - 1.0) * r.min()
+    return f
+
+
+def facing(o, d_cam, min_dot=0.5, label=''):
+    """Warn when a flat part (a slab wing or fin) is close to edge-on to the camera: the area-weighted mean |n . d|."""
+    me = o.data
+    n = np.empty(len(me.polygons) * 3); me.polygons.foreach_get('normal', n); n = n.reshape(-1, 3)
+    ar = np.empty(len(me.polygons)); me.polygons.foreach_get('area', ar)
+    M = np.array(o.matrix_world)[:3, :3]
+    n = n @ M.T; n /= np.maximum(1e-9, np.linalg.norm(n, axis=1))[:, None]
+    v = float((np.abs(n @ np.asarray(d_cam, float)) * ar).sum() / max(1e-9, ar.sum()))
+    print(f'  facing {label or o.name}: {v:.2f}' + ('  <- EDGE-ON to the battle camera' if v < min_dot else ''))
+    return v
+
+
 def smoothstep_blend(o, attr, iters=2):
     """Average vertex colours with neighbours a few times -> softer zone edges (anti-jaggy)."""
     me = o.data
@@ -460,7 +519,7 @@ def frame_camera(objs, yaw=35.0, elev=12.0, height_frac=0.80, ground_px=900, siz
     return cam, dict(ortho=ortho, span_x=span_x, span_y=span_y, height_px=span_y / ortho * size)
 
 
-def setup_render(samples=24, ink_px=6.0, inner_px=3.0, crease_deg=105, bezier=0.0):
+def setup_render(samples=24, ink_px=6.0, inner_px=3.0, crease_deg=105, bezier=0.0, decal_px=0.0):
     sc = bpy.context.scene
     r = sc.render
     sc.render.engine = 'CYCLES'
@@ -506,6 +565,8 @@ def setup_render(samples=24, ink_px=6.0, inner_px=3.0, crease_deg=105, bezier=0.
 
     lineset('outer', ink_px, select_external_contour=True)
     lineset('inner', inner_px, select_silhouette=True, select_border=True, select_crease=True)
+    if decal_px:    # a thin line where two materials meet: flush decals (bands, bolts, spots) get an edge, not side walls
+        lineset('decal', decal_px, select_material_boundary=True)
     return sc
 
 
