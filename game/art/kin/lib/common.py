@@ -151,6 +151,11 @@ def slab(name, pts2d, thickness, loc=(0, 0, 0), rot=(0, 0, 0), plane='XZ', bevel
     bulge > 0 pushes the centre of the slab outwards (lens profile) using distance to outline.
     taper=(i, f0, f1): the thickness runs from f0 at the low end of 2-D coordinate i to f1 at its high end (a wing or
     fin thick at the root, thin at the tip)."""
+    # clockwise outlines only: a concave counter-clockwise outline triangulates into folded, overlapping faces
+    # (Cyclonyx's ragged primaries and one-sided stray ink, polish review 2)
+    area = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts2d, list(pts2d[1:]) + [pts2d[0]]))
+    if area > 0:
+        pts2d = list(reversed(pts2d))
     bm = bmesh.new()
     verts = []
     for (a, b) in pts2d:
@@ -448,6 +453,13 @@ def sd_ellipse(c, r):
         k = np.linalg.norm(q, axis=1)
         return (k - 1.0) * r.min()
     return f
+
+
+def battle_dir(turn=16.0, yaw=35.0, elev=12.0):
+    """The battle camera's direction in the model's own frame: the 'battle' key turns the body `turn` degrees toward
+    a yaw-35 camera, so a part modelled at rest faces the camera at about yaw + turn. Use it with facing()."""
+    d, _, _, _ = camera_basis(yaw + turn, elev)
+    return d
 
 
 def facing(o, d_cam, min_dot=0.5, label=''):
