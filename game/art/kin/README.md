@@ -67,8 +67,11 @@ Applied in the shared code, so every kin gets them on its next render (all 19 we
 - **Hop-back:** leans forward with the forelegs tucked (it read as rearing up and begging).
 - **Idle:** bigger breath, nod, glance and tail sway. There is no baked blink, because the loop is one second long:
   the sheet player should blink now and then.
-- Not done yet (SHOULD/NICE in the review): back markings on flat-backed kin, a hock bend on the quad legs, inking the
-  tail flame, a faint body roll toward the camera, matching `restHeightPx` in game.
+- **Back markings:** Dropple has ripple bands and Mossling has back blossoms and mottled moss; both read cleanly.
+  A dorsal stripe painted in vertex colours was tried on Ashkit and Cindertail and reverted: the vertex colours are too
+  coarse, so it read as dirt. The quads need a decal or a texture mask for this.
+- Not done yet (SHOULD/NICE in the review): quad back markings (above), a hock bend on the quad legs, inking the tail
+  flame, a faint body roll toward the camera, matching `restHeightPx` in game.
 
 ## Lessons from the production run
 - Probe a few poses (`SPP=4 SIZE=384 VIEWS=.. CLIPS=.. FRAMES=..`, a separate `OUT`) before queueing a 6-13 minute
