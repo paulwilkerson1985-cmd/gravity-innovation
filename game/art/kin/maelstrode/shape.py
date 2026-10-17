@@ -6,20 +6,20 @@ The path runs tail -> coil -> neck -> head: the fluke rises from the coil's cent
 """
 import math
 
-TURNS = 1.35
+TURNS = 1.5          # with rr 0.10 + 0.46 t the turns sit 0.31 apart: a groove between each, not one torus (review 2 #4)
 
 
 def path():
     """[(point, radius)] from the fluke tip to the snout, and the indices where the coil, the neck and the head begin."""
     out = []
-    for p, r in (((-0.02, 0.0, 0.48), 0.035), ((0.0, 0.0, 0.36), 0.06), ((0.03, 0.0, 0.22), 0.085)):   # the tail rising from the centre
+    for p, r in (((-0.02, 0.0, 0.48), 0.06), ((0.0, 0.0, 0.36), 0.085), ((0.03, 0.0, 0.22), 0.10)):   # the tail rising from the centre (thicker: review 2 #5)
         out.append((p, r))
     i_coil = len(out)
     n = 44
     for j in range(n):
         t = j / (n - 1)
         a = -TURNS * 2 * math.pi * (1 - t)            # ends at angle 0: the coil leaves toward +X
-        rr = 0.10 + 0.36 * t
+        rr = 0.10 + 0.46 * t
         rad = 0.09 + 0.06 * t
         out.append(((rr * math.cos(a), rr * math.sin(a), rad + 0.12 * (1 - t) ** 1.2), rad))   # inner turns ride higher: a whirlpool
     i_neck = len(out)

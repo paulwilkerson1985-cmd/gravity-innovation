@@ -11,11 +11,12 @@ from hoprig import run_hop
 
 SPEC = dict(
     name='flickwing', blend='flickwing_final.blend', turn=16.0, height=1.42, clips='fly', beats=6, flap=(38.0, -22.0),
-    apps=[dict(bone='fin.L', head=(-0.10, 0.30, 0.94), tail=(-0.20, 0.82, 1.00), radius=0.01, slots=('wingL',)),
-          dict(bone='fin.R', head=(-0.10, -0.30, 0.94), tail=(-0.20, -0.82, 1.00), radius=0.01, slots=('wingR',)),
-          dict(bone='ear.L', head=(0.25, 0.12, 1.00), tail=(0.28, 0.26, 1.46), radius=0.01, slots=('antL', 'sparkL')),
-          dict(bone='ear.R', head=(0.25, -0.12, 1.00), tail=(0.28, -0.26, 1.46), radius=0.01, slots=('antR', 'sparkR')),
-          dict(bone='tip1', head=(-0.30, 0, 0.58), tail=(-0.72, 0, 0.44), radius=0.01, slots=('lantern', 'band'))],
+    # wings fan up and out behind the body, faces to the front (model.py WROOT/WSPAN); each side's blur wing rides along
+    apps=[dict(bone='fin.L', head=(-0.10, 0.26, 0.88), tail=(-0.17, 0.82, 1.26), radius=0.01, slots=('wingL', 'wblurL')),
+          dict(bone='fin.R', head=(-0.10, -0.26, 0.88), tail=(-0.17, -0.82, 1.26), radius=0.01, slots=('wingR', 'wblurR')),
+          dict(bone='ear.L', head=(0.25, 0.16, 0.98), tail=(0.28, 0.34, 1.46), radius=0.01, slots=('antL', 'sparkL')),
+          dict(bone='ear.R', head=(0.25, -0.16, 0.98), tail=(0.28, -0.34, 1.46), radius=0.01, slots=('antR', 'sparkR')),
+          dict(bone='tip1', head=(-0.30, 0, 0.58), tail=(-0.72, 0, 0.44), radius=0.01, slots=('lantern', 'band', 'lanrim'))],
     eye_centre=(0.0, 0.0, 0.66), scale=1.0,
 )
 run_hop(SPEC, HERE)
