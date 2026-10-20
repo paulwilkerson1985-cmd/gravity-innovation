@@ -1,0 +1,78 @@
+
+== chamber A: Rc=2.5cm,H=3.0cm (most conservative)
+  Panda2024 (13 nm/s2, s=4mm): lambda_cross(thr=1e-26) = 8.52e+27
+     lam=1.0e+26 1/k= 94.97 cm  D=6.849e-07 /m  thr A2/lam^2 > 2.11e-19  -> A2 > 2.11e+33
+     lam=2.0e+26 1/k= 47.48 cm  D=1.095e-05 /m  thr A2/lam^2 > 1.32e-20  -> A2 > 5.28e+32
+     lam=5.0e+26 1/k= 18.99 cm  D=4.260e-04 /m  thr A2/lam^2 > 3.40e-22  -> A2 > 8.49e+31
+     lam=1.0e+27 1/k=  9.50 cm  D=6.717e-03 /m  thr A2/lam^2 > 2.15e-23  -> A2 > 2.15e+31
+     lam=2.0e+27 1/k=  4.75 cm  D=1.016e-01 /m  thr A2/lam^2 > 1.42e-24  -> A2 > 5.70e+30
+     lam=3.0e+27 1/k=  3.17 cm  D=4.712e-01 /m  thr A2/lam^2 > 3.07e-25  -> A2 > 2.76e+30
+     lam=5.0e+27 1/k=  1.90 cm  D=2.869e+00 /m  thr A2/lam^2 > 5.04e-26  -> A2 > 1.26e+30
+     lam=7.0e+27 1/k=  1.36 cm  D=8.350e+00 /m  thr A2/lam^2 > 1.73e-26  -> A2 > 8.49e+29
+     lam=1.0e+28 1/k=  0.95 cm  D=2.267e+01 /m  thr A2/lam^2 > 6.38e-27  -> A2 > 6.38e+29
+     lam=1.5e+28 1/k=  0.63 cm  D=5.912e+01 /m  thr A2/lam^2 > 2.45e-27  -> A2 > 5.50e+29
+     lam=2.5e+28 1/k=  0.38 cm  D=1.536e+02 /m  thr A2/lam^2 > 9.42e-28  -> A2 > 5.89e+29
+  Jaffe2017 (50 nm/s2, s=5mm): lambda_cross(thr=1e-26) = 1.46e+28
+     lam=1.0e+26 1/k= 94.97 cm  D=7.005e-07 /m  thr A2/lam^2 > 7.94e-19  -> A2 > 7.94e+33
+     lam=2.0e+26 1/k= 47.48 cm  D=1.120e-05 /m  thr A2/lam^2 > 4.97e-20  -> A2 > 1.99e+33
+     lam=5.0e+26 1/k= 18.99 cm  D=4.358e-04 /m  thr A2/lam^2 > 1.28e-21  -> A2 > 3.19e+32
+     lam=1.0e+27 1/k=  9.50 cm  D=6.871e-03 /m  thr A2/lam^2 > 8.10e-23  -> A2 > 8.10e+31
+     lam=2.0e+27 1/k=  4.75 cm  D=1.039e-01 /m  thr A2/lam^2 > 5.35e-24  -> A2 > 2.14e+31
+     lam=3.0e+27 1/k=  3.17 cm  D=4.821e-01 /m  thr A2/lam^2 > 1.15e-24  -> A2 > 1.04e+31
+     lam=5.0e+27 1/k=  1.90 cm  D=2.933e+00 /m  thr A2/lam^2 > 1.90e-25  -> A2 > 4.74e+30
+     lam=7.0e+27 1/k=  1.36 cm  D=8.521e+00 /m  thr A2/lam^2 > 6.53e-26  -> A2 > 3.20e+30
+     lam=1.0e+28 1/k=  0.95 cm  D=2.303e+01 /m  thr A2/lam^2 > 2.42e-26  -> A2 > 2.42e+30
+     lam=1.5e+28 1/k=  0.63 cm  D=5.950e+01 /m  thr A2/lam^2 > 9.35e-27  -> A2 > 2.10e+30
+     lam=2.5e+28 1/k=  0.38 cm  D=1.521e+02 /m  thr A2/lam^2 > 3.66e-27  -> A2 > 2.29e+30
+
+== chamber B: Rc=2.5cm,H=6.1cm (conservative)
+  Panda2024 (13 nm/s2, s=4mm): lambda_cross(thr=1e-26) = 8.88e+27
+     lam=1.0e+26 1/k= 94.97 cm  D=5.852e-07 /m  thr A2/lam^2 > 2.47e-19  -> A2 > 2.47e+33
+     lam=2.0e+26 1/k= 47.48 cm  D=9.358e-06 /m  thr A2/lam^2 > 1.55e-20  -> A2 > 6.18e+32
+     lam=5.0e+26 1/k= 18.99 cm  D=3.641e-04 /m  thr A2/lam^2 > 3.97e-22  -> A2 > 9.93e+31
+     lam=1.0e+27 1/k=  9.50 cm  D=5.746e-03 /m  thr A2/lam^2 > 2.52e-23  -> A2 > 2.52e+31
+     lam=2.0e+27 1/k=  4.75 cm  D=8.714e-02 /m  thr A2/lam^2 > 1.66e-24  -> A2 > 6.64e+30
+     lam=3.0e+27 1/k=  3.17 cm  D=4.061e-01 /m  thr A2/lam^2 > 3.56e-25  -> A2 > 3.21e+30
+     lam=5.0e+27 1/k=  1.90 cm  D=2.501e+00 /m  thr A2/lam^2 > 5.78e-26  -> A2 > 1.45e+30
+     lam=7.0e+27 1/k=  1.36 cm  D=7.362e+00 /m  thr A2/lam^2 > 1.96e-26  -> A2 > 9.63e+29
+     lam=1.0e+28 1/k=  0.95 cm  D=2.022e+01 /m  thr A2/lam^2 > 7.15e-27  -> A2 > 7.15e+29
+     lam=1.5e+28 1/k=  0.63 cm  D=5.316e+01 /m  thr A2/lam^2 > 2.72e-27  -> A2 > 6.12e+29
+     lam=2.5e+28 1/k=  0.38 cm  D=1.383e+02 /m  thr A2/lam^2 > 1.05e-27  -> A2 > 6.54e+29
+  Jaffe2017 (50 nm/s2, s=5mm): lambda_cross(thr=1e-26) = 1.50e+28
+     lam=1.0e+26 1/k= 94.97 cm  D=6.422e-07 /m  thr A2/lam^2 > 8.66e-19  -> A2 > 8.66e+33
+     lam=2.0e+26 1/k= 47.48 cm  D=1.027e-05 /m  thr A2/lam^2 > 5.42e-20  -> A2 > 2.17e+33
+     lam=5.0e+26 1/k= 18.99 cm  D=3.995e-04 /m  thr A2/lam^2 > 1.39e-21  -> A2 > 3.48e+32
+     lam=1.0e+27 1/k=  9.50 cm  D=6.302e-03 /m  thr A2/lam^2 > 8.83e-23  -> A2 > 8.83e+31
+     lam=2.0e+27 1/k=  4.75 cm  D=9.544e-02 /m  thr A2/lam^2 > 5.83e-24  -> A2 > 2.33e+31
+     lam=3.0e+27 1/k=  3.17 cm  D=4.437e-01 /m  thr A2/lam^2 > 1.25e-24  -> A2 > 1.13e+31
+     lam=5.0e+27 1/k=  1.90 cm  D=2.716e+00 /m  thr A2/lam^2 > 2.05e-25  -> A2 > 5.12e+30
+     lam=7.0e+27 1/k=  1.36 cm  D=7.933e+00 /m  thr A2/lam^2 > 7.01e-26  -> A2 > 3.44e+30
+     lam=1.0e+28 1/k=  0.95 cm  D=2.154e+01 /m  thr A2/lam^2 > 2.58e-26  -> A2 > 2.58e+30
+     lam=1.5e+28 1/k=  0.63 cm  D=5.566e+01 /m  thr A2/lam^2 > 9.99e-27  -> A2 > 2.25e+30
+     lam=2.5e+28 1/k=  0.38 cm  D=1.415e+02 /m  thr A2/lam^2 > 3.93e-27  -> A2 > 2.46e+30
+
+== chamber C: Rc=6.1cm,H=6.1cm (Hamilton-2015-size)
+  Panda2024 (13 nm/s2, s=4mm): lambda_cross(thr=1e-26) = 4.84e+27
+     lam=1.0e+26 1/k= 94.97 cm  D=8.950e-06 /m  thr A2/lam^2 > 1.62e-20  -> A2 > 1.62e+32
+     lam=2.0e+26 1/k= 47.48 cm  D=1.428e-04 /m  thr A2/lam^2 > 1.01e-21  -> A2 > 4.05e+31
+     lam=5.0e+26 1/k= 18.99 cm  D=5.464e-03 /m  thr A2/lam^2 > 2.65e-23  -> A2 > 6.62e+30
+     lam=1.0e+27 1/k=  9.50 cm  D=8.150e-02 /m  thr A2/lam^2 > 1.77e-24  -> A2 > 1.77e+30
+     lam=2.0e+27 1/k=  4.75 cm  D=1.028e+00 /m  thr A2/lam^2 > 1.41e-25  -> A2 > 5.63e+29
+     lam=3.0e+27 1/k=  3.17 cm  D=3.845e+00 /m  thr A2/lam^2 > 3.76e-26  -> A2 > 3.39e+29
+     lam=5.0e+27 1/k=  1.90 cm  D=1.582e+01 /m  thr A2/lam^2 > 9.14e-27  -> A2 > 2.29e+29
+     lam=7.0e+27 1/k=  1.36 cm  D=3.430e+01 /m  thr A2/lam^2 > 4.22e-27  -> A2 > 2.07e+29
+     lam=1.0e+28 1/k=  0.95 cm  D=6.880e+01 /m  thr A2/lam^2 > 2.10e-27  -> A2 > 2.10e+29
+     lam=1.5e+28 1/k=  0.63 cm  D=1.334e+02 /m  thr A2/lam^2 > 1.08e-27  -> A2 > 2.44e+29
+     lam=2.5e+28 1/k=  0.38 cm  D=2.623e+02 /m  thr A2/lam^2 > 5.51e-28  -> A2 > 3.45e+29
+  Jaffe2017 (50 nm/s2, s=5mm): lambda_cross(thr=1e-26) = 8.55e+27
+     lam=1.0e+26 1/k= 94.97 cm  D=9.815e-06 /m  thr A2/lam^2 > 5.67e-20  -> A2 > 5.67e+32
+     lam=2.0e+26 1/k= 47.48 cm  D=1.566e-04 /m  thr A2/lam^2 > 3.55e-21  -> A2 > 1.42e+32
+     lam=5.0e+26 1/k= 18.99 cm  D=5.993e-03 /m  thr A2/lam^2 > 9.28e-23  -> A2 > 2.32e+31
+     lam=1.0e+27 1/k=  9.50 cm  D=8.947e-02 /m  thr A2/lam^2 > 6.22e-24  -> A2 > 6.22e+30
+     lam=2.0e+27 1/k=  4.75 cm  D=1.131e+00 /m  thr A2/lam^2 > 4.92e-25  -> A2 > 1.97e+30
+     lam=3.0e+27 1/k=  3.17 cm  D=4.237e+00 /m  thr A2/lam^2 > 1.31e-25  -> A2 > 1.18e+30
+     lam=5.0e+27 1/k=  1.90 cm  D=1.744e+01 /m  thr A2/lam^2 > 3.19e-26  -> A2 > 7.97e+29
+     lam=7.0e+27 1/k=  1.36 cm  D=3.773e+01 /m  thr A2/lam^2 > 1.47e-26  -> A2 > 7.23e+29
+     lam=1.0e+28 1/k=  0.95 cm  D=7.530e+01 /m  thr A2/lam^2 > 7.39e-27  -> A2 > 7.39e+29
+     lam=1.5e+28 1/k=  0.63 cm  D=1.446e+02 /m  thr A2/lam^2 > 3.85e-27  -> A2 > 8.66e+29
+     lam=2.5e+28 1/k=  0.38 cm  D=2.798e+02 /m  thr A2/lam^2 > 1.99e-27  -> A2 > 1.24e+30
