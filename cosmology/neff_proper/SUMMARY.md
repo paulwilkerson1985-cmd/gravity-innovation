@@ -1,3 +1,5 @@
+> **Update 12 Oct 2026:** the hadronic (ππ, KK̄) form factor and the uncertainty band are superseded by `../neff_2ch/` (dispersive two-channel Muskhelishvili–Omnès form factors with data-constrained input). ΔN_eff < 0.107 now excludes M ≲ 7.4 TeV (7.0–8.2), previously 7.5 (5.9–9.6).
+
 # Thermal-relic ΔN_eff for the universally coupled symmetron: proper calculation
 
 *Fable 5 · 27 Sep 2026 · Gravity Innovation · replaces `../neff_estimate.py` (rough)*

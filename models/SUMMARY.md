@@ -1,4 +1,6 @@
 > **Working log, superseded where it differs from `docs/`.** This file records the 26–27 Sep 2026 working calculations as they were done. The adopted numbers are in `docs/white_paper_v2.md` and `docs/sn_technical_note_v2.md`. In particular: the rough ΔN_eff estimate here ("a floor no nuclear physics can move") is superseded by the Boltzmann calculation in `cosmology/neff_proper/`, which excludes M ≲ 7.5 TeV (5.9–9.6) for the universal coupling if reheating exceeded a few GeV, and is thermal-history dependent.
+>
+> **Update (October 2026 audit):** the wedge is M ≳ 7.4 TeV (≳ 6 TeV from SN alone) up to the air ceiling, not "M = 4–100 TeV"; the inverse-square-law gain is 10–100×, not "tenfold"; and the dilaton band's large-λ end, λ ≳ (0.5–1.1)×10²⁸, is already excluded by existing atom-interferometer data (see `q2b/`), so the corner is no longer "plausibly new space" throughout.
 
 # Widening the case: which theories a ≥1 m open-vacuum torsion test constrains
 
