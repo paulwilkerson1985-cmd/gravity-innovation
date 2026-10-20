@@ -69,7 +69,7 @@ To rebuild the Python module, compile them together with our `supernova/sn_deep/
 ## How to help
 
 We would especially value:
-1. an independent solver run (e.g. SELCIE) on the benchmark and membrane cases;
+1. an independent solver run (e.g. SELCIE) on the benchmark and membrane cases; An independent finite-element cross-check (FEniCS/gmsh) now agrees with the benchmark and the membrane case; see `solver/fem_crosscheck/`. SELCIE itself is chameleon-only.
 2. any experiment we missed in which two screened bodies share an unshielded vacuum larger than about 7/μ, at 1/μ ≳ 2 cm;
 3. a check of the supernova trace and pion channels against a real 1-s proto-neutron-star profile.
 4. a dispersive two-channel (ππ, KK̄) trace form factor ⟨0|Θ|ππ⟩ at √s ≈ 0.5–1 GeV, the dominant uncertainty in the ΔN_eff bound.
